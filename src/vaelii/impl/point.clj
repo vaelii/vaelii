@@ -117,9 +117,13 @@
   (qkb/possible instants kb context i1 i2))
 
 (defn point-prover
-  "The point-algebra entailment prover, to register with `vaelii.core/add-prover`."
+  "The point-algebra entailment prover, to register with `vaelii.core/add-prover`.  It
+  estimates an open goal at `provers/deferred-est`, so a conjunction runs the goal after
+  the conjunct binding its variable: `tp/constraints-over` orders a calendar moment no node
+  is, which the open enumeration of the nodes leaves out (docs/time.md, \"The points of a
+  temporal thing\")."
   []
-  (qkb/prover instants))
+  (qkb/prover instants provers/deferred-est))
 
 ;; ---- a thing against a moment -------------------------------------------
 

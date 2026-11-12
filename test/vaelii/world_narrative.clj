@@ -32,14 +32,12 @@
 
 (def type-hierarchy
   '[(genl agent        thing)
-    (genl event        thing)
     (genl action       event)          ; an action is an event an agent performs
     (genl mental_state thing)
     (genl goal         mental_state)])
 
 (def type-docs
   '[(comment agent        "A being that acts with intent — the doer of a story.")
-    (comment event        "Something that happens in the story's world.")
     (comment action       "An event an agent deliberately performs.")
     (comment mental_state "An agent's inner state — a belief, a wish, a goal.")
     (comment goal         "A state of affairs an agent wants to bring about.")])
@@ -48,8 +46,7 @@
   ;; afterEvent is deliberately NOT declared transitive: it exists only to read a
   ;; direct beforeEvent link backwards (the inverse prover inverts stored facts), so
   ;; it has no base edges of its own for a transitive closure to compose.
-  '[(transitive causes)                 ; a chain of causes is itself a cause
-    (transitive beforeEvent)            ; temporal precedence composes
+  '[(transitive beforeEvent)            ; temporal precedence composes
     (inverse    beforeEvent afterEvent)])
 
 (def predicate-docs
@@ -57,7 +54,6 @@
     (comment does          "(does ?agent ?action) means that ?agent performs ?action.")
     (comment brings        "(brings ?agent ?event) means that ?agent brings ?event about.")
     (comment achieves      "(achieves ?event ?goal) means that ?event realizes ?goal.")
-    (comment causes        "(causes ?event1 ?event2) means that ?event1 brings ?event2 about. Transitive, so a chain of causes is itself a cause.")
     (comment beforeEvent   "(beforeEvent ?event1 ?event2) means that ?event1 happens before ?event2. Transitive, and the inverse of afterEvent.")
     (comment afterEvent    "(afterEvent ?event1 ?event2) means that ?event1 happens after ?event2. The inverse of beforeEvent, and deliberately not transitive: it has no base edges of its own, existing only to read a beforeEvent link backwards.")
     (comment achievesGoal  "(achievesGoal ?agent ?goal) means that ?agent got what it wanted. Derived, when the agent brings about an event that achieves the goal.")
@@ -68,7 +64,6 @@
     (arg does    1 agent) (arg does    2 action)
     (arg brings  1 agent) (arg brings  2 event)
     (arg achieves 1 event) (arg achieves 2 goal)
-    (arg causes  1 event) (arg causes  2 event)
     (arg beforeEvent 1 event) (arg beforeEvent 2 event)
     (arg responsibleFor 1 agent) (arg responsibleFor 2 event)])
 

@@ -21,8 +21,8 @@
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
-(defn- core-context-kb [] (doto (tu/fresh) (tu/load-core!)))
-(defn- starter-world-kb [] (doto (tu/fresh) (tu/load-starter!) (world/load-into)))
+(defn- core-context-kb [] (doto (tu/empty-kb) (tu/load-core!)))
+(defn- starter-world-kb [] (doto (tu/empty-kb) (tu/load-starter!) (world/load-into)))
 
 (defn- one [bindings k] (get (first bindings) k))
 

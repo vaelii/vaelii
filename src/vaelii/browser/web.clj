@@ -921,6 +921,7 @@
   ([env t seen]
    (cond
      (= :variable (v/term-role t)) [:span.t-var (pr-str t)]
+     (= '. t)                      [:span.sx "."]   ; a rest marker is syntax, not a term
      (v/reified-term? t)           (nat-ref env t seen)
      ;; the href is the term as stored — what the page is *about* — and the text is how
      ;; the page writes it.  The two differ for a compound term holding a reified one
@@ -1746,11 +1747,9 @@
 ;; ambient bound two long terms print to one prefix; these two release the bounds around
 ;; the printing.  `naming/print-key` holds the same guard for the engine.
 
-(defn- print-key
+(def ^:private print-key
   "`x` printed as an ordering key, with the print bounds released."
-  ^String [x]
-  (binding [*print-length* nil *print-level* nil *print-meta* false]
-    (pr-str x)))
+  guard/edn-str)
 
 (defn- sort-by-once
   "`coll` as a vector ordered by `(f x)`, with `f` called once per element:
@@ -3606,46 +3605,50 @@
 (def ^:private regex-metacharacters
   "What makes a pattern a *pattern* rather than a literal.  A query holding none of
   these matches exactly what `re-find` would — substring containment — so it is answered
-  by `:match :substring` and no regex is compiled at all.  That is the type-ahead path,
-  and it is the common one."
+  by `:match :substring` for the result list. The separate whole-name probe quotes
+  the literal query rather than interpreting its syntax."
   (set "\\^$.|?*+()[]{}"))
 
 (defn- term-hits
   "The terms matching `q`, from the index's **term-name set** (`v/find-terms`) — the size
   of the vocabulary, never a walk of the sentexes.  `re-find` semantics either way: a
-  literal query is a substring match, and only a query that actually carries regex
-  syntax compiles a pattern.  Answers `::too-long` for a pattern past `pattern-cap`,
+  literal query is a substring match by default, and a query carrying regex syntax
+  uses a pattern. Answers `::too-long` for a user pattern past `pattern-cap`,
   which is never compiled, `::bad` for one that does not compile or whose match overflows
   the stack, and `{::failed <message>}` for any other failure of the read, logged.
 
-  `limit` bounds the answer, so a page of results costs a page of results."
-  [kb q limit]
-  (let [regex? (some regex-metacharacters q)]
-    (cond
-      (and regex? (> (count q) pattern-cap)) ::too-long
-      ;; compiled here as well as in `find-terms`: an attached daemon answers a pattern
-      ;; that does not compile as a server fault, which the arms below would show as one
-      (and regex? (nil? (try (re-pattern q)
-                             (catch java.util.regex.PatternSyntaxException _ nil))))
-      ::bad
-      :else
-      (try
-        ;; case-insensitive: a literal query matches a term of any case, so a
-        ;; lowercase `transitiveinarg` finds `transitiveInArg`.  A regex query
-        ;; carries its own case in the pattern and asks for insensitivity with
-        ;; `(?i)`; `find-terms`' regex matcher ignores this flag, so it is unchanged.
-        (v/find-terms kb q {:match (if regex? :regex :substring)
-                            :case-sensitive? false :limit limit})
-        ;; a catastrophic pattern can raise `StackOverflowError` out of the regex
-        ;; engine, and this handler stack has no exception middleware to make a page of
-        ;; it, so the pattern is reported as unusable
-        (catch java.util.regex.PatternSyntaxException _ ::bad)
-        (catch StackOverflowError _ ::bad)
-        ;; a store fault or an unreachable daemon is not the pattern's fault
-        (catch Exception t
-          (trove/log! {:level :warn :id ::find-failed :error t
-                       :data {:q q :error (ex-message t)}})
-          {::failed (or (ex-message t) (.getName (class t)))})))))
+  `limit` bounds the answer; `exact?` asks for a quoted case-insensitive whole name."
+  ([kb q limit] (term-hits kb q limit false))
+  ([kb q limit exact?]
+   (let [regex? (and (not exact?) (some regex-metacharacters q))]
+     (cond
+       (and regex? (> (count q) pattern-cap)) ::too-long
+       ;; compiled here as well as in `find-terms`: an attached daemon answers a pattern
+       ;; that does not compile as a server fault, which the arms below would show as one
+       (and regex? (nil? (try (re-pattern q)
+                              (catch java.util.regex.PatternSyntaxException _ nil))))
+       ::bad
+       :else
+       (try
+         ;; case-insensitive: a literal query matches a term of any case, so a
+         ;; lowercase `transitiveinarg` finds `transitiveInArg`.  A regex query
+         ;; carries its own case in the pattern and asks for insensitivity with
+         ;; `(?i)`; `find-terms`' regex matcher ignores this flag, so it is unchanged.
+         (v/find-terms kb (if exact?
+                            (str "(?iu)\\A" (java.util.regex.Pattern/quote q) "\\z")
+                            q)
+                       {:match (if (or exact? regex?) :regex :substring)
+                        :case-sensitive? false :limit limit})
+         ;; a catastrophic pattern can raise `StackOverflowError` out of the regex
+         ;; engine, and this handler stack has no exception middleware to make a page of
+         ;; it, so the pattern is reported as unusable
+         (catch java.util.regex.PatternSyntaxException _ ::bad)
+         (catch StackOverflowError _ ::bad)
+         ;; a store fault or an unreachable daemon is not the pattern's fault
+         (catch Exception t
+           (trove/log! {:level :warn :id ::find-failed :error t
+                        :data {:q q :error (ex-message t)}})
+           {::failed (or (ex-message t) (.getName (class t)))}))))))
 
 (defn- find-list
   "The result list for a search: one page of hits and the sentinel that fetches the
@@ -3662,10 +3665,14 @@
   linking to its term page.  `q` reads as `re-find` does (a bare `dog` finds every term
   containing it, `^parent` anchors) and filters the index's term-name set.  **A pattern
   that resolves to a single term jumps to that term's page**, because it is the only match
-  or names a term *exactly*; the jump sets `HX-Push-Url`.  An unusable pattern or an empty
+  or is a literal naming exactly one term ignoring case; the jump sets `HX-Push-Url`.
+  Case-only name collisions stay a list. An unusable pattern or an empty
   query reports gently."
   [{:keys [kb] :as env} q]
-  (let [hits (when-not (str/blank? q) (term-hits kb q (inc find-cap)))]
+  (let [hits (when-not (str/blank? q) (term-hits kb q (inc find-cap)))
+        exact (when (and (sequential? hits) (not-any? regex-metacharacters q))
+                (term-hits kb q 2 true))
+        hits (if (and exact (not (sequential? exact))) exact hits)]
     (cond
       (str/blank? q)
       (render env "find"
@@ -3696,8 +3703,11 @@
               [:h2 "Find terms " [:span.muted "matching /" q "/"]]
               [:p.muted "Search failed: " (::failed hits)])
       :else
-      (let [exact  (first (filter #(= q (str %)) hits))
-            target (or exact (when (= 1 (count hits)) (first hits)))]
+      (let [target (if exact
+                     (or (when (= 1 (count exact)) (first exact))
+                         (when (and (empty? exact) (= 1 (count hits))) (first hits)))
+                     (or (first (filter #(= q (str %)) hits))
+                         (when (= 1 (count hits)) (first hits))))]
         (if target
           ;; jump: render the term page, and tell htmx to show the term URL
           (assoc-in (term-page env target) [:headers "HX-Push-Url"] (term-href target))
@@ -7439,60 +7449,52 @@
   (or (->long raw) unreadable))
 
 (defonce ^:private ^Object write-monitor
-  ;; Jetty serves the write routes on a thread pool, so two POSTs are two writers, and the
-  ;; storage layer assumes they are not (`disk/kv.clj`'s `apply-ops!` reads `@data` and
-  ;; publishes with `reset!` outside its lock, so two interleaved writers leave the WAL
-  ;; holding both frames and the RAM map one).  `write-blocked?` asks whether a *loader* is
-  ;; filling the KB, a different question.  The monitor is process-wide, not per-KB, since
-  ;; a per-KB monitor cannot see a store shared between two catalog entries.  A chaining job
-  ;; holds it for its whole run (`writing-job`).  The daemon holds its own (`serve.clj`).
+  ;; Jetty serves the write routes on a thread pool, and two interleaved writers leave
+  ;; `disk/kv.clj`'s WAL holding both frames and the RAM map one (`apply-ops!` publishes
+  ;; outside its lock).  The monitor is process-wide, since two catalog entries can share
+  ;; a store; docs/web.md names who holds it.  The daemon holds its own (`serve.clj`).
   (Object.))
 
 (defn- after-writes-drain
-  "Run `work` once any synchronous write already past the entry points has finished: a
-  **barrier**, where `writing-job` gives a KB write the monitor's exclusion.  An export
-  cannot survive the KB moving under its walk, and `exporting-kb?` (true from job
-  submission, which `write-refusal` turns the content routes back on) and `unload!`'s
-  own check refuse that for the walk's duration.  This waits for a write that slipped past
-  an entry point just before the job was submitted and is already inside the monitor; one
-  still waiting for it asks `late-refusal`.  Holding the monitor across the walk would park
-  every later `/kbs/unload` on a Jetty worker for the length of the dump."
+  "Run `work` once any synchronous write already inside the write monitor has finished: a
+  barrier, not a hold (docs/web.md, the export paragraphs)."
   [work]
   (locking write-monitor nil)
   (work))
 
+(defn- refusal-page
+  "The page saying nothing was written to the KB `label` names: `reason` follows the name,
+  and `advice` is the closing paragraph."
+  [env title label reason advice]
+  (render env title
+          [:h2 "Nothing was written"]
+          (into [:p [:b label]] reason)
+          (into [:p.muted] advice)))
+
 (defn- exporting-refusal
   "The page refusing a write to `kb` while an export walks it."
   [kb req]
-  (render (render-env kb req) "still exporting"
-          [:h2 "Nothing was written"]
-          [:p [:b (kb-name kb)] " is being exported, and the dump walks the "
-           "records one by one with no snapshot — a write landing mid-walk would "
-           "leave it a dump of no single state."]
-          [:p.muted "Wait for it to finish or cancel it on the "
-           [:a {:href "/kbs"} "knowledge bases"] " page."]))
+  (refusal-page (render-env kb req) "still exporting" (kb-name kb)
+                [" is being exported, and the dump walks the "
+                 "records one by one with no snapshot — a write landing mid-walk would "
+                 "leave it a dump of no single state."]
+                ["Wait for it to finish or cancel it on the "
+                 [:a {:href "/kbs"} "knowledge bases"] " page."]))
 
 (defn- late-refusal
   "The page refusing a write that passed `write-refusal` and then waited for the write
-  monitor, or nil.  Asked **inside** the monitor, because the KB can change while the write
-  waits behind another writer:
-
-  - `/kbs/unload` releases it (`catalog/released?`), so the write would land on a cleared
-    memory KB or a closed disk store.
-  - `/kbs/export` starts walking it (`catalog/exporting-kb?`); the barrier
-    (`after-writes-drain`) waits only for a write already inside the monitor.
-
-  `label` is the KB's name read before the wait, since an unload drops the entry.  The page
-  is rendered over `target`'s current KB."
+  monitor, or nil: `kb` was unloaded (`catalog/released?`) or an export started walking it
+  (`catalog/exporting-kb?`) during the wait.  Asked inside the monitor.  `label` is the
+  KB's name read before the wait, since an unload drops the entry; the page renders over
+  `target`'s current KB."
   [target kb label req]
   (cond
     (catalog/released? kb)
-    (render (env-of target req) "unloaded"
-            [:h2 "Nothing was written"]
-            [:p [:b label] " was unloaded while this write waited for another writer to "
-             "finish, so its stores are released and this write had nowhere to land."]
-            [:p.muted "Load it again from the " [:a {:href "/kbs"} "knowledge bases"]
-             " page to write to it."])
+    (refusal-page (env-of target req) "unloaded" label
+                  [" was unloaded while this write waited for another writer to "
+                   "finish, so its stores are released and this write had nowhere to land."]
+                  ["Load it again from the " [:a {:href "/kbs"} "knowledge bases"]
+                   " page to write to it."])
 
     (catalog/exporting-kb? kb)
     (exporting-refusal kb req)))
@@ -7510,15 +7512,10 @@
     [:still-exporting (str label " is being exported; retry when the export finishes")]))
 
 (defn- write-refusal
-  "Nil when this request may write `target`'s KB, and the **page** saying why not when it
-  may not: the origin check, whether a job holds this process's writer, and whether the KB
-  is one whose belief was never built (`:unrecovered-kb`; docs/storage.md, the single-writer
-  contract).  The refusal is a page, not an error status, since htmx does not swap an error
-  status.  It **names the job that holds the writer** and links to it.  The question is
-  asked of the KB this request would write, not the active entry.  `kb` is that KB,
-  **already resolved** by `writing` / `writing-job`, which deref the holder once; every arm
-  names it with `(kb-name kb)`, since `/kbs/activate` can re-point the holder between the
-  deref and the render."
+  "Nil when this request may write `kb`, else the page saying why not: a cross-origin
+  request, a job holding this process's writer (named and linked), an export walking `kb`,
+  or a KB whose belief was never built (`:unrecovered-kb`).  `kb` is the KB `writing` or
+  `writing-job` resolved, and every arm names it (docs/web.md)."
   [kb req]
   (cond
     (not (same-origin? req))
@@ -7526,17 +7523,16 @@
 
     (catalog/write-blocked? kb)
     (let [holder (jobs/writer)]
-      (render (render-env kb req) "still writing"
-              [:h2 "Nothing was written"]
-              [:p [:b (kb-name kb)] " is being written by "
-               (if holder
-                 (list [:a {:href "/jobs"} (:label holder) " (job " (:id holder) ")"])
-                 "a job")
-               ", and that job is this process's one writer — so this KB can be read while "
-               "it changes, but not changed."]
-              [:p.muted "Wait for it to finish, cancel it on the "
-               [:a {:href "/jobs"} "jobs"] " page, or switch to another KB on the "
-               [:a {:href "/kbs"} "knowledge bases"] " page."]))
+      (refusal-page (render-env kb req) "still writing" (kb-name kb)
+                    [" is being written by "
+                     (if holder
+                       (list [:a {:href "/jobs"} (:label holder) " (job " (:id holder) ")"])
+                       "a job")
+                     ", and that job is this process's one writer — so this KB can be read while "
+                     "it changes, but not changed."]
+                    ["Wait for it to finish, cancel it on the "
+                     [:a {:href "/jobs"} "jobs"] " page, or switch to another KB on the "
+                     [:a {:href "/kbs"} "knowledge bases"] " page."]))
 
     ;; the reciprocal of `export-entry!`'s still-loading refusal: the dump walks the
     ;; records with no snapshot, so while it runs the KB can be read but not changed —
@@ -7553,37 +7549,31 @@
     :else
     (when-let [hz (when (:records kb) (not-empty (v/write-hazards kb)))]
       (if (:stale-belief hz)
-        (render (render-env kb req) "rebuilding belief"
-                [:h2 "Nothing was written"]
-                [:p [:b (kb-name kb)] " answers from the reasoning image an earlier engine build "
-                 "wrote while its belief is rebuilt under this build, and a write now would "
-                 "be checked against the earlier build's belief."]
-                [:p.muted "Writing resumes when the rebuild finishes, and the banner above "
-                 "leaves the page then."])
-        (render (render-env kb req) "not recovered"
-                [:h2 "Nothing was written"]
-                [:p [:b (kb-name kb)] " is stored but not built: "
-                 (if (:no-index hz)
-                   "neither its belief network nor its index was rebuilt from the records"
-                   "its belief network was never rebuilt from the records")
-                 " — so every definitional check would match nothing and pass, and this KB "
-                 "would keep a fact it would otherwise refuse."]
-                [:p.muted "Reading it is fine, which is what the banner above is about. To "
-                 "make it writable, run "
-                 [:code (if (:no-index hz) "(reindex kb)" "(recover kb)")]
-                 " against it, or load it again with belief on from the "
-                 [:a {:href "/kbs"} "knowledge bases"] " page."])))))
+        (refusal-page (render-env kb req) "rebuilding belief" (kb-name kb)
+                      [" answers from the reasoning image an earlier engine build "
+                       "wrote while its belief is rebuilt under this build, and a write now would "
+                       "be checked against the earlier build's belief."]
+                      ["Writing resumes when the rebuild finishes, and the banner above "
+                       "leaves the page then."])
+        (refusal-page (render-env kb req) "not recovered" (kb-name kb)
+                      [" is stored but not built: "
+                       (if (:no-index hz)
+                         "neither its belief network nor its index was rebuilt from the records"
+                         "its belief network was never rebuilt from the records")
+                       " — so every definitional check would match nothing and pass, and this KB "
+                       "would keep a fact it would otherwise refuse."]
+                      ["Reading it is fine, which is what the banner above is about. To "
+                       "make it writable, run "
+                       [:code (if (:no-index hz) "(reindex kb)" "(recover kb)")]
+                       " against it, or load it again with belief on from the "
+                       [:a {:href "/kbs"} "knowledge bases"] " page."])))))
 
 (defn- writing
-  "The guard every synchronous write to a KB's *content* goes through: `write-refusal`, and
-  the monitor that serializes this process's own writes.  **The holder is dereferenced
-  once**, and `f` is handed the KB that deref yielded, since `/kbs/activate` takes no
-  monitor and can re-point the holder at any moment; nothing past the refusal resolves the
-  target.  Not for `/kbs/load` `/kbs/unload` `/kbs/activate`, which write the registry (and
-  cancelling a load must stay reachable while one runs), nor for a **job**
-  (`writing-job`), which takes the monitor on its own thread.  `late-refusal` is asked
-  again once the monitor is held.  A write that runs is recorded against the session's
-  sandbox (`sandbox/note-write!`)."
+  "Run `(f kb)` for a synchronous write to the content of `target`'s KB: `write-refusal`,
+  then the write monitor, then `late-refusal` inside it.  The holder is dereferenced once
+  and `f` gets that KB.  A write that runs is recorded against the session's sandbox
+  (`sandbox/note-write!`).  Not for the registry routes or a job (`writing-job`);
+  docs/web.md."
   [target req f]
   (let [kb (current target)]
     (or (write-refusal kb req)
@@ -7595,13 +7585,9 @@
                   resp)))))))
 
 (defn- writing-job
-  "The same guard for a write that runs as a **job**: refuse for the same reasons, then
-  hand `f` the KB the refusal judged and a wrapper it runs the work in.  The wrapper is the
-  write monitor, taken on the job's own thread, so a synchronous write that slipped past
-  the refusal waits for it.  The refusal stops two writing jobs; this stops a job and a
-  request.  Inside the monitor the wrapper asks `late-refusal` and fails the job with its
-  message when it is not nil, since an unload between the refusal and the submit releases
-  the KB."
+  "The same guard for a write that runs as a job: `write-refusal`, then `(f kb wrap)`, where
+  `wrap` runs the job's work inside the write monitor on the job's own thread and fails the
+  job with `late-refusal-type`'s message when that answers."
   [target req f]
   (let [kb    (current target)
         label (kb-name kb)]
@@ -9165,10 +9151,14 @@
              :body    "unrecognized Host header"}))))
 
 (defn handler
-  "What the browser actually serves: `app` behind the `Host` allowlist."
+  "What the browser actually serves: `app` behind the `Host` allowlist, and at an address
+  behind the bearer token (`:token`, or `VAELII_API_TOKEN` when the key is absent).  An
+  address with no token is refused (`guard/require-token!`)."
   ([target] (handler target {}))
-  ([target {:keys [host] :or {host loopback}}]
-   (with-host (app target) host)))
+  ([target {:keys [host] :or {host loopback} :as opts}]
+   (let [token (if (contains? opts :token) (:token opts) (guard/api-token))]
+     (guard/require-token! "browser" host token)
+     (with-token (with-host (app target) host) host token))))
 
 (defn- reloading-handler
   "The handler a REPL session serves: what `app` answers, rebuilt whenever the **var** `app`
@@ -9280,11 +9270,9 @@
                          "scripts/start-vaelii-dev.sh runs the one that does")
                     {:type :unknown-option :mismatch :unknown-key :unknown [:reload?]
                      :options [:host :port :token]})))
-  (let [token (if (contains? opts :token) (:token opts) (guard/api-token))]
-    (guard/require-token! "browser" host token)
-    (ending-feeds-on-stop
-     (jetty/run-jetty (with-token (with-host (app target) host) host token)
-                      {:port port :host host :join? false}))))
+  (ending-feeds-on-stop
+   (jetty/run-jetty (handler target (assoc opts :host host))
+                    {:port port :host host :join? false})))
 
 (defn fresh-starter-kb!
   "A KB freshly loaded with the starter ontology.  Flushes the record + index

@@ -4,8 +4,13 @@
   "The terms the engine reads by name are declared in CxUniverse, so a KB can query what the
   engine answers and the vocabulary audit classifies each one.  Each row checks one
   declaration against the engine behaviour it describes."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.decide :as decide]
+            [vaelii.impl.predicates :as pr]
+            [vaelii.impl.special :as special]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-core!))
@@ -81,9 +86,70 @@
   (is (true? (v/ask? kb '(non_negative_integer 0) U)))
   (is (true? (v/ask? kb '(quotedArg argN 3 formula) U))))
 
-(tu/deftest-kb an-argN-fact-at-position-0-is-admitted
+(tu/deftest-kb an-argN-fact-is-refused-and-the-prover-answers-it-at-position-0
   (tu/with-terms [likes Fred Mary]
-    (v/assert kb (list 'argN likes 0 (list likes Fred Mary)) U)
-    (v/assert kb (list 'argN Mary 2 (list likes Fred Mary)) U)
-    (is (true? (v/ask? kb (list 'argN likes 0 (list likes Fred Mary)) U)))
-    (is (true? (v/ask? kb (list 'argN Mary 2 (list likes Fred Mary)) U)))))
+    (let [s (list likes Fred Mary)]
+      (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'argN Mary 2 s) U))))
+      (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'argN Fred 2 s) U)))
+          "a false argN fact is refused as a true one is")
+      (is (true? (v/ask? kb (list 'argN likes 0 s) U)))
+      (is (true? (v/ask? kb (list 'argN Mary 2 s) U)))
+      (is (not (v/ask? kb (list 'argN Fred 2 s) U))))))
+
+;; ---- not_assertible ------------------------------------------------------------
+
+(defn- marked-not-assertible
+  "The predicates CxUniverse declares `not_assertible`, as a set."
+  [kb]
+  (into #{} (map #(second (:sentence %))) (v/sentexes-matching kb '(not_assertible ?p) U)))
+
+(tu/deftest-kb every-query-only-term-is-declared-not-assertible
+  (is (:enforced (v/interpreted 'not_assertible)))
+  (is (= #{} (set/difference pr/query-only (marked-not-assertible kb)))
+      "a term the engine refuses as query-only and the KB does not declare"))
+
+(tu/deftest-kb every-term-cxuniverse-declares-not-assertible-is-refused
+  (let [tax (reasoning/taxonomy kb)]
+    (doseq [t (marked-not-assertible kb)]
+      (is (seq (special/wff-problems tax (list t 'Alpha 'Beta) U)) (str t " is stored"))
+      (is (seq (special/wff-problems tax (list 'not (list t 'Alpha 'Beta)) U))
+          (str "a denial of " t " is stored")))))
+
+(tu/deftest-kb a-fact-of-a-not-assertible-predicate-is-believed-in-neither-arrival-order
+  (tu/with-terms [likes Alpha Beta Gamma Delta]
+    (let [fact (list likes Alpha Beta)
+          h    (v/assert kb fact U)
+          mark #(v/assert kb (list 'not_assertible likes) U)]
+      (is (true? (v/ask? kb fact U)))
+      (let [m (mark)]
+        (testing "a mark arriving after the fact holds the fact inert"
+          (is (false? (v/believed? kb h U))))
+        (testing "a fact or a denial written after the mark is refused"
+          (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list likes Gamma Delta) U))))
+          (is (= :not-well-formed (tu/refusal-type #(v/assert kb (list 'not (list likes Gamma Delta)) U)))))
+        (v/retract! kb m)
+        (testing "the mark retracted, the fact stored before it is believed again"
+          (is (true? (v/believed? kb h U)))))
+      (v/retract! kb h))))
+
+(tu/deftest-kb a-fact-held-inert-by-a-late-not-assertible-mark-stays-inert-after-recover
+  (tu/with-terms [likes Alpha Beta swims Nemo]
+    (let [fact (list likes Alpha Beta)
+          hs   [(v/assert kb fact U) (v/assert kb (list 'not_assertible likes) U)]]
+      (doseq [reopen? [false true]]
+        (testing (if reopen? "reopened" "in place")
+          (is (= [false false false]
+                 (mapv :loser (tu/recovered-readings kb reopen? [fact U]
+                                                     #(v/assert % (list swims Nemo) U))))
+              "unbelieved in the source, after the recover and after an unrelated write")))
+      (doseq [h (rseq hs)] (v/retract! kb h)))))
+
+;; ---- the forced-monotonic set ------------------------------------------------
+
+(tu/deftest-kb every-predicate-the-engine-holds-forced-monotonic-is-declared-so
+  (doseq [[kind decl] {:forced-monotonic          'forced_monotonic_predicate
+                       :forced-between-predicates 'forced_monotonic_between_predicates}]
+    (is (= #{} (set/difference (decide/baseline-forced kind)
+                               (into #{} (map #(second (:sentence %)))
+                                     (v/sentexes-matching kb (list decl '?p) U))))
+        (str "held as " kind " and not declared " decl " in CxUniverse"))))

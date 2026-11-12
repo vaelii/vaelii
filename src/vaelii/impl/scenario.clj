@@ -1,38 +1,10 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.impl.scenario
-  "Scenario extraction over a qualitative constraint network — turning \"here is what is
-  still possible\" into \"here is one way it could be\".
-
-  Path consistency leaves a *set* of relations on every pair.  That is the right answer to
-  what is entailed, and the wrong shape for a caller that wants a concrete arrangement: a
-  drawing of the regions, a timeline of the intervals, an example to show someone.  A
-  **scenario** is one consistent choice of a single base relation for *every* pair — a
-  singleton-valued network that survives path consistency, and so an arrangement nothing
-  believed rules out.
-
-  The search is ordinary backtracking, with the two refinements that make it bearable:
-  **fewest possibilities first**, so the most constrained pair is decided while it is still
-  cheap to be wrong about it, and **re-tighten after every choice**, so a decision that
-  empties some *other* pair is caught at once rather than at the leaf.
-
-  **Calculus-generic.**  It takes a `vaelii.impl.qcn-kb` calculus, so it works for RCC-8
-  topology, cardinal direction, Allen's intervals, the point algebra and anything added
-  later, with no line of it aware of which.  Everything it needs is on `qcn` and `qcn-kb`'s
-  public surface: the network, its nodes, a constraint, and the pass.
-
-  **Deterministic.**  The same believed facts yield the same scenario every time, and two
-  KBs built by asserting the same facts in a different order yield the same scenario as each
-  other.  Both orderings the search makes — which pair to decide next, and which relation to
-  try first — break their ties on **content**: nodes and relations are ordered by how they
-  are written, never by a handle id or by map iteration order.  Handles are allocated in
-  assertion order, so keying on one would smuggle that order into the answer, which is what
-  the whole engine forbids.
-
-  **The count is exponential**, so nothing here enumerates eagerly.  `scenarios` is a lazy
-  sequence — one scenario costs one path down the search tree, not the tree — and takes a
-  `:limit` for a caller that would rather say how many it wants than remember to bound the
-  sequence itself.  See docs/scenario.md."
+  "Scenario extraction over a qualitative constraint network: `scenarios` (lazy, with a
+  `:limit`), `scenario` and `relations` choose one base relation per pair for any
+  `vaelii.impl.qcn-kb` calculus, by fewest-possibilities-first backtracking with path
+  consistency after each choice.  Every tie breaks on content.  See docs/scenario.md."
   (:require [vaelii.impl.naming :as nm]
             [vaelii.impl.qcn :as qcn]
             [vaelii.impl.qcn-kb :as qkb]

@@ -6,10 +6,14 @@
   table, and the two narrowings, metric (`stp`) and point (`points-narrowing-with-support`).
   See docs/time.md and docs/qcn.md."
   (:require [clojure.set :as set]
+            [vaelii.impl.calendar :as cal]
+            [vaelii.impl.datetime :as dt]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.point :as pt]
+            [vaelii.impl.provers :as provers]
             [vaelii.impl.qcn :as qcn]
             [vaelii.impl.qcn-kb :as qkb]
+            [vaelii.impl.sentex :as sx]
             [vaelii.impl.stp :as stp]
             [vaelii.impl.timepoint :as tp]))
 
@@ -136,14 +140,33 @@
    :compose  compose
    :converse converse-set})
 
-;; ---- the vocabulary -----------------------------------------------------
+;; ---- the second readers: metric bounds, point facts and the calendar -----
 
-;; ---- the second readers: metric bounds and point facts ------------------
+(defn- node?
+  "A term the interval network takes as a node: a symbol that is not a variable, or a term
+  the calendar gives an extent in one frame (`dt/extent`, `dt/utc-extent`)."
+  [x]
+  (if (symbol? x)
+    (not (sx/variable? x))
+    (some? (or (dt/extent x) (dt/utc-extent x)))))
+
+(defn- calendar-relations
+  "The relation the calendar gives each pair of terms among `nodes` it gives an extent in
+  one frame (`calendar/relation`), as `{:net … :support {}}`, or nil when it gives none."
+  [nodes]
+  (let [ts  (vec (remove symbol? nodes))
+        net (reduce (fn [m [a b]]
+                      (if-let [r (cal/relation a b)]
+                        (assoc m [a b] #{r} [b a] #{(allen-converse r)})
+                        m))
+                    {}
+                    (for [i (range (count ts)) j (range (inc i) (count ts))] [(ts i) (ts j)]))]
+    (when (seq net) {:net net :support {}})))
 
 (defn- points-narrowing-with-support
   "What the point network determines about the interval relations, as
   `{:net {[i j] → #{base relations}} :support {[i j] → #{handle}}}`, over each thing X whose
-  `(StartFn X)` is a node, X a symbol, or whose stated `startOf` and `endOf` name two symbol
+  `(StartFn X)` is a node, X a `node?`, or whose stated `startOf` and `endOf` name two symbol
   nodes (`stp/intervals-with-endpoints`), which then stand for its points beside its point
   terms and support its pairs.  An endpoint comparison intersects every reading of the two
   endpoints; a pair's relations are those whose `stp/endpoint-signature` the four admit,
@@ -156,7 +179,7 @@
   (let [calc    pt/instants
         net     (qkb/network kb calc context)
         on-net  (qkb/nodes net)
-        pointed (into #{} (comp (keep tp/thing-of) (filter symbol?)) on-net)
+        pointed (into #{} (comp (keep tp/thing-of) (filter node?)) on-net)
         stated  (into {} (filter (fn [[_ [[s e]]]] (and (on-net s) (on-net e))))
                       (stp/intervals-with-endpoints kb context (filter symbol? on-net)))
         things  (into pointed (keys stated))
@@ -218,12 +241,15 @@
 ;; ---- the calculus, and the glue it shares with every other algebra -------
 
 (def allen
-  "Allen's interval algebra as a `vaelii.impl.qcn-kb` calculus, narrowed by
-  `both-narrowings` (`:sources` and `:contexts`: docs/stp.md).  `subintervalOf` and
+  "Allen's interval algebra as a `vaelii.impl.qcn-kb` calculus over `node?`'s terms,
+  narrowed by `both-narrowings` (`:sources` and `:contexts`: docs/stp.md) and by
+  `calendar-relations` over its nodes and a goal's.  `subintervalOf` and
   `properSubintervalOf` are typed: the network answers them only over arguments their
   declared types admit."
   (qkb/calculus :allen allen-algebra stp/interval-denotation
-                {:fn       both-narrowings
+                {:fn         both-narrowings
+                 :over-nodes calendar-relations
+                 :node?      node?
                  :bindings stp/allen-narrowing-bindings
                  :sources  (into stp/allen-narrowing-sources (keys pt/instant-denotation))
                  :contexts (-> stp/network-predicates
@@ -251,6 +277,10 @@
   (:predicates allen))
 
 (defn allen-prover
-  "The interval-algebra entailment prover, to register with `vaelii.core/add-prover`."
+  "The interval-algebra entailment prover, to register with `vaelii.core/add-prover`.  It
+  estimates an open goal at `provers/deferred-est`, so a conjunction runs the goal after
+  the conjunct binding its variable: the calendar orders a calendar term no node is, which
+  the open enumeration of the nodes leaves out (docs/time.md, \"The points of a temporal
+  thing\")."
   []
-  (qkb/prover allen))
+  (qkb/prover allen provers/deferred-est))

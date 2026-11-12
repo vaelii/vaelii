@@ -66,11 +66,14 @@ believed?(W, S, C) = S is in believed(W, C)
    `separating` or `partition` declaration states a `genl` edge from each part to the
    whole ([taxonomy.md](taxonomy.md#covering-a-whole-and-the-parts-named-against-it)).
 3. **Derivation.** A rule visible at `C` fires on sentences believed at `C`. An antecedent
-   `(T ?x)` matches `(S x)` when `S` is a subtype of `T` at `C`, unless `(not (T x))` is
-   believed at `C` and no path of `:monotonic` edges leads from `S` to `T` there: the
-   denial undercuts the edge's reading at either strength
+   `(T ?x)` matches `(S x)` when `S` is a subtype of `T` at `C`, unless no path of
+   `:monotonic` edges leads from `S` to `T` there and a member believed at `C` convicts
+   `(T x)`: `(not (T x))`, a membership `(R x)` whose type reaches the other side of a
+   `(disjoint T B)` over `:monotonic` edges, or for each part of a `(covering T …)` a
+   denial of a type the part reaches so or such a separated membership. The member
+   undercuts the edge's reading at either strength
    ([inference.md](inference.md#an-edges-reading)). The derivation repeats until the
-   denials it reads are the denials it believes. An antecedent also
+   members it reads are the members it believes. An antecedent also
    matches a claim reached by argument preservation
    ([inherit.md](inherit.md#forward-chaining-on-a-claim-nobody-stored)). The rules are
    evaluated stratum by stratum over the rule dependency graph, which the engine keeps
@@ -105,9 +108,10 @@ believed?(W, S, C) = S is in believed(W, C)
    at `C`. Each family is one sentence:
    - **negation**: `S` and `(not S)`, members both
      ([nmtms.md](nmtms.md#soft-prioritized-contradictions-the-settle-layer));
-   - **`disjoint`**: `(T1 x)` and `(T2 x)` where `T1` and `T2` are subtypes at `C` of two
-     types a believed `(disjoint A B)` separates; grounds the declaration and the `genl`
-     edges ([taxonomy.md](taxonomy.md#disjointness));
+   - **`disjoint`**: `(T1 x)` and `(T2 x)` where `T1` and `T2` reach, over `:monotonic`
+     edges at `C`, two types a believed `(disjoint A B)` separates; grounds the declaration
+     and the `genl` edges ([taxonomy.md](taxonomy.md#disjointness)). A climb over a
+     `:default` edge is an edge reading the other member undercuts (decision 3);
    - **`functional`** and **`functionalInArg`**: two tuples of one predicate that agree
      on every position but the determined one and differ there, symbols or not, under a
      believed mark on that predicate or one above it; grounds the mark (decision 6)
@@ -122,10 +126,11 @@ believed?(W, S, C) = S is in believed(W, C)
      side of a believed `(negates P R)` above each functor, or one tuple whose functor is
      below both sides; grounds the declaration and the predicate `genl` edges
      ([taxonomy.md](taxonomy.md#predicate-metadata));
-   - **`covering`**: `(W x)` and a denier of every part `A` of a believed `(covering W A
-     …)`: a believed `(not (A x))`, or a believed membership `(S x)` of another type a
-     believed `disjoint` separates from `A` with every `genl` edge on both sides
-     `:monotonic`; grounds the declaration, the `disjoint` and the `genl` routes
+   - **`covering`**: `(S x)` with `S` reaching `W` over `:monotonic` edges, and a denier of
+     every part `A` of a believed `(covering W A …)`: a believed `(not (A x))`, or a
+     believed membership `(S' x)` of another type a believed `disjoint` separates from `A`
+     with every `genl` edge on both sides `:monotonic`; grounds the declaration, the
+     `disjoint` and the `genl` routes
      ([taxonomy.md](taxonomy.md#covering-a-whole-and-the-parts-named-against-it));
    - **related types**: a believed `(disjoint A B)` where `A` reaches `B` through `genl`
      at `C`, or the reverse, and the believed edges of one route between them, members

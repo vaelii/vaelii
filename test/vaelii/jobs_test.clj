@@ -13,11 +13,9 @@
                       (try (f) (finally (jobs/reset-registry!)))))
 
 (defn- settled
-  "Block until job `id` settles, and answer it.  Every job below is milliseconds long or is
-  released by a promise the test holds, so the deadline is a stuck-test guard rather than a
-  timing assumption."
+  "Block until job `id` settles, and answer it."
   [id]
-  (jobs/wait id 30000))
+  (jobs/wait id))
 
 ;; ---- one shape, whatever the work is -------------------------------------
 
@@ -147,7 +145,7 @@
   (let [id (jobs/submit {:label "Sleep" :kind :test :interruptible? true}
                         (fn [_] (Thread/sleep 60000) {:woke true}))]
     (is (true? (jobs/cancel! id)))
-    (let [j (jobs/wait id 5000)]
+    (let [j (settled id)]
       (is (= :cancelled (:status j))
           "an interrupt is reported as a cancellation, not as a failure")
       (is (nil? (:summary j))))))
@@ -155,7 +153,7 @@
 (deftest an-interrupt-no-cancel-sent-is-a-failure
   (let [id (jobs/submit {:label "Interrupted from elsewhere" :kind :test :interruptible? true}
                         (fn [_] (throw (InterruptedException. "not from cancel!"))))
-        j  (jobs/wait id 30000)]
+        j  (settled id)]
     (is (= :failed (:status j)))
     (is (= "not from cancel!" (:error j)))))
 

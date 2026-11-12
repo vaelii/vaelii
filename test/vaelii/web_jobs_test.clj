@@ -35,7 +35,7 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (catalog/register! "base" "Base KB" kb {:source (catalog/source "core")})
       (binding [tu/*kb* kb, *app* (web/app (catalog/holder kb))]
         (try (f)
@@ -63,7 +63,7 @@
   ;; outlast the request and still be `tag-running` when the screen is read.  This test is
   ;; about what a *finished* run shows, so wait for the one job to settle first; that the
   ;; fast path finishes inside the request is its own test below.
-  (jobs/wait (:id (first (jobs/jobs))) 30000)
+  (jobs/wait (:id (first (jobs/jobs))))
   (testing "a finished run is on the screen with its report and the page its result is on"
     (let [body (:body (GET "/jobs"))]
       (is (re-find #"Chain Base KB" body))
@@ -105,10 +105,10 @@
 ;; ---- the fast path -------------------------------------------------------
 
 (deftest a-run-that-finishes-inside-the-fast-path-answers-with-its-result
-  ;; The fast-path time window is widened to a minute, so the claim is the mechanism — a
-  ;; job that settles inside the time window is answered with its result — and not the 250 ms a loaded or
-  ;; instrumented run can miss.  The outlasting branch is the test below.
-  (let [r (with-redefs [jobs/fast-path-ms 60000]
+  ;; The fast path is widened past any run's length, so the claim is the mechanism — a job
+  ;; that settles inside the fast path is answered with its result — and not a duration a
+  ;; loaded or instrumented run can miss.  The outlasting branch is the test below.
+  (let [r (with-redefs [jobs/fast-path-ms Long/MAX_VALUE]
             (POST "/chain" {"max-derivations" "5000"}))]
     (is (= 200 (:status r)))
     (is (re-find #"Forward chaining derived" (:body r)) "the stats page it changed")
@@ -129,7 +129,7 @@
     (is (re-find #"Chain Base KB" (:body answer)))
     (is (re-find #"tag-running" (:body answer)))
     (deliver release true)
-    (is (= :done (:status (jobs/wait (:id (first (jobs/jobs))) 30000))))
+    (is (= :done (:status (jobs/wait (:id (first (jobs/jobs)))))))
     (testing "and the result is where the screen said it would be"
       (is (re-find #"href=\"/stats\"" (:body (GET "/jobs")))))))
 
@@ -147,7 +147,7 @@
         (is (re-find #"<h2>Jobs</h2>" (:body r)) "on the screen the cancel is on"))
       (finally
         (deliver release true)
-        (jobs/wait id 30000)))))
+        (jobs/wait id)))))
 
 (deftest cancelling-is-a-post-that-is-origin-checked-and-says-what-it-found
   ;; two promises rather than a spin loop, so which reading the stopped card shows is not
@@ -165,7 +165,7 @@
                                 @release
                                 (progress! {:phase :chaining :done 12})
                                 {:derived 0}))]
-    (is (deref reported 30000 nil) "the job reported before anything asked it to stop")
+    (is @reported "the job reported before anything asked it to stop")
     (testing "a cross-origin caller cannot stop this process's work"
       (is (= 403 (:status (POST "/jobs/cancel" {"id" id}
                             {"host" "localhost:3000" "origin" "http://evil.example"})))))
@@ -175,7 +175,7 @@
       (is (= 200 (:status r)))
       (is (re-find #"<h2>Jobs</h2>" (:body r)))
       (deliver release true)
-      (let [j (jobs/wait id 30000)]
+      (let [j (jobs/wait id)]
         (is (= :cancelled (:status j))
             "it stopped at a progress report, which is where a cancel lands")))
     (testing "and the screen says what landed: a stopped job reached no return value, so
@@ -199,7 +199,7 @@
     ;; the run is a job, and the request's only bounded promise is the fast path — under
     ;; load it can still be going when the request returns, so wait for it: the claim
     ;; here is what a run records, not how fast it settles
-    (is (= :done (:status (jobs/wait (:id (first (jobs/jobs))) 30000))))
+    (is (= :done (:status (jobs/wait (:id (first (jobs/jobs)))))))
     (is (= (inc before) (:runs (v/chain-stats tu/*kb*))))
     (testing "and the form says what a cancel would leave behind, since a reader who stops
               one needs to know what they are left with"

@@ -652,7 +652,7 @@
 
 (deftest a-reader-that-disbelieves-a-genl-edge-stops-reaching-over-it
   ;;   CxUniverse    (genl chi thing) (genl dog thing) (chi Rex)
-  ;;                 (transitiveInArgInverse largerThan 1 genl)  (largerThan dog cat)
+  ;;                 (transitiveInArgInverse typeLargerThan 1 genl)  (typeLargerThan dog cat)
   ;;     └─ CxA      (genl chi dog)                 :default
   ;;          └─ CxB (not (genl chi dog))           :monotonic  ← the vantage
   ;;     └─ CxC      a sibling of CxB, which sees neither the denial nor the vantage
@@ -662,13 +662,13 @@
   (doseq [edge-first? [true false]]
     (testing (if edge-first? "the edge arrives first" "the denial arrives first")
       (tu/with-neutral-kb [kb tu/fresh]
-        (tu/with-terms [CxA CxB CxC chi_t dog_t cat_t largerThan Rex]
+        (tu/with-terms [CxA CxB CxC chi_t dog_t cat_t typeLargerThan Rex]
           (types! kb chi_t dog_t cat_t)
           (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
           (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
           (v/assert kb (list 'genlCx CxC CxA) 'CxUniverse)
-          (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-          (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+          (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+          (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)
           (v/assert kb (list chi_t Rex) 'CxUniverse)
           (let [edge!   #(v/assert kb (list 'genl chi_t dog_t) CxA)
                 denial! #(v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB
@@ -680,7 +680,7 @@
                            (v/ask? kb (list 'genl chi_t dog_t) rdr)
                            (v/genl? kb chi_t dog_t rdr)
                            (v/isa? kb Rex dog_t rdr)
-                           (v/ask? kb (list largerThan chi_t cat_t) rdr)])]
+                           (v/ask? kb (list typeLargerThan chi_t cat_t) rdr)])]
             (testing "the vantage disbelieves the edge and every read over it"
               (is (= [false false false false false] (reads CxB))))
             (testing "the context that states the edge reads all five as true"
@@ -697,12 +697,12 @@
   ;;   empties the scoped-defeat entries retires every closure memoized while the defeat
   ;;   stood.
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [CxA CxB chi_t dog_t cat_t largerThan Rex]
+    (tu/with-terms [CxA CxB chi_t dog_t cat_t typeLargerThan Rex]
       (types! kb chi_t dog_t cat_t)
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
-      (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) 'CxUniverse)
-      (v/assert kb (list largerThan dog_t cat_t) 'CxUniverse)
+      (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) 'CxUniverse)
+      (v/assert kb (list typeLargerThan dog_t cat_t) 'CxUniverse)
       (v/assert kb (list chi_t Rex) 'CxUniverse)
       (v/assert kb (list 'genl chi_t dog_t) CxA)
       (let [d     (v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB {:strength :monotonic})
@@ -711,7 +711,7 @@
                     [(v/believed? kb h rdr)
                      (v/genl? kb chi_t dog_t rdr)
                      (v/isa? kb Rex dog_t rdr)
-                     (v/ask? kb (list largerThan chi_t cat_t) rdr)])]
+                     (v/ask? kb (list typeLargerThan chi_t cat_t) rdr)])]
         ;; read from CxB while the defeat stands, so a stale memo would have something
         ;; to be stale from
         (is (= [false false false false] (reads CxB)))
@@ -757,18 +757,18 @@
               (is (v/ask? kb (list marker_t Marked) CxB)))))))))
 
 (deftest a-definitional-clash-is-decided-on-the-hierarchy-its-vantage-reads
-  ;;   CxUniverse  (genl chi thing) (genl dog thing) (genl cat thing)  (disjoint dog cat)
-  ;;     └─ CxA    (genl chi dog)                  :default
-  ;;          └─ CxB (not (genl chi dog))          :monotonic   ← the vantage
+  ;;   CxUniverse  (genl chi thing) (genl dog thing) (genl cat thing)  (genl chi dog) M
+  ;;     └─ CxA    (disjoint dog cat)              :default
+  ;;          └─ CxB (not (disjoint dog cat))      :monotonic   ← the vantage
   ;;                 (chi Kit)  (cat Kit)
   ;;
-  ;; CxB disbelieves the edge, so from CxB `chi` is not a `dog` and the two memberships
-  ;; of `Kit` clash with nothing.  No other context holds both, so no context sees a
-  ;; complete clash: both are believed at CxB and nothing is reported.
+  ;; CxB disbelieves the separation, so from CxB `chi` and `cat` are not disjoint and the
+  ;; two memberships of `Kit` clash with nothing.  No other context holds both, so no
+  ;; context sees a complete clash: both are believed at CxB and nothing is reported.
   ;;
   ;; Discovery reads the global hierarchy and mints the pair; the denial's scoped defeat
-  ;; of the edge is applied first and alone, and the next round's `reads-clash?` at CxB
-  ;; finds no clash.
+  ;; of the separation is applied first and alone, and the next round's `reads-clash?` at
+  ;; CxB finds no clash.
   (doseq [cat-strength [:monotonic :default]]
     (testing (str "(cat Kit) is " cat-strength)
       (doseq [order (tu/orders [:denial :chi :cat])]
@@ -778,16 +778,16 @@
               (types! kb chi_t dog_t cat_t)
               (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
               (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
-              (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
-              (v/assert kb (list 'genl chi_t dog_t) CxA)
-              (let [write!  {:denial #(v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB
+              (v/assert kb (list 'genl chi_t dog_t) 'CxUniverse {:strength :monotonic})
+              (v/assert kb (list 'disjoint dog_t cat_t) CxA)
+              (let [write!  {:denial #(v/assert kb (list 'not (list 'disjoint dog_t cat_t)) CxB
                                                 {:strength :monotonic})
                              :chi    #(v/assert kb (list chi_t Kit) CxB)
                              :cat    #(v/assert kb (list cat_t Kit) CxB
                                                 {:strength cat-strength})}
                     stored? (try (doseq [k order] ((write! k))) true
                                  (catch clojure.lang.ExceptionInfo _ false))]
-                ;; `:arbitrate` admits every order, since the `(genl chi dog)` edge that
+                ;; `:arbitrate` admits every order, since the `(disjoint dog cat)` that
                 ;; makes the pair is `:default`
                 (is stored?)
                 (when stored?
@@ -798,7 +798,7 @@
                   (testing "and nothing is reported, to CxB or to the KB"
                     (is (empty? (v/contradictions kb CxB)))
                     (is (empty? (v/contradictions kb))))
-                  (testing "CxA keeps the edge it stated and the separation over it"
+                  (testing "CxA reads the edge and keeps the separation it stated"
                     (is (contains? (set (v/genls kb chi_t CxA)) dog_t))
                     (is (true? (v/disjoint? kb chi_t cat_t CxA))))
                   (testing "and reads neither membership, which is written below it"
@@ -807,22 +807,22 @@
 
 (deftest the-entry-point-reads-the-grounds-and-not-only-what-they-separate
   ;;   The same lattice, written `(cat Kit)` known-true, then `(chi Kit)`, then the
-  ;;   denial.  The separation reaches `chi` over a `:default` `(genl chi dog)` edge, so
-  ;;   `(chi Kit)` is admitted and loses to the known-true side until the denial takes
-  ;;   the pair out of CxB's view.
+  ;;   denial.  The `:default` `(disjoint dog cat)` reaches `chi` over the `(genl chi dog)`
+  ;;   edge, so `(chi Kit)` is admitted and loses to the known-true side until the denial
+  ;;   takes the pair out of CxB's view.
   (tu/with-neutral-kb [kb tu/fresh]
     (tu/with-terms [CxA CxB chi_t dog_t cat_t Kit]
       (types! kb chi_t dog_t cat_t)
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
-      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
-      (v/assert kb (list 'genl chi_t dog_t) CxA)
+      (v/assert kb (list 'genl chi_t dog_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'disjoint dog_t cat_t) CxA)
       (v/assert kb (list cat_t Kit) CxB {:strength :monotonic})
       (testing "admitted while CxB still reads the separation, and the known-true side wins"
         (is (some? (v/assert kb (list chi_t Kit) CxB)))
         (is (false? (v/ask? kb (list chi_t Kit) CxB)))
         (is (true? (v/ask? kb (list cat_t Kit) CxB))))
-      (v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB {:strength :monotonic})
+      (v/assert kb (list 'not (list 'disjoint dog_t cat_t)) CxB {:strength :monotonic})
       (testing "and believed once the denial has taken the pair away"
         (is (false? (v/disjoint? kb chi_t cat_t CxB)))
         (is (true? (v/ask? kb (list chi_t Kit) CxB)))
@@ -830,25 +830,25 @@
         (is (empty? (v/contradictions kb)))))))
 
 (deftest a-separation-that-cannot-be-given-up-is-stored-and-decided
-  ;;   The control on the case above.  Put the edge `(genl chi dog)` in known-true and
-  ;;   nothing in the derivation is defeasible: no denial can retire the pair.  The
-  ;;   membership is stored all the same, and the known-true side wins.  Only the class of
-  ;;   that one edge differs from the test above.
+  ;;   The control on the case above.  Put the separation `(disjoint dog cat)` in
+  ;;   known-true and nothing in the derivation is defeasible: no denial can retire the
+  ;;   pair.  The membership is stored all the same, and the known-true side wins.  Only
+  ;;   the class of the separation differs from the test above.
   (tu/with-neutral-kb [kb tu/fresh]
     (tu/with-terms [CxA CxB chi_t dog_t cat_t Kit]
       (types! kb chi_t dog_t cat_t)
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
-      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
-      (v/assert kb (list 'genl chi_t dog_t) CxA {:strength :monotonic})
+      (v/assert kb (list 'genl chi_t dog_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'disjoint dog_t cat_t) CxA {:strength :monotonic})
       (v/assert kb (list cat_t Kit) CxB {:strength :monotonic})
       (is (tu/stored-in-clash? kb (list chi_t Kit) CxB))
       (is (true? (v/ask? kb (list cat_t Kit) CxB))))))
 
 (deftest retracting-the-denial-returns-the-verdict-it-withheld
-  ;;   The same lattice.  Retracting the denial puts `chi ⊑ dog` back in CxB's view, the
-  ;;   separation with it, and the clash is decided again: `(cat Kit)` is known-true, so
-  ;;   `(chi Kit)` is the loser.  Re-asserting the denial withdraws the grounds a second
+  ;;   The same lattice.  Retracting the denial puts `(disjoint dog cat)` back in CxB's
+  ;;   view, and the clash is decided again: `(cat Kit)` is known-true, so `(chi Kit)` is
+  ;;   the loser.  Re-asserting the denial withdraws the grounds a second
   ;;   time and the membership comes back, which is what makes the answer a function of
   ;;   what stands rather than of what has happened.
   (tu/with-neutral-kb [kb tu/fresh]
@@ -856,9 +856,9 @@
       (types! kb chi_t dog_t cat_t)
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
-      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
-      (v/assert kb (list 'genl chi_t dog_t) CxA)
-      (let [denial! #(v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB
+      (v/assert kb (list 'genl chi_t dog_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'disjoint dog_t cat_t) CxA)
+      (let [denial! #(v/assert kb (list 'not (list 'disjoint dog_t cat_t)) CxB
                                {:strength :monotonic})
             d       (denial!)
             _       (v/assert kb (list chi_t Kit) CxB)
@@ -876,12 +876,12 @@
 
 ;; ---- a release only a context below the vantage can see ----
 ;;
-;;   CxUniverse  (genl chi thing) (genl dog thing) (genl cat thing)  (disjoint dog cat)
-;;     └─ CxA    (genl chi dog)                  :default
+;;   CxUniverse  (genl chi thing) (genl dog thing) (genl cat thing)  (genl chi dog) M
+;;     └─ CxA    (disjoint dog cat)              :default
 ;;          └─ CxB (chi Kit) default  (cat Kit) monotonic
 ;;               └─ CxC
-;;   the denial (not (genl chi dog)) monotonic sits in CxC (:below), or in a CxD that CxB
-;;   sees (:above)
+;;   the denial (not (disjoint dog cat)) monotonic sits in CxC (:below), or in a CxD that
+;;   CxB sees (:above)
 ;;
 ;; With the denial below, CxB reads the separation, sees the whole pair and decides it.
 ;; CxC reads no separation and believes `(chi Kit)`: each reader decides from its own
@@ -895,9 +895,9 @@
                 (v/assert kb (list 'genlCx CxC CxB) 'CxUniverse)
                 (v/assert kb (list 'genlCx CxD 'CxUniverse) 'CxUniverse)
                 (when (= :above place) (v/assert kb (list 'genlCx CxB CxD) 'CxUniverse))
-                (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
-                (v/assert kb (list 'genl chi_t dog_t) CxA))
-   :denial #(v/assert kb (list 'not (list 'genl chi_t dog_t)) ({:below CxC :above CxD} place)
+                (v/assert kb (list 'genl chi_t dog_t) 'CxUniverse {:strength :monotonic})
+                (v/assert kb (list 'disjoint dog_t cat_t) CxA))
+   :denial #(v/assert kb (list 'not (list 'disjoint dog_t cat_t)) ({:below CxC :above CxD} place)
                       {:strength :monotonic})
    :chi    #(v/assert kb (list chi_t Kit) CxB)
    :cat    #(v/assert kb (list cat_t Kit) CxB {:strength :monotonic})})
@@ -1179,7 +1179,7 @@
   ;; The same lattice for each ground a vantage can be missing: a `disjoint` declaration,
   ;; the `genl` edge that puts a type under a separated one, a `functional` mark and an
   ;; `asymmetric` mark.  The vocabulary a clash also needs sits in CxA, which CxW sees.
-  ;; `a` is monotonic and `b` default, so CxV defeats `b`.
+  ;; `a` is monotonic and `b` default, so CxV defeats `b`; the `genl` ground is monotonic.
   (doseq [kind [:disjoint :genl-path :functional :asymmetric]]
     (testing (name kind)
       (tu/with-neutral-kb [kb tu/fresh]
@@ -1202,7 +1202,7 @@
             (doseq [s vocab] (v/assert kb s CxA))
             (v/assert kb a CxA {:strength :monotonic})
             (v/assert kb b CxB)
-            (v/assert kb ground CxDecl)
+            (v/assert kb ground CxDecl (if (= kind :genl-path) {:strength :monotonic} {}))
             (is (= {:CxW [true true] :CxX [true true] :CxV [true false]}
                    (into {} (for [[r cx] [[:CxW CxW] [:CxX CxX] [:CxV CxV]]]
                               [r [(v/ask? kb a cx) (v/ask? kb b cx)]]))))))))))

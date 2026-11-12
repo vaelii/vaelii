@@ -28,8 +28,8 @@ with forward/backward inference and JTMS truth maintenance.
 
 ## Quick start
 
-As a dependency — Leiningen `[com.vaelii/vaelii "0.32.0"]`, or deps.edn
-`com.vaelii/vaelii {:mvn/version "0.32.0"}` — from [Clojars](https://clojars.org/com.vaelii/vaelii).
+As a dependency — Leiningen `[com.vaelii/vaelii "0.33.0"]`, or deps.edn
+`com.vaelii/vaelii {:mvn/version "0.33.0"}` — from [Clojars](https://clojars.org/com.vaelii/vaelii).
 To work on it instead:
 
 ```sh
@@ -96,8 +96,8 @@ partition behind `rewriteOf` / `sameAs` / `equals`.
 
 The shipped ontology holds in three tiers of contexts. CxUniverse holds the whole upper
 ontology, every file under `resources/kb/upper/`. Each middle theory under
-`resources/kb/middle/` is a context below CxUniverse, and CxWell sees every middle
-theory. A sync keeps CxUniverse's premises to what the shipped files state, so an
+`resources/kb/middle/` is a context below CxUniverse, and CxWell sees seven of them:
+not CxRealWorld, which sees CxWell, and not the two opt-in theories. A sync keeps CxUniverse's premises to what the shipped files state, so an
 author's content goes into a context of its own
 ([contexts.md](docs/contexts.md#the-context-topology)).
 

@@ -39,24 +39,6 @@
 ;; by the membership and the edges (`class-paths`, `chain/sync-arity-classes!`), and the
 ;; stored class membership is a binding like any other.
 
-(defn- binding-of
-  "`[P kind value]` of the stored fact `sx` when it binds a relation's length
-  (`sx/arity-binding`), else nil."
-  [sx]
-  (when (nil? (:antecedent sx))
-    (sx/arity-binding (:sentence sx))))
-
-(defn fact-shape
-  "`[q n]` for a stored fact `sx` whose sentence is a positive tuple of `n` arguments with
-  a symbol functor, else nil.  `checks` asks it of a sentence about to be written, as
-  `{:sentence s}`."
-  [sx]
-  (let [s (:sentence sx)]
-    (when (and (nil? (:antecedent sx)) (seq? s) (<= 2 (count s)))
-      (let [f (first s)]
-        (when (and (symbol? f) (not= 'not f) (not (sx/variable? f)))
-          [f (dec (count s))])))))
-
 (defn- values-of
   "The values of the `kind` pairs among `kinds` (`[kind value]`, as the family lists
   them)."
@@ -148,16 +130,21 @@
 (defn reaches-class?
   "Does the type `t` reach an exact-arity class (`sx/exact-arity-classes`) over the
   unscoped closure, or is it one?  Held in `kb`'s length entries under `[::reaches t]`,
-  which an edge moving at or above `t` evicts (`evict-below!`)."
+  which an edge moving at or above `t` evicts (`evict-below!`).  A type with no `genl`
+  parent reaches no class but itself, which one adjacency read answers before the cache:
+  a fresh functor's entry is a miss and fifteen closure probes."
   [kb t]
-  (let [tax (reasoning/taxonomy kb)
-        lru (lengths-lru kb tax)
-        k   [::reaches t]
-        v   (caches/lru-get lru k)]
-    (if (some? v)
-      v
-      (caches/lru-put! lru k (boolean (or (contains? exact-classes t)
-                                          (some #(tax/genl?-global tax t %) exact-classes)))))))
+  (let [tax (reasoning/taxonomy kb)]
+    (cond
+      (contains? exact-classes t)               true
+      (empty? (tax/direct-genls-global tax t))  false
+      :else
+      (let [lru (lengths-lru kb tax)
+            k   [::reaches t]
+            v   (caches/lru-get lru k)]
+        (if (some? v)
+          v
+          (caches/lru-put! lru k (boolean (some #(tax/genl?-global tax t %) exact-classes))))))))
 
 (defn class-paths
   "`{C [h …]}`: each exact-arity class `C` strictly above the type `t` that no other such
@@ -243,9 +230,22 @@
   (assoc (own-held kb tax f) :lengths (lengths-of kb tax f)))
 
 (defn- binding-pred
-  "The predicate the stored record at `h` binds the length of (`binding-of`), or nil."
+  "The predicate the stored record at `h` binds the length of (`sx/fact-arity-binding`), or nil."
   [kb h]
-  (some-> (p/get-sentex (:records kb) h) binding-of first))
+  (some-> (p/get-sentex (:records kb) h) sx/fact-arity-binding first))
+
+(defn- entry-may-break?
+  "Can `f`'s length entry (`entry`) hold a length or a floor?  Yes when its own part is
+  held.  On a miss the entry would read `f` and each type above it, and it holds stored
+  bindings only, so a KB storing none answers no off one count read and holds `f`'s
+  empty own part, as `own-entry` would build it: a write of a fresh functor pays that
+  read, where a functor written again pays the cached entry as before."
+  [kb tax f]
+  (let [lru (lengths-lru kb tax)]
+    (or (some? (caches/lru-get lru [::own f]))
+        (pos? (reads/stored-count-arity-bound (:index kb)))
+        (do (caches/lru-put! lru [::own f] {:own #{} :mins #{} :var? false})
+            false))))
 
 (defn- breaks-entry?
   "Does a tuple of `n` arguments break a length of the entry `e` (`entry`): one stored at
@@ -459,9 +459,11 @@
 (defn- shape-breaks?
   "Does a tuple of `n` arguments of `q` break `q`'s length (`relation-length`)?  For a
   functor with no engine shape, the length entry (`entry`) answers no without a label read
-  where no length stored at or above `q` and no floor of `q` differs from `n`."
+  where no length stored at or above `q` and no floor of `q` differs from `n`
+  (`entry-may-break?`)."
   [kb tax q n]
-  (boolean (and (or (predicates/shape-of q) (breaks-entry? (entry kb tax q) n))
+  (boolean (and (or (predicates/shape-of q)
+                    (and (entry-may-break? kb tax q) (breaks-entry? (entry kb tax q) n)))
                 (breaks? (relation-length kb q) n))))
 
 (defn inert-tuple?
@@ -470,7 +472,7 @@
   shape under `::fresh`, and the next refresh reads each of its tuples
   (`refresh-shapes!`): the tuples stored before it can wait on a queued binding."
   [kb sx]
-  (if-let [[q n] (fact-shape sx)]
+  (if-let [[q n] (sx/fact-shape sx)]
     (let [out?  (shape-breaks? kb (reasoning/taxonomy kb) q n)
           cands (reasoning/nogood-candidates kb)]
       (when (and out? (not (contains? (get-in @cands [::out q]) n)))
@@ -504,14 +506,15 @@
   "The binding a stored tuple `sx` in the `:out` forced set breaks (`broken-binding`), or
   nil when `sx` breaks none."
   [kb sx]
-  (when-let [[q n] (fact-shape sx)]
+  (when-let [[q n] (sx/fact-shape sx)]
     (broken-binding kb q n)))
 
 (defn- refresh-shapes!
   "Move the stored tuples of `q` into or out of the `:out` forced set for each length
   whose `shape-breaks?` answer differs from what `::out` records, or that `check` names,
   and record the answers.  Any other shape reads no tuple.  Answers the tuples taken out
-  of `:out`."
+  of `:out`.  A tuple of a `not_assertible` predicate stays in `:out`: the mark is forced
+  decontextualized and forced monotonic, so its KB-wide reading is every reader's."
   [kb tax q check]
   (let [idx   (:index kb)
         tms   (reasoning/tms kb)
@@ -521,8 +524,9 @@
         released (reduce (fn [acc n]
                            (let [on? (contains? now n)
                                  hs  (into [] (remove #(or (= on? (jtms/forced? tms :out %))
-                                                           ;; a fact the argument family holds stays OUT
-                                                           (and (not on?) (argument/held? kb %))))
+                                                           ;; the argument family or a mark holds it OUT
+                                                           (and (not on?) (or (argument/held? kb %)
+                                                                              (tax/has-prop? tax :not-assertible q)))))
                                            (reads/as-stored-shape-tuples-global idx q n))]
                              (when (seq hs) (jtms/set-forced tms :out hs on?))
                              (cond-> acc (not on?) (into hs))))
@@ -533,7 +537,7 @@
     released))
 
 (defn- queue-bound!
-  "Queue the bindings `bs` (`[p kind value]`, `binding-of`) that moved under `::bound`,
+  "Queue the bindings `bs` (`[p kind value]`, `sx/fact-arity-binding`) that moved under `::bound`,
   as `{p #{[kind value]}}` (`drain!`)."
   [kb bs]
   (when (seq bs)
@@ -577,14 +581,14 @@
   (`held-bindings`).  A relabelled `negates` declaration is queued under `::neg`."
   [kb hs]
   (let [sxs (into [] (keep #(p/get-sentex (:records kb) %)) (relabelled-held kb hs))]
-    (queue-bound! kb (into [] (keep binding-of) sxs))
+    (queue-bound! kb (into [] (keep sx/fact-arity-binding) sxs))
     (queue-negates! kb (into [] (comp (filter negates-declaration?) (map :id)) sxs))))
 
 (defn- note-arity!
   "A binding of `p` stored or removed: evict the length entries at or below `p` and its
   own entry, and queue the binding (`drain!`)."
   [kb sx]
-  (when-let [[p :as b] (binding-of sx)]
+  (when-let [[p :as b] (sx/fact-arity-binding sx)]
     (let [tax (reasoning/taxonomy kb)
           lru (lengths-lru kb tax)]
       (evict-below! tax lru [p])
@@ -735,7 +739,7 @@
       ;; rows held before, so a refresh moves exactly the tuples whose answer moved
       (let [recs (:records kb)]
         (swap! (reasoning/nogood-candidates kb) assoc ::out
-               (reduce (fn [m h] (if-let [[q n] (some-> (p/get-sentex recs h) fact-shape)]
+               (reduce (fn [m h] (if-let [[q n] (some-> (p/get-sentex recs h) sx/fact-shape)]
                                    (update m q (fnil conj #{}) n)
                                    m))
                        {} (jtms/forced-members (reasoning/tms kb) :out)))))
@@ -940,17 +944,17 @@
         (= 1 (:exact a) (:exact b))    {:kind :negates-unary :grounds grounds}))))
 
 (defn binding-handle?
-  "Is the stored record at `h` a binding of a relation's length (`binding-of`)?"
+  "Is the stored record at `h` a binding of a relation's length (`sx/fact-arity-binding`)?"
   [kb h]
   (boolean (binding-pred kb h)))
 
 (defn kind-of
-  "`:arity-descension` for the member handles `ms` of two exact bindings (`binding-of`)
+  "`:arity-descension` for the member handles `ms` of two exact bindings (`sx/fact-arity-binding`)
   of different lengths; the kind `negates-clash` gives a lone `negates` declaration;
   else nil."
   [kb ms]
   (case (count ms)
-    2 (let [[a b] (map #(some-> (p/get-sentex (:records kb) %) binding-of) ms)]
+    2 (let [[a b] (map #(some-> (p/get-sentex (:records kb) %) sx/fact-arity-binding) ms)]
         (when (and a b (= :exact (second a) (second b)) (not= (nth a 2) (nth b 2)))
           :arity-descension))
     1 (let [sx (p/get-sentex (:records kb) (first ms))]

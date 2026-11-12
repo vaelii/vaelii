@@ -206,16 +206,24 @@
     (boolean (and (seq js) (not (jtms/premise? tms h))
                   (every? #(= edge-reading-informant (:informant (jtms/justification tms %))) js)))))
 
-(defn edge-read-functors
-  "The set of the functors of the edge readings resting on the membership `h`
-  (`edge-reading-informant`), read off `h`'s dependents."
-  [kb h]
-  (let [tms (reasoning/tms kb) recs (:records kb)]
-    (into #{} (keep (fn [jid]
-                      (let [j (jtms/justification tms jid)]
-                        (when (= edge-reading-informant (:informant j))
-                          (some-> (p/get-sentex recs (:consequence j)) :sentence first)))))
-          (jtms/dependents tms h))))
+(defn edge-read?
+  "Does an edge reading of `(q x)` rest on the membership `h`, `(s x)`: is `(q x)` stored,
+  in any context, concluded by an `edge-reading-informant` justification holding `h`?  One
+  read when the index keeps no fact of `q` about `x` beside another unary fact of `x`
+  (`reads/stored-unary-kept?`)."
+  [kb h q]
+  (let [recs (:records kb)
+        s    (some-> (p/get-sentex recs h) :sentence)]
+    (boolean
+     (when (and (seq? s) (= 2 (count s)) (not= sx/not-functor (first s))
+                (reads/stored-unary-kept? (:index kb) q (second s)))
+       (let [tms (reasoning/tms kb)]
+         (some (fn [r]
+                 (some #(let [j (jtms/justification tms %)]
+                          (and (= edge-reading-informant (:informant j))
+                               (some #{h} (:antecedents j))))
+                       (jtms/supports tms r)))
+               (reads/as-stored-at-path (:index kb) (sx/path (sx/sentex (list q (second s)) '?c)))))))))
 
 (defn belief-only-antecedent
   "The antecedent justification `j` rests on for belief and not for visibility, or nil.

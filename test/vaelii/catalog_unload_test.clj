@@ -281,7 +281,7 @@
           (is (some? (cat/entry "mine")))
           (is (pos? (v/sentex-count kb))))
         (finally (deliver latch true)))
-      (jobs/wait id 10000)
+      (jobs/wait id)
       (testing "once the job has settled the unload takes"
         (is (true? (cat/unload! "mine")))
         (is (nil? (cat/entry "mine")))))))

@@ -79,10 +79,11 @@ exception or an aggregate reads its conclusion, or when its extent is bounded an
 stored conclusion is wanted at every read. Use `set/backwardRule` to state the backward
 choice explicitly, and `set/inertRule` for a rule that must never fire.
 
-**Example.** `CxChange.txt` writes the rule concluding `clipped` as a `set/forwardRule`,
-under the note `;; Forward, so the unknown below can read it.`, and the inertia rule
+**Example.** `CxChange.txt` writes the rule concluding `clipped` as a `set/forwardRule`:
+its extent is bounded by the terminating events times the moment pairs the narrative
+orders, and each stored conclusion records why inertia stopped. It writes the inertia rule
 concluding `holdsAt` as a `set/backwardRule`, because a fluent holds at every moment
-between its start and its end. Chapter 35 quotes both rules.
+between its start and its end. [Chapter 32](32-negation.md) quotes the inertia rule.
 
 **Why.**
 
@@ -91,8 +92,8 @@ between its start and its end. Chapter 35 quotes both rules.
   author asks. `set/forwardRule` adds forward chaining and keeps the backward use: its
   engines are both. An `unknown` antecedent, an `exceptWhen` query and an aggregate body
   run over the prover registry, which expands no rule, so they read a conclusion only
-  when it is stored. A backward `clipped` would be invisible to inertia's `unknown`, and
-  every fluent would persist for ever.
+  when it is stored. So inertia's `unknown` joins the antecedents of `clipped` itself:
+  a backward `clipped` would be invisible to it, and every fluent would persist for ever.
 - Order independence: re-asserting one rule under two spellings dedups to one handle,
   and its engines are the union of the spellings seen, read from content rather than
   arrival order. Removing a direction a rule has acquired takes a retraction and a

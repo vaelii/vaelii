@@ -530,7 +530,12 @@
           (testing ":reasoners :stored registers the recorded set"
             (let [kb (open {:reasoners :stored})]
               (is (v/ask? kb late 'CxUniverse))
-              (v/close! kb))))))))
+              (v/close! kb)))
+          (testing "a reasoners.edn naming no collection is refused as :malformed-manifest"
+            (doseq [text ["{:reasoners :allen}" "{:reasoners {:allen true}}" "[:allen]"]]
+              (spit (io/file dir "reasoners.edn") text)
+              (is (= :malformed-manifest (:type (open {:reasoners :stored}))) text)
+              (is (not (lock/held? dir)) text))))))))
 
 (deftest a-ram-space-keeps-its-reasoner-record-through-clear-and-close
   (let [space [::reasoner-record (gensym)]

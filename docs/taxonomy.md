@@ -22,7 +22,7 @@ rather than a forward one](defenses.md#an-inert-rule-records-transitivity-not-a-
 
 `core.txt` states no rule for `genl`'s transitivity, inert or otherwise: `genl`
 carries its account in the `comment` on the predicate, where the closure is described,
-and `(transitive genl)` classifies it without handing it to the generic prover. The two
+and `(transitive genl)` classifies it without handing it to the generic prover. The three
 inert rules `core.txt` does state record the `commutative` / `commutativeInArgAndRest` bridge.
 
 ## genl: the type hierarchy
@@ -91,13 +91,8 @@ predicate and function the starter ships states its class. `bounded_arity` and
 `(arityMax R N)` states the upper bound of a `bounded_arity` relation. The three are
 documentary: the arity check reads `fixed_arity`, `variable_arity` and `arityMin`.
 `arityMin` states the lower bound of a variable-arity relation. Prefer
-variable arity for a repeatable, homogeneously typed argument role. A relation with a
-bounded optional tail declares variable arity too, with its `arityMin`, and its
-well-formedness check bounds the tail: `functionCorrespondingPredicate` is
-`variable_arity_predicate` with `arityMin 2`, and `wff/correspondence-problems` refuses
-it with other than two or three arguments, the third an optional argument position. It is
-also `bounded_arity` with `(arityMax functionCorrespondingPredicate 3)`, which states that
-bound in the KB.
+variable arity for a repeatable, homogeneously typed argument role. No shipped relation
+is both variable-arity and bounded, so `core.txt` states no `arityMax`.
 
 `at_least_binary`, `at_least_ternary`, `at_least_quaternary` and `at_least_quinary` are
 the generic derived classes of relations of arity 2, 3, 4 and 5 or greater, fixed or
@@ -237,6 +232,7 @@ walks the `:derived?` subset (`special/integrate-transitive`) plus what
 | `rewriteOf` `sameAs` `equals` | the equality partition, and migration | by name — the arm's return value is the twins and the violations, which `:derived?` would discard ([equality.md](equality.md)) |
 | `arg` `genlArg` `interArg` `interArgEqual` | the `:props` set of predicates some declaration of that kind names (`:declares-arg-isa` / `:declares-arg-genl` / `:declares-inter-arg-isa` / `:declares-inter-arg-equal`), and the declarations themselves read back through the index per query | `:derived?` — the `:props` set is what lets the descension ask *whose* declarations bind a tuple without an index probe per super-predicate |
 | `transitiveInArg` `transitiveInArgInverse` `functionCorrespondingPredicate` | none — read back through the index per query | nothing to reach |
+| `functionCorrespondingBinaryPredicate` | none — a `core.txt` rule concludes `(functionCorrespondingPredicate F P 2)` from it | nothing to reach |
 | `different` `unknown` `thereExists`, the five aggregates | none — never stored | nothing to reach: `wff` refuses the conclusion on the derivation path exactly as it refuses the assertion |
 
 A row naming a functor in the forced-monotonic set (`genlCx`, a relation mark,
@@ -555,9 +551,10 @@ only a descendant can see whole, are docs/contexts.md's story.
 
 ### The global readers, and who may use one
 
-Every one of those reads goes through a reader whose **name** says it is global —
-`genls-global`, `specs-global`, `genl?-global`, `context-up-global`, `genlCx?-global` —
-rather than through a shorter arity of the scoped one. The reason is that the two agree far more often than
+Every one of those reads goes through a reader whose **name** ends in `-global` (E17
+matches the suffix), rather than through a shorter arity of the scoped one. The five
+closure readers are `genls-global`, `specs-global`, `genl?-global`, `context-up-global` and
+`genlCx?-global`. The reason is that the two agree far more often than
 they differ: `visible-ctxs` hands back the global closure itself, the identical object,
 for any reader that sees every context an edge was asserted from, which is most readers of
 most KBs. A caller that dropped the context by accident would therefore pass every test
@@ -585,7 +582,7 @@ E17 too. What is on it:
 | assert-time refusals (`wff/genlCx-problems`, `checks`) | a `genlCx` cycle changes what every reader sees, so its refusal reads every edge; `wff/genl-problems` reads the asserting context's edges |
 | the forward join and the trigger keys (`rules/trigger-keys`, `chain`, `inherit/moved-predicates`, `vantage`) | a firing is placed in a context the join decides, so the candidate fan cannot be scoped by one — the narrowing happens at placement |
 | the exception re-check triggers (`special`) | a trigger over-approximates in the direction the answer is: a declaration this edge cannot see still qualifies a rule in some context that can, and a missed trigger is a wrong belief where a spare one is a query |
-| settle's candidate discovery, and the nogood candidates the settle places (`membership/term-nogoods`, the `decide/tuple` rows) | an over-approximated candidate merely checks and yields nothing; the placement that follows reads the contexts that see a route |
+| settle's candidate discovery, and the nogood candidates the settle places (`membership/term-nogoods`, the `vaelii.impl.decide.tuple` rows) | an over-approximated candidate merely checks and yields nothing; the placement that follows reads the contexts that see a route |
 | a candidate filter in front of a scoped read (`special/offered-mark-over?`, `inherit/stated-claims`) | the filter answers a superset, and the read behind it takes the reader's context |
 | `except`'s exception index and `except-hidden-fn`, and the read walk (`exc/defeat-hidden-fn`) | the visibility filter cannot be scoped by the filter it is itself derived from |
 | `integrity/taxonomy-reach` | a report on the whole taxonomy has no vantage to read from: `kb-quality`'s census reads it with a nil context, and a `kb-integrity` sweep passes its audit context and reads scoped |
@@ -1004,7 +1001,8 @@ conclusion in a reader the other does not reach, and a firing is placed once per
 Each edge names the supporters no other supporter of it covers, which is the most general
 one wherever the supporters' contexts are comparable. The walk keeps one partial route per
 uncovered label at each node, so where every edge is stated in contexts one reader sees it
-settles each node once. Its queue orders by `context-specificity` — the size of a context's
+settles each node once, and takes no step to a type the depth potential shows has no path
+to the target. Its queue orders by `context-specificity` — the size of a context's
 `genlCx` ancestor set, which agrees with `sees?` on every comparable pair — then by length,
 then by the same name order, so of two routes with one label the one kept is a function of
 the content. `tax/reach-supports` is the same walk with the defeat class beside the
@@ -1369,6 +1367,12 @@ declaration separates them, and neither a declaration, a shared instance nor a s
 subtype shows they can overlap — so the modeller decides which they are. The audit reads
 only, and writes nothing.
 
+The audit prepares the first type's global ancestor and descendant sets and contextual
+disjointness predicate once per row. Membership of the second type in those sets answers
+the two subsumption directions. The row releases its references when its pairs finish.
+Other subtype closures remain in the taxonomy's bounded closure cache. The prepared
+reads do not change the facts-only overlap queries or the scoped integrity reading.
+
 `disjointness_audit_test`'s `disjointness-coverage-ratchet` holds the starter KB's audit
 at its current values: a floor on the `:disjoint` pair count, a floor on the disjoint
 fraction and a ceiling on the unknown fraction. A removed separation lowers all three. A
@@ -1630,7 +1634,7 @@ the membership nogood, as a type `genl` edge is.
 
   A declared-transitive `P` is **metadata only** — it is not a cached relation. Nothing
   about `P` enters the adjacency, so there is no closure to maintain, no depth potential
-  to repair, and nothing an arrival order could make expensive; asserting `(largerThan A
+  to repair, and nothing an arrival order could make expensive; asserting `(typeLargerThan A
   B)` is an ordinary fact assert. The cost is entirely at query time, where
   `TransitivePredicateProver` walks the believed facts (memoized per search step,
   `observe/*reach-memo*`, and the answer held per KB — "What is cached", below). A
@@ -1779,7 +1783,7 @@ the membership nogood, as a type `genl` edge is.
   `(P b a)` are contradictory, so a claim whose converse is believed forms a nogood with
   it, which the settle decides; a converse read by preservation opposes at the weakest
   class of the claim and its reading ([inherit.md](inherit.md)). A strict order like
-  `largerThan` is the usual case. The conviction needs a believed **opposing** sentex, and a self tuple has
+  `typeLargerThan` is the usual case. The conviction needs a believed **opposing** sentex, and a self tuple has
   none — its converse is the sentence itself — so `(P a a)` is admitted with no clash,
   which asymmetry alone would not license. `inherit/claims` skips the converse probe
   there for the same reason, and says so.
@@ -2524,7 +2528,7 @@ clash at the contexts that see it whole ([nmtms.md](nmtms.md#the-nogood-families
 | `irreflexive`, and `anti_symmetric` over a converse that does not merge | stores the tuple; a nogood | same — the next settle places it, and a `genl` edge below the marked predicate or a `genlCx` edge into the tuple's sight does the same | the tuple's own arguments find the nogood |
 | an arity binding: `arity`, an exact-arity class, `variable_arity`, `arityMin` | stores the tuple; a nogood | same — and a `genl` edge that binds a sub-predicate's length, or a `genlCx` edge that brings a binding into a tuple's sight, does the same | the tuple's own length finds the nogood |
 | `arg` / `genlArg` / `interArg` / `interArgEqual`, the covering `args` / `argAndRest` and the homogeneity `interArgs` / `interArgAndRest`, over a symbol, under the entailing reading | stores the fact and derives the type | same — the derivation reaches back, and a conditional form's trigger type arriving last derives through the settle | a derived type disjoint from a held one is a clash, weighed at settle, which `try-assert` refuses ([argtypes.md](argtypes.md)) |
-| the same under the constraint-only reading, and a value in either reading | `assert` stores the fact and holds it inert; `try-assert` refuses it under either reading | same — the settle holds the stored fact inert, for the conditional forms whichever of the declaration, the trigger's type or the target's type arrives last. `try-assert` of the declaration refuses it over the stored tuples it breaks | convicted by a separation, read off the stored state ([argtypes.md](argtypes.md#an-argument-that-fails-its-declared-type-is-held-inert)) |
+| the same under the constraint-only reading, and a value in either reading | `assert` stores the fact and holds it inert; `try-assert` refuses it under either reading | same — the settle holds the stored fact inert, for the conditional forms whichever of the declaration, the trigger's type or the target's type arrives last. `try-assert` of the declaration refuses it over the stored tuples it breaks | convicted by a separation over `:monotonic` climbs, read off the stored state ([argtypes.md](argtypes.md#an-argument-that-fails-its-declared-type-is-held-inert)) |
 | `quotedArg` | holds the fact inert | same | convicted by the absence of a path over the syntactic lattice |
 | a predicate-level `genl` edge, under an *argument* constraint above it | the entailing reading stores what follows; the constraint-only reading holds it inert | same — the derivation and the hold both reach back | one ingredient further out |
 | a predicate-level `genl` edge, under a `functional` / `asymmetric` mark above it | stores what follows and weighs it on the marked predicate's terms — `tax/props-over` reads the mark at every predicate above the sentence's own functor | the edge is admitted, and it reaches back over the sub's stored facts: a nogood, plus the merges a `functional` mark now licenses (`special/equate-under-edge`) | the sub's tuples *are* the super's, so a clash among them is the super's |

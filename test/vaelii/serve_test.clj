@@ -484,10 +484,20 @@
 (defn- status-type [r] [(:status r) (:type r)])
 
 (tu/deftest-kb a-table-grant-bounds-every-write-op-and-no-read
-  (tu/with-terms [dog animal Rex Fido CxA CxB parentOf ownerOf]
-    (let [h       (serve/app kb {:token-table {"tok-a" {:principal 'AgentA :writes #{CxA}}
-                                               "tok-b" {:principal 'AgentB :writes #{CxB}}}})
+  (tu/with-terms [dog animal Rex Fido CxA CxB CxE CxSlice parentOf ownerOf liftedRel eternalRel]
+    (let [nested  (list 'CxTimeFn (list 'CxTimeFn CxB '(YearFn 2000)) '(MonthFn 2000 7))
+          h       (serve/app kb {:token-table {"tok-a" {:principal 'AgentA :writes #{CxA}}
+                                               "tok-b" {:principal 'AgentB :writes #{CxB}}
+                                               "tok-e" {:principal 'AgentE :writes #{CxE}}
+                                               "tok-s" {:principal 'AgentS :writes #{CxSlice}}
+                                               "tok-n" {:principal 'AgentN :writes #{nested}}
+                                               "tok-u" {:principal 'AgentU :writes #{'CxUniverse}}}})
           _       (v/assert kb (list 'forced_decontextualized_predicate ownerOf))
+          _       (v/assert kb (list 'decontextualized_predicate liftedRel) 'CxUniverse)
+          eternal (v/assert kb (list 'eternal_predicate eternalRel) 'CxUniverse)
+          _       (v/assert kb (list 'eternal_predicate eternalRel) CxE)
+          _       (v/assert kb (list 'natFormula CxSlice (list 'CxTimeFn CxB '(YearFn 2000))) 'CxUniverse)
+          _       (v/assert kb '(contextArgFold CxTimeFn 1 TimeIntersectionFn) 'CxUniverse)
           b-claim (:result (as h "tok-b" :assert (list dog Fido) CxB))
           a-claim (:result (as h "tok-a" :assert (list dog Rex) CxA))]
       (testing "a token outside the table is answered 401, as a wrong shared token is"
@@ -508,12 +518,22 @@
                          ["a set holding an ist sentence" (as h "tok-a" :assert-many #{(list 'ist CxB (list dog Rex))} CxA)]
                          ["a fact the store places in CxUniverse" (as h "tok-a" :assert (list ownerOf Rex Fido) CxA)]
                          ["a mark the store lifts into CxUniverse" (as h "tok-a" :assert (list 'symmetric parentOf) CxA)]
+                         ["a denial the store lifts into CxUniverse" (as h "tok-a" :assert (list 'not (list liftedRel Rex Fido)) CxA)]
                          ["a forced_decontextualized_predicate declaration" (as h "tok-a" :assert (list 'forced_decontextualized_predicate parentOf) CxA)]
                          ["a decontextualized_predicate declaration" (as h "tok-a" :assert (list 'decontextualized_predicate parentOf) CxA)]
+                         ["an eternal_predicate membership" (as h "tok-a" :assert (list 'eternal_predicate parentOf) CxA)]
+                         ["a genl edge up to eternal_predicate" (as h "tok-a" :assert (list 'genl dog 'eternal_predicate) CxA)]
+                         ["a denial of an eternal_predicate membership" (as h "tok-a" :assert (list 'not (list 'eternal_predicate parentOf)) CxA)]
+                         ["a defeat of an eternal_predicate membership" (as h "tok-a" :assert (list 'defeat (list 'sentexHandle eternal)) CxA)]
+                         ["a fact the store copies out of a slice" (as h "tok-s" :assert (list eternalRel Rex Fido) CxSlice)]
+                         ["a fact the store copies out of a slice of a slice written in place, which contextArgFold folds" (as h "tok-n" :assert (list eternalRel Rex Fido) nested)]
                          ["a rule concluding a variable functor" (as h "tok-a" :assert (list 'implies (list parentOf '?p '?x) (list '?p '?x)) CxA)]
                          ["export" (as h "tok-a" :export "dump")]
                          ["retract" (as h "tok-a" :retract b-claim)]
                          ["an edit removing" (as h "tok-a" :edit {:remove [b-claim]})]
+                         ["retracting an eternal_predicate membership in the grant's context" (as h "tok-u" :retract eternal)]
+                         ["an edit removing an eternal_predicate membership in the grant's context" (as h "tok-u" :edit {:remove [eternal]})]
+                         ["replace-facts over a context holding an eternal_predicate membership" (as h "tok-e" :replace-facts CxE [])]
                          ["an edit adding" (as h "tok-a" :edit {:add [[(list animal Rex) CxA] [(list dog Rex) CxB]]})]
                          ["edit-with-consequences" (as h "tok-a" :edit-with-consequences {:add [[(list dog Rex) CxB]]})]
                          ["replace-facts of another context" (as h "tok-a" :replace-facts CxB [(list dog Rex)])]
@@ -523,9 +543,12 @@
                          ["a do/ imperative" (as h "tok-a" :assert (list 'do/labeling CxA) CxA)]]]
           (is (= [403 :forbidden-context] (status-type r)) why))
         (is (v/in? kb b-claim) "the other principal's claim stands")
+        (is (v/in? kb eternal) "the eternal_predicate membership stands")
         (is (nil? (v/handle-of kb (list animal Rex) CxA)) "a refused batch applied nothing")
         (is (nil? (v/handle-of kb (list dog Rex) CxB)))
         (is (nil? (:note (v/provenance kb b-claim)))))
+      (testing "a slice's grant writes a fact the store copies nowhere"
+        (is (:ok (as h "tok-s" :assert (list dog Rex) CxSlice))))
       (testing "a rule concluding an (ist Ctx S) is refused 400 by the engine"
         (doseq [[why r] [["a rule concluding into the other context" (as h "tok-a" :assert (list 'implies (list dog '?x) (list 'ist CxB (list animal '?x))) CxA)]
                          ["assert-rule concluding into the other context" (as h "tok-a" :assert-rule [(list dog '?x)] (list 'ist CxB (list animal '?x)) CxA)]]]
@@ -568,6 +591,24 @@
       (testing "an edge widening a context the grant names is stored"
         (is (:ok (as h "tok-a" :assert (list 'genlCx CxA CxB) CxA)))
         (is (v/sees? kb CxA CxB))))))
+
+(tu/deftest-kb a-natformula-naming-a-slice-needs-the-sliced-context-in-its-grant-in-either-arrival-order
+  (doseq [fact-first? [true false]]
+    (tu/with-terms [eternalRel Rex Fido CxK CxM]
+      (v/assert kb (list 'eternal_predicate eternalRel) 'CxUniverse)
+      (let [h    (serve/app kb {:token-table {"tok-k" {:principal 'AgentK :writes #{CxK}}
+                                              "tok-u" {:principal 'AgentU :writes #{'CxUniverse CxK}}
+                                              "tok-m" {:principal 'AgentM :writes #{'CxUniverse CxK CxM}}}})
+            nf   (list 'natFormula CxK (list 'CxTimeFn CxM '(YearFn 2000)))
+            fact #(as h "tok-k" :assert (list eternalRel Rex Fido) CxK)]
+        (testing (str "the fact in CxK first: " fact-first?)
+          (when fact-first? (is (:ok (fact))))
+          (is (= [403 :forbidden-context] (status-type (as h "tok-u" :assert nf 'CxUniverse))))
+          (is (not (v/ask? kb (list eternalRel Rex Fido) CxM)))
+          (is (:ok (as h "tok-m" :assert nf 'CxUniverse)))
+          (if fact-first?
+            (is (v/ask? kb (list eternalRel Rex Fido) CxM))
+            (is (= [403 :forbidden-context] (status-type (fact))))))))))
 
 (tu/deftest-kb a-grant-bounds-every-rule-its-fact-makes-the-engine-write
   (tu/with-terms [pet animal relayKind lovesOf Ann Bob CxA CxB]
@@ -807,6 +848,11 @@
     (when (instance? Server r) (.stop ^Server r))
     (is (= :unauthorized (:type (ex-data r))))))
 
+(deftest app-refuses-an-address-with-no-token-as-start-does
+  (is (= :unauthorized (:type (tu/refusal-data #(serve/app nil {:host "0.0.0.0" :token nil})))))
+  (is (= 401 (:status ((serve/app nil {:host "0.0.0.0" :token "s3cret"})
+                       {:request-method :post :uri "/op" :headers {}})))))
+
 (deftest start-refuses-a-token-table-that-does-not-check-before-binding
   (let [f (doto (File/createTempFile "token-table" ".edn") (.deleteOnExit) (spit "{\"tok\" {:principal"))
         r (try (serve/start nil {:port 0 :token-table (str f)})
@@ -912,11 +958,11 @@
           (is (false? (:ok r)))
           (is (= :over-ceiling (:type r)))
           (is (= 400 (:status r)) "a caller's request, so a client error")))
-      (testing "and a depth past the depth ceiling answers at the two entry points that
-                expand rules, since the clock holds them"
-        (doseq [op [:prove :provable?]]
-          (is (true? (:ok (post-op handler op [(list dog '?x) CxServe
-                                               {:max-depth (inc (config/max-query-depth))}])))
+      (testing "and a depth past the depth ceiling is refused at the three provers"
+        (doseq [op [:prove :provable? :prove-within]]
+          (is (= [false :over-ceiling]
+                 ((juxt :ok :type) (post-op handler op [(list dog '?x) CxServe
+                                                        {:max-depth (inc (config/max-query-depth))}])))
               (str op))))
       (testing "a request that names no option map is padded out to the arity that has
                 one, so the ceiling's clock reaches a short call too"
@@ -935,10 +981,98 @@
           (is (= :budget-exhausted (:type r)))
           (is (= 400 (:status r))))))))
 
-(deftest a-depth-ceiling-holds-only-a-read-that-takes-no-clock
+(tu/deftest-kb escalate-is-held-to-the-clock-ceiling-at-every-arity
+  (tu/with-terms [dog Muffet CxServe]
+    (let [handler (open-app kb)
+          goal    (list dog '?x)]
+      (post-op handler :assert [(list dog Muffet) CxServe])
+      (testing "a clock past the ceiling is refused by name"
+        (let [r (post-op handler :escalate [goal CxServe nil
+                                            {:max-ms (inc (config/max-query-ms))}])]
+          (is (= [false :over-ceiling 400] [(:ok r) (:type r) (:status r)]))))
+      (testing "a call naming no option map is padded with ?ctx and the default floor"
+        (doseq [args [[goal] [goal CxServe] [goal CxServe nil] [goal CxServe 2]]]
+          (let [r (post-op handler :escalate args)]
+            (is (= [true [Muffet]] [(:ok r) (mapv #(get-in % [:bindings '?x])
+                                                  (:results (:result r)))])
+                (pr-str args))))))))
+
+(deftest every-op-whose-opt-keys-name-a-clock-is-held-to-a-ceiling
+  (let [clocked (for [[sym v] (ns-publics 'vaelii.core)
+                      :let [[_ stem] (re-matches #"(.+)-opt-keys" (name sym))]
+                      :when (and stem (contains? @v :max-ms))
+                      op [(keyword stem) (keyword (str stem "?"))]
+                      :when (contains? serve/ops op)]
+                  op)]
+    (is (<= 6 (count clocked)))
+    (doseq [op clocked]
+      (is (or (contains? (get serve/search-bounds op) :max-ms)
+              (contains? serve/write-bounds op))
+          (str op)))))
+
+(deftest a-short-call-or-a-nil-map-is-given-the-clock-ceiling
+  (let [ms      (config/max-query-ms)
+        d       (config/max-query-depth)
+        sent-as (fn [op args] ((#'serve/bounded op (fn [_ args] args)) nil args))]
+    (doseq [[op args expected]
+            [[:ask-within ['g nil] ['g {:max-ms ms}]]
+             [:ask-within ['g 'Cx nil] ['g 'Cx {:max-ms ms}]]
+             [:prove-within ['g 'Cx {}] ['g 'Cx {:max-ms ms :max-depth d}]]
+             [:prove ['g] ['g '?ctx {:max-ms ms :max-depth d :refuse-depth-cut? true}]]
+             [:provable? ['g 'Cx {:max-depth 3}] ['g 'Cx {:max-depth 3 :max-ms ms}]]
+             [:prove-within ['g 'Cx] ['g 'Cx]]
+             [:why-not ['s 'Cx] ['s 'Cx {:max-ms ms}]]
+             [:why-not [7] [7]]
+             [:search-tree ['g] ['g '?ctx {:max-ms ms}]]
+             [:compare-tacticians ['g 'Cx nil] ['g 'Cx {:max-ms ms}]]
+             [:escalate ['g 'Cx nil] ['g 'Cx nil {:max-ms ms}]]
+             [:lookup [7 'g] [7 'g '?ctx {:max-ms ms}]]
+             [:query ['g] ['g '?ctx {:max-ms ms}]]
+             [:query ['g 'Cx {:max-depth 3}] ['g 'Cx {:max-depth 3 :max-ms ms}]]
+             [:query-status ['g 'Cx] ['g 'Cx {:max-ms ms}]]
+             [:argue ['s 'Cx nil] ['s 'Cx {:max-ms ms}]]]]
+      (is (= expected (sent-as op args)) (pr-str op args)))
+    (is (= (set (keep (fn [[op ks]] (when (:max-ms ks) op)) serve/search-bounds))
+           (set (keys @#'serve/clock-fill)))
+        "every op the clock ceiling holds has a clock-fill row")))
+
+(tu/deftest-kb an-anytime-read-sent-a-nil-budget-answers-under-the-ceiling
+  (tu/with-terms [dog Muffet CxServe]
+    (let [handler (open-app kb)]
+      (post-op handler :assert [(list dog Muffet) CxServe])
+      (doseq [op [:ask-within :prove-within]]
+        (let [r (post-op handler op [(list dog '?x) CxServe nil])]
+          (is (= [true :complete] [(:ok r) (:status (:result r))]) (str op)))))))
+
+(tu/deftest-kb a-prover-the-filled-depth-cut-short-is-refused-and-prove-within-reports-it
+  (tu/with-terms [dog animal living Muffet CxServe]
+    (v/assert kb (list dog Muffet) CxServe)
+    (v/assert-rule kb [(list dog '?x)] (list animal '?x) CxServe {:direction :backward})
+    (v/assert-rule kb [(list animal '?x)] (list living '?x) CxServe {:direction :backward})
+    (let [handler (open-app kb)
+          goal    (list living '?x)]
+      (with-redefs [config/max-query-depth (constantly 1)]
+        (testing "a call naming no depth gets the ceiling, and a cut there refuses"
+          (doseq [op [:prove :provable?]]
+            (is (= [false :budget-exhausted] ((juxt :ok :type) (post-op handler op [goal CxServe])))
+                (str op))))
+        (testing "prove-within returns what it found and says the depth cut it"
+          (is (= [true [] true] ((juxt :ok (comp :results :result) (comp :truncated? :result))
+                                 (post-op handler :prove-within [goal CxServe {}])))))
+        (testing "a depth the call names prunes, as in process"
+          (is (= [true []] ((juxt :ok :result)
+                            (post-op handler :prove [goal CxServe {:max-depth 1}])))))
+        (testing "a derivation inside the ceiling answers"
+          (is (= [true [{'?x Muffet}]] ((juxt :ok :result)
+                                        (post-op handler :prove [(list animal '?x) CxServe]))))))
+      (with-redefs [config/max-query-depth (constantly 2)]
+        (is (= [true [{'?x Muffet}]] ((juxt :ok :result) (post-op handler :prove [goal CxServe])))
+            "and the same call answers once the ceiling admits its depth")))))
+
+(deftest the-depth-ceiling-holds-the-query-family-and-the-provers-beside-the-clock
   (let [depth (set (keep (fn [[op ks]] (when (:max-depth ks) op)) serve/search-bounds))]
-    (is (= #{:query :query? :query-status :argue} depth))
-    (is (not-any? #(:max-ms (serve/search-bounds %)) depth))
+    (is (= #{:query :query? :query-status :argue :prove :provable? :prove-within} depth))
+    (is (every? #(:max-ms (serve/search-bounds %)) depth))
     (is (not (contains? serve/search-bounds :why)) "why reads no bound")))
 
 (def ^:private chain-bounded-writes

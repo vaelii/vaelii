@@ -22,7 +22,6 @@
   point.  That is `vaelii.core/assert`, and an engine namespace may not require
   `vaelii.core`, so the caller passes it in."
   (:require [clojure.set :as set]
-            [clojure.string :as str]
             [vaelii.impl.chain :as chain]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.imperative :as imperative]
@@ -221,9 +220,9 @@
         (p/put-sentex (:records kb) s')
         (when moved?
           (p/index-sentex (:index kb) s' h)
-          (kb/note-lazy-rule-moved! kb s')
-          ;; the engines decide whether a `(?p …)` consequent concludes any predicate
-          (rules/forget-stratification))
+          (kb/note-lazy-rule-moved! kb s'))
+        ;; The shared graph holds the rule record, including both slots.
+        (rules/forget-stratification)
         (when (not= (boolean def?) (boolean (:defeasible stored)))
           (special/restrength-firings! kb h)
           ;; a rule's defeasibility decides whether it is a forced-monotonic rule
@@ -250,8 +249,8 @@
           (when moved? (p/unindex-sentex! (:index kb) cur h))
           (p/put-sentex (:records kb) s')
           (when moved?
-            (p/index-sentex (:index kb) s' h)
-            (rules/forget-stratification))
+            (p/index-sentex (:index kb) s' h))
+          (rules/forget-stratification)
           (when def-moved?
             (special/restrength-firings! kb h)
             (checks/force-sentexes! kb [s'])))))))
@@ -625,9 +624,7 @@
               (nm/check! (:naming kb) sentence context)
               (checks/check-length-binding (:naming kb) sentence context)
               (checks/check-ground kb sentence context)
-              (when-let [ps (seq (special/wff-problems (reasoning/taxonomy kb) sentence context))]
-                (throw (ex-info (str "not well-formed: " (str/join "; " ps))
-                                {:type :not-well-formed :sentence sentence})))
+              (special/check-wff (reasoning/taxonomy kb) sentence context)
               (checks/check-except-target kb sentence)
               ;; the rule-set half of well-formedness, for the *other* thing that can
               ;; close a cycle through negation: a genl / genlCx edge arriving
@@ -639,6 +636,7 @@
               ;; arriving underneath rules that read the predicate negatively, which
               ;; is what turns those reads into negation as failure (docs/naf.md)
               (checks/check-closed-extent-stratified kb sentence context)
+              (checks/check-exact-present kb sentence context)
               (checks/constraint-checks kb sentence context strength))
             ;; Bulk load skips the dedup trie-walk: a distinct corpus never hits an
             ;; existing sentex, so `create-sentex` directly is the same result the

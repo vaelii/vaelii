@@ -11,7 +11,7 @@
 # read by every runner — `lein lint`, the suite, the matrix and this.  A second
 # copy in Clojure would be a second spelling of the row format, and the two would
 # drift silently, because nothing compares a TSV against another language's idea
-# of it.  The cost is one extra leiningen boot (~1s against a ~40s stage).
+# of it.  The cost is one extra leiningen boot (~1s against a stage of about an hour).
 #
 # Arguments pass straight through, so `lein perf --quick`, `lein perf --only
 # <name>[,<name>…]` and `lein perf --tolerance <x>` are unchanged.

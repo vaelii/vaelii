@@ -1,7 +1,7 @@
 # Storage
 
 - **Covers:** the `RecordStore` / `IndexStore` protocols and the optional `Prefetching`,
-  `Tallying`, `BulkLoading` and `BulkAnnotating` capabilities, what the three enumerations promise and what a
+  `Tallying`, `BulkLoading`, `BulkAnnotating`, `BulkDeleting` and `HandleReserving` capabilities, what the three enumerations promise and what a
   handle set costs per handle, the sink an `import!` writes its records through, the eight legal record×index backend pairings and the optional `:sqlite` and
   `:pg` records adapters, nippy serialization, what one fact of a bulk load costs phase by
   phase, the two routes from a load to the chained closure and what each costs, loading a
@@ -416,6 +416,27 @@ on top, and it is `BulkAnnotating` that carries those: **3,038 → 10,343 record
 Postgres on the 10k corpus — 3.4×, one statement for every premise mark and one per 1,000
 provenance maps in place of 20,000 round trips. The index rebuild remains there,
 which is the next section's subject.
+
+### `BulkDeleting` — the deletes a record surgery makes
+
+`edit-records!` removing records deletes each one, and every justification resting on one,
+in a loop over handles it already holds; on a server that is a round trip a record, and a
+surgery can remove millions of records. `delete-sentex-batch` and
+`delete-justification-batch` are the protocol, `capabilities/delete-sentexes` /
+`delete-justifications` the entry point, with the loop as the fallback. `record-edit/apply!`
+unindexes a chunk of 1,000 and then deletes it, so a crash still leaves no record without its
+postings deleted ahead of them. Over Postgres a chunk is one statement tearing down each
+record with its provenance, as `delete-sentex!` does one; over SQLite it is one transaction.
+
+### `HandleReserving` — the handles a base skips for its forks
+
+`reserve-handles!` adds `[lo hi)` ranges that `next-id` skips from then on; a record
+written with an explicit `:id` is unaffected. `open-kb`'s `:fork-dirs` calls it before
+anything allocates a handle, with the ranges each named durable fork recorded
+([overlay.md](overlay.md#the-merge-model--record-half)), and refuses a record store
+without the capability. `:memory` and `:disk` implement it; the `:sqlite` and `:pg`
+adapters do not. The skip is one sorted-map lookup per allocation while ranges are
+reserved, and one `nil` check otherwise.
 
 ## Backend selection: two independent axes
 
@@ -2034,7 +2055,8 @@ unaffected.
 Every thaw the engine runs over a file — a record stream, a log, a dump, the reasoning
 image's `network.bin` and `state.nippy` — goes through one entry point, and its allowlist of class
 names is **empty**: a frame naming a class is refused `:disallowed-class` before the name
-is resolved.
+is resolved. The allowlist check reads class names only. No check bounds the memory a
+frame's nippy payload allocates as it thaws.
 
 Nothing the engine writes states one. An export dump's frames are field maps by the
 format's own rule ([api.md](api.md), `export!`); a log frame is a positional vector
@@ -2842,7 +2864,8 @@ instead: "Trusting an image". What `:oplog?` attaches and what an open with it r
 "The operation log". A store records the reasoner set that `:reasoners` and `add-reasoner`
 name, and an open naming another set is refused (`:reasoner-mismatch`): "The reasoner set".
 `fork` is the ergonomic spelling of `:overlay` and takes its base from a live KB; the raw
-form takes `:base` opts, which mounts a base this process has no KB open over.
+form takes `:base` opts, which mounts a base this process has no KB open over. What
+`:fork-dirs` reserves: "`HandleReserving`".
 
 **An option the function does not read is refused**, because a misspelt `:space` is a key
 nothing looks at: the KB would open on the default space, and two KBs meant for separate

@@ -1,7 +1,7 @@
 ;; Defines `jdk-major`, `bash` and `test-jvm-opts`, which the `~` forms below read.
 (load-file (str (.getParent (java.io.File. *file*)) "/project-env.clj"))
 
-(defproject com.vaelii/vaelii "0.32.0"
+(defproject com.vaelii/vaelii "0.33.0"
   :description "Vaelii — a contextualized common-sense knowledge base with a
                 count-aware trie index, forward/backward inference,
                 and JTMS truth maintenance, over an in-memory or on-disk store."
@@ -171,6 +171,8 @@
                                              :exclusions [com.vaelii/vaelii]]]}
              :with-foreign  {:dependencies [[com.vaelii/vaelii-foreign "RELEASE"
                                              :exclusions [com.vaelii/vaelii]]]}
+             :with-agents   {:dependencies [[com.vaelii/vaelii-agents "RELEASE"
+                                             :exclusions [com.vaelii/vaelii]]]}
              ;; static analysis, dev-only so none of it reaches an uberjar. Keep
              ;; lein-cloverage's version in step with scripts/coverage.sh, which injects
              ;; the same plugin at the root level so `cloverage` registers under
@@ -201,7 +203,11 @@
                     ;; the bash a test drives a script with: `bash` above, and why
                     :jvm-opts ~(into [(str "-Dvaelii.test.bash=" bash)
                                       ;; the browser's removed lists, kept out of ~/.vaelii
-                                      "-Dvaelii.removed.dir=target/test-removed"]
+                                      "-Dvaelii.removed.dir=target/test-removed"
+                                      ;; a page load under test is answered with its page
+                                      ;; however long its read takes on a loaded box; a
+                                      ;; test of the waiting page sets its own budget
+                                      (str "-Dvaelii.browser.detach-ms=" Long/MAX_VALUE)]
                                      test-jvm-opts)
                     ;; Quiet the engine's own logging under test. Trove's default
                     ;; backend is the console one at `:info` and nothing sets it, so
@@ -270,9 +276,7 @@
              ;; explaining, and a level outside the five fails the run rather than
              ;; silencing it. A blank value is unset and reads as `:error`.
              :bench {:source-paths ["bench"]
-                     :dependencies [[org.openjdk.jol/jol-core "0.17"]
-                                    [org.roaringbitmap/RoaringBitmap "1.6.24"]
-                                    [it.unimi.dsi/fastutil-core "8.5.19"]]
+                     :dependencies [[org.openjdk.jol/jol-core "0.17"]]
                      :jvm-opts ["-Xmx6g" "--add-opens=java.base/java.lang=ALL-UNNAMED"
                                 "-Djdk.attach.allowAttachSelf=true"
                                 ;; jol sizes a hidden class (a lambda) without Unsafe's

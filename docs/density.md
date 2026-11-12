@@ -693,11 +693,10 @@ absorbing further growth. That is what the shape is consistent with, not somethi
 run measured directly — a `Long2ObjectOpenHashMap` resize is not ruled out by these four
 points alone, and either way the operative fact for the budget is the plateau, not which
 of the two produced it. Refitting the index row's affine coefficient over the widened range drops it from
-86 B/fact to **69 B/fact** (66 B/fact at j/n 0.5) — the 20% the old fit was carrying on
-the routed map's behalf. **The section is still refused a shape of its own — a
-flat/jump/flat step matches none of the three the shape check tests for — but it is no longer an
-unattributed 4.6 GB: it is a measured, bounded 1.7 MB, and the affine fit for the row that
-contains it no longer needs to guess.**
+86 B/fact to **69 B/fact** (66 B/fact at j/n 0.5): a fit over the narrower range charged
+the routed map's 20% to the index row. **The section is refused a shape of its own — a
+flat/jump/flat step matches none of the three the shape check tests for — and it is a
+measured, bounded 1.7 MB.**
 
 The move off the boxed blob is not free on the mapped side, and the two figures are not
 each other's complement. The blob shed 34.10 GB of heap; the mapped columns took on far

@@ -35,6 +35,11 @@ scratch context hung below the asking context, so an ignored call leaves the
 KB as it found it and every answer names its assumptions. See
 [abduction.md](abduction.md).
 
+**Agenda** ![inference](../.github/badges/cat-inference.svg): The work a search or a
+chaining run has queued and not yet done. The node engine's agenda is a frontier, a node
+registry and a claimed-key set, and a budgeted run stops between node expansions holding
+it instead of a continuation closure. See [anytime.md](anytime.md).
+
 **Aggregation** ![inference](../.github/badges/cat-inference.svg): The five
 query operators `agg/count` / `agg/sum` / `agg/min` / `agg/max` / `agg/avg` —
 namespaced like `set/*Rule`, the bare words being ordinary vocabulary.
@@ -189,10 +194,23 @@ predicates that denote its base relations — `{:name :algebra :denotation}`, wh
 `qcn-kb` needs to read facts into a network and read entailments back out. Six
 ship; `core/calculi` is them as data. See [qcn.md](qcn.md).
 
+**Calendar index** ![backend](../.github/badges/cat-backend.svg): The IndexStore count trie
+`:calendar` that files each stored fact naming a time under its functor and the month of
+each point the calendar places of that time, `[f frame year month]`, with each functor's
+months listed under `[:calendar-buckets f]`. A read takes one functor's months between two
+calendar moments. See
+[indexing.md](indexing.md#the-calendar-index).
+
 **Canonical form** ![kb](../.github/badges/cat-kb.svg): The normalized shape a
 sentence is stored in so logically identical knowledge stores once — canonical
 variables, canonical literal order, symmetric- and commuting-argument sorting, and
 comparison folding. See [canonicalization.md](canonicalization.md).
+
+**`channel_view` / `ChannelViewFn` / `channelViewOf`** ![kb](../.github/badges/cat-kb.svg):
+`VIEW_CHANNEL` access is a happening kind below `resource_access`. `ChannelViewFn`
+names the kind over one Discord channel; `channelViewOf` relates that channel to
+the kind. A capability does not entail reading history, sending messages or
+connector delivery. See [contexts.md](contexts.md#the-context-topology).
 
 **Closed predication** ![kb](../.github/badges/cat-kb.svg): A **Predication** with no free variable. What a
 stored `LiteralSentex` holds in its `:sentence` slot, since `checks/check-ground` refuses
@@ -216,6 +234,13 @@ spellings. See [naf.md](naf.md#a-closed-extent-for-one-argument-value).
 `(comment <term> "…")` — that lets the shipped vocabulary document itself in
 its own representation, read back by `core-context/comment-of`. See
 [inference.md](inference.md).
+
+**`communication_channel`** ![kb](../.github/badges/cat-kb.svg): An established
+logical route or shared venue for transmitting messages. The kind is aspatial,
+temporal and acausal, and therefore intangible. A channel can be one-way or
+reciprocal and can remain available
+without messages. A physical carrier, bare frequency, address or message content
+is not itself a channel. See [contexts.md](contexts.md#the-context-topology).
 
 **Commuting component** ![kb](../.github/badges/cat-kb.svg): The set of argument
 positions one literal may permute, reduced from the commutativity marks a relation
@@ -289,9 +314,10 @@ context the topology wires in. It holds the **Upper layer**, loaded by
 justifications and of every `genlCx` edge. Sync locks its premises to the shipped
 files. See [contexts.md](contexts.md#the-context-topology).
 
-**CxWell** ![kb](../.github/badges/cat-kb.svg): The context that sees every middle
-theory except the opt-in ones, transitively seeing the whole ontology; the
-test-world's individuals and fables hang below it. See [contexts.md](contexts.md).
+**CxWell** ![kb](../.github/badges/cat-kb.svg): The context that sees CxUniverse and
+seven middle theories, not CxRealWorld (which sees CxWell) or the two opt-in theories;
+the test-world's individuals and fables hang below it. See
+[contexts.md](contexts.md#the-context-topology).
 
 ## D
 
@@ -303,7 +329,7 @@ besides. What each term of the engine's own grammar says about itself is written
 [predicates.md](predicates.md).
 
 **`decontextualized_predicate`** ![kb](../.github/badges/cat-kb.svg): Metadata
-deducing every `(P …)` — asserted or rule-concluded — into CxUniverse, so the
+deducing every `(P …)` and `(not (P …))` — asserted or rule-concluded — into CxUniverse, so the
 fact is visible from every context instead of belonging to one. The target is
 fixed, not named: the definitional checks are context-scoped and only cover the copy
 when the stating context sees where it lands. `forced_decontextualized_predicate` is the
@@ -403,6 +429,11 @@ arguments share an equivalence class — negation as failure over the equality
 closure, keeping the unique-name assumption. Variable-arity, ground-only, and
 not assertible. See [equality.md](equality.md).
 
+**Dilemma** ![tms](../.github/badges/cat-tms.svg): A placed nogood whose weakest
+defeat-class is shared by several members and is defeasible. Every member stays believed
+at `:default`, `contradictions` reports it, and a labeling decides it inside a context.
+See [nmtms.md](nmtms.md) and [labeling.md](labeling.md).
+
 **Direction** ![kb](../.github/badges/cat-kb.svg): Whether a rule chains
 `:forward`, `:backward`, `:both`, `:forward-only`, `:lazy-forward` or `:inert` — the values
 the `set/*Rule` wrappers and the `:direction` opt spell. `:forward` and `:both` are one class — forward +
@@ -415,6 +446,23 @@ engines a direction names, in its `:engines` field (`#{:forward :backward}` for
 `#{:backward}`, the tractable default, since forward chaining materializes a conclusion
 per match. The chainers read the field. See [inference.md](inference.md).
 
+**`discord_channel` / `DiscordChannelFn` / `discordChannelOf`** ![kb](../.github/badges/cat-kb.svg):
+A Discord channel or thread is a `communication_channel` identified by its decimal-string snowflake.
+`DiscordChannelFn` names the channel and `discordChannelOf` relates its snowflake
+to the channel. A channel's identity does not establish its existence or
+readability. See [contexts.md](contexts.md#the-context-topology).
+
+**`discordAccountId`** ![kb](../.github/badges/cat-kb.svg):
+`(discordAccountId P S)` states that person P is authorized to use the Discord
+account whose ID is string S. A person can use several accounts, and an account
+can be shared. The association grants no channel permission by itself. See
+[contexts.md](contexts.md#the-context-topology).
+
+**`discordChannelName`** ![kb](../.github/badges/cat-kb.svg):
+`(discordChannelName C N)` states an observed name string N for Discord channel C.
+Names can change and need not be unique. The GAF's context supplies its time.
+See [contexts.md](contexts.md#the-context-topology).
+
 **`disjoint` / `disjoint_metatype`** ![kb](../.github/badges/cat-kb.svg): Declare
 types share no instance, closed under genl. A metatype's members are pairwise
 disjoint by being consulted, not by storing the clique. Belief-following. A declaration
@@ -425,9 +473,11 @@ denial's vantage. See [taxonomy.md](taxonomy.md).
 
 **Edge reading** ![inference](../.github/badges/cat-inference.svg): A stored `(q x)`
 that a membership `(s x)` and a `genl` path from `s` to `q` with no `:monotonic` path
-beside it conclude under the informant `edgeReading`, stored only while a denial of
-`(q x)` is stored. A denial of either strength undercuts it where a reader sees the
-denial believed. See [inference.md](inference.md#an-edges-reading).
+beside it conclude under the informant `edgeReading`, stored only while a membership
+nogood of `x` climbs the path: beside a denial of `(q x)`, a membership a separation
+holds apart from `q`, or deniers of every part of a cover of `q`. Those members undercut
+it at either strength where a reader sees them believed. See
+[inference.md](inference.md#an-edges-reading).
 
 **Edge solver** ![asp](../.github/badges/cat-asp.svg): A `Solver` that decides a
 `Program`'s contested assumptions, the defeasible members of its nogoods; known-true
@@ -470,6 +520,13 @@ two spellings of a term reach the same answers without storing both. See
 and `equals` all feed. Belief-following, content-keyed representative. See
 [equality.md](equality.md).
 
+**`eternal_predicate`** ![kb](../.github/badges/cat-kb.svg): The type of a predicate
+whose tuples hold independently of time within a theory. A `(P …)` or `(not (P …))` stored
+in a time slice is deduced into the context the slice slices when the slice sees `P` a
+member of `eternal_predicate` or of a type below it, so every slice of that context sees the
+copy. See
+[contexts.md](contexts.md#eternal_predicate-a-fact-stated-in-a-time-slice-holds-in-what-it-slices).
+
 **Evaluatable predicate** ![inference](../.github/badges/cat-inference.svg): A plain
 Clojure fn wrapped as a computed prover by `add-evaluatable` — a *check* (every
 argument ground, a truthy return is the predicate holding) or a *result-binding*
@@ -508,7 +565,7 @@ cardinality being its own stored count. See [indexing.md](indexing.md).
 
 ## F
 
-**Facet** ![kb](../.github/badges/cat-kb.svg): One of the ten lanes a grammar term takes part in —
+**Facet** ![kb](../.github/badges/cat-kb.svg): One of the ten keywords a grammar term's `:facets` field holds —
 `:cached`, `:derived`, `:migrates`, `:arbitrable`, `:reach`, `:query-only`, `:answers`,
 `:retriggers`, `:convicts`, `:inert`. A closed vocabulary, so a facet cannot come to mean
 whatever its first user assumed, and the term's class is read off it rather than off prose
@@ -581,10 +638,15 @@ per-instant counterpart of `functional` for a value carried as a fluent.
 taken together, fixes the filler at `n`. Same merge-or-nogood rule and same four arrival
 directions; what it adds is a **composite determinant**, as in
 `(functionalInArg namesObject 3)` for "one namespace and one path name one object".
-`(functionalInArg P 2)` on a binary predicate is `(functional P)`. See
+`(functionalInArg P 2)` on a binary predicate is `(functional P)`, and a core.txt
+forward rule concludes it from `(functional P)`. See
 [taxonomy.md](taxonomy.md) and [equality.md](equality.md).
 
 ## G
+
+**Generator** ![inference](../.github/badges/cat-inference.svg): A rule whose
+consequent is a rule. A firing stores the inner rule as a derived sentex (a mint),
+justified by the firing. See [generators.md](generators.md).
 
 **`genl` / `genlCx`** ![kb](../.github/badges/cat-kb.svg): The two
 transitively-closed relations — `genl` between unary types and between
@@ -679,8 +741,9 @@ the second.
 
 **Inertia** ![inference](../.github/badges/cat-inference.svg): A state persists
 until something ends it. The content of the shipped event calculus (`CxChange`): a
-fluent an event `initiates` at one instant still `holdsAt` a later one exactly while
-`(unknown (clipped …))` — nothing terminated it in between. Undercutting rather than
+fluent an event `initiates` at one instant still `holdsAt` a later one exactly while no
+event `terminates` it at a moment the KB does not place outside the two instants, which
+inertia's `unknown` tests when the question is asked. Undercutting rather than
 defeat, so a terminating event heard of later leaves no conclusion to arbitrate.
 See [time.md](time.md).
 
@@ -742,9 +805,9 @@ names and a Mark family has to agree about. `facet-contract`'s `:lane?` says whi
 are ones: `:retriggers` is not, because a re-check posting is one line inside one Arm
 rather than a wiring of its own, and `:query-only` and `:inert` are not, because a
 classification of the whole term is nothing a family can differ about. The scale is a
-subsystem's whole reading of the declaration — the merge lane, the arbitration lane —
-and a family joined to one in one spelling and not another is #52 and #54. See
-[predicates.md](predicates.md).
+subsystem's whole reading of the declaration — the merge lane, the arbitration lane. A
+family joined to one in one spelling and not another is refused at namespace load as
+`:family-lane`. See [predicates.md](predicates.md#refused-at-namespace-load).
 
 **`lessThan` / `greaterThan`** ![inference](../.github/badges/cat-inference.svg):
 Evaluable arithmetic comparators, variable-arity — a ground chain
@@ -786,6 +849,10 @@ or the four argument constraints. Named once on each spelling so a third reaches
 lane at once; a family is not a storage kind, its spellings caching differently. See
 [predicates.md](predicates.md).
 
+**Meta-sentex** ![kb](../.github/badges/cat-kb.svg): A sentex whose sentence names
+another stored sentex by `(sentexHandle H)`, as `except`, `exceptWhen` and `defeat` do.
+See [api.md](api.md) and [exceptions.md](exceptions.md).
+
 **`meta_metatype`** ![kb](../.github/badges/cat-kb.svg): A third-order type — its instances are metatypes, one order above `metatype` on the metatype-order ladder. See [taxonomy.md](taxonomy.md).
 
 **Metatype** ![kb](../.github/badges/cat-kb.svg): A type of types — its members
@@ -797,6 +864,10 @@ durations and distances between instants, closed by all-pairs shortest paths
 rather than by a composition table — a simple temporal problem, deliberately not
 a relation algebra. `vaelii.impl.stp`, registered as `:metric-time`. See
 [stp.md](stp.md).
+
+**Middle context** ![kb](../.github/badges/cat-kb.svg): The context of one middle
+theory, one file under `resources/kb/middle/`. Each sees CxUniverse, and CxWell sees the
+seven that state `(genlCx CxWell <context>)`. See [contexts.md](contexts.md).
 
 **Migration** ![kb](../.github/badges/cat-kb.svg): The equality-merge step that
 gives every sentex containing a retired term a rewritten twin under the
@@ -897,7 +968,7 @@ stored exception answers `(orthogonal a b)` and is read as one. See
 
 **`partitionedByType`** ![kb](../.github/badges/cat-kb.svg): `(partitionedByType ?whole ?classifier)` says that the members of a classifier partition a whole, e.g. `(partitionedByType tangible origin_type)` for `made` and `natural`. core.txt rules place each member under the whole and separate every two members. No rule draws the coverage half, so a `partition` stated beside the fact carries it. See [taxonomy.md](taxonomy.md).
 
-**`partOf`** ![kb](../.github/badges/cat-kb.svg): `(partOf ?part ?whole)` says that one thing is a part of another, of any kind. `partOf` is transitive and reflexive, both its positions declare `thing`, and the KB states that it is not antisymmetric. `tangiblePartOf`, `partOfRegion`, `subSituationOf` and `subintervalOf` are below it by `genl`, so a fact of any of the four answers `partOf`. A `partOfRegion` or `subintervalOf` tuple the RCC-8 or interval network entails answers `partOf` too, and a proper one answers `properPartOf`. Its proper reading is `properPartOf`. Every spec of `partOf` is reflexive or below `properPartOf`. See [taxonomy.md](taxonomy.md).
+**`partOf`** ![kb](../.github/badges/cat-kb.svg): `(partOf ?part ?whole)` says that one thing is a part of another, of any kind. `partOf` is transitive and reflexive, both its positions declare `thing`, and the KB states that it is not antisymmetric. `tangiblePartOf`, `permanentPartOf`, `partOfRegion`, `subSituationOf` and `subintervalOf` are below it by `genl`, so a fact of any of the five answers `partOf`. A `partOfRegion` or `subintervalOf` tuple the RCC-8 or interval network entails answers `partOf` too, and a proper one answers `properPartOf`. Its proper reading is `properPartOf`. Every spec of `partOf` is reflexive or below `properPartOf`. See [taxonomy.md](taxonomy.md).
 
 **Path consistency** ![qr](../.github/badges/cat-qr.svg): The fixpoint that
 tightens a constraint network: for every triple, intersect the constraint on a
@@ -906,9 +977,11 @@ until nothing narrows. A *greatest* fixpoint, so it removes rather than adds,
 and it is order-independent. See [qcn.md](qcn.md).
 
 **Pattern** ![inference](../.github/badges/cat-inference.svg): A **Formula** with `?x`
-variables, are read as a *pattern to match* rather than as a claim. Never stored as a non-rule
+variables, which the engine matches against stored sentexes and does not take as a claim. Never stored as a non-rule
 sentence — `checks/check-ground` refuses that — so a pattern reaches the engine only as a
 goal or inside a rule. See [inference.md](inference.md).
+
+**`permanentPartOf`** ![kb](../.github/badges/cat-kb.svg): `(permanentPartOf ?part ?whole)` says that one thing is a part of another that could not stop being one while both exist, e.g. a region inside a region. `permanentPartOf` is time-invariant, transitive and reflexive, both its positions declare `thing`, and it is below `partOf`. `partOfRegion` and `subSituationOf` are below it, and `tangiblePartOf` is not, since a wheel can come off a car. See [taxonomy.md](taxonomy.md).
 
 **`physical`** ![kb](../.github/badges/cat-kb.svg): An entity with a location in the physical space of our universe. A region of physical space is physical; the line y=x, located only in the Cartesian plane, is not. Below `spatial`; `spatiotemporal` is below it. See [taxonomy.md](taxonomy.md#the-three-partitions-of-thing).
 
@@ -961,7 +1034,10 @@ placeholder functor, audited on demand for the members with no filler. The *Spec
 pair (`predAllSpecified` / `predSpecifiedAll`) is an on-demand integrity audit reporting
 the instances with no determinate filler — binary, the filler's required type derived
 from the predicate's own slot contract rather than restated, and a predicate with no
-visible slot typing reported as an explicit declaration-contract gap. See
+visible slot typing reported as an explicit declaration-contract gap. `typeAllSpecified`
+is the Specified pair's counterpart for a classification: every instance must be believed
+a member of some member of a classifier
+([integrity.md](integrity.md#what-a-type-specified-finding-means)). See
 [predall.md](predall.md).
 
 **Predicate extent** ![backend](../.github/badges/cat-backend.svg): The count trie
@@ -1113,9 +1189,9 @@ ground **NAT** is minted as, `nat/a…` in argument position and `cx/a…` in a 
 named by a hash of its expression. Its **bookkeeping** is its `natFormula` map plus what
 the mint wrote about it: the materialized result types, the `genlResult` edges and the
 correspondence projection.
-A **placeholder** is a constant minted for an application whose corresponding predicate
-names no `:monotonic` value. Beside a `:default` value its uses take **copies**, derived
-restatements with the value in its place. A constant is an **orphan** when every stored sentex naming it is its
+A **placeholder** is the constant minted for an application of a function with a
+corresponding predicate. A `:monotonic` value retires it by a merge, and beside a
+`:default` value its uses take **copies**, derived restatements with the value in its place. A constant is an **orphan** when every stored sentex naming it is its
 own bookkeeping or a record the argument-type entailment derives off that bookkeeping
 alone, and the orphan sweep then retracts it. See [nat.md](nat.md).
 
@@ -1292,7 +1368,7 @@ premise / the class a justification confers — exactly two, `:monotonic` >
 `:default`. It propagates from the antecedents: a conclusion is never stronger
 than what it rests on. See [nmtms.md](nmtms.md).
 
-**`subSituationOf`** ![kb](../.github/badges/cat-kb.svg): `(subSituationOf ?part ?whole)` says that one situation is a part of another. `subSituationOf` is transitive, reflexive and below `partOf`, and its proper reading is `properSubSituationOf`. A part's time is within its whole's time, and two situations sharing a time are not thereby parts of one another.
+**`subSituationOf`** ![kb](../.github/badges/cat-kb.svg): `(subSituationOf ?part ?whole)` says that one situation is a part of another. `subSituationOf` is transitive, reflexive and below `permanentPartOf`, and its proper reading is `properSubSituationOf`. A part's time is within its whole's time, and two situations sharing a time are not thereby parts of one another.
 
 **Subsumption (rules)** ![inference](../.github/badges/cat-inference.svg): One rule
 covering another — a substitution σ making the covering rule's antecedents a subset of the
@@ -1385,11 +1461,12 @@ desugars to `S`'s conjuncts with `?x` a local matched variable. See
 [naf.md](naf.md).
 
 **`thing`** ![kb](../.github/badges/cat-kb.svg): The root of the `genl` type
-hierarchy — every type reaches `thing` upward. See [taxonomy.md](taxonomy.md).
+hierarchy. A type need not reach it: arity, not a `genl` path, makes a unary predicate a
+type ([naming.md](naming.md)). See [taxonomy.md](taxonomy.md).
 
 **Touched set** ![tms](../.github/badges/cat-tms.svg): The handles the JTMS relabelled,
 created or took OUT since the last `reset-touched!` (`jtms/touched`, `touched-in`,
-`touched-new`, `touched-out`), which `settle` clears when it finishes. A superset of the
+`touched-new`, and the `-touched-out` protocol method), which `settle` clears when it finishes. A superset of the
 handles whose belief moved. See [nmtms.md](nmtms.md) and
 [defenses.md](defenses.md#the-touched-set-is-a-superset-not-the-flip-set).
 
@@ -1400,10 +1477,9 @@ along `R`'s arrow: a stored `(P … W …)` and `(R W A)` give `(P … A …)`, 
 makes "the part of a wooden table is wooden" derivable from `tangiblePartOf` without a rule per
 predicate. See [inherit.md](inherit.md).
 
-**Transitivity** ![kb](../.github/badges/cat-kb.svg): The lifeblood of common
-sense, done by cached closures rather than rules for `genl` / `genlCx`, and
-by metadata-driven provers for a `(transitive P)` predicate. See
-[taxonomy.md](taxonomy.md).
+**Transitivity** ![kb](../.github/badges/cat-kb.svg): `genl` and `genlCx` are
+transitive through cached closures rather than rules, and a `(transitive P)` predicate
+through metadata-driven provers. See [taxonomy.md](taxonomy.md).
 
 **Trend** ![qr](../.github/badges/cat-qr.svg): Whether a quantity is falling,
 steady or rising — the *sign* of its rate of change, stated as `(trendOf Q S)`.
@@ -1442,8 +1518,9 @@ subtype fact satisfies the antecedent. See [inference.md](inference.md).
 **Unique-name assumption (UNA)** ![kb](../.github/badges/cat-kb.svg): Distinct
 symbols denote distinct things until an equality sentex says otherwise —
 preserved even under the equality closure and made provable by `different`.
-Suspended for an unmerged indeterminate term (skolems and `indeterminate_term`
-members) until a `rewriteOf`/merge identifies it. See [equality.md](equality.md).
+Suspended for every name of an indeterminate term's class: a stated
+`indeterminate_term` membership holds through a merge, and a merge lifts a skolem's
+exemption. See [equality.md](equality.md).
 
 **`unknown`** ![inference](../.github/badges/cat-inference.svg): The negation-as-
 failure prover — `(unknown S)` holds iff `S` is not derivable over the level-6
@@ -1454,8 +1531,9 @@ quantifier's variable. Ground/closed only and never stored. See [naf.md](naf.md)
 
 **Upper layer** ![kb](../.github/badges/cat-kb.svg): The upper ontology: every file
 under `resources/kb/upper/`, loaded into **CxUniverse** as one batch. `core.txt` is the
-vocabulary the engine interprets, and each other file is one domain. A vocabulary KB
-holds the upper layer alone. See [contexts.md](contexts.md#the-context-topology).
+vocabulary the engine interprets, `interface-rules.txt` the `args`→`argAndRest` twin
+rule, and each other file is one domain.
+A vocabulary KB holds the upper layer alone. See [contexts.md](contexts.md#the-context-topology).
 
 ## V
 

@@ -190,26 +190,26 @@
 (def ^:private budgets
   [{:name :single-antecedent
     :build single-antecedent
-    ;; the conclusion is a second membership of the datum's term, which the membership
-    ;; candidates read the term's unary predicate set for once (`membership/note-membership!`)
-    :reads {:arity-binding 2 :argument-root 100 :argument-slot 100 :exception-index 200
-            :predicate-extent 1201 :rule-index 300 :tax-support 100 :trie-counts 500}}
+    ;; the conclusion is a second membership of the datum's term: the membership candidates
+    ;; (`membership/note-membership!`) and the eternal check each read a unary predicate set once
+    :reads {:arity-binding 2 :argument-root 100 :argument-slot 200 :exception-index 200
+            :predicate-extent 701 :rule-index 300 :tax-support 100 :trie-counts 300}}
 
    {:name :unfanned-join
     :build unfanned-join
-    :reads {:arity-binding 2 :exception-index 200 :predicate-extent 803 :rule-index 300
+    :reads {:arity-binding 2 :argument-slot 100 :exception-index 200 :predicate-extent 703 :rule-index 300
             :trie-counts 400 :trie-lookup 100}}
 
    {:name :fanned-join
     :build fanned-join
-    :reads {:arity-binding 2 :argument-root 200 :argument-slot 200 :exception-index 200
-            :opposed 100 :predicate-extent 1203 :rule-index 300 :trie-counts 500}}
+    :reads {:arity-binding 2 :argument-root 200 :argument-slot 300 :exception-index 200
+            :predicate-extent 1103 :rule-index 300 :trie-counts 500}}
 
    ;; two `:trie-lookup` per firing, not one: the mirror is a second orientation to look
    ;; the conclusion's own handle up under, and both orientations reach `join-matches`
    {:name :symmetric-trigger
     :build symmetric-trigger
-    :reads {:arity-binding 2 :exception-index 200 :predicate-extent 803 :rule-index 300
+    :reads {:arity-binding 2 :argument-slot 100 :exception-index 200 :predicate-extent 703 :rule-index 300
             :trie-counts 400 :trie-lookup 200}}])
 
 ;; ---- measuring -----------------------------------------------------------

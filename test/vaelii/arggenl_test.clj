@@ -57,8 +57,8 @@
      (v/assert kb (list 'genl sub root2) 'CxUniverse)
      (v/assert kb (list 'arg instRel 1 root2) 'CxUniverse)
      ;; a type symbol comes within arg's reach only once it carries a membership of
-     ;; its own reaching `thing` — which is what the starter's (unary_predicate t) batch
-     ;; does for every type.  Without one the open-world exemption applies and there is
+     ;; its own reaching `thing`, as each starter type's defining text declares with
+     ;; (unary_predicate t). Without one the open-world exemption applies and there is
      ;; nothing to convict, so the test states it rather than assuming a loaded KB.
      (let [meta (tu/tmp-type)]
        (v/assert kb (list 'genl meta 'thing) 'CxUniverse)
@@ -239,7 +239,7 @@
   ;; retraction never produces (it drops both).  `clear!` does exactly that — it wipes
   ;; the stores and deliberately leaves the in-memory caches alone — so it is the shape
   ;; a reset-and-reload takes, and the one that catches a cache `recover` forgot.
-  (tu/with-cleared-kb [kb2 tu/fresh]
+  (tu/with-cleared-kb [kb2 tu/isolated-fresh]
     (let [rel (tu/tmp-pred) a (tu/tmp-ind)]
       (v/assert kb2 (list 'arity rel 2) 'CxUniverse)
       (is (= 2 (tax/declared-arity (reasoning/taxonomy kb2) rel)))

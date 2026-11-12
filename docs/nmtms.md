@@ -111,7 +111,8 @@ not it loads the upper layer:
 | `exceptWhen` | taking one OUT unblocks the firings of the rule it names, so what a reader holds blocked would shrink ([exceptions.md](exceptions.md)) |
 | `rewriteOf`, `sameAs`, `equals` | taking one OUT un-merges two terms, so what a reader hides would shrink |
 | `injection`, `surjection`, `bijection` | premises of `core.txt`'s rules concluding `functional`, `functionalInArg`, `injection` and `surjection` (decision 17) |
-| `functionCorrespondingPredicate`, `result` | premises of `core.txt`'s rules concluding `(arg P n T)` from a function's `result`, since `arg` is forced-monotonic |
+| `functionCorrespondingPredicate`, `result` | premises of `core.txt`'s rule concluding `(arg P n T)` from a function's `result`, since `arg` is forced-monotonic |
+| `functionCorrespondingBinaryPredicate` | the premise of `core.txt`'s rule concluding `(functionCorrespondingPredicate F P 2)`, which is forced-monotonic |
 | `fixed_arity`, `fixed_arity_predicate`, `fixed_arity_function`, `bounded_arity`, `unbounded_arity`, `at_least_binary`, `at_least_ternary`, `at_least_quaternary`, `at_least_quinary`, `arityMax`, `admitsArgnum` | the arity policies, read beside the arity bindings, so a policy goes OUT only by retraction as a length does |
 | `relation`, `predicate`, `function`, `truth_valued_relation`, `logical_constant`, `logical_connective`, `quantifier`, `symbol`, `context`, `unrepresented_term` and its value kinds (`boolean`, `character`, `keyword`, `number`, `integer` and its four sign classes, `string`) | the term kinds: a clash between two of them is a conflict and never a defeat, so a `:default` `(predicate X)` beside a `:default` `(string X)` is reported in `conflicts` with both believed |
 | `greaterThan`, `lessThan` | the numeric comparators: each holds of numbers only, and `core.txt`'s rules concluding `at_least_binary` through `at_least_quinary` read `greaterThan` beside `arity` and `arityMin` |
@@ -401,10 +402,16 @@ depend on that order is answering a question nobody asked.
 
 Belief is therefore *a function of current state*, whether the engine maintains it at the
 write or computes it at a read. The property holds of belief over the stored knowledge.
-`try-assert` is the one write entry point that reads arrival order. It refuses a write
-that would clash with stored content, so arrival order decides what is stored
-([api.md](api.md#refusing-a-clash)). The stored knowledge still yields the same beliefs
-whatever order it was stored in.
+`try-assert` refuses a write that would clash with stored content, so arrival order
+decides what it stores ([api.md](api.md#refusing-a-clash)). `assert` reads arrival order
+at each refusal of a write that conflicts with a stored one: a `genl` or `genlCx` edge
+closing a cycle
+([taxonomy.md](taxonomy.md#the-closure-is-not-materialized--it-is-answered-on-demand)), a
+rule or grant closing a cycle through negation
+([naf.md](naf.md#stratification-from-both-arrival-orders)), and a fact or `genlCx` edge
+giving the real world's present an exact or dated start
+([time.md](time.md#the-real-worlds-present)). The stored knowledge still yields the same
+beliefs whatever order it was stored in.
 
 Two leaks would let arrival order back in. The first is **tie-breaks**: when two beliefs
 are equally strong something has to choose, and every such choice keys on **content**
@@ -425,16 +432,16 @@ stops" states what each leaves stored).
 disjointness, functional, cover, `asymmetric` or `anti_transitive` clash with content the
 KB already holds is stored, and the settle places the nogood with the verdict its members'
 classes give.
-So the same sentences in any order leave the same store and the same beliefs, and a clash
-whose members are all `:monotonic` stands in `conflicts` whichever member arrived last.
-`try-assert` is the one write entry point outside the invariant: it refuses a clash with
-believed content, so whether a write lands depends on what arrived before it
-([api.md](api.md#refusing-a-clash)).
+So the same clashing sentences in any order leave the same store and the same beliefs, and
+a clash whose members are all `:monotonic` stands in `conflicts` whichever member arrived
+last. `try-assert` is the one write entry point that refuses a definitional clash: it
+refuses a clash with believed content, so whether a write lands depends on what arrived
+before it ([api.md](api.md#refusing-a-clash)).
 
-**What a refusal may rest on.** A refusal reads the sentence and nothing the KB holds
-beyond the vocabulary that spells it: naming (which reads the sentence's own argument
-count), groundness, a malformed special predicate, and a length binding against an engine
-term's shape or the bound term's spelling
+**What a refusal may rest on.** Apart from the refusals above that read arrival order, a
+refusal reads the sentence and nothing the KB holds beyond the vocabulary that spells it:
+naming (which reads the sentence's own argument count), groundness, a malformed special
+predicate, and a length binding against an engine term's shape or the bound term's spelling
 ([taxonomy.md](taxonomy.md#arity)).
 `checks/refuses-assert?` answers false for a clash that names the other stored members
 of its nogood (`checks/arbitrable?`), so the entry point stores it, and what is stored is
@@ -809,9 +816,11 @@ a query differently without throwing, so each has a test.
    reference commits by compare-and-set on its state atom, the dense network by taking its
    `StampedLock` for writing. `jtms_atomicity_test` runs against both. While a hold
    (`-hold`) is open, a thread other than its owner reads the `:output`, `:blocked` and
-   `:superseded` roles as they stood when the hold began; the reference keeps its state
-   map from that moment, and the dense network records each label the first relabel after
-   it moves. `kb_concurrency_test` runs both.
+   `:superseded` roles and the forced sets as they stood when the hold began; the
+   reference keeps its state map from that moment, and the dense network records each
+   label the first relabel after it moves and copies a forced set before it changes. The
+   dense network reads the graph role (supports, dependents, depth) live, and the
+   reference reads it from the held map. `kb_concurrency_test` runs both.
 3. **The flips are inside the published set, and the touched set inside the region.**
    `preview`, the consequence report and the change feed read `-touched` instead of
    diffing the believed set, which would cost O(KB) per write
@@ -900,11 +909,11 @@ three, and a read runs the last at its reader:
    `discover-inherited!` records each inherited nogood whose members the network believes,
    with its vantages (`inherited/install-inherited!`). The inherited family is:
    - a stored claim against a **known-true claim reached by argument preservation**
-     (`preserving-nogoods`), whose second side was never stored. `(largerThan dog cat)`
-     asserted `{:strength :monotonic}` reaches `(largerThan chihuahua maine_coon)`, and a
-     stored `(not (largerThan chihuahua maine_coon))` denies a claim with no handle, as a
-     stored `(largerThan maine_coon chihuahua)` does under an `asymmetric` mark on
-     `largerThan` or a super-predicate of it (`inherit/converse-claim`), and as a stored
+     (`preserving-nogoods`), whose second side was never stored. `(typeLargerThan dog cat)`
+     asserted `{:strength :monotonic}` reaches `(typeLargerThan chihuahua maine_coon)`, and a
+     stored `(not (typeLargerThan chihuahua maine_coon))` denies a claim with no handle, as a
+     stored `(typeLargerThan maine_coon chihuahua)` does under an `asymmetric` mark on
+     `typeLargerThan` or a super-predicate of it (`inherit/converse-claim`), and as a stored
      membership `(S x)` does when a separation holds `S` apart from a preserved `P`
      whose claim reaches `(P x)` (`inherit/separated-claims`). The
      members are the stored claim and everything the reading rests on: the general claim,
@@ -1459,15 +1468,16 @@ nogood's grounds, so a ground a second nogood defeats takes the first nogood's p
 sentexes out of belief wherever that defeat is in force:
 
 ```
-CxUniverse   (genl chi thing) (genl dog thing) (genl cat thing)  (disjoint dog cat)
- ├─ CxA      (genl chi dog)                 :default
- └─ CxD      (not (genl chi dog))           :monotonic
+CxUniverse   (genl chi thing) (genl dog thing) (genl cat thing)  (genl chi dog) :monotonic
+ ├─ CxA      (disjoint dog cat)             :default
+ └─ CxD      (not (disjoint dog cat))       :monotonic
       CxB sees CxA and CxD:  (chi Kit) :default   (cat Kit) :monotonic
 ```
 
-CxB is the vantage of both nogoods. The negation pair places the `defeat` of the edge
-there, and the membership nogood places the `defeat` of `(chi Kit)` there, resting on the
-edge it climbed. At CxB the edge is not believed, so neither is the membership defeat: CxB
+CxB is the vantage of both nogoods. The negation pair places the `defeat` of the
+separation there, and the membership nogood places the `defeat` of `(chi Kit)` there,
+resting on the separation. At CxB the separation is not believed, so neither is the
+membership defeat: CxB
 believes both memberships, and `contradictions` reports nothing, in every arrival order and
 whatever number of passes the settle runs
 (`reference_test/a-second-settle-pass-leaves-the-release-lattice-reading-unchanged`).
@@ -1524,7 +1534,7 @@ vantage that sees a denial, an edge or an `except` dissolving the clash believes
 vantage hides: the denial places its own `defeat` of the ground at the reader, and the
 membership defeat rests on that ground.
 
-| where `(not (genl chi dog))` sits, with `(chi Kit)` and `(cat Kit)` in CxB | CxC below CxB believes `(chi Kit)` |
+| where `(not (disjoint dog cat))` sits, with `(chi Kit)` and `(cat Kit)` in CxB | CxC below CxB believes `(chi Kit)` |
 |---|---|
 | CxC, below the vantage CxB | true |
 | a CxD that CxB sees | true |
@@ -1864,7 +1874,23 @@ a disjoint metatype's membership is supported at `:monotonic`, and a
 `siblingDisjointException` the placement sees exempts the pair
 (`chain/route-placements`, [taxonomy.md](taxonomy.md#disjointness)). A cover nogood whose
 member set a `supertype` or a `disjoint` nogood holds is that one nogood, with the
-cover's routes beside the edge's or the separation's. The index keeps
+cover's routes beside the edge's or the separation's. A cover route is left out when one
+part's denier separates or denies a type at or above the cover's whole, every edge from
+the held type up to that type holds at `:monotonic`, and every edge from the whole up to
+it has a believed supporter in CxUniverse (`chain/membership-routes`). The `disjoint` or
+`supertype` nogood of the held type and that denier is then placed at or above each
+context the cover route would be, through the same separated pair, so a
+`siblingDisjointException` exempts both at the same readers, and its own route climbs what
+that denier climbs. A denier of another part that reaches no such type and climbs an edge
+owing an edge reading keeps the route. A member of the cover nogood outside the two-member
+nogood is not defeated or undercut through a left-out route: where the two-member nogood
+stays unresolved, a hard clash or a dilemma, that member stays believed.
+`placed_nogood_test/a-membership-in-no-smaller-nogood-stays-believed-beside-a-cover-a-hard-clash-refutes`
+holds a `:default` membership a cover names beside a hard clash of the other two.
+`placed_nogood_test/a-cover-route-a-separation-above-the-whole-subsumes-is-left-out` holds
+a three-part partition that one `disjoint` above its whole separates from two held types:
+the cover places no route. `lein perf`'s `cover-subsumed-by-a-separation` holds a third
+membership's write flat in the parts of such a cover. The index keeps
 each term holding two memberships, or a membership and a denial, read off the term's unary
 predicate set once when the second arrives and kept in step after (`membership/note-membership!`),
 with each kept term's memberships and denials by type. The kept terms under a type are
@@ -1912,8 +1938,9 @@ its separating declarations and the `genl` edges its reading climbs as grounds; 
 nogood reads the edges' contrapositive, so it is placed only where the held type reaches
 the denied type at `:monotonic` ([inference.md](inference.md#predicate-subsumption-in-matching)),
 and a cover nogood's denial of a supertype of a part denies the part only where the part
-reaches it at `:monotonic`. Where only a path holding a `:default` edge reaches the denied
-type, the denial undercuts the edge's reading of the term, and no nogood is placed
+reaches it at `:monotonic`. A climb from a held type to a separated type or to a cover's
+whole is held to the same rule. Where only a path holding a `:default` edge climbs, the
+other members undercut the edge's reading of the term, and no nogood is placed
 ([inference.md](inference.md#an-edges-reading)).
 
 **The reports.** `conflicts` and `contradictions` read the placed `contradicts` at the
@@ -2133,7 +2160,11 @@ needs in order to act on it.
 order: the believed supporters of the flat-cache entries the conviction reads, among
 those a vantage of the report sees (`clashes/clash-grounds`). For two memberships those
 are the separating `disjoint` declarations, the disjoint metatype and its two
-memberships, the `sibling_disjoint` parent and the separating cover; for tuples, the
+memberships, the `sibling_disjoint` parent and the separating cover. A separation is
+named only over a route whose climbs from the two types the vantage sees over a path of
+`:monotonic` edges (`clashes/strict-separating-keys`). A climb over a `:default` path is
+an edge reading the other member undercuts ([inference.md](inference.md#an-edges-reading)),
+so its route places no nogood. For tuples the grounds are the
 `functional`, `functionalInArg`, `asymmetric` or `anti_transitive` mark; for a refuted
 cover, the cover; for an `:arity` conflict, the bindings stating the length its tuple
 breaks (`clashes/inert-binding`). No `genl` edge
@@ -2811,6 +2842,7 @@ write entry point (assert / retract)                          bound
 settle*
  ├─ 2  the reconcile a caller's relabel owes                  O(r)
  ├─ restore-depths (only after a deferred batch)              O(V + E) of the taxonomy, once
+ ├─ owes-nothing-up-front?: when true, no pass runs           O(r) + presence checks
  └─ passes, until one queues, revives and releases nothing, at most 16
      ├─ 3  class-moved-merge-seeds (only under a merge mark)  O(r)
      ├─ 4  place-inherited!: one discovery
@@ -2869,9 +2901,11 @@ many subsumptions climb through it
 `recover-placement-own-leaves`).
 The reads hold the walks' sorted neighbours and edge supporters (`tax/with-neighbours`),
 and a witness walk past its first expansions keeps only the types under its target
-([taxonomy.md](taxonomy.md#strength-of-a-subsumption-path)). A strict link, the
-contrapositive one a `supertype` nogood, a cover part's denial or a separation's denial
-climbs, is witnessed only over edges `res/holding-class` reads `:monotonic`, so its walk
+([taxonomy.md](taxonomy.md#strength-of-a-subsumption-path)). A descent's route search
+(`chain/descent-placements`) holds each type's steps in the router of its reading, per
+scope and class floor, so links that climb through one type read its edges once. A strict
+link, the contrapositive one a `supertype` nogood, a cover part's denial or a separation's
+denial climbs, is witnessed only over edges `res/holding-class` reads `:monotonic`, so its walk
 and its route search read the class of no edge they cannot take
 (`settle_region_cost_test/a-strict-link-walks-no-default-edge`).
 The same cache holds the reads a route repeats that no write between them can move
@@ -2942,6 +2976,61 @@ placed `contradicts` (`clashes/read-clashes`).
 
 `jtms/touched` is read once, into a delay every step shares, because the dense network
 copies its bitmap into a set on each read.
+
+### A settle that owes nothing
+
+A write of plain facts owes the passes nothing: every arm of `pass-work` answers empty.
+Each arm finds that out on its own, by taking its queue, building its sets and reading
+its feature check, and on such a write the arms cost about a third of the write.
+`settle*` asks the same questions once, before the first pass
+(`settle/owes-nothing-up-front?`), and when all of them hold it runs no pass and closes
+the settle as a first pass that found nothing closes it: `finish-settle` at pass 1, belief
+unmoved, no defeat move. `settle`'s rounds run as before: the respell queue, the retired
+firings and the feed.
+
+The questions are rows of one table, `settle/idle-conditions`. A row names the arms of
+`pass-work` it answers for (`:arms`), its question (`:idle?`, over the KB and the touched
+set) and what the question reads (`:cost`). An arm answers empty when every row naming
+it holds. The rows by what they read, in the order they are asked (`cost-order`):
+
+1. **The bindings** (`:plain-write`): no rebuild, the sweep on, no relabel before the
+   settle (`*rebuilding?*`, `*sweep?*`, `*relabelled-before?*`). A rebuild and `preview`
+   always run the pass.
+2. **The KB's atoms**: one row per queue a pass drains (`pass-queues`' `:drained-by`):
+   the re-check queue, the `except` moves, the mint queues (departures, unpremised
+   records, departed `genlCx` edges) and the preserved clashes; then no inherited clash
+   queued, no `genlCx` edge moved since the placement cursor (`decide/edge-moved?`), and
+   no nogood family with a placement queued or a refresh owed
+   (`chain/placement-queued?`).
+3. **The taxonomy's sets**: no equality edge moved under a cover, no functional-family or
+   `anti_symmetric` mark, no forced-monotonic declaration, and no entailing argument
+   declaration.
+4. **The touched set's labels**: each handle is a node created since the last settle or a
+   node removed with no dependent. A node that stands and was relabelled is where a
+   revival, a departed edge and a class move start, so one such handle runs the pass.
+5. **The index's counts**, which the pass reads too: no preserving declaration, no
+   `defeat` and no placed nogood beside an `except` (`exc/placed-reads?`), no removed
+   one that moved a target, no mint, no nogood a family holds (`chain/nogoods-held?`),
+   and no touched handle the arity family owes a read (`arity/relabel-owed?`).
+
+The index comes last, so a write that a queue or a declaration rules out reads no index
+for the question (`assert_cost_test` holds the counts).
+
+`pass-queues` lists the atoms a pass takes from or fills once: the skip's queue rows
+come from its `:drained-by`, and the cross-check below compares every entry across a
+pass.
+
+**Adding a pass arm.** Two tests hold the table to the pass:
+
+- `settle_skip_test` reads `pass-work`'s body and fails when it calls a function no row
+  names and `pass-reads` does not list, or when a row names one it no longer calls. A
+  new arm fails there before any write reaches it; the fix is a row for what the arm
+  reads, or its name on a row that already asks it.
+- `vaelii.test-util` turns on `settle/*check-skip?*`, under which every settle that skips
+  runs the pass anyway and throws `::skip-owed` when the pass queued, withdrew, revived,
+  gave back or owed anything, moved a defeat's target, left the arity family a refresh,
+  or changed a queue. A row that answers idle when its arm owes work fails the first test
+  whose write reaches the arm.
 
 ### Where the time goes, measured
 
@@ -3020,7 +3109,7 @@ another. These checks hold invariant 2 end to end:
 | a `genl` or `genlCx` edge, in the graph, the excepted rules, the firings, the readers and the merges it does not reach, the functional facts its `super` already sees, the `genl` edges its `sub` already sees, the stored `genlCx` edges beside an `except` no edge rests on, the functors under an arity conflict it is not above, the rules reading above it when no rule concludes below it, and in the spec closures of the rules its stratification walk reaches | `genl-edge-negation-recheck`, `genl-edge-beside-arity-conflicts`, `edge-stratification-unreached`, `edge-stratification-unconcluded`, `edge-stratification-walk`, `genl-defeat-rejoin` (4.0×), `genl-crossing-many` (3.0×), `genlcx-edge-reader-fan` (3.0×), `genlcx-edge-under-a-seen-taxonomy`, `genlcx-edge-beside-declared-facts`, `genlcx-edge-beside-distant-merges`, `genlcx-edge-beside-seen-functional-facts`, `genlcx-edge-beside-excepted-declarations`, `genlcx-edge-beside-seen-excepts`, `genlcx-edge-revealing-one-except`, `genlcx-edge-beside-stored-context-edges`, `retract-context-cycle-scaling`, `retract-context-cycle-beside-cycle`, `assert-context-edge-beside-cycle` |
 | an un-merge of one class beside standing merges it does not touch, a merging assert in a deferred batch, a merge withdrawing its spelling's firing beside standing merges whose firings were withdrawn, a write beside the subsumed mints the KB withholds, the settle after a `genl` edge beside declarations waiting on a type bound to another length, and an `arg` declaration over stored facts beside a deeper declared type | `unmerge-over-standing-merges` (3.0×), `deferred-merge-batch` (3.0×), `merge-withdrawing-a-firing` (3.0×), `mint-withdrawal-under-busy-term`, `settle-beside-withheld-mints`, `mint-release-after-genl-move`, `arg-declaration-over-facts` |
 | a recover's rebuilds, per claim, declaration, fact or negation pair each re-reads: the inherited discovery's questions and the placements they give, the closing settle's placements, the membership index's first sync over a kept term's types under a deep ancestor set, the discovery's denial probes over a type with many supertypes and its probes that match nothing beside forced-monotonic declarations; and the first write after a recover | `recover-inherited-discovery`, `recover-discovery-own-out`, `recover-discovery-separated-term`, `recover-membership-cover-sync`, `recover-preserved-negated-fan`, `recover-preserved-empty-probes`, `recover-negation-pairs`, `first-write-after-recover` |
-| an `exceptWhen` rule-membership check, a write beside believed `except`s it does not reach ([contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree)), an `except` beside the firings that do not rest on its target, a write beside refused firings ([the refused-firing record](exceptions.md#a-refused-firing-is-remembered-as-bindings)), a retraction releasing a firing beside a guarded rule's firings ([what is re-chained](exceptions.md#re-chaining-what-was-released-not-what-was-touched)), a first read below an `exceptWhen` rule's context ([asked at every reader](naf.md#evaluated-in-the-placement-context-not-the-join)), a scoped read beside what the `except`s hide, and an `except` of a guard's blocker beside the guarded rule's other firings | `watched-rule-membership`, `assert-over-standing-excepts` (3.0×), `assert-beside-naf-refusals`, `released-refusal-beside-guarded-firings` (4.0×), `guarded-firings-read-below`, `visibility-reading`, `except-beside-unrelated-firings`, `except-of-a-guard-blocker` |
+| an `exceptWhen` rule-membership check, a write beside believed `except`s it does not reach ([contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree)), an `except` beside the firings that do not rest on its target, a write beside refused firings ([the refused-firing record](exceptions.md#a-refused-firing-is-remembered-as-bindings)), a retraction releasing a firing beside a guarded rule's firings ([what is re-chained](exceptions.md#re-chaining-what-was-released-not-what-was-touched)), a first read below an `exceptWhen` rule's context ([asked at every reader](naf.md#evaluated-in-the-placement-context-not-the-join)), a scoped read beside what the `except`s hide, an `except` of a guard's blocker beside the guarded rule's other firings, and a second route to an excepted fact beside the `except`s of unrelated facts | `watched-rule-membership`, `assert-over-standing-excepts` (3.0×), `assert-beside-naf-refusals`, `released-refusal-beside-guarded-firings` (4.0×), `guarded-firings-read-below`, `visibility-reading`, `except-beside-unrelated-firings`, `except-of-a-guard-blocker`, `route-gain-beside-unrelated-excepts` |
 | the placed nogoods ([The nogood families](#the-nogood-families)): a mark, a binding or a declaration arriving over its candidates and the first read after it, a metatype edge arriving over its members, a write beside the placed pairs it does not reach, a write beside contexts each holding a placed nogood, a membership joining one of n standing dilemmas or joining a nogood as its loser, a write adding a candidate beside the candidates standing elsewhere, a write beside the candidates of four families stated where its context does not see them, a warm read of a placed loser, a read beside the candidate tuples a binding holds, a vantage below the members' maximum, the join naming a chain's contexts, a brave or cautious ask between writes, an ask of the candidate index after an image install, and the first write after one | `irreflexive-mark-arrival` (3.0×), `arity-binding-arrival` (3.0×), `metatype-edge-arrival`, `membership-declaration-arrival`, `tuple-mark-determinant-write`, `functional-in-arg-empty-determinant-sweep`, `negation-reader-write`, `verdict-published-set-write`, `reader-scoped-write`, `standing-nogood-write`, `standing-loser-write`, `candidate-write`, `reached-reader-family-read`, `decided-warm-read`, `held-shape-first-withdrawal`, `per-reading-vantages`, `chain-join`, `brave-ask-between-writes` (3.0×), `installed-image-reads`, `first-write-after-install` |
 | placement and the read walk ([A nogood placed as a conclusion](#a-nogood-placed-as-a-conclusion)): a write naming no placed nogood, a write making a nogood whole or dissolving one beside its loser's consequences, a `genlCx` edge reaching none of the placed nogoods or changing none of their contexts' views, a membership beside the types its term holds, a separation beside the kept terms, a read below a vantage beside the defeats outside its support, a `belief-status` beside the excepts and defeats on other targets, a read of a tuple whose supers bind two lengths, a `genl` edge's defeat beside the defeats of other edges, a hidden route beside the unclaimed types under its end, a reading of a context's dilemmas beside those it does not see, a `genl` edge beside the contradicted `orthogonal`s (3.0×), a fact naming no nogood member asserted under a listener, a read beside the defeats in contexts its reader does not see, a read in the depth of the derivation it asks beside defeats, placements or arity candidates its reader does not see, a read of a `:monotonic` fact beside the permuting marks, a backward query beside the candidates no context places, a `genlCx` edge giving a nogood one more placement beside the placements it holds, a closure read at the readers a `genl` edge's defeat does not reach, a hidden firing's read beside the memberships under their own hidden edges, an `except` beside the carried inherited-clash entries whose questions do not read its target, and a `genl` edge into a type separated from a preserved predicate beside that type's memberships, with its closure under or past the crossing cap | `vantage-unrelated-write`, `whole-beside-loser-consequences`, `dissolving-beside-loser-consequences`, `whole-beside-unary-loser-consequences`, `dissolving-beside-unary-loser-consequences`, `vantage-dissolving-write`, `vantage-context-edge-unreached`, `context-edge-beside-membership-nogoods`, `membership-beside-held-types`, `separation-beside-kept-terms`, `read-below-vantage`, `hidden-check-beside-excepts`, `arity-exempt-read`, `genl-defeat-beside-defeats`, `hidden-route-beside-unclaimed-types`, `hidden-route-beside-untyped-types`, `reader-dilemmas-beside-unseen-ones`, `edge-beside-contradicted-orthogonals` (3.0×), `listener-write-beside-defeats`, `read-beside-unseen-defeats`, `default-chain-beside-many-unseen-defeats`, `default-chain-beside-unseen-contradicts`, `default-chain-beside-unseen-arity-candidates`, `monotonic-read-beside-marks`, `monotonic-chain-beside-seen-defeats`, `backward-query-beside-candidates`, `context-edge-beside-placements`, `defeat-beside-unreached-readers`, `hidden-route-beside-hidden-claims`, `inherited-entry-except`, `genl-edge-under-separated-type`, `genl-edge-past-the-crossing-cap` |
 | retrieval: an argument after a variable, a compound, an intersection or an overlay posting, a columnar insert, a closure already asked, an open `disjoint` goal, a membership of a busy term, and a plan | `arg-root-retrieval`, `compound-probe`, `intersect-selectivity`, `overlay-selectivity`, `columnar-fanout`, `closure-membership`, `disjoint-enumeration`, `membership-read-under-busy-term`, `plan-scaling` |
@@ -3137,7 +3226,7 @@ A settle hands no nogood to a solver: `decide/verdict` answers a defeat, a dilem
 hard clash. Labeling is the solver's one caller
 ([why that holds the split](defenses.md#a-settle-hands-no-nogood-to-a-solver)).
 `label/dilemma-program` builds its `Program` from the dilemmas, whose tied minimum is
-defeasible, and `solved-labeling` keeps the program's assumptions minus the solver's
+defeasible, and `local-labeling` keeps the program's assumptions minus the solver's
 `:defeat`, so a defeat outside the assumptions moves nothing.
 
 Two solvers ship. The default is `local-solver`, a deterministic stub that satisfies
@@ -3277,8 +3366,8 @@ holds the vocabulary and the page that owns each keyword.
 
   ```
   CxUniverse   (genl mid dog) (genl chi mid)   the long route, named
-               (largerThan dog cat)  (transitiveInArgInverse largerThan 1 genl)
-               forward rule (largerThan ?x ?y) ⇒ (noted ?x ?y)
+               (typeLargerThan dog cat)  (transitiveInArgInverse typeLargerThan 1 genl)
+               forward rule (typeLargerThan ?x ?y) ⇒ (noted ?x ?y)
    └─ CxA      (genl chi dog)                  the short route
                (not (genl chi mid))  :monotonic
   ```
@@ -3290,8 +3379,8 @@ holds the vocabulary and the page that owns each keyword.
   named:
 
   ```
-  CxUniverse   (largerThan dog cat)  (transitiveInArgInverse largerThan 1 genl)
-               forward rule (largerThan ?x ?y) ⇒ (noted ?x ?y)
+  CxUniverse   (typeLargerThan dog cat)  (transitiveInArgInverse typeLargerThan 1 genl)
+               forward rule (typeLargerThan ?x ?y) ⇒ (noted ?x ?y)
    └─ CxA      (genl chi dog)  and  (genl chi mid) (genl mid dog)   both routes
         └─ CxB (not (genl chi dog))  :monotonic
   ```

@@ -66,30 +66,32 @@
       (is (= :bad-binding (:type (ex-data (refusal form))))
           (str "expected a refusal for " (pr-str form))))))
 
-(deftest fresh-hands-back-a-cleared-kb
-  ;; The other half of the same story: `fresh` really does clear, which is why calling it
-  ;; mid-test is a live hazard rather than a no-op.  Tests needing a genuinely separate KB
-  ;; give each arm its own `with-terms` (`exposure_test`'s budgeted-sweep pair) or build
-  ;; over a cleared store with `with-cleared-kb`.
-  (let [kb (tu/fresh)]
-    (is (some? kb))
-    (is (= {:sentexes 0 :justifications 0} (tu/content-count kb))
-        "fresh means empty, not merely bound")))
+(deftest fresh-removes-the-previous-kbs-content
+  (testing "empty-kb holds nothing at all"
+    (is (= {:sentexes 0 :justifications 0} (tu/content-count (tu/empty-kb)))))
+  (testing "fresh holds the interface rules and nothing the previous KB wrote"
+    (let [kb       (tu/fresh)
+          baseline (tu/content-count kb)]
+      (is (pos? (:sentexes baseline)) "the interface rules are loaded")
+      (is (nat-int? (v/assert kb '(dog Muffet) 'CxUniverse)))
+      (is (= baseline (tu/content-count (tu/fresh)))
+          "a fresh KB must not retain the previous test's facts"))))
 
 (deftest fresh-reopens-a-store-a-fault-stopped
   ;; A disk store latched unusable refuses every call until its directory is opened again
   ;; (docs/storage.md, "A store that stops").  Built on `disk-log` whatever the run
   ;; selected; an interrupt during the write latches the fault.
   (binding [tu/*storage* {:backend :disk-log}]
-    (let [kb      (tu/fresh)
-          refusal (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]
+    (let [kb       (tu/fresh)
+          baseline (tu/content-count kb)
+          refusal  (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]
       (.interrupt (Thread/currentThread))
       (try (v/assert kb '(dog Muffet) 'CxUniverse) (catch Throwable _ nil))
       (Thread/interrupted)
       (is (= :store-unusable (refusal #(v/clear! kb))) "the interrupt latched the store")
       (let [kb (tu/fresh)]
         (try
-          (is (= {:sentexes 0 :justifications 0} (tu/content-count kb)))
+          (is (= baseline (tu/content-count kb)))
           (is (nat-int? (v/assert kb '(dog Muffet) 'CxUniverse)))
           (finally (v/close! kb)))))))
 
@@ -97,16 +99,25 @@
   ;; Built under the overlay arm whatever the run selected, so `lein gate` at `:default`
   ;; tests the arm's `fresh` too.  A cleared fork hides its base for the rest of the process
   ;; (docs/overlay.md), so a `fresh` that cleared the slot's fork would read none of the
-  ;; record written into the base below.  The base is the one the whole arm shares, so it
-  ;; is emptied again before the test ends.
+  ;; record written into the base below.  Every later `fresh` on the scratch slot mounts
+  ;; this base, so the test empties it again before it ends.
   (binding [tu/*storage* {:backend :overlay}]
-    (let [base (doto (v/open-kb (assoc tu/overlay-base-space :recover? false)) (v/clear!))
+    (let [base (doto (v/open-kb (assoc (:base (tu/scratch-space)) :recover? false)) (v/clear!))
           h    (v/assert base '(dog Muffet) 'CxUniverse {:strength :monotonic})]
       (try
         (let [kb (tu/fresh)]
           (is (= h (v/handle-of kb '(dog Muffet) 'CxUniverse)) "the index half reads the base")
           (is (= '(dog Muffet) (:sentence (v/sentex kb h))) "the record half reads the base"))
         (finally (v/clear! base))))))
+
+(deftest the-overlay-arms-two-slots-give-the-same-writes-the-same-handles
+  (binding [tu/*storage* {:backend :overlay}]
+    (let [a  (tu/empty-kb)
+          b  (tu/isolated-fresh)
+          hs (vec (for [s '[(dog Muffet) (cat Tom)] kb [a b]]
+                    (v/assert kb s 'CxUniverse {:strength :monotonic})))]
+      (is (every? nat-int? hs))
+      (is (= (take-nth 2 hs) (take-nth 2 (rest hs)))))))
 
 (defn- under-neutral
   "Run `body` on `kb` under `tu/neutral`, and answer the failures it reported."
@@ -215,6 +226,21 @@
             c          owed]
       (is (contains? known c)
           (str pat " owes " c ", which is neither a configuration nor a group word")))))
+
+(deftest every-file-writing-through-the-store-protocols-owes-a-configuration
+  (let [glob    #(re-pattern (str/join ".*" (map (fn [s] (java.util.regex.Pattern/quote s))
+                                                 (str/split % #"\*" -1))))
+        rows    (owed-map-rows)
+        writers (for [f (file-seq (io/file "src/vaelii/impl"))
+                      :let [path (str f)]
+                      :when (and (str/ends-with? path ".clj")
+                                 (re-find #"\(p/(put-sentex|index-sentex|unindex-sentex!)[ )]"
+                                          (slurp f)))]
+                  path)]
+    (is (seq writers))
+    (doseq [w writers]
+      (is (some (fn [[pat _]] (re-matches (glob pat) w)) rows)
+          (str w " writes through the store protocols and owes no configuration")))))
 
 (deftest forcing-hands-back-a-shipped-default-a-sweep-replaced
   ;; The property the counted tests rely on, over the var that actually broke them:

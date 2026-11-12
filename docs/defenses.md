@@ -200,7 +200,7 @@ missing. The last column names the test that asserts the departure, or `none`.
 | locality | the structural `genlCx` producer ([context-nat.md](context-nat.md#the-structural-genlcx-producer)) | The reconcile re-runs over every context of a declared function, and pairing one sibling group is O(k²) in it. It runs once per edge, on the transition into belief. | `none` |
 | locality | a `conversionFactor` arriving ([quantity.md](quantity.md#what-a-comparison-rests-on)) | The datum re-joins every forward rule with a comparison antecedent, since nothing connects the unit table to a comparison by predicate. | `computed_support_test/the-unit-table-may-arrive-last` |
 | locality | a metric bound's support ([stp.md](stp.md#what-a-derived-bound-rests-on)) | Past the walk bound, a bound rests on every supporter in its network, a sound superset. The walk is bounded because a successor chain can go round a zero-weight cycle without end. | `none` |
-| locality | the derived-value caches ([caches.md](caches.md#the-bound-cleared-wholesale-not-evicted)) | A cache clears wholesale at its bound or on any state change, never by entry. | `literal_cache_engine_test/an-unrelated-assertion-retires-every-entry` |
+| locality | the derived-value caches ([caches.md](caches.md#the-bound-a-counted-cache-is-cleared-wholesale)) | A counted cache clears wholesale at its bound or on any state change, never by entry. | `literal_cache_engine_test/an-unrelated-assertion-retires-every-entry` |
 | scoping | the checks a shared structure needs ([contexts.md](contexts.md#where-a-relation-property-is-read-from), [taxonomy.md](taxonomy.md)) | The `genlCx` cycle check, the `genlCx` closure and argument sorting read every context, because each decides a structure every reader shares: a context cycle, the visibility relation, and a sentex's one storage key. The stratification graph fans over the global spec closure, since a narrowed fan would admit an unstratified rule set. Lint E17 holds the allowlist of global closure callers. | `wff_edge_test/genlCx-rejects-a-cycle-through-another-context`, `context_scoping_test/the-genlCx-closure-is-global-on-purpose`, `/argument-sorting-is-a-storage-key-and-so-is-global` |
 | scoping | a relation property ([contexts.md](contexts.md#where-a-relation-property-is-read-from)) | A `decontextualized_predicate` declaration is lifted into `CxUniverse`, so every context reads it. A relation's algebra is a claim about the relation, not about a subject matter. | `context_scoping_test/predicate-metadata-is-a-licence-the-whole-kb-holds` |
 | scoping | a NAT's mint ([nat.md](nat.md#typing-an-application-that-is-never-minted)) | The mint reads its result declarations globally and materializes into `CxUniverse`, because what a term denotes does not vary by reader. The check on an application stays scoped. | `arggenl_test/a-result-declaration-a-context-cannot-see-does-not-refuse-it` |
@@ -464,7 +464,7 @@ reasons *from*. `decide/verdict` answers every nogood with a defeat, a dilemma o
 clash, and the settle places that answer, so a settle builds no `Program`, and a
 solver-side guard in `settle` would guard a path no settle takes. Labeling holds the
 split by construction: its `Program` offers only
-the dilemmas' tied, defeasible members as assumptions, and `solved-labeling` reads the
+the dilemmas' tied, defeasible members as assumptions, and `local-labeling` reads the
 solver's `:defeat` only as a subtraction from those assumptions.
 
 `set-solver` takes any implementation, so a third-party solver's `:defeat` naming a
@@ -556,14 +556,12 @@ points during the `open-kb` that loads it.
 
 A layering *inversion* — a namespace above `vaelii.core` that consumes its public API — is
 a different case, and none is written here: a call that can point downward is made to point
-downward. Two once pointed up through this file and no longer do. `impl/io/import.clj`
-recovered a loaded dump by calling `vaelii.core/recover`; the rebuild moved to
-`impl/recovery.clj`, below `vaelii.core`, and both `vaelii.core/recover` and the importer
-call it downward. `impl/predall.clj` audited by calling `vaelii.core/ask`; the audit now
-reads through `impl/provers.clj` with each goal prepared by
+downward. `impl/io/import.clj` recovers a loaded dump through `impl/recovery.clj`, below
+`vaelii.core`, and both `vaelii.core/recover` and the importer call it downward.
+`impl/predall.clj` runs its audit through `impl/provers.clj` with each goal prepared by
 `quasiquote/prepare-goal-for-read`, and the `genlCx` ancestor scoping it depends on is
 applied in the matching layer below anyway ([predall.md](predall.md)). Both are below
-`vaelii.core` now, which requires them, so the public audit and import entry points are
+`vaelii.core`, which requires them, so the public audit and import entry points are
 ordinary downward delegations.
 
 Gathering the two in one file beats leaving each as a `requiring-resolve` at its own
@@ -1949,6 +1947,13 @@ derivation within two rewrites — and a caller who wanted a deeper one names a 
 A clock cannot be re-read that way: "no answer within 250 ms" is a fact about the machine,
 not about the knowledge, and it is not a question anybody meant to ask.
 
+A depth the daemon filled in follows the clock's rule instead. At `:prove`, `:provable?`
+and `:prove-within` an absent `:max-depth` means no depth, so the daemon fills in its
+ceiling, and a run that depth cut short answered a question the caller did not ask. The
+daemon adds `:refuse-depth-cut? true` with the fill, which turns the cut into
+`:budget-exhausted` at `prove` and `provable?`; `prove-within`'s partial result carries it
+as `:truncated?`.
+
 The rejected alternative is a marker in the result — a truncation flag beside the
 solutions, or a metadata key. It fails on being ignorable: every existing caller reads the
 vector and the boolean, so the flag would be correct, present, and unread, and the wrong
@@ -1997,9 +2002,8 @@ qualitative calculus finds is a property of a *set* of facts, not of any one of 
 blaming a single member makes the stored KB's error depend on the order the facts were
 asserted in. The provers are opt-in, so a KB that never registered one is held to no
 calculus. `assert` stores the fact and the settle records the inconsistency in the
-violations ledger, which holds the property every other check in the engine holds: what
-the KB stores does not depend on the order the facts arrived in. `try-assert`, the one
-write entry point whose result depends on arrival order, refuses the write instead
+violations ledger, so what the KB stores does not depend on the order the facts arrived
+in. `try-assert` refuses the write instead
 ([qcn.md](qcn.md#support-what-an-entailed-relation-rests-on), "Reporting an impossible
 network").
 
@@ -2093,11 +2097,34 @@ be a second apart instead of identical.
 would put a mention in argument position, and would have to be held opaque to identity
 congruence to mean anything.
 
-### `clipped` is a predicate, not a conjunction under `unknown`
+### Inertia joins the terminating event under `unknown`, not a stored `clipped`
 
-`unknown` takes one literal, and a conjunction under it would be read as independent ground
-checks sharing no witness. `CxChange` names the condition `clipped`, which keeps the
-inertia rule's negated antecedent one literal with its meaning intact.
+A forward `clipped` derives a fact only for two moments a stored fact names, and a
+`holdsAt` question may name a moment nothing stores. The calendar clock orders such a
+moment after an event that ends the fluent, and a stored `clipped` would hold no fact for
+it, so the fluent would hold past its end. `unknown` joins a conjunction under one
+`thereExists` ([naf.md](naf.md#the-conjunction-is-joined-so-its-conjuncts-may-share-a-witness)),
+so inertia tests the terminating event against the moment asked about when the question
+is asked.
+
+### A terminator blocks inertia unless the KB places it outside the span
+
+A rule that blocks only on a terminator known to lie strictly inside the span answers
+`holdsAt` across a terminator whose moment the KB has not ordered against the span, and
+that answer claims more than the KB knows: the fluent may have ended before the asked
+moment. Inertia blocks on every terminator that `instantBefore`, `instantNotAfter` or
+`instantNotBefore` does not place outside the span, so `holdsAt` holds only where each
+known terminator is known to lie outside it
+([time.md](time.md#change-over-time-events-fluents-and-inertia)).
+
+The rule reads `instantBefore` beside the two non-strict orders, and `(unknown (equals …))`
+for a terminator at the span's own moment. `different` in that place proves nothing of an
+`indeterminate_term` moment, so a terminator there would never block. A forward rule deriving `instantNotAfter` from
+`instantBefore` states `(genl instantBefore instantNotAfter)` as a rule, which the
+integrity sweep reports as a gap, and its stored conclusions enter the point network as
+stated links and change the culprits it names. Declaring the two non-strict orders
+`reflexive` and `transitive` makes the default registry answer them, and only `:point`
+answers a derived relation (`point_test/without-the-prover-only-the-declared-transitivity-answers`).
 
 
 ## Operations and the daemon
@@ -2171,11 +2198,13 @@ The ceiling is **30 seconds** because that is when the caller stops listening �
 zero-dep client's own read timeout ([operations.md](operations.md)) — so a read still
 running past it is holding the writer for an answer nobody is waiting for.
 
-**The clock is the cost bound, and a depth ceiling holds only a read that takes no clock.**
-A depth ceiling refuses a complete answer whose derivation is deeper than the ceiling,
-however little the search would spend reaching it, so a read that takes `:max-ms` is held
-to the clock and to no depth. `:query`, `:query?`, `:query-status` and `:argue` read
-`query`'s key set, which has no clock, and the depth ceiling (**256**) is their only bound.
+**The clock and the depth ceiling bound different things.** The clock decides how long a
+read may hold the writer, and what it cuts varies with the machine's load. The depth
+ceiling (**256**) decides which derivations count, so a request gets the same answer on
+any machine. `:query`, `:query?`, `:query-status`, `:argue`, `:prove`, `:provable?` and
+`:prove-within` are held to both. The depth ceiling refuses a complete answer whose
+derivation is deeper than 256, however little the search would spend reaching it, and an
+operator who serves deeper derivations raises `VAELII_MAX_QUERY_DEPTH`.
 `why` reads no bound at all: it returns the reachable justification graph with each
 handle once, so its cost is linear in what it returns ([api.md](api.md)). The rejected
 shape is a tree under a depth cap. A node with two justifications that share an
@@ -2189,10 +2218,10 @@ request has to name. And **applying the ceiling at the HTTP route** would be a c
 browser's access facade does not have, since it dispatches through the same op table
 in process — so the clamp lives in the table, where every entry point reaches it.
 
-An op with no option map is deliberately not on the table. `:prove`, `:provable?`,
-`:ask` and `:ask?` take an option map and are on it; a call to one of them that sends no
-map gets the clock ceiling filled in (`serve/clock-fill`), since absent there means no
-clock.
+An op with no option map is deliberately not on the table. Every op the clock ceiling
+holds has a `serve/clock-fill` row, so a call that sends no map, or a nil one, gets the
+clock ceiling filled in, since absent there means no clock. `:ask-within` and
+`:prove-within` take a mandatory budget, so their row fills a nil budget and pads nothing.
 
 ### What a server binds decides what it requires
 

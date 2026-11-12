@@ -38,6 +38,27 @@
   "The options `kb-integrity` reads: three cooperative bounds and the categories to run."
   #{:max-work :max-ms :max-results :categories})
 
+(defn- declaration-findings
+  "Fold a lazy stream of `[declaration result]` audits under `category`, one declaration
+  at a time, ticking `tick!` per declaration, keeping each gap or non-empty violation set
+  and stopping after the first finding beyond `remaining` proves that the result bound
+  truncated the sweep."
+  [category audits remaining tick!]
+  (loop [audits   audits
+         findings {}]
+    (if-let [[declaration result] (first audits)]
+      (do
+        (tick!)
+        (if (or (= :gap (:status result)) (seq (:violations result)))
+          (if (and remaining (not (contains? findings declaration))
+                   (>= (count findings) remaining))
+            {:status :truncated :reason :max-results :findings findings}
+            (do
+              (budget/record! category [declaration result])
+              (recur (rest audits) (assoc findings declaration result))))
+          (recur (rest audits) findings)))
+      {:status :complete :findings findings})))
+
 (defn- bounded-findings
   "Record each finding of the lazy `units` under `category`, one at a time, stopping
   after the first finding beyond `remaining` proves that the result bound truncated
@@ -54,24 +75,21 @@
       {:status :complete :findings findings})))
 
 (defn- specified-findings
-  "Audit one declared predicate at a time, stopping after the first finding beyond
-  `remaining` proves that the result bound truncated the sweep."
+  "Audit one declared predicate at a time (`declaration-findings`)."
   [kb context remaining]
   (with-open [r (progress/start ::specified "integrity: audit the specified declarations" nil)]
-    (loop [audits (predall/specified-declaration-audits kb context)
-           findings {}]
-      (if-let [[declaration result] (first audits)]
-        (do
-          (progress/tick! r)
-          (if (or (= :gap (:status result)) (seq (:violations result)))
-            (if (and remaining (not (contains? findings declaration))
-                     (>= (count findings) remaining))
-              {:status :truncated :reason :max-results :findings findings}
-              (do
-                (budget/record! :all-specified-violations [declaration result])
-                (recur (rest audits) (assoc findings declaration result))))
-            (recur (rest audits) findings)))
-        {:status :complete :findings findings}))))
+    (declaration-findings :all-specified-violations
+                          (predall/specified-declaration-audits kb context) remaining
+                          #(progress/tick! r))))
+
+(defn- type-specified-findings
+  "Audit one `typeAllSpecified` declaration at a time (`declaration-findings`)."
+  [kb context remaining]
+  (with-open [r (progress/start ::type-specified
+                                "integrity: audit the typeAllSpecified declarations" nil)]
+    (declaration-findings :type-specified-violations
+                          (predall/type-specified-declaration-audits kb context) remaining
+                          #(progress/tick! r))))
 
 ;; ---- genl-arg-widening: a predicate genl edge that widens an argument type ----
 
@@ -461,6 +479,50 @@
 
 ;; ---- shared by the ontology-engineering passes below ----
 
+;; ---- rigidity-correspondence: a function and its predicate of different kinds ----
+
+(defn- bindings-of
+  "The `?f` `?p` pairs of `goal` answerable in `context`."
+  [kb goal context]
+  (budget/spend!)
+  (for [b (quasiquote/ask-prepared kb goal context)]
+    [(get b '?f) (get b '?p)]))
+
+(defn- correspondences
+  "Every visible `(functionCorrespondingPredicate f p n)` function and predicate pair, at
+  any value position, distinct and in content order.  A binary correspondence reaches
+  here through the ternary core.txt concludes from it."
+  [kb context]
+  (sort-by #(apply list %) nm/compare-form
+           (distinct (bindings-of kb '(functionCorrespondingPredicate ?f ?p ?n) context))))
+
+(defn- kinds-held
+  "The members of `kinds` `term` is believed to be a member of in `context`."
+  [kb kinds term context]
+  (into #{}
+        (filter (fn [k]
+                  (budget/spend!)
+                  (seq (quasiquote/ask-prepared kb (list k term) context))))
+        kinds))
+
+(defn- rigidity-correspondence-findings
+  "Report each visible `functionCorrespondingPredicate` pair whose function and predicate
+  are both believed of some `rigidity_kind` member and not of the same ones.  A pair with
+  an unclassified side is not reported: `(typeAllSpecified rigidity_kind relation)`
+  reports the unclassified relation itself."
+  [kb context remaining]
+  (let [kinds (do (budget/spend!)
+                  (into [] (comp (keep #(get % '?k)) (distinct))
+                        (quasiquote/ask-prepared kb '(rigidity_kind ?k) context)))]
+    (bounded-findings
+     :rigidity-correspondence
+     (for [[f p] (when (seq kinds) (correspondences kb context))
+           :let  [fk (kinds-held kb kinds f context)
+                  pk (when (seq fk) (kinds-held kb kinds p context))]
+           :when (and (seq fk) (seq pk) (not= fk pk))]
+       {:function f :predicate p :function-kinds fk :predicate-kinds pk})
+     remaining)))
+
 (defn- handle-records
   "The believed sentexes among `handles`, as `{:handle :sentence :context}` maps in
   content order — the shape `stated-records` names a declaration in."
@@ -702,19 +764,24 @@
   `:holds?` (a ground goal answered), each read from `context`.  `vaelii.core`'s
   `subsumption-statuses` and `disjointness-audit` read through this with `query`'s reads,
   and the `:open-sibling-pair` pass with `facts-only-reads`.  At the five-argument arity
-  the `genl` paths and the shared subtypes are read over every edge, unscoped, as
-  `vaelii.core/genl?` and `specs` read them at their short arity: the status of a pair
-  under one context differs only in what that context sees separated or overlapping.
+  the `genl` paths and shared subtypes use every edge, as `vaelii.core/genl?` and `specs`
+  do at their short arity. Separation and overlap witnesses remain contextual.
   With `scoped?` true they are read through the edges `context` sees, as the
-  `:open-sibling-pair` pass reads them."
+  `:open-sibling-pair` pass reads them. At the unscoped arity, `rd` may also supply
+  prepared `:genl?`, `:specs` and contextual `:disjoint?` reads; scoped reads ignore them."
   ([kb a b context rd] (subsumption-reading kb a b context rd false))
   ([kb a b context rd scoped?]
    (let [tx    (reasoning/taxonomy kb)
-         genl? (if scoped? #(tax/genl? tx %1 %2 context) #(tax/genl?-global tx %1 %2))
-         specs (if scoped? #(tax/specs tx % context) #(tax/specs-global tx %))
+         genl? (if scoped?
+                 #(tax/genl? tx %1 %2 context)
+                 (or (:genl? rd) #(tax/genl?-global tx %1 %2)))
+         specs (if scoped?
+                 #(tax/specs tx % context)
+                 (or (:specs rd) #(tax/specs-global tx %)))
+         sep?  (or (when-not scoped? (:disjoint? rd)) #(kb/disjoint? kb %1 %2 context))
          a<b   (genl? a b)
          b<a   (genl? b a)
-         sep (kb/disjoint? kb a b context)
+         sep (sep? a b)
          ;; asked in one spelling: `orthogonal` is symmetric, so the goal folds onto the
          ;; stored order
          declared? ((:holds? rd) (list 'orthogonal a b))
@@ -733,7 +800,7 @@
                      (let [sb  (specs b)
                            cs  (nm/by-print-key
                                 (filter #(and (contains? sb %) (not= % a) (not= % b)
-                                              (not (kb/disjoint? kb % % context))
+                                              (not (sep? % %))
                                               (not ((:holds? rd) (list 'empty %))))
                                         (specs a)))
                            nes (filter #((:holds? rd) (list 'nonempty %)) cs)
@@ -974,8 +1041,16 @@
   `:meta` stands for a ground term of the rule (a predicate, a relation, a fixed filler);
   every other shape variable stands for a variable of the rule, one for one.
   `:declaration` builds the suggested declaration from the bindings of the meta symbols.
-  `:defeasible` is the rule class the macro's conclusions carry."
-  [n]
+  `:defeasible` is the rule class the macro's conclusions carry.
+
+  `arg` is the one shape whose antecedent's arity is not `n`: its consequent is always a
+  single argument typed, so it matches only where `n` is 1, and its antecedent is the
+  rule's own single premise, of two or more places.  A unary premise gives a type, so
+  `(P ?x) ⇒ (C ?x)` is the `genl` shape, never `arg`. `ante-arity`, the
+  rule's lone antecedent's arity when it has exactly one, is read for that shape alone; a
+  rule with more than one antecedent never matches it regardless, by the antecedent-count
+  check `shape-bindings` already makes."
+  [n ante-arity]
   (let [os (positions-vars n)]
     (concat
      (for [i      (range n)
@@ -1027,6 +1102,19 @@
           :meta        '#{?mP}
           :defeasible  false
           :declaration (fn [b] (list 'commutativeInArgs (b '?mP) (inc i) (inc j)))}))
+     ;; A unary P gives a type, so (P ?x) ⇒ (C ?x) is the genl shape and never arg: arg
+     ;; is only for a P of two or more places, whose positions require a type.
+     (when (and (= 1 n) ante-arity (<= 2 ante-arity))
+       (let [ps (positions-vars ante-arity)]
+         (for [i (range ante-arity)]
+           ;; (P ?o1 … ?on) ⇒ (C ?oi): the other arguments free, so arg types one of
+           ;; P's own positions the way (arg P i C) would
+           {:macro       'arg
+            :antecedent  [(list* '?mP ps)]
+            :consequent  (list '?mC (nth ps i))
+            :meta        '#{?mP ?mC}
+            :defeasible  false
+            :declaration (fn [b] (list 'arg (b '?mP) (inc i) (b '?mC)))})))
      [{:macro       'genl
        :antecedent  [(list* '?mP os)]
        :consequent  (list* '?mQ os)
@@ -1129,7 +1217,7 @@
   what the rule `rsx` says, read from the rule's context.  A relation mark is read from
   every context, so the rule must be visible from the context marks are lifted into;
   `genl` and the two preservation declarations are read where they are stated."
-  [kb rsx {m :macro} b n]
+  [kb rsx {m :macro :as shape} b n]
   (let [ctx (:context rsx)
         tx  (reasoning/taxonomy kb)
         P   (b '?mP)]
@@ -1158,7 +1246,15 @@
            (let [Q (b '?mQ)]
              (and (symbol? Q) (not= P Q)
                   (nil? (predicates/entry Q))
-                  (arity-is? kb P n ctx true) (arity-is? kb Q n ctx true)))))))
+                  (arity-is? kb P n ctx true) (arity-is? kb Q n ctx true)))
+
+           arg
+           (let [C (b '?mC)
+                 k (dec (count (first (:antecedent shape))))]
+             (and (symbol? C) (universal? kb ctx)
+                  (<= 2 k)
+                  (arity-is? kb P k ctx false)
+                  (nil? (predicates/entry C))))))))
 
 (defn- macro-candidate?
   "May the stored rule `rsx` at handle `h` be read as a macro's spelling: a believed
@@ -1232,7 +1328,7 @@
         ok?    #(macro-candidate? kb context %1 %2)
         excused (delay (known-exception? kb rsx))]
     (when (and (seq? conseq) (integer? n) (not (sx/negation? conseq)))
-      (for [shape (macro-shapes n)
+      (for [shape (macro-shapes n (when (= 1 (count antes)) (nm/arity (first antes))))
             :let  [shaped? (and dflt? (not (:defeasible shape)))]
             :when (or (= dflt? (:defeasible shape)) shaped?)
             :let  [b (do (budget/spend!) (shape-bindings shape antes conseq))]
@@ -1782,11 +1878,6 @@
          (when-let [s (res/unify (second (:body a)) (second (:body b)))]
            [:disjoint s]))
        (when (and (= 2 (:arity a)) (= 2 (:arity b)))
-         ;; Per position, because the mark names the CONSTRAINED slot and the rest of the
-         ;; tuple is its determinant: a position-2 mark unifies the subjects and compares
-         ;; the values, and a position-1 mark is that read in the mirror.  Reading
-         ;; position 2 alone left `(functionalInArg P 1)` enforced by
-         ;; `checks/functional-clashes` and invisible to this pass.
          (let [pa (functional-marks-by-position tax fa context)
                pb (functional-marks-by-position tax fb context)
                [s1 v1] (nm/args (:body a))
@@ -1808,35 +1899,10 @@
              (when (not= (res/substitute x1 s) (res/substitute y1 s))
                [:asymmetric s]))))))))
 
-(defn- separated-antecedents?
-  "Do two of these literals claim one term is of two types a declaration separates?  The
-  one thing the joint-satisfiability test reads a declaration for, and it reads the same
-  one the consequent side does."
-  [kb lits context]
-  (let [tax     (reasoning/taxonomy kb)
-        by-term (reduce (fn [m l]
-                          (let [f (nm/functor l)]
-                            (if (and (= 1 (nm/arity l)) (symbol? f) (not (sx/variable? f)))
-                              (update m (second l) (fnil conj #{}) f)
-                              m)))
-                        {} lits)]
-    (boolean (some (fn [[_ ts]]
-                     (let [ts (vec ts)]
-                       (some (fn [[x y]] (tax/disjoint? tax x y context))
-                             (for [i (range (count ts)), j (range (inc i) (count ts))]
-                               [(nth ts i) (nth ts j)]))))
-                   by-term))))
-
 (defn- literal-arity-claim
-  "The arity `lit` binds its first argument to, or nil — the two spellings `checks`
-  reads, asked of a *literal* rather than of the store.
-
-  `(arity ?p n)` says it outright.  A unary `(T ?p)` says it whenever `T` reaches one of
-  the exact-arity classes up `genl`, which is what makes `(symmetric ?p)` a claim of arity
-  2: `symmetric` is a kind of `binary_predicate`.  The table is
-  `tax/exact-arity-classes`, read here rather than copied, since a table copied twice
-  is a table that drifts, and read in key order so a term reaching two that disagree —
-  itself incoherent — reports the same one every run."
+  "The exact arity a literal claims for its first argument, or nil: `(arity ?p n)` or
+  membership in a type reaching `tax/exact-arity-classes`. Conflicting classes are read
+  in key order for a deterministic answer."
   [tax lit context]
   (let [f (nm/functor lit)]
     (when (and (symbol? f) (not (sx/variable? f)))
@@ -1849,45 +1915,128 @@
           (some (fn [[t n]] (when (contains? supers t) n))
                 (sort-by key tax/exact-arity-classes)))))))
 
-(defn- arity-conflicted?
-  "Do two of these literals bind one term to two arities?  A predicate takes one number of
-  arguments — `(functional arity)` says so of the table, and the relation-wide classes are
-  pairwise `disjoint`, which their kind specializations inherit (docs/taxonomy.md) — so no
-  term satisfies both, whichever of the two spellings each literal used.  `(arity ?p 1)` beside `(arity ?p 2)`, and `(arity ?p 1)`
-  beside `(equivalence_relation ?p)`, are the same finding read two ways.
+(def ^:private relation-wide-arity-classes
+  "Each length's relation-wide class in `tax/exact-arity-classes`, the one the predicate
+  and function classes of that length specialize."
+  (into {} (keep (fn [c] (when-let [n (get tax/exact-arity-classes c)] [n c])))
+        '[unary binary ternary quaternary quinary]))
 
-  A declaration read, not an inference: nothing is derived and no fact is consulted, the
-  same standing `separated-antecedents?` has beside it."
+(defn- separated-antecedents?
+  "Do two of these literals claim one term is of two types a declaration separates?  The
+  one thing the joint-satisfiability test reads a declaration for, and it reads the same
+  one the consequent side does.
+
+  `(arity ?p n)` claims ?p is of the relation-wide exact class of that length
+  (`relation-wide-arity-classes`), so a floor class the KB separates from it — core.txt's
+  `(disjoint at_least_binary unary)` — rules out `(at_least_binary ?p)` beside
+  `(arity ?p 1)`.  The separation is the KB's declaration, read as for any two types."
   [kb lits context]
   (let [tax     (reasoning/taxonomy kb)
         by-term (reduce (fn [m l]
-                          (if-let [n (literal-arity-claim tax l context)]
-                            (update m (second l) (fnil conj #{}) n)
-                            m))
+                          (let [f (nm/functor l)]
+                            (cond
+                              (or (not (symbol? f)) (sx/variable? f)) m
+
+                              (= 1 (nm/arity l))
+                              (update m (second l) (fnil conj #{}) f)
+
+                              (= 'arity f)
+                              (if-let [c (some-> (literal-arity-claim tax l context)
+                                                 relation-wide-arity-classes)]
+                                (update m (second l) (fnil conj #{}) c)
+                                m)
+
+                              :else m)))
                         {} lits)]
-    (boolean (some (fn [[_ ns]] (> (count ns) 1)) by-term))))
+    (boolean (some (fn [[_ ts]]
+                     (let [ts (vec ts)]
+                       (some (fn [[x y]] (tax/disjoint? tax x y context))
+                             (for [i (range (count ts)), j (range (inc i) (count ts))]
+                               [(nth ts i) (nth ts j)]))))
+                   by-term))))
 
 (defn- lower-bounds
-  "The integers `k` the literals `lits` state `v` exceeds: `(lessThan k v)` and
+  "The numbers `k` the literals `lits` state `v` exceeds: `(lessThan k v)` and
   `(greaterThan v k)`."
   [lits v]
   (keep (fn [l]
           (let [[f x y] l]
             (when (= 3 (count l))
-              (cond (and (= 'lessThan f) (= v y) (integer? x))    x
-                    (and (= 'greaterThan f) (= v x) (integer? y)) y))))
+              (cond (and (= 'lessThan f) (= v y) (number? x))    x
+                    (and (= 'greaterThan f) (= v x) (number? y)) y))))
         lits))
 
-(defn- arity-floor-conflicted?
-  "Does a literal bound a term's length above the exact arity another literal claims?
-  `(arity ?p ?n)` beside `(lessThan k ?n)` says ?p takes more than k places, and
-  `(arityMin ?p ?n)` beside it says ?p requires more than k.  A term `literal-arity-claim`
-  binds to exactly n places, with n at most k, satisfies neither: the arity table is
-  functional, and a minimum above the exact length admits no application.  The floor
-  rules core.txt states over `arity` and `arityMin` read that way beside every rule that
-  concludes an exact class.
+(defn- upper-bounds
+  "The numbers `k` the literals `lits` state `v` falls short of: `(lessThan v k)` and
+  `(greaterThan k v)`."
+  [lits v]
+  (keep (fn [l]
+          (let [[f x y] l]
+            (when (= 3 (count l))
+              (cond (and (= 'lessThan f) (= v x) (number? y))    y
+                    (and (= 'greaterThan f) (= v y) (number? x)) x))))
+        lits))
 
-  A declaration read, as `arity-conflicted?` is beside it."
+(defn- unmergeable?
+  "Is `v` a ground filler no merge can make another — a number, a string or another
+  non-symbol atom?  Two distinct symbols may name one thing, and a functional mark merges
+  them rather than refusing, so only these fill one slot two ways for certain."
+  [v]
+  (and (some? v) (not (symbol? v)) (not (coll? v))))
+
+(defn- slot-fillers
+  "`{[q n determinant] #{filler …}}` for the functional slots of `lits`, reading
+  `functionalInArg` marks up each functor's hierarchy. The determinant is the remaining
+  arguments under the current substitution. Exact-arity memberships also contribute
+  their equivalent `(arity ?p n)` claim. See docs/integrity.md."
+  [tax lits context]
+  (let [as-arity (keep (fn [l] (when (= 1 (nm/arity l))
+                                 (when-let [n (literal-arity-claim tax l context)]
+                                   (list 'arity (second l) n))))
+                       lits)]
+    (reduce (fn [m l]
+              (let [f (nm/functor l)]
+                (if-let [slots (and (symbol? f) (not (sx/variable? f))
+                                    (seq (tax/functional-in-arg-over tax f context)))]
+                  (let [args (vec (nm/args l))]
+                    (reduce (fn [m [q n]]
+                              (if (<= 1 n (count args))
+                                (let [det (into (subvec args 0 (dec n)) (subvec args n))]
+                                  (update m [q n det] (fnil conj #{}) (nth args (dec n))))
+                                m))
+                            m slots))
+                  m)))
+            {} (concat lits as-arity))))
+
+(defn- functional-slot-conflicted?
+  "Do distinct unmergeable fillers or incompatible numeric bounds make a declared
+  functional slot impossible to fill? Reads declarations and literals only, not facts
+  or inference. Unmarked slots impose no restriction; see docs/integrity.md."
+  [kb lits context]
+  (let [tax (reasoning/taxonomy kb)]
+    (boolean
+     (some (fn [[_ vs]]
+             (let [grounds (into #{} (filter unmergeable?) vs)
+                   vars    (filter sx/variable? vs)
+                   lows    (mapcat #(lower-bounds lits %) vars)
+                   highs   (mapcat #(upper-bounds lits %) vars)
+                   g       (first grounds)]
+               (cond
+                 (> (count grounds) 1) true
+                 (number? g)           (or (some #(<= g %) lows) (some #(>= g %) highs))
+                 (and (empty? grounds) (seq lows) (seq highs))
+                 (>= (apply max lows) (apply min highs)))))
+           (slot-fillers tax lits context)))))
+
+(defn- arity-min-conflicted?
+  "Does a literal bound a term's minimum length above the exact arity another literal
+  claims?  `(arityMin ?p ?n)` beside `(lessThan k ?n)` says ?p requires more than k
+  places, and a term `literal-arity-claim` binds to exactly n places, with n at most k,
+  admits no application of that length.  The floor rules core.txt states over `arityMin`
+  read that way beside every rule that concludes an exact class.  The floor rules over
+  `arity` itself are `functional-slot-conflicted?`'s, the arity table being functional.
+
+  A declaration read, as `functional-slot-conflicted?` is beside it."
   [kb lits context]
   (let [tax   (reasoning/taxonomy kb)
         exact (reduce (fn [m l]
@@ -1898,7 +2047,7 @@
     (boolean
      (some (fn [l]
              (let [[f p v] l]
-               (when (and (#{'arity 'arityMin} f) (= 3 (count l)) (sx/variable? v))
+               (when (and (= 'arityMin f) (= 3 (count l)) (sx/variable? v))
                  (some (fn [n] (some #(>= % n) (lower-bounds lits v)))
                        (get exact p)))))
            lits))))
@@ -1910,19 +2059,13 @@
   every spelling, so a declaration the entry point honors is one this honors; up the
   predicate hierarchy, so a super-predicate's declaration types a
   sub-predicate's tuple.  A declaration read, not an inference: nothing is derived and no
-  fact is consulted, the same standing `separated-antecedents?` and `arity-conflicted?`
+  fact is consulted, the same standing `separated-antecedents?` and `functional-slot-conflicted?`
   have beside it."
   [kb pred arity context]
   (for [{:keys [from to type kind]} (res/arg-constraints kb pred context)
         :when (= :instance kind)
         n (range from (inc (min (or to arity) arity)))]
     [n type]))
-
-(def ^:private relation-wide-arity-classes
-  "Each length's relation-wide class in `tax/exact-arity-classes`, the one the predicate
-  and function classes of that length specialize."
-  (into {} (keep (fn [c] (when-let [n (get tax/exact-arity-classes c)] [n c])))
-        '[unary binary ternary quaternary quinary]))
 
 (defn- genl-arity-class
   "The relation-wide exact-arity class `(genl a P)` demands of `a`, or nil: a spec of `P`
@@ -2035,21 +2178,11 @@
            neg))))
 
 (defn- jointly-satisfiable?
-  "Could both antecedent sets hold at once — **shallowly**?
-
-  Five things rule it out and nothing else does: a literal appearing under σ together with
-  its own negation, or with the negation of a predicate it is a spec of; one term claimed to
-  be of two separated types; one term bound to two arities; one term bounded above the
-  exact arity it is claimed to have; and one term a declaration demands be of a type
-  disjoint from one the two rules place it in: an `arg` declaration, a `genl` literal's
-  second argument by its arity, or an application's function.  **No
-  inference is run and no fact is consulted** — each of the five is a declaration read.  This is what the rules say about each other, and a pair it admits
-  is a clash that *could* form rather than one that will — which is the whole reading,
-  since a clash that had already formed would be in `(contradictions kb)` instead.
-
-  The fifth reads the consequents beside the antecedents, since the type an `arg`
-  declaration demands of one rule's variable is disjoint from the type the **other** rule
-  *concludes* about the unified term (`arg-type-conflicted?`)."
+  "Can both antecedent sets hold under `sigma`, by the shallow declaration checks?
+  Reject literal/spec negation, separated types, incompatible functional-slot fillers,
+  an exact arity below a minimum bound, or an argument-type demand disjoint from a
+  stated antecedent/consequent type. Runs no inference and consults no fact. An admitted
+  pair could clash, not necessarily will; see docs/integrity.md."
   [kb a b sigma context]
   (let [subst #(res/substitute % sigma)
         lits  (into (mapv subst (:antecedent a)) (map subst) (:antecedent b))
@@ -2059,8 +2192,8 @@
     (and (empty? (set/intersection pos neg))
          (not (negation-met-by-a-spec? kb pos neg context))
          (not (separated-antecedents? kb pos context))
-         (not (arity-conflicted? kb pos context))
-         (not (arity-floor-conflicted? kb pos context))
+         (not (functional-slot-conflicted? kb pos context))
+         (not (arity-min-conflicted? kb pos context))
          (not (arg-type-conflicted? kb pos heads context)))))
 
 (defn- rule-functors
@@ -2073,16 +2206,18 @@
         (:antecedent v)))
 
 (defn- exception-names-other?
-  "Does `a`'s `exceptWhen` name a predicate `b` is about?  That is the form a stated
+  "Does `context` see an `exceptWhen` of `a` naming a predicate `b` is about? That is the form a stated
   exception has — \"birds fly, unless penguins\" beside \"penguins do not fly\" — and it is
   why such a pair is reported as `:excepted` rather than hidden: a reader wants to see
   which clashes are already handled, not to be told there are none."
-  [kb a b]
-  (when-let [cs (rule-exception-conjuncts kb (:handle a))]
-    (let [fs (rule-functors b)]
-      (boolean (some (fn [c]
-                       (some #(contains? fs (nm/functor (if (sx/negation? %) (second %) %))) c))
-                     cs)))))
+  [kb a b context]
+  (when (reads/watched-rule? (:index kb) (:handle a))
+    (when-let [cs (seq (provers/rule-exceptions kb (:handle a) context))]
+      (let [fs (rule-functors b)]
+        (boolean (some (fn [c]
+                         (some #(contains? fs (nm/functor (if (sx/negation? %) (second %) %)))
+                               (mapcat rules/watched-literals c)))
+                       cs))))))
 
 (defn- readable-unifier
   "σ in the two rules' own variable names, the **second** rule's carrying a trailing `'`.
@@ -2173,8 +2308,8 @@
          :unifier   (readable-unifier s a b)
          :context   ctx
          :sentences [(:sentence a) (:sentence b0)]
-         :excepted  (boolean (or (exception-names-other? kb a b0)
-                                 (exception-names-other? kb b0 a)))}))))
+         :excepted  (boolean (or (exception-names-other? kb a b0 ctx)
+                                 (exception-names-other? kb b0 a ctx)))}))))
 
 (defn- clash-units
   "`[a b finding]` for every clashing pair of `rows`, lazily, in content order: a pair is
@@ -2318,6 +2453,10 @@
   [[:definition-inconsistencies provers/definition-inconsistencies]
    [:all-specified-violations (fn [kb _ context remaining]
                                 (specified-findings kb context remaining))]
+   [:type-specified-violations (fn [kb _ context remaining]
+                                 (type-specified-findings kb context remaining))]
+   [:rigidity-correspondence (fn [kb _ context remaining]
+                               (rigidity-correspondence-findings kb context remaining))]
    [:genl-arg-widening (fn [kb _ context remaining]
                          (widening-findings kb context remaining))]
    [:not-under-thing not-under-thing-findings]
@@ -2401,12 +2540,14 @@
               (recur more (some-> remaining (- (count (:findings result))))))))))))
 
 (defn- report-categories
-  "The non-empty categories of a meter's findings, the specified category as a map."
+  "The non-empty categories of a meter's findings, the two specified categories as maps."
   [found]
   (into {}
         (keep (fn [[k xs]]
                 (when (seq xs)
-                  [k (if (= :all-specified-violations k) (into {} xs) xs)])))
+                  [k (if (#{:all-specified-violations :type-specified-violations} k)
+                       (into {} xs)
+                       xs)])))
         found))
 
 (defn kb-integrity

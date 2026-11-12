@@ -271,6 +271,13 @@
           (let [e (ex-data-of #(import/read-edn-manifest cut))]
             (is (= :malformed-manifest (:type e)))
             (is (= cut (:file e))))))
+      (testing "a text KB's digests file is read through the same reader"
+        (let [digests (.getPath (io/file d "digests.edn"))]
+          (spit (io/file d "CxA.txt") "(genl dog animal)\n")
+          (spit digests "{\"CxA.txt\" {0 [")
+          (let [e (ex-data-of #(v/load-text! (tu/fresh) (.getPath d)))]
+            (is (= :malformed-manifest (:type e)))
+            (is (= digests (:file e))))))
       (finally (tu/rm-rf! d)))))
 
 (deftest a-malformed-manifest-is-still-not-a-kb-rather-than-an-error

@@ -313,9 +313,12 @@ queried by. So no spelling is derived from another: the canonicalizer reads one 
 whichever one was written.
 
 The equivalence between `(commutative P)` and `(commutativeInArgAndRest P 1)` stays in
-`core.txt` as two `set/inertRule`s — believed, indexed and queryable, run by neither engine —
+`core.txt` as `set/inertRule`s — believed, indexed and queryable, run by neither engine —
 because the engine has no `iff` to state it with and neither mark has to derive the
-other any more.
+other any more. The direction back to `commutative` is two rules, one requiring
+`(arity ?p ?n)` and one `(arityMin ?p ?n)` with `(greaterThan ?n 1)`, as the
+`at_least_binary` floor rules read a length: `(commutativeInArgAndRest P 1)` holds vacuously
+of a unary `P`, and a commutative relation is `at_least_binary`.
 
 `(genl symmetric commutative)` classifies every symmetric predicate, and `(commutative P)`
 with `(arity P 2)` concludes `(symmetric P)` — commutativity at two arguments **is**
@@ -326,11 +329,11 @@ this vocabulary costs a backward search if they are written any other way.
 ### A bridge between two marks is a cycle backward
 
 `set/forwardRule` adds forward chaining **without taking the backward use away**
-(its engines are `#{:forward :backward}`), so a rule written with it answers goals too. Three
+(its engines are `#{:forward :backward}`), so a rule written with it answers goals too. Four
 rules here conclude a mark that another of them needs:
 
 - `(commutative ?p)` → `(commutativeInArgAndRest ?p 1)` and back, the two directions of
-  one equivalence.
+  one equivalence, the way back written once per length reading.
 - `(commutative ?p) ∧ (predicate ?p) ∧ (arity ?p 2)` → `(symmetric ?p)`, whose conclusion
   `(genl symmetric commutative)` makes a **spec** of `commutative` — and
   `provers/candidate-rules` offers a rule concluding a spec as a candidate for the
@@ -360,8 +363,9 @@ The three written spellings reduce to one runtime descriptor, and
 - **A `:rest` group is closed by the literal's own arity.** So `(covering W A B)` and
   `(covering W A B C)` are two claims, and no permutation moves an argument between them.
 - **A component of one position is dropped.** A mark whose positions fall past the
-  literal's arity leaves it alone, and a unary predicate marked `commutative` is
-  identity-only without a special case.
+  literal's arity leaves it alone without a special case. No unary predicate is marked
+  `commutative`: `commutative` is below `at_least_binary`, since one position is no
+  permutation.
 
 Sorting is the same rule as `symmetric`'s: ground literals only, within each component,
 other positions fixed. Repeats keep their multiplicity — commutativity changes order,
@@ -414,7 +418,8 @@ compound read that one list.
   literal (`chain/permuting-rejoin-rules`).
 - **Held as written.** The walk stops at a quoting function, so `(holds (Quote (PairFn
   Bob Ann)))` and `(holds (Quote (PairFn Ann Bob)))` are two sentexes. It stops at a
-  `natFormula` or `rewriteOf` expression, which is a verbatim NAT payload, and at a
+  `natFormula` or `rewriteOf` expression, which is a verbatim NAT payload and is probed in
+  every argument order its marks allow (`res/nested-probes`), and at a
   `reifiable_function` application, which the reify walk has already replaced with its
   constant ([nat.md](nat.md#write-path)). The constant is named by the application with
   its own arguments in the order its `symmetric` and commuting marks give them
@@ -458,10 +463,22 @@ compound read that one list.
   `commute-existing` and `chain/reconcile-spellings!` walk that set. A firing the leaving
   split moves has its antecedents read again by the agenda, since a fold of two
   conclusions keeps one justification for two bindings.
-- **Every reader reads the store's order below the literal.** The per-reader spelling of
+- **A mark on a function is read per reader.** The per-reader spelling of
   [A mark a reader does not believe](#a-mark-a-reader-does-not-believe) reads the marks of
-  the literal's own predicate. A `defeat` or an `except` of a mark on a functor applied
-  below the literal moves no reader's spelling of that compound.
+  each functor in the literal that some reader does not believe (`res/split-functors`):
+  the literal's own predicate and each function applied below it. With `(commutative
+  PairFn)` in CxUniverse and its denial in a context below, that context reads `(holds
+  (PairFn Bea Ada))` as written, and the `respell` row `(holds (PairFn Ada Bea))` serves
+  the readers that believe the mark. A ground goal is probed in every argument order of
+  each compound applying such a functor (`res/as-written-probes`,
+  `sentex/reader-arrangements`), and `res/probe-spelling` leaves those compounds as
+  written. A `reifiable_function` application is read per reader through its constant:
+  the use names the constant of its written order, and a `respell` row naming the sorted
+  constant serves the readers that believe the mark
+  ([nat.md](nat.md#a-reifiable-mark-moving)). `order_independence_test`'s
+  `a-mark-on-a-function-defeated-below-the-facts-is-read-per-reader` and
+  `a-permuting-mark-on-a-reifiable-function-defeated-below-the-facts-is-read-per-reader`
+  assert both readers over sampled arrival orders.
 
 A store written before compounds below the literal were sorted holds them as written, and
 a ground lookup of such a row by its written spelling misses it. `export-text!` then
@@ -472,7 +489,7 @@ the spellings record.
 
 ## A function's terms reshaped by declaration
 
-Three marks reshape a ground application of a function below the literal, beside the
+Four marks reshape a ground application of a function below the literal, beside the
 sorts. `sentex/canonical-term` applies them, in the walk above, to the compound whose
 functor carries them:
 
@@ -481,15 +498,19 @@ functor carries them:
 | `(associative F)` | an argument applying `F` has its arguments spliced in, before the sort | `(F A (F B C))` → `(F A B C)` |
 | `(idempotent F)` | an argument equal to its neighbour after the sort is dropped when `F` is also associative; otherwise only an application whose arguments are all one term collapses | `(F A B A)` → `(F A B)` |
 | `(meetFunctionOf F R)` | an argument another argument lies below by `R` is dropped; of two arguments below each other, the `cmp-term`-least stays | `(F (DatetimeFn "2000") (DatetimeFn "2000-03"))` → `(DatetimeFn "2000-03")` |
+| `(distinctInArgAndRest F n)` | an argument from position `n` on that repeats an earlier one is dropped, after the sort, with no associative mark needed | `(F A B A)` → `(F A B)`, `(F A A)` → `(F A)` |
 
 An application of an idempotent or meet function left with one argument is that
-argument. Core.txt's forward rules conclude `commutative`, `associative` and `idempotent`
+argument. A distinct one keeps its functor at any count, so `(SetFn A)` stays a term, and
+it never flattens: `(SetFn A (SetFn B C))` holds a set as an element. Core.txt's forward rules conclude `commutative`, `associative` and `idempotent`
 from `meetFunctionOf`, so the one declaration gives all four arms.
 
 - **The order's registered comparator decides absorption.** `res/meet-order` reads
-  `datetime/order-comparators`, a pure function of the two terms (`subintervalOf` reads
-  the calendar fields, so `(MonthFn 2000 3)` and `(DatetimeFn "2000-03")` lie below each
-  other, and a range's extent; `subtimeOf` places a moment inside an interval). A stored `(R a b)` fact is never read, so a stored form does not move with
+  `datetime/order-comparators` for the declared order and every order `genl`-below it,
+  each a pure function of the two terms (`subintervalOf` reads the calendar fields, so
+  `(MonthFn 2000 3)` and `(DatetimeFn "2000-03")` lie below each other, and a range's
+  extent; `subtimeOf` places a moment inside an interval). `TimeIntersectionFn`, the meet
+  over `subtimeOf`, absorbs by both, since `(genl subintervalOf subtimeOf)` holds. A stored `(R a b)` fact is never read, so a stored form does not move with
   belief: two named times are not absorbed whatever is stated between them, and an order
   with no registered comparator absorbs nothing.
 - **The arms keep the walk's limits.** They read the exact functor, unscoped. They

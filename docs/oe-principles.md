@@ -8,7 +8,7 @@ Working rules for adding vocabulary and knowledge to a vaelii KB. Each principle
 
 ## strongest form
 *State knowledge in its strongest form*
-**specPrinciple:** tightest parent, partition over disjoint, classify before you constrain
+**specPrinciple:** tightest parent, partition over disjoint, classify before you constrain, room for theory revision
 If you're about to assert P, but Q is also true and Q implies P, assert Q instead. The weaker fact stays derivable, so nothing is lost, and the stronger one carries more.
 
 This applies to instance facts, argument types and disjointness alike:
@@ -17,6 +17,22 @@ This applies to instance facts, argument types and disjointness alike:
 - **Disjointness:** state it at the highest level that is true. If `(disjoint A B)` holds and A′ ⊂ A, don't also state `(disjoint A′ B)`.
 
 **Audit:** for every line, ask whether a more specific true fact entails it.
+
+## room for theory revision
+*Don't weaken a fact for a counterexample nobody has found*
+**genlPrinciple:** strongest form · **specPrinciple:** consistent at each commit
+There's always room for theory revision. Don't let a hypothetical future counterexample stop you from stating a fact in its strongest, most useful form today. If one turns up, revise the theory then. A fact weakened in advance gives up inference now for a refutation that may never come.
+
+**Example:** `hollow` is time-varying: a hollow box crushed flat is no longer hollow and is still a box. Nobody could name a thing that is essentially hollow, but that rests on a search, not a proof. State `(set/monotonic (time_varying_relation hollow))` anyway, not a default kept weak against an essentially hollow thing someone might name later.
+
+**Audit:** for every fact written weaker than its author believes it, ask whether a real counterexample is known. If none is, state it at full strength.
+
+## consistent at each commit
+*Assume the KB is consistent; revise a theory in one atomic commit*
+**genlPrinciple:** room for theory revision
+Write as if the KB is consistent. A theory revision is a single atomic, transactional commit: every fact, rule and test it changes lands together. Consistency and soundness must hold at each commit, and need not hold partway through one. vaelii does not enforce this. A KB's authors and the tools they use hold to it.
+
+**Audit:** for a PR that revises a theory, check that the KB is consistent at every commit, and that no commit leaves half a revision behind.
 
 ## look before you mint
 *Search everywhere before minting a term*
@@ -55,6 +71,14 @@ T1 and T2 are named separately because Q's two arguments can have different type
 *Comments state the meaning, not the term again*
 **specPrinciple:** references in seeAlso
 A comment that restates the term's name adds nothing. Say what membership or the relation *means*, with examples, including the hard ones.
+
+## no natural-language reading
+*A modelling choice never rests on how a natural language reads*
+A predicate's name, its argument order, its direction and the split between an attribute and a relation are chosen from what the KB states, never from how the sentence reads in English or any other language. A natural language's syntax and idioms evolved, and they are not a model of the domain. A reading that pulls toward one choice stands in for a distinction the KB does not state yet: an argument role, a correspondence position, a direction of functionality. State that distinction as a fact or a rule, and the choice follows from it.
+
+**Audit:** for each naming, argument-order or modelling choice in a vocab PR, the stated reason cites KB content, not how the result reads.
+
+**Example:** `(fatherOf ?child ?father)` puts the child first because `(functionCorrespondingBinaryPredicate FatherFn fatherOf)` reads the function's value from the last argument (life.txt), not because "father of" reads that way in English.
 
 ## classify before you constrain
 *Classify before you constrain*
@@ -115,7 +139,7 @@ Whenever you define a function, also define the predicates that relate each of i
 **genlPrinciple:** tightest parent
 To find a type's most specific genl, start at its current genl and try each direct spec: is every member of the type really a member of that spec, in the real world? If so, tighten, and recurse. Query the direct specs from the KB rather than recalling them.
 
-Every type is a spec of `thing`.
+A type that states no `genl` starts the walk at `thing`. Arity makes a predicate a type ([naming.md](naming.md)), so a type with no `genl` path to `thing` is still a type.
 
 ## broad under thing
 *Few direct specs of thing, all broad*
@@ -144,7 +168,7 @@ Alongside inconsistencies, list the top 5 type pairs whose relationship is unkno
 ## does it have rules?
 *Include X in concept Y? Compare what's true of each side*
 **genlPrinciple:** no OE calligraphy
-For a boundary question ("are prosthetics body parts?"), list the facts and rules true of X-with-Y and of X-without-Y. A side with nothing of its own, or only exceptions, isn't worth representing. Both sides rich usually means two concepts, often a type plus a role relation. A word naming each side is weak supporting evidence, since natural language is imprecise.
+For a boundary question ("are prosthetics body parts?"), list the facts and rules true of X-with-Y and of X-without-Y. A side with nothing of its own, or only exceptions, isn't worth representing. Both sides rich usually means two concepts, often a type plus a role relation. A word naming each side counts for nothing (**no natural-language reading**).
 
 ## no teleology
 *No teleology in a type's definition*
@@ -221,7 +245,11 @@ State a separation `:monotonic` in CxUniverse unless an existing fictional work 
 
 **Example:** the Catbus in *My Neighbor Totoro* is both a cat and a bus, so `(disjoint animal vehicle)` is a default in CxUniverse and monotonic in CxRealWorld.
 
-**Audit:** for every default-strength separation that has a monotonic copy in CxRealWorld, name the fictional work and the member that justify it.
+A type `genl` edge follows the same rule: state it `:monotonic` unless an existing member of the subtype is not a member of the supertype. A fictional member weakens the edge in CxUniverse and leaves a `:monotonic` copy in CxRealWorld; a real member weakens it everywhere. A `:default` edge gives each member of the subtype a supertype membership that a denial undercuts ([inference.md](inference.md#an-edges-reading)).
+
+**Example:** a watch taken apart and rebuilt is tangible and intermittent, so `(genl tangible uninterrupted)` is a default.
+
+**Audit:** for every default-strength separation that has a monotonic copy in CxRealWorld, name the fictional work and the member that justify it. For every default-strength type `genl` edge, name the member that justifies it.
 
 ## no OE calligraphy
 *True and useful, not OE calligraphy*

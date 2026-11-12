@@ -489,19 +489,30 @@
     (and (symbol? rel) (nm/individual? rel))
     (conj (str rel " is an individual; " f " names the sub-relation ordering " fname "'s contexts"))))
 
+(defn context-arg-genlcx-problems
+  "`(contextArgGenlCx F pos)` makes every `F`-context a spec of the context at argument
+  `pos` (docs/context-nat.md).  `F` is a function name and `pos` a 1-based positive
+  integer; whether `pos` is in `F`'s arity is left to the producer, as
+  `context-arg-subrelation-problems` leaves it."
+  [_ [f fname pos :as s] _context]
+  (cond-> []
+    (not= 3 (count s))    (conj (str f " takes a function and an argument position"))
+    (not (symbol? fname)) (conj (str f " expects a function name (a symbol)"))
+    (not (and (integer? pos) (pos? pos)))
+    (conj (str f "'s argument position must be a positive integer"))))
+
 (defn correspondence-problems
   "`(functionCorrespondingPredicate F P N)` says the function `F` and the predicate `P`
   state the same relationship, `N` naming the argument of `P` that carries `F`'s value.
 
   `F` is a function name — a `MotherFn`-shaped constant, an individual by the naming
-  invariants — so the individual refusal falls on `P` alone.  `N` is optional and
-  1-based; omitted, the value takes `P`'s last argument, which is the shape nearly
-  every correspondence has.  Whether `N` is in range is not knowable here: it is
-  checked against the *application*'s arity, which no declaration states."
+  invariants — so the individual refusal falls on `P` alone.  `N` is 1-based and always
+  stated.  Whether `N` is in range is not knowable here: it is checked against the
+  *application*'s arity, which no declaration states."
   [_ [f fname pred pos :as s] _context]
   (cond-> []
-    (not (<= 3 (count s) 4))
-    (conj (str f " takes a function, a predicate, and optionally an argument position"))
+    (not= 4 (count s))
+    (conj (str f " takes a function, a predicate, and the argument position of the value"))
     (not (symbol? fname)) (conj (str f " expects a function name (a symbol)"))
     (not (symbol? pred))  (conj (str f " expects a predicate name (a symbol)"))
     (nm/individual? pred) (conj (str pred " is an individual; " f " names the predicate "
@@ -563,6 +574,15 @@
   [_ [f & args] _context]
   [(str f " is not assertible: it is computed from the genl closure and never stored —"
         " assert the genl edges and ask it, e.g. (ask? kb '(" f " " (str/join " " args) "))")])
+
+(defn structure-problems
+  "The structure relations and the constructors' corresponding predicates are **not
+  assertible**.  Each is computed from the structure term it names by
+  `provers/StructureProver`, which reads no stored fact, so a stored one would be a fact no
+  read returns (docs/nat.md, \"A data structure is a structural term\")."
+  [_ [f & args] _context]
+  [(str f " is not assertible: it is computed from the structure term it names and never"
+        " stored — ask it instead, e.g. (ask? kb '(" f " " (str/join " " args) "))")])
 
 (defn brave-cautious-problems
   "`bravely` and `cautiously` are **not assertible**.  Each is a *read* on the current

@@ -6,7 +6,7 @@ standing in for a mechanism, an evaluative adjective with no measurement behind 
 a pseudo-cleft that delays the subject are all decodable only by inference, so this
 check fails on them. The rule and the substitution table are CONTRIBUTING.md §3.10.
 
-Six codes:
+Seven codes:
 
   P1  A metaphor where the mechanism has a name. `door` is two different things --
       an API entry point (`assert`, `match`, the served handlers) and a validation
@@ -41,26 +41,43 @@ Six codes:
       "comes into view", `view-context`); a bare "the view" fails. A phrase wrapped onto
       the next line is read with the last three words of the line before it.
 
-P5 and P6 skip CHANGELOG.md's released sections (from the first `## 0.` heading on),
+  P7  A prose sentence of `MAX_WORDS` (40) words or more. No regex can test §3.10's
+      rule 6, one claim per sentence. Sentence length stands in for the rule. Prose is
+      a markdown paragraph or list item, a full-line `;` comment or a docstring in a
+      Clojure file, and a full-line `#` comment in a .py or .sh file. Fenced code,
+      table rows, headings and HTML are not prose. A backtick span counts as one word.
+      A link counts as its text. A comment or docstring is joined across its lines
+      before it is split. A list item is never joined to the next one.
+
+P5, P6 and P7 skip CHANGELOG.md's released sections (from the first `## 0.` heading on),
 which are frozen. P6 skips the reference model under `test/vaelii/ref/`, whose `view`
 and `view-of` are its own names for a context's visible set, and the glossary and
 reserved-words pages that define the word.
 
-The sentence-form rules that no regex reaches (name the subject, no fragment, one claim
-per sentence, mechanism before reason) are held by review, not by this script.
+The sentence-form rules that no regex reaches (name the subject, no fragment, mechanism
+before reason) are held by review, not by this script. P7 measures sentence length, and
+review holds the one-claim rule itself.
 
-The budget, `scripts/prose-baseline.txt`, maps a path to the number of hits it is
-allowed. A file absent from it is held at zero, so a new or rewritten file is clean by
-default. Over budget fails; under budget also fails, with the fix being `--update`, which lowers a
-count and never raises one. Raising a count is a hand edit carrying a reason, so a
-regression appears in the diff rather than in a refresh. The baseline's entries are P5
-names the code must still read or a changelog entry must quote; every other file is at zero.
+Each budget maps a path to the number of hits it is allowed: `scripts/prose-baseline.txt`
+holds P1-P6 and `scripts/prose-length-baseline.txt` holds P7. A file absent from a budget
+is held at zero, so a new or rewritten file is clean by default. Over budget fails, and
+under budget fails too. `--update` lowers each listed count to the file's hits. It never
+raises a count, and it never adds a file the budget does not list. Raising a count or
+adding a file is a hand edit carrying a reason, so a regression appears in the diff
+rather than in a refresh. `--seed` writes a budget file that does not exist yet from the
+tree as it stands, and leaves an existing one as it is. The P1-P6 entries are P5 names
+the code must still read or a changelog entry must quote; every other file is at zero
+there.
 
     python3 scripts/check-prose.py            # the check
     python3 scripts/check-prose.py --update   # lower every stale budget
-    python3 scripts/check-prose.py --list     # every hit, file:line:code:text
+    python3 scripts/check-prose.py --seed     # write an absent budget file from the tree
+    python3 scripts/check-prose.py --list     # every hit, file:line:code:text; P7 as
+                                              # file:line: P7 (NN words) <first 12 words>…
 """
 
+import bisect
+import importlib.util
 import os
 import re
 import sys
@@ -68,6 +85,13 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SELF = os.path.abspath(__file__)
 BASELINE = os.path.join(ROOT, "scripts", "prose-baseline.txt")
+LENGTH_BASELINE = os.path.join(ROOT, "scripts", "prose-length-baseline.txt")
+
+# P7 finds Clojure docstrings with check-doc-size.py's reader, which that script owns.
+_spec = importlib.util.spec_from_file_location(
+    "check_doc_size", os.path.join(ROOT, "scripts", "check-doc-size.py"))
+DOC_SIZE = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(DOC_SIZE)
 
 # Directories scanned, and the extensions scanned inside them.
 SCAN_DIRS = ["src", "test", "bench", "docs", "handbook", "scripts", "resources/kb"]
@@ -92,6 +116,7 @@ ROOT_MD = ["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "CONTRIBUTORS.md"]
 EXEMPT = {
     "scripts/check-prose.py",
     "scripts/prose-baseline.txt",
+    "scripts/prose-length-baseline.txt",
     "CONTRIBUTING.md",
 }
 
@@ -173,7 +198,9 @@ P5_TERMS = [(pat, [re.compile(x) for x in strips], set(files)) for pat, strips, 
 P6 = re.compile(r"(?<![A-Za-z])view(?:s|ed|er|ers)?(?![A-Za-z])", re.I)
 # Words holding `view` that are not the word: `preview`, `viewBox`, the spatial
 # `viewpoint`, the KB constant `image_viewing`, the test-world individual `Viewer`.
+# Discord's permission token and the channel-access kind are literal identifiers.
 P6_NOT = [re.compile(x, re.I) for x in (
+    r"(?<!\w)(?-i:channel_view|VIEW_CHANNEL)(?!\w)",
     r"\bpreview", r"\breview", r"viewBox", r"viewport", r"scrollIntoView",
     r"ViewTransition", r"image_viewing", r"\bViewer\b", r"\bTmpViewer", r"viewpoint",
     r"point of view", r"gh run view", r"gh pr view")]
@@ -194,6 +221,35 @@ P6_KEPT = [re.compile(x) for x in (
     r"(own|joint|common|into|the-rest-of-the|come|comes|came)-views?\b",
     r"the-view-licenses", r":sight-view")]
 P6_SKIP = re.compile(r"^test/vaelii/ref/|^docs/(glossary|naming)\.md$")
+
+# P7 flags a prose sentence of MAX_WORDS words or more. Sentence length stands in for
+# §3.10's rule 6, one claim per sentence. No regex can test that rule.
+MAX_WORDS = 40
+# A unit is a markdown paragraph or one list item. A sentence never crosses a unit.
+# Fenced code, table rows, headings, HTML and horizontal rules belong to no unit.
+MD_FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
+MD_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+MD_NO_UNIT = re.compile(r"^\s*(?:\||#{1,6}(?:\s|$)|<|[-=_]{3,}|\*{3,}\s*$)")
+# _mask rewrites each match of these to a string of the same length, so an offset into
+# the masked text is an offset into the original. A backtick span becomes one word with
+# no `.` in it. A link keeps its text only. An abbreviation loses its periods.
+MD_CODE = re.compile(r"(`+).+?\1", re.S)
+MD_LINK = re.compile(r"!?\[([^\]\n]*)\](?:\([^)\s]*\)|\[[^\]\n]*\])")
+ABBREV = re.compile(r"(?i)\b(?:e\.g|i\.e|vs|cf|viz|approx|resp|incl|et al)\.")
+# A bold or italic run-in label (`**An open.**`, `*Migration:*`) heads a unit and is
+# not a sentence, so its words are masked out.
+RUN_IN = re.compile(r"^\s*(?:\*\*(?:(?!\*\*).)+?[.:?!][\"'’”)]*\*\*"
+                    r"|\*(?!\*)[^*\n]+?[.:?!][\"'’”)]*\*(?!\*))")
+# A sentence ends at `.`, `?` or `!` and any closing marks, before whitespace and a
+# character that is not a lowercase letter. A `.` with no whitespace after it, as in
+# `1.5`, `0.33.0` and `seal.nippy`, ends nothing.
+SENTENCE_END = re.compile(r"[.?!][)\]\"'’”*_]*(?=\s+[^\sa-z]|\s*$)")
+# A word is a whitespace-delimited token holding a letter or a digit, so `—` is no word.
+WORD = re.compile(r"[^\s\w]*\w\S*")
+HASH_COMMENT = re.compile(r"^\s*#(?!!)")
+# ALIGNED matches two or more spaces after a word, which separate the columns of a table.
+# Two spaces after sentence punctuation do not match.
+ALIGNED = re.compile(r"[^\s.?!:;,]\s{2,}\S")
 
 
 def _blank(pats, line):
@@ -216,6 +272,128 @@ def p6_bare(line):
     """Is there a `view` in `line` that no kept phrase accounts for?"""
     probe = _blank(P6_NOT, line)
     return bool(P6.search(_blank(P6_KEPT, probe))) if P6.search(probe) else False
+
+
+def md_units(numbered, comment=False):
+    """Groups (line number, text) pairs into prose units, each a list of such pairs.
+
+    In a comment or docstring (`comment`), a line with a run of two or more spaces after a
+    word is a table row and belongs to no unit. A line indented less than the line before
+    it starts a new unit there."""
+    units, cur, fence, html_comment, last_indent = [], [], None, False, 0
+    for ln, line in numbered:
+        if fence:
+            fence = None if line.strip().startswith(fence) else fence
+            continue
+        if html_comment:
+            html_comment = "-->" not in line
+            continue
+        text = re.sub(r"^\s*>\s?", "", line)  # P7 reads a blockquote line as prose
+        opens, item = MD_FENCE.match(text), MD_ITEM.match(text)
+        row = comment and ALIGNED.search(text)
+        indent = len(text) - len(text.lstrip())
+        dedent = comment and text.strip() and indent < last_indent
+        if opens or item or row or dedent or not text.strip() or MD_NO_UNIT.match(text):
+            if cur:
+                units.append(cur)
+            cur = []
+        last_indent = indent if text.strip() else last_indent
+        if opens:
+            fence = opens.group(1)
+        elif MD_NO_UNIT.match(text):
+            html_comment = text.lstrip().startswith("<!--") and "-->" not in text
+        elif text.strip() and not row:
+            cur.append((ln, (text[item.end():] if item else text).strip()))
+    if cur:
+        units.append(cur)
+    return units
+
+
+def clj_units(text):
+    """Returns the prose units of a Clojure file's full-line `;` comments and docstrings."""
+    starts = [0] + [m.end() for m in re.finditer("\n", text)]
+
+    def line_of(off):
+        return bisect.bisect_right(starts, off)
+
+    blocks, cur = [], []
+    for m in DOC_SIZE.TOKEN.finditer(text):
+        if not m.group(0).startswith(";"):
+            continue
+        ln = line_of(m.start())
+        if text[starts[ln - 1]:m.start()].strip():
+            continue  # the comment follows code on its line
+        if cur and cur[-1][0] != ln - 1:
+            blocks.append(cur)
+            cur = []
+        cur.append((ln, re.sub(r"^;+ ?", "", m.group(0))))
+    blocks += [cur] if cur else []
+    for off, tok in DOC_SIZE.docstrings(text):
+        body = re.sub(r"\\(.)", r"\1", tok[1:-1])
+        blocks.append([(line_of(off) + i, x) for i, x in enumerate(body.split("\n"))])
+    return [u for b in blocks for u in md_units(b, comment=True)]
+
+
+def hash_units(lines):
+    """Returns the prose units of a script's full-line `#` comments, not its shebang."""
+    blocks, cur = [], []
+    for ln, line in enumerate(lines, 1):
+        if HASH_COMMENT.match(line):
+            cur.append((ln, re.sub(r"^\s*#+ ?", "", line)))
+        elif cur:
+            blocks.append(cur)
+            cur = []
+    blocks += [cur] if cur else []
+    return [u for b in blocks for u in md_units(b, comment=True)]
+
+
+def prose_units(rel, lines):
+    """Returns the prose units P7 reads in one file, chosen by its extension."""
+    if rel.endswith(".md"):
+        return md_units(enumerate(lines, 1))
+    if rel.endswith((".clj", ".cljc", ".cljs")):
+        return clj_units("\n".join(lines))
+    if rel.endswith((".py", ".sh")):
+        return hash_units(lines)
+    return []
+
+
+def _mask(text):
+    """Rewrites `text`'s code spans, links, abbreviations and run-in label in place."""
+    text = MD_CODE.sub(lambda m: "`" + "x" * (len(m.group(0)) - 2) + "`", text)
+    text = MD_LINK.sub(lambda m: " " + m.group(1) + " " * (len(m.group(0)) - len(m.group(1)) - 1),
+                       text)
+    text = ABBREV.sub(lambda m: m.group(0).replace(".", "_"), text)
+    return RUN_IN.sub(lambda m: " " * len(m.group(0)), text)
+
+
+def sentences(unit):
+    """Returns (line number, word count, first 12 words) per sentence of a prose unit."""
+    text = "\n".join(t for _, t in unit)
+    starts, off = [], 0
+    for _, t in unit:
+        starts.append(off)
+        off += len(t) + 1
+    masked = _mask(text)
+    bounds = [m.end() for m in SENTENCE_END.finditer(masked)]
+    out, begin = [], 0
+    for end in bounds + [len(masked)]:
+        words = list(WORD.finditer(masked, begin, end))
+        begin = end
+        if not words:
+            continue
+        head = text[words[0].start():words[min(11, len(words) - 1)].end()]
+        head = " ".join(MD_LINK.sub(r"\1", head).split())
+        ln = unit[bisect.bisect_right(starts, words[0].start()) - 1][0]
+        out.append((ln, len(words), head))
+    return out
+
+
+def long_sentences(rel, lines):
+    """Returns (line number, text) for every P7 hit in a file's `lines`."""
+    return [(ln, f"({n} words) {head}…")
+            for unit in prose_units(rel, lines)
+            for ln, n, head in sentences(unit) if n >= MAX_WORDS]
 
 
 def scan_files():
@@ -252,7 +430,7 @@ def hits_in(rel):
         lines = open(path, errors="replace").read().splitlines()
     except OSError:
         return out
-    # P5 and P6 stop at the first released CHANGELOG section
+    # P5, P6 and P7 stop at the first released CHANGELOG section
     frozen = len(lines) + 1
     if rel == "CHANGELOG.md":
         frozen = next((i for i, l in enumerate(lines, 1) if l.startswith("## 0.")), frozen)
@@ -272,15 +450,15 @@ def hits_in(rel):
                 if code == "P4" and P4_NOT.search(line):
                     continue
                 out.append((i, code, text))
-    return out
+    return out + [(i, "P7", text) for i, text in long_sentences(rel, lines[:frozen - 1])]
 
 
-def read_baseline():
+def read_baseline(path):
     """path -> allowed count, plus the reason comment each line carries."""
     budget, reason = {}, {}
-    if not os.path.exists(BASELINE):
+    if not os.path.exists(path):
         return budget, reason
-    for line in open(BASELINE):
+    for line in open(path):
         line = line.rstrip("\n")
         if not line.strip() or line.lstrip().startswith("#"):
             continue
@@ -300,19 +478,43 @@ HEADER = """\
 # Format: <count>\\t<path>\\t<reason>.  A file absent from this list is held at ZERO,
 # so a new file and a rewritten one are clean by default.
 #
-# The ratchet: `--update` LOWERS a count and never raises one.  Raising a count is a
-# hand edit that carries its reason on the line, so a regression shows up in the diff
-# rather than in a refresh.  A file whose real count is below its budget fails until it
-# is lowered with `--update`, which is what keeps the number on this page moving down.
+# The ratchet: `--update` LOWERS a count.  It never raises one, and it never adds a file
+# this list does not name.  Raising a count or adding a file is a hand edit that carries
+# its reason on the line, so a regression shows up in the diff rather than in a refresh.
+# A file whose real count is below its budget fails until it is lowered with `--update`,
+# which is what keeps the number on this page moving down.
 #
 # The entries are P5 names the code must still read or a changelog entry must quote
 # (CONTRIBUTING.md §3.10); every other file is at ZERO.
 """
 
 
-def write_baseline(counts, reason):
-    with open(BASELINE, "w") as f:
-        f.write(HEADER)
+LENGTH_HEADER = f"""\
+# Per-file sentence-length budget for scripts/check-prose.py -- the count of P7 hits,
+# prose sentences of {MAX_WORDS} or more words, each file is allowed to carry
+# (CONTRIBUTING.md §3.10, rule 6).
+#
+# The format and the ratchet are scripts/prose-baseline.txt's: <count>\\t<path>\\t<reason>,
+# and a file absent from this list is held at ZERO.  `--update` lowers a count.  It never
+# raises one, and it never adds a file this list does not name.
+"""
+
+# Each row names a budget: its label, its file, the file's header, the over-budget
+# message, and whether it holds P7 hits or P1-P6 hits. scripts/lint.sh reads both
+# summary lines.
+LEDGERS = [
+    ("prose", BASELINE, HEADER,
+     "metaphor or aphorism over the file's budget. State what the code does, literally "
+     "(CONTRIBUTING.md §3.10).", False),
+    ("prose P7", LENGTH_BASELINE, LENGTH_HEADER,
+     f"sentences of {MAX_WORDS} or more words over the file's budget. Split each into one "
+     "claim per sentence (CONTRIBUTING.md §3.10, rule 6).", True),
+]
+
+
+def write_baseline(path, header, counts, reason):
+    with open(path, "w") as f:
+        f.write(header)
         for rel in sorted(counts):
             if counts[rel] <= 0:
                 continue
@@ -320,44 +522,46 @@ def write_baseline(counts, reason):
             f.write(f"{counts[rel]}\t{rel}\t{why}\n")
 
 
-def main():
-    update = "--update" in sys.argv
-    listing = "--list" in sys.argv
+def fmt(rel, ln, code, text):
+    """Formats one hit as `--list` and the over-budget report print it."""
+    return f"{rel}:{ln}: P7 {text}" if code == "P7" else f"{rel}:{ln}: {code} `{text}`"
 
-    counts, detail = {}, {}
-    for rel in scan_files():
-        hs = hits_in(rel)
-        if hs:
-            counts[rel] = len(hs)
-            detail[rel] = hs
 
-    if listing:
-        for rel in sorted(detail):
-            for ln, code, text in detail[rel]:
-                print(f"{rel}:{ln}: {code} `{text}`")
-        print(f"\n{sum(counts.values())} hits across {len(counts)} files")
+def update(label, path, header, counts):
+    """Lowers each count `path` lists to the file's hits in `counts`, and returns 1 when a
+    file is over its budget. It never raises a count or adds a file `path` does not list."""
+    budget, reason = read_baseline(path)
+    lowered = {rel: min(n, counts.get(rel, 0)) for rel, n in budget.items()}
+    over = sorted((rel, budget.get(rel, 0), n) for rel, n in counts.items()
+                  if n > budget.get(rel, 0))
+    write_baseline(path, header, lowered, reason)
+    print(f"{label} baseline: {sum(1 for n in lowered.values() if n > 0)} files, "
+          f"{sum(lowered.values())} hits allowed")
+    if over:
+        print("\nNOT lowered -- these files are OVER their budget, and --update never "
+              "raises a count or adds a file:")
+        for rel, was, now in over:
+            print(f"  {rel}: budget {was}, found {now}")
+        return 1
+    return 0
+
+
+def seed(label, path, header, counts):
+    """Writes `path` from `counts` when `path` does not exist, and leaves an existing one."""
+    if os.path.exists(path):
+        print(f"{label} baseline: {os.path.relpath(path, ROOT)} exists, left as it is "
+              f"(--update lowers it)")
         return 0
+    write_baseline(path, header, counts, {})
+    print(f"{label} baseline: seeded, {len(counts)} files, {sum(counts.values())} hits "
+          f"allowed")
+    return 0
 
-    budget, reason = read_baseline()
 
-    if update:
-        merged = dict(counts)
-        raised = []
-        for rel, n in counts.items():
-            if rel in budget and n > budget[rel]:
-                raised.append((rel, budget[rel], n))
-                merged[rel] = budget[rel]      # never raise
-        write_baseline(merged, reason)
-        total = sum(v for v in merged.values())
-        print(f"prose baseline: {len(merged)} files, {total} hits allowed")
-        if raised:
-            print("\nNOT lowered -- these files are OVER their budget, and "
-                  "--update never raises one:")
-            for rel, was, now in sorted(raised):
-                print(f"  {rel}: budget {was}, found {now}")
-            return 1
-        return 0
-
+def check(label, path, message, detail):
+    """Holds each file's hits in `detail` to `path`'s budget, and returns 1 when one is off."""
+    counts = {rel: len(hs) for rel, hs in detail.items()}
+    budget, _ = read_baseline(path)
     over, stale = [], []
     for rel, n in sorted(counts.items()):
         allowed = budget.get(rel, 0)
@@ -372,28 +576,49 @@ def main():
     allowed_total = sum(budget.values())
 
     if not over and not stale:
-        print(f"prose: {total} of {allowed_total} allowed, "
+        print(f"{label}: {total} of {allowed_total} allowed, "
               f"{len(counts)} files remaining")
         return 0
 
     if over:
-        print("prose: metaphor or aphorism over the file's budget. State what the "
-              "code does, literally (CONTRIBUTING.md §3.10).\n")
+        print(f"{label}: {message}\n")
         for rel, allowed, n in over:
             print(f"  {rel}: {n} hits, budget {allowed}")
-            for ln, code, text in detail[rel][:6]:
-                print(f"      {rel}:{ln}: {code} `{text}`")
+            for hit in detail[rel][:6]:
+                print(f"      {fmt(rel, *hit)}")
             if len(detail[rel]) > 6:
                 print(f"      … {len(detail[rel]) - 6} more "
                       f"(python3 scripts/check-prose.py --list)")
         print()
     if stale:
-        print("prose: these files are now BELOW their budget. Lower them with --update so "
-              "the ratchet holds the gain:\n")
+        print(f"{label}: these files are now BELOW their budget. Lower them with --update "
+              "so the ratchet holds the gain:\n")
         for rel, allowed, n in stale:
             print(f"  {rel}: {n} hits, budget {allowed}")
         print("\n  → python3 scripts/check-prose.py --update")
     return 1
+
+
+def main():
+    hits = {rel: sorted(hits_in(rel), key=lambda h: h[0]) for rel in scan_files()}
+    rc = 0
+    for label, path, header, message, length in LEDGERS:
+        detail = {rel: [h for h in hs if (h[1] == "P7") == length] for rel, hs in hits.items()}
+        detail = {rel: hs for rel, hs in detail.items() if hs}
+        counts = {rel: len(hs) for rel, hs in detail.items()}
+        if "--list" in sys.argv:
+            for rel in sorted(detail):
+                for hit in detail[rel]:
+                    print(fmt(rel, *hit))
+            print(f"\n{sum(counts.values())} {'P7 ' if length else ''}hits across "
+                  f"{len(counts)} files")
+        elif "--update" in sys.argv:
+            rc |= update(label, path, header, counts)
+        elif "--seed" in sys.argv:
+            rc |= seed(label, path, header, counts)
+        else:
+            rc |= check(label, path, message, detail)
+    return rc
 
 
 if __name__ == "__main__":

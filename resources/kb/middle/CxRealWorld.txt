@@ -5,7 +5,8 @@
 ;;
 ;; CxUniverse states (disjoint animal vehicle) at the default strength, so a fiction
 ;; below CxWell may deny it monotonic and hold a term that is both an animal and a
-;; vehicle: the denial defeats the default declaration there. This context restates
+;; vehicle (the Catbus in My Neighbor Totoro): the denial defeats the default
+;; declaration there. This context restates
 ;; the same separation monotonic, so the real world can never hold the overlap.
 
 (genlCx CxRealWorld CxWell)

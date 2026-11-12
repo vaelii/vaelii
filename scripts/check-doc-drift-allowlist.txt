@@ -31,3 +31,14 @@ nat/a
 # states as an absence resolves to nothing by design.
 asp/atMostSum
 asp/atLeastSum
+
+# Bare names W3 reads that are not this repo's code: Cyc's API (from-cyc.md), reitit's
+# resource handler and a CSS media feature (web.md), a private clojure.core fn
+# (defenses.md), and two example spellings (naming.md, catalog.md).
+find-assertion-cycl
+wff?
+create-resource-handler
+prefers-reduced-motion
+elide-top-frames
+a-b-c-d
+starter-export-20261009-142301

@@ -375,13 +375,15 @@
   "Block up to `ms` for job `id` to settle, then answer its public job — settled or not, so the
   caller decides what to do about a job that is still going.  This is what the fast path
   is: submit, wait `fast-path-ms`, and answer with the result if it is already there.
+  Without `ms`, block until the job settles, however long its work takes.
   A job whose status arm threw ends its future with that throw; the status `submit`'s
   `finally` filed is the answer then, so the throw is not rethrown here."
-  [id ms]
-  (when-let [f (:future (get-in @state [:jobs id]))]
-    (try (deref f ms ::timeout)
-         (catch java.util.concurrent.ExecutionException _ nil)))
-  (job id))
+  ([id] (wait id nil))
+  ([id ms]
+   (when-let [f (:future (get-in @state [:jobs id]))]
+     (try (if ms (deref f ms ::timeout) (deref f))
+          (catch java.util.concurrent.ExecutionException _ nil)))
+   (job id)))
 
 (def ^:private reset-wait-ms
   "How long `reset-registry!` gives a cancelled job to settle before giving up on it —

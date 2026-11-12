@@ -180,7 +180,9 @@ lein cli repl --starter                                                    # int
   and asserts every form. The file name is the context, so the command takes no context
   argument, and a whole directory is one order-insensitive pass ([api.md](api.md)). It is
   the inverse of `export --format text`, and the format the shipped ontology under
-  `resources/kb/` is authored in.
+  `resources/kb/` is authored in. A form every retry refuses ends the command with its
+  error and exit 1. The forms stored before it stay in the store, because `load-text!`
+  rolls nothing back.
 - **`upgrade --dir <path>`** brings an existing store up to the running engine. It opens
   the store under the backend its files were written by, installs its reasoning image or,
   when the image was written under another image layout, other engine source or other
@@ -350,7 +352,8 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   address requires `VAELII_API_TOKEN`: without one the daemon prints a line and exits
   **2**, before it opens the KB and takes the directory's writer lock. A caller starting
   either server from code (`vaelii.serve/start`, `vaelii.web/start`) with an address and
-  no `:token` is refused the same way, `:unauthorized`, before anything binds. It is the flag
+  no `:token` is refused the same way, `:unauthorized`, before anything binds, and so is
+  building either handler (`vaelii.serve/app`, `vaelii.web/handler`) for an address. It is the flag
   that publishes `POST /op` *and* the flag that drops the `Host` allowlist, so the
   exposed configuration must not also be the one with the fewest checks. On **loopback**
   — the default, and `--listen 127.0.0.1` said out loud — the token is used when set and
@@ -420,13 +423,19 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   Under it answers; over it is refused **400** with `{:type :over-ceiling}` carrying the
   requested figure and the ceiling, so the next request knows what to name. A read that
   names *no* `:max-ms` is given the ceiling's, because absent there means no clock at all
-  — and for the four backward-search entry points that holds even when the request sent no
-  option map, since the alternative is an unbounded search on the write monitor. `0` on
-  either variable lifts that ceiling. The ceilings hold the search bounds of reads. The
-  clock holds ten ops — `:why-not`, `:search-tree`, `:compare-tacticians`, `:ask`, `:ask?`,
-  `:prove`, `:provable?`, `:ask-within`, `:prove-within`, `:kb-integrity` — and none of
-  them is held to a depth. The depth ceiling holds the four that take no clock: `:query`,
-  `:query?`, `:query-status` and `:argue`. `:why` reads no bound. `:kb-integrity` has two more dials,
+  — and that holds when the request sent no option map or a nil one, since the
+  alternative is an unbounded search on the write monitor. `0` on either variable lifts
+  that ceiling. The ceilings hold the search bounds of reads. The clock holds sixteen ops
+  — `:query`, `:query?`, `:query-status`, `:argue`, `:why-not`, `:search-tree`,
+  `:compare-tacticians`, `:ask`, `:ask?`, `:prove`, `:provable?`, `:ask-within`,
+  `:prove-within`, `:lookup`, `:escalate` and `:kb-integrity` — and the depth ceiling
+  holds the first four and `:prove`, `:provable?` and `:prove-within` beside it. At those
+  three provers an absent `:max-depth` is no depth at all, so the daemon fills in the
+  ceiling: a `:prove` or `:provable?` that depth cut short is refused `:budget-exhausted`
+  with `:status :depth-cut`, and `:prove-within` reports the cut as `:truncated? true`
+  ([anytime.md](anytime.md#the-partial-result-contract)). A depth the request names
+  prunes, as in process. `:compare-tacticians` holds all its rows to one
+  deadline. `:why` reads no bound. `:kb-integrity` has two more dials,
   `:max-work` and `:max-results`, held the same way under `VAELII_INTEGRITY_MAX_WORK`
   (**10000**) and `VAELII_INTEGRITY_MAX_RESULTS` (**1000**), `0` lifting either, and filled
   with the ceiling when a request omits them or sends no option map, so a served sweep always
@@ -442,10 +451,13 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   a read is held to `VAELII_MAX_QUERY_MS`, and a write the clock ends is refused **400**
   `{:type :interrupted}` and rolled back ([inference.md](inference.md#stopping-a-run)).
   `:forward-chain`'s `:max-ms` is a clock no ceiling fills in. `:preview` takes no clock. A search that reaches its clock is **400** `{:type
-  :budget-exhausted}` at the four plain entry points, which answer with a solution set or a
-  boolean and have no room to say the answer is a prefix; `:ask-within` and
-  `:prove-within` return the prefix with a `:status` instead
-  ([anytime.md](anytime.md)). **30 seconds is the client's own read timeout**
+  :budget-exhausted}` at `:query`, `:query?`, `:argue`, `:lookup` and the four plain
+  backward-search entry points, which answer with a solution set, a verdict or a boolean
+  and have no room to say the answer is a prefix; `:query-status` reports `:status
+  :timeout`, and `:ask-within` and `:prove-within` return the prefix with a `:status` instead
+  ([anytime.md](anytime.md)). `:escalate` stopped by its clock before any level answered
+  returns `{:level nil :status :timeout}` ([levels.md](levels.md)). **30 seconds is the
+  client's own read timeout**
   (`vaelii.client`, below): every op runs under the single write monitor, so a read still
   running past the point the caller stopped listening is holding every other request
   behind an answer nobody will receive. The ceiling is applied in the op table rather
@@ -465,7 +477,10 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   interrupt reaches the worker's wait instead. Stopping a daemon `serve/start` returned
   refuses every op that has not entered the write monitor with **503 `:stopping`**,
   answers every parked long poll with the events it has, then waits for the op inside the
-  monitor, which answers its caller before the connectors close.
+  monitor, which answers its caller before the connectors close. The op thread is a
+  `future`, which is non-daemon and idles out after 60 s, so a program that stops a
+  `serve/start` daemon and returns from `main` exits up to 60 s later unless it calls
+  `shutdown-agents`.
 - **An op runs to completion whether or not its caller is still listening.** The daemon
   does not watch the socket: a caller whose read timeout fires, or whose connection
   drops, has abandoned the reply and not the op, which runs, settles and is answered to
@@ -757,10 +772,22 @@ again after the write:
     own, through a `(set/monotonic …)` wrapper, an omitted context is `CxUniverse`, and a
     `forced_decontextualized_predicate`'s fact is stored in `CxUniverse`;
   - `CxUniverse` beside it for a fact the store also lifts there: a permuting mark, and a
-    `decontextualized_predicate`'s fact
+    `decontextualized_predicate`'s fact or denial
     ([contexts.md](contexts.md#decontextualized_predicate-a-fact-that-belongs-to-the-kb-not-to-one-theory));
+  - each context a time slice slices beside it for an eternal predicate's fact or denial
+    stored in the slice
+    ([contexts.md](contexts.md#eternal_predicate-a-fact-stated-in-a-time-slice-holds-in-what-it-slices)).
+    A slice written in place is read in the spelling it reifies under (`nat/context-form`),
+    so a slice of a slice names the context the store copies the fact into;
   - for a `(genlCx Sub Super)` edge, `Sub` as well, since the `genlCx` closure is global and
     the edge widens `Sub`'s ancestor set wherever it is stored;
+  - for a `(natFormula K E)` stored in `CxUniverse`, `K` when a `contextArgGenlCx`
+    declaration of `E`'s function places `K` under one of `E`'s arguments
+    ([context-nat.md](context-nat.md#the-structural-genlcx-producer)). The reach also holds
+    each context a slice `E` names slices, since the store copies every eternal predicate's
+    fact or denial `K` holds there (`serve/nat-formula-reach`). Neither reads what `K`
+    holds, so the verdict is the same whichever of the `natFormula` and a fact in `K` is
+    written first;
   - for a rule, its own context and the contexts of every literal its consequent concludes.
     A negated conclusion is the literal `(not …)` and is placed as one. The engine refuses
     every `(ist Ctx S)` consequent with **400**, so no rule concludes into a context through one;
@@ -797,10 +824,11 @@ again after the write:
   op runs with `assert-entry/*write-check*` bound (`serve/write-check`). Once a sentence is
   stored, chained and settled, every sentex a justification the write added under a rule
   concludes is held to the contexts the check above reads for a literal: its own,
-  `CxUniverse` for a fact the store also lifts there, `Sub` for a `(genlCx Sub Super)`
-  edge, and an admin grant for a placement declaration. One outside `:writes` refuses the
-  sentence with 403 and takes back what it wrote, as a write `:max-derivations` ends is
-  taken back ([inference.md](inference.md#stopping-a-run)). So an admin's rule concluding
+  `CxUniverse` or the contexts a slice slices for a fact the store also lifts there, `Sub`
+  for a `(genlCx Sub Super)` edge, the contexts a `natFormula` reaches, and an admin grant
+  for a placement declaration or a sentence changing whether a predicate is eternal. One
+  outside `:writes` refuses the sentence with 403 and takes back what it wrote, as a write
+  `:max-derivations` ends is taken back ([inference.md](inference.md#stopping-a-run)). So an admin's rule concluding
   a `decontextualized_predicate`'s fact refuses the granted fact that fires it, whether or
   not the conclusion is already stored, and so does a firing placed in a common descendant
   of the grant's context and another. A rule a generator writes is held the same way, in
@@ -810,18 +838,27 @@ again after the write:
   whole.
 
   Only an admin grant writes a `do/` imperative, a `forced_decontextualized_predicate` or
-  `decontextualized_predicate` declaration, or a literal with a variable functor, whether
-  as a fact, in a rule's consequent or in a rule the engine writes. A placement declaration
-  places every `(P …)` the KB holds, in any context, in `CxUniverse`. A variable functor
-  may conclude any predicate. Neither has a context a grant's `:writes` could bound.
+  `decontextualized_predicate` declaration, a sentence changing whether a predicate is
+  eternal, or a literal with a variable functor, whether as a fact, in a rule's consequent
+  or in a rule the engine writes. `serve/eternal-change?` answers which sentences change
+  whether a predicate is eternal: a membership in `eternal_predicate` or a type below it, a
+  `genl` edge up to one, the denial of either, and a `defeat` of a stored one of these. A
+  placement declaration places every `(P …)` the KB holds, in any context, in `CxUniverse`.
+  Whether a time slice sees `P` as eternal decides whether every `(P …)` the slice holds
+  is copied into the context the slice slices. A variable functor may conclude any
+  predicate. None of the three has a context a grant's `:writes` could bound.
 - `:edit` and `:edit-with-consequences` hold every `:add` entry to the same check and
   every `:remove` handle to the next one; one entry out of bounds refuses the batch, and
   nothing in it is applied.
 - `:replace-facts` writes only when `:writes` names its context, which it retracts from,
-  and every context each fact's storage writes.
+  and every context each fact's storage writes, and only under an admin grant when the
+  context holds a replaceable premise whose sentence only an admin grant writes.
 - `:retract` removes, and `:add-provenance` annotates, a sentex only when its stored
-  context is in `:writes`. `:add-provenance` on a handle naming no stored sentex is
-  refused too, since provenance written there first would read as the sentex's own.
+  context is in `:writes`. A sentex whose sentence only an admin grant writes, or a rule
+  concluding such a literal, is removed only under an admin grant
+  (`serve/removal-admin-only`), since removing it withdraws what storing it wrote.
+  `:add-provenance` on a handle naming no stored sentex is refused too, since provenance
+  written there first would read as the sentex's own.
 - `:export` runs only under an admin grant: it writes the whole KB to a directory on the
   server's host.
 
@@ -1001,7 +1038,8 @@ resolves from a public repository, and so does every `+with-` profile — so the
 from a clean clone. The `PROFILES` build argument names the profiles the jar is built with:
 `docker build --build-arg PROFILES=+with-postgres,+with-sqlite -t vaelii .` gives an image
 that opens `:pg-*` and `:sqlite` KBs ([storage.md](storage.md)), and an empty one builds
-the engine alone. The build context excludes `checkouts/`, so an image carries the released
+the engine alone. `+with-agents` adds the `com.vaelii/vaelii-agents` library, which nothing
+in the engine calls, for a script or REPL run from the jar that requires it. The build context excludes `checkouts/`, so an image carries the released
 adapters, never a linked source tree. `clojure.main -m vaelii.host.serve` is the entry point
 rather than `java -jar`, because the jar's Main-Class is `vaelii.core`. The entry point
 also names the flags `project.clj`'s `:jvm-opts` give a JVM that lein launches, since an
@@ -1048,8 +1086,9 @@ solver and when nippy's LZ4 compressor calls `sun.misc.Unsafe`, and
   curls `127.0.0.1`, and `/health` is behind the `Host` check like every route, so a
   `VAELII_ALLOWED_HOSTS` naming only the public host answers it 400 and the container
   reports unhealthy; keep `127.0.0.1` on the list, as the compose file does.
-- **The image sets `VAELII_LOG_LEVEL`.** Unset, the level installs no backend at all, and
-  a container that writes nothing is one nobody can operate.
+- **The image sets `VAELII_LOG_LEVEL=info`**, which installs the engine's one-line backend.
+  Unset, the engine installs none, and Trove's own console backend prints at `:info`
+  ([Logging](#logging--a-dial-and-what-is-behind-it)).
 - **No ASP solver is installed.** `set-solver` is `:stub` unless asked otherwise, and the
   stub is in-process ([asp.md](asp.md)).
 
@@ -1338,8 +1377,8 @@ the read still found one of them. Set a new floor by rounding the first mention 
 | `VAELII_TOKEN_TABLE` | `src/vaelii/host/guard.clj:240+` | the path of an EDN file mapping each token to `{:principal <symbol> :writes #{<context> …} :admin? <boolean>}`; blank or whitespace-only is unset | unset | The per-principal token table: set, it replaces `VAELII_API_TOKEN`, and a write op lands only in the contexts the presenting token's grant names ([The token table](#the-token-table)). A file that does not check stops the daemon at start. |
 | `VAELII_ALLOWED_HOSTS` | `src/vaelii/host/guard.clj:40+` | comma-separated host **names**; a port on an entry is read as the name alone, and a value naming nothing is unset | unset | The `Host` headers a server answers, overriding the list the bind address implies. Entries are compared in the form a `Host` header is, so `kb.example.com:8080` and `kb.example.com` are one entry. |
 | `VAELII_MAX_BODY_BYTES` | `src/vaelii/host/guard.clj:160+` | a positive whole number of bytes; blank is unset | `16777216` (16 MiB) | The request-body ceiling both servers refuse above, with 413. |
-| `VAELII_MAX_QUERY_MS` | `src/vaelii/impl/config.clj:330+` | a whole number of milliseconds, 0 or more | `30000` | The wall clock a served read may name. A request may name less and is refused (`:over-ceiling`, 400) for naming more; a read naming none is given this, the four backward-search entry points included. `0` lifts the ceiling. |
-| `VAELII_MAX_QUERY_DEPTH` | `src/vaelii/impl/config.clj:340+` | a whole number of rule expansions, 0 or more | `256` | The rule-expansion depth `:query`, `:query?`, `:query-status` and `:argue` may name, refused the same way; a read that takes a clock is held to no depth. `0` lifts it. |
+| `VAELII_MAX_QUERY_MS` | `src/vaelii/impl/config.clj:330+` | a whole number of milliseconds, 0 or more | `30000` | The wall clock a served read may name. A request may name less and is refused (`:over-ceiling`, 400) for naming more; a read naming none is given this, one sent with no option map or a nil one included. `0` lifts the ceiling. |
+| `VAELII_MAX_QUERY_DEPTH` | `src/vaelii/impl/config.clj:340+` | a whole number of rule expansions, 0 or more | `256` | The rule-expansion depth `:query`, `:query?`, `:query-status`, `:argue`, `:prove`, `:provable?` and `:prove-within` may name, refused the same way; the three provers fill an absent one with it. `0` lifts it. |
 | `VAELII_INTEGRITY_MAX_WORK` | `src/vaelii/impl/config.clj:460+` | a whole number of cooperative query units, 0 or more | `10000` | The `:max-work` a served `:kb-integrity` may name, refused the same way; a request naming none is given this. `0` lifts it. |
 | `VAELII_INTEGRITY_MAX_RESULTS` | `src/vaelii/impl/config.clj:470+` | a whole number of findings, 0 or more | `1000` | The `:max-results` a served `:kb-integrity` may name, held the same way as `VAELII_INTEGRITY_MAX_WORK`. `0` lifts it. |
 | `VAELII_MAX_WRITE_MS` | `src/vaelii/impl/config.clj:470+` | a whole number of milliseconds, 0 or more | `0` | The wall clock a served chaining write may name (`serve/write-bounds`). `0`, the default, sets no ceiling. Set, a request may name less and is refused (`:over-ceiling`, 400) for naming more, a write naming none is given this, and a write the clock ends is refused `:interrupted` and rolled back ([inference.md](inference.md#stopping-a-run)). |
@@ -1434,7 +1473,7 @@ representation nobody chose.
 
 | Switch | Read at | Legal values | Default | What it decides |
 |---|---|---|---|---|
-| `vaelii.build` | `src/vaelii/impl/io/export.clj:130+` | any label; blank is unset | the git HEAD, else `dev` | How the writing build names itself in a dump's `meta.edn`. Diagnostic: a dump that will not read is first a question about which build wrote it. |
+| `vaelii.build` | `src/vaelii/impl/io/export.clj:130+` | any label; blank is unset | the engine jar's version and revision, else the git HEAD, else `dev` | How the writing build names itself in a dump's `meta.edn`. Diagnostic: a dump that will not read is first a question about which build wrote it. |
 | `VAELII_BUILD` | `src/vaelii/impl/io/export.clj:130+` | any label; blank is unset | as above | The same label, read after the property. |
 
 ### Developer — the suite and the scripts
@@ -1447,7 +1486,7 @@ CI sets these too; nothing in a deployment does.
 | `VAELII_TEST_TMS` | `test/vaelii/test_util.clj:60+` | `reference` `dense`; blank is unset | `dense` | Which truth-maintenance representation the suite runs on. |
 | `VAELII_TEST_SPACE` | `test/vaelii/test_util.clj:190+` | a whole number from 5 to 15; blank is unset | `15` | The top of the two-space block the suite's KBs live on, so two runs can have distinct directories. |
 | `VAELII_AUDIT_SUPPORT` | `test/vaelii/test_util.clj:410+` | a directory that exists | unset (no audit) | Makes the suite's teardown write, one EDN map per line into `<dir>/<pid>.edn`, every stored justification whose conclusion's context does not see the context of one of its supporters — an antecedent, or the rule a firing names. Changes no test's outcome. |
-| `VAELII_TEST_TMPDIR` | `test/vaelii/truncation_fuzz_test.clj:70+` | a directory that exists | unset (the platform temp directory) | Where the `^:fuzz` truncation sweep builds each probe's directory. A probe's whole cost is one device cache flush, so pointing this at a tmpfs (`/dev/shm`) takes the sweep from ~10 minutes to a couple. Nothing else reads it. |
+| `VAELII_TEST_TMPDIR` | `project-env.clj:40+` | a directory that exists | unset (the platform temp directory) | The test JVM's `java.io.tmpdir`, under which every directory a test builds is created: the disk backends' stores, `tu/temp-dir` and the `^:fuzz` probes. On a RAM disk no test store or fsync reaches the SSD, and the fuzz sweep takes a couple of minutes instead of ~10. Linux has `/dev/shm`; on macOS, `diskutil erasevolume APFS vaelii-tmp $(hdiutil attach -nomount ram://16777216)` mounts an 8 GiB one at `/Volumes/vaelii-tmp` (the size is in 512-byte sectors). |
 | `VAELII_FULL_KB_DIR` | `test/vaelii/full_kb_test.clj:20+` | a store directory; blank is unset | unset (the `^:full-kb` tests fail at once) | The store the `^:full-kb` probes open and write into. `scripts/test-full-kb.sh` sets it to a disposable clone; set it by hand only to a KB you can lose. |
 | `VAELII_FULL_KB_WORK` | `scripts/test-full-kb.sh:0+` | a directory on the same volume as KB-DIR | `testbench/full-kb` | Where `lein test-full-kb` puts each run's clone of KB-DIR, deleted after the run. Outside `target/`, so a `lein clean` during a run does not delete the KB the test JVM has open. KB-DIR itself is what the run upgrades. The clone is an APFS clone, so another volume turns it into a full copy. The script's `VAELII_HEAP` default is `44g`. |
 | `VAELII_TEST_LOG_LEVEL` | `project.clj:130+` | `error` `warn` `info` `debug` `trace`; blank is unset | `error` | The floor the `:test` profile installs the engine's logging at, through `set-log-level` itself. |
@@ -1469,10 +1508,11 @@ CI sets these too; nothing in a deployment does.
 | `VAELII_GATE_OUT` | `scripts/test-parallel.sh:40+` | a directory | `logs/gate` | Where the parallel test stage writes its per-shard logs, `test.assign` (each shard's namespaces with their predicted seconds) and each shard's `test.timing-<n>.tsv`. `lein gate` sets it to that run's own directory, so the shard logs land beside the stage logs rather than in a directory two `lein gate` runs share. |
 | `VAELII_GATE_TIMINGS` | `scripts/test-parallel.sh:40+` | a file | `logs/test-timings.tsv` | The per-namespace timings the test stage bin-packs its shards from, a moving average each run moves 0.3 of the way to its own figures. **Per checkout, not per run**: they are feedback for the *next* `lein gate` run, so every run shares them, outside `target/`, which `lein clean`, `lein jar` and `lein install` empty. A namespace the file lacks takes its CI weight scaled to local time. |
 | `GATE_JOBS` | `scripts/gate.sh:60+` | a whole number | unset | The test stage's shard count. **Not frozen** — see below. |
-| `TEST_MIN_JOBS` | `scripts/test-parallel.sh:20+` | a whole number | `3` | The fewest shards `lein test-parallel` (and so `lein gate`'s test stage) starts when no `--jobs` or `GATE_JOBS` names a count. The load-aware count subtracts every vaelii JVM running, an idle REPL or server included, and at one shard the suite takes over 50 minutes. Under `GATE_MAX_CONCURRENT`'s default of 2, two `lein gate` runs at this floor start six test JVMs. **Not frozen.** |
+| `TEST_MIN_JOBS` | `scripts/test-parallel.sh:20+` | a whole number | `3` | The fewest shards `lein test-parallel` (and so `lein gate`'s test stage) starts when no `--jobs` or `GATE_JOBS` names a count. The load-aware count subtracts every vaelii JVM running, an idle REPL or server included, and at one shard the suite takes over 50 minutes. Under `GATE_MAX_CONCURRENT`'s default of 2, two sharded suites at this floor start six test JVMs across the box. **Not frozen.** |
 | `PERF_TOLERANCE` | `scripts/gate.sh:60+` | a multiplier (`1.5`) | unset | Passed through to `lein perf --tolerance`, for a loaded box. **Not frozen.** |
-| `GATE_MAX_CONCURRENT` | `scripts/lib/slots.sh:280+` | a whole number; `0` disables | `2` | How many `lein gate` test stages run at once on the box, from any worktree: each holds one `gate-lock.<i>` file in the shared git directory's `vaelii-matrix/`. A `lein gate` run over the cap runs lint and waits for a slot, naming the holders once a minute, and its test stage reads its shard count after admission. **Not frozen.** |
-| `GATE_NO_WAIT` | `scripts/lib/slots.sh:280+` | any non-empty value | unset | Makes `lein gate` exit 75 instead of waiting when every gate slot is held. **Not frozen.** |
+| `GATE_MAX_CONCURRENT` | `scripts/lib/slots.sh:280+` | a whole number; `0` disables | `2` | How many sharded suites run at once across every clone and worktree on the box: a `lein gate` test stage, or a `lein test-parallel` run outside `lein gate`. Each holds one `gate-lock.<i>` file in `VAELII_BOX_STATE_DIR`, and the `lein test-parallel` a `lein gate` runs takes no second slot. A run over the cap waits for a slot, naming the holders and their checkouts once a minute; `lein gate` runs lint meanwhile. The shard count is read after admission. **Not frozen.** |
+| `GATE_NO_WAIT` | `scripts/lib/slots.sh:280+` | any non-empty value | unset | Makes `lein gate` and `lein test-parallel` exit 75 instead of waiting when every gate slot is held. **Not frozen.** |
+| `VAELII_BOX_STATE_DIR` | `scripts/lib/slots.sh:140+` | a directory | `$XDG_STATE_HOME/vaelii`, else `~/.local/state/vaelii` | Where `lein perf` and `lein perf-ab` hold `perf-lock` and sharded suites hold `gate-lock.<i>`. Every clone and worktree on the box reads the same directory, so one perf run measures at a time across them and `GATE_MAX_CONCURRENT` caps the suites across them. The matrix lock and its queue stay in each clone's `.git/vaelii-matrix/`, because a queued line names a commit of that clone. |
 | `PERF_NO_WAIT` | `scripts/lib/slots.sh:280+` | any non-empty value | unset | Makes `lein perf` and `lein perf-ab` exit 75 instead of waiting while another perf run holds `perf-lock`. **Not frozen.** |
 | `TEST_BACKENDS_OUT` | `scripts/test-backends.sh:70+` | a directory | `logs/test-backends/run-<pid>` | Where `lein test-backends` writes one log per run; the default is per-run, with `latest` pointing at the newest, and old run dirs are pruned to the last `BACKENDS_KEEP_RUNS` (20), sparing any touched in the last 24h. **Not frozen.** |
 | `TEST_SWEEPS_OUT` | `scripts/test-sweeps.sh:50+` | a directory | `logs/test-sweeps` | Where `lein test-sweeps` writes one log per run. **Not frozen.** |

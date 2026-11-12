@@ -114,7 +114,7 @@
            (catch Exception _ nil))
       ::opaque))
 
-(defn- request-scheme
+(defn request-scheme
   "The scheme the **browser** reached this site by, honoring a TLS-terminating reverse
   proxy: the first value of `X-Forwarded-Proto` when a proxy set one, else the
   connector's own `:scheme`.  Reading an untrusted header is safe **here**: it only

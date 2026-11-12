@@ -78,14 +78,14 @@ OWL drops UNA. We do not. `(different X Y)` is **provable exactly when the
 arguments lie in no shared equivalence class** — so distinct symbols denote
 distinct individuals until an equality sentex says otherwise.
 
-One carve-out: an **unmerged indeterminate term** — a skolem constant, or a
-believed member of the extensible `indeterminate_term` category — suspends the
-UNA for itself. It stands for some object without determining which, so
-neither `equals` nor `different` is provable between it and a determinate term
-until a `rewriteOf` or merge identifies it, at which point its representative moves
-off it and the exemption lifts (`provers.clj`, `pairwise-distinct?`). The category,
-what it does to `same-class?`, and the stratification edge it adds are in
-[predall.md](predall.md).
+One carve-out: an **indeterminate term** suspends the UNA for every name of its
+equivalence class. A believed member of the extensible `indeterminate_term` category is
+one, and the membership holds of every name the context sees merged with it. A skolem
+constant is one only while no merge names it, so a `rewriteOf`, `sameAs` or `equals`
+merging it lifts the exemption (`provers/indeterminate-term?`). An indeterminate term
+stands for some object without determining which, so neither `equals` nor `different` is
+provable between it and a determinate term. The category, what it does to `same-class?`,
+and the stratification edge it adds are in [predall.md](predall.md#the-identity-exemption).
 
 A rule guarded by `different` is re-checked when either input moves. Both a merge and an
 indeterminacy declaration withdraw the firing they licensed, and retracting one brings it

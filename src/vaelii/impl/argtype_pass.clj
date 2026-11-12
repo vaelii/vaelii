@@ -21,8 +21,7 @@
   between two commits resumes, once belief is rebuilt, at the last one: the facts after it
   are drawn again, which adds nothing to what they already wrote (`has-justification?`,
   `find-sentex-handle`)."
-  (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]
+  (:require [clojure.java.io :as io]
             [vaelii.impl.budget :as budget]
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.disk.files :as files]
@@ -56,7 +55,7 @@
   [kb]
   (if-let [f (owed-path kb)]
     (when (.exists f)
-      (let [o (edn/read-string (slurp f))]
+      (let [o (files/read-edn-manifest f nil)]
         (when-not (= owed-version (:version o))
           (throw (ex-info (str "the argument-type pass's owed record at " f " has shape "
                                (pr-str (:version o)) ", and this engine reads shape "

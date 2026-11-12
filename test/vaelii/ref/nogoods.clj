@@ -137,6 +137,58 @@
                   (conj route s))))]
       (set (walk lower #{lower})))))
 
+(defn- predicate-spelled?
+  "Is `x` spelled as a predicate of arity 2 or more (docs/naming.md): it starts lowercase
+  and holds an uppercase letter after its first character."
+  [x]
+  (and (symbol? x) (boolean (re-matches #"[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*" (name x)))))
+
+(defn- holding-edges
+  "The `[u v]` edges of the view's closure that hold for every term: each believed `(genl
+  u v)` whose class at the view is `:monotonic` or that joins two terms spelled as
+  predicates (in the forced-monotonic set, docs/reference.md D10), and the part edges
+  of each believed `covering` whose class is `:monotonic` (docs/taxonomy.md, \"A cover
+  states the specialization it rests on\"): a cover keeps the strength it was written
+  at, and a `:default` one's part edges apply forward only."
+  [view]
+  (into []
+        (mapcat (fn [s]
+                  (cond
+                    (and (tuple? s) (= 'genl (first s)) (= 3 (count s))
+                         (or (= :monotonic ((:class view) s))
+                             (every? predicate-spelled? (rest s))))
+                    [[(nth s 1) (nth s 2)]]
+                    (and (tuple? s) (= 'covering (first s)) (<= 4 (count s))
+                         (= :monotonic ((:class view) s)))
+                    (for [p (drop 2 s)] [p (second s)])
+                    :else [])))
+        (:believed view)))
+
+(defn- holding-up
+  "The reflexive closure of `t` over the `holding-edges` `edges`, given as `{u #{v}}`."
+  [adj t]
+  (loop [seen #{t} todo [t]]
+    (if-let [u (peek todo)]
+      (let [fresh (remove seen (get adj u))]
+        (recur (into seen fresh) (into (pop todo) fresh)))
+      seen)))
+
+(defn- holding-view
+  "`view` with `:genl` read over the `holding-edges` `adj` alone, and the believed `genl`
+  sentences among `edges` that are holding edges: the closure a denial contraposes
+  through. A `:default` edge applies forward and does not contrapose (docs/inference.md,
+  \"Under a negation the fan reverses\")."
+  [view edges adj]
+  [(assoc view :genl #(holding-up adj %))
+   (filterv (fn [[_ u v]] (contains? (get adj u) v)) edges)])
+
+(defn- holding
+  "`[hview hedges adj]`: the view and the believed `genl` sentences `holding-view` gives,
+  and the `holding-edges` as `{u #{v}}`."
+  [view]
+  (let [adj (reduce (fn [m [u v]] (update m u (fnil conj #{}) v)) {} (holding-edges view))]
+    (conj (holding-view view (genl-edges view) adj) adj)))
+
 ;; ---- collecting ------------------------------------------------------------
 
 (defn- content-key [ng]
@@ -164,11 +216,10 @@
   a nogood\".
 
   A believed `(disjoint t1 t2)` with `t1` distinct from `t2` convicts two distinct
-  believed memberships `(a X)` and `(b X)` of one term when `t1` is in `a`'s `genl`
-  closure and `t2` in `b`'s, or the reverse. Members: the two memberships. `:ground`: the
-  declaration and the `genl` edges on the routes from `a` and `b` up to the separated
-  types. Any term is separated, not only an individual, so a predicate holding two
-  separated types is convicted the same way.
+  believed memberships `(a X)` and `(b X)` of one term when `t1` is in `a`'s closure over
+  the `holding-edges` and `t2` in `b`'s, or the reverse. Members: the two memberships.
+  `:ground`: the declaration and the holding `genl` edges on the routes from `a` and `b`
+  up to the separated types. Any term is separated, not only an individual.
 
   The explicit arm reads no genl-relatedness guard: `(disjoint dog animal)` with `(genl
   dog animal)` convicts `(dog Fido)` beside `(animal Fido)`.
@@ -184,7 +235,7 @@
   nothing."
   [view]
   (let [decls  (filterv (fn [[_ t1 t2]] (not= t1 t2)) (declarations view 'disjoint 2))
-        edges  (genl-edges view)
+        [hview hedges] (holding view)
         byterm (group-by second (filter membership? (:believed view)))]
     (collect
      (concat
@@ -192,13 +243,13 @@
             m1     ms
             m2     ms
             :when  (not= m1 m2)
-            :let   [a (first m1) b (first m2) ua (up view a) ub (up view b)]
+            :let   [a (first m1) b (first m2) ua (up hview a) ub (up hview b)]
             [_ t1 t2 :as d] decls
             :when  (and (contains? ua t1) (contains? ub t2))]
         {:kind    :disjoint
          :members #{m1 m2}
-         :ground  (into #{d} (concat (route-edges view edges a t1)
-                                     (route-edges view edges b t2)))})
+         :ground  (into #{d} (concat (route-edges hview hedges a t1)
+                                     (route-edges hview hedges b t2)))})
       (for [[_ t1 t2 :as d] decls
             :let  [lower (cond (contains? (up view t1) t2) t1
                                (contains? (up view t2) t1) t2)]
@@ -331,51 +382,6 @@
   [colls]
   (reduce (fn [acc c] (for [xs acc x c] (conj xs x))) [[]] colls))
 
-(defn- predicate-spelled?
-  "Is `x` spelled as a predicate of arity 2 or more (docs/naming.md): it starts lowercase
-  and holds an uppercase letter after its first character."
-  [x]
-  (and (symbol? x) (boolean (re-matches #"[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*" (name x)))))
-
-(defn- holding-edges
-  "The `[u v]` edges of the view's closure that hold for every term: each believed `(genl
-  u v)` whose class at the view is `:monotonic` or that joins two terms spelled as
-  predicates (in the forced-monotonic set, docs/reference.md D10), and the part edges
-  of each believed `covering` whose class is `:monotonic` (docs/taxonomy.md, \"A cover
-  states the specialization it rests on\"): a cover keeps the strength it was written
-  at, and a `:default` one's part edges apply forward only."
-  [view]
-  (into []
-        (mapcat (fn [s]
-                  (cond
-                    (and (tuple? s) (= 'genl (first s)) (= 3 (count s))
-                         (or (= :monotonic ((:class view) s))
-                             (every? predicate-spelled? (rest s))))
-                    [[(nth s 1) (nth s 2)]]
-                    (and (tuple? s) (= 'covering (first s)) (<= 4 (count s))
-                         (= :monotonic ((:class view) s)))
-                    (for [p (drop 2 s)] [p (second s)])
-                    :else [])))
-        (:believed view)))
-
-(defn- holding-up
-  "The reflexive closure of `t` over the `holding-edges` `edges`, given as `{u #{v}}`."
-  [adj t]
-  (loop [seen #{t} todo [t]]
-    (if-let [u (peek todo)]
-      (let [fresh (remove seen (get adj u))]
-        (recur (into seen fresh) (into (pop todo) fresh)))
-      seen)))
-
-(defn- holding-view
-  "`view` with `:genl` read over the `holding-edges` `adj` alone, and the believed `genl`
-  sentences among `edges` that are holding edges: the closure a denial contraposes
-  through. A `:default` edge applies forward and does not contrapose (docs/inference.md,
-  \"Under a negation the fan reverses\")."
-  [view edges adj]
-  [(assoc view :genl #(holding-up adj %))
-   (filterv (fn [[_ u v]] (contains? (get adj u) v)) edges)])
-
 (defn- separation-deniers
   "The members that deny part `p` of a cover held by the membership of type `s` of term
   `x` through a separation (docs/taxonomy.md, \"A separation answers a denial\"), each
@@ -402,16 +408,17 @@
   negation\".
 
   A believed `(covering W P1 ... Pn)` is refuted for a term `X` by a believed membership
-  `(S X)` with `W` in `S`'s `genl` closure together with, for every part `Pi`, a believed
-  denial `(not (Qi X))` with `Qi` in `Pi`'s closure over the `holding-edges`. A denial of
-  a supertype of a part denies the part: `(not (q X))` with a `:monotonic` `(genl p1 q)`
-  rules out `(p1 X)`. Members: the membership and one denial per part, as a set, so one
-  denial ruling out two parts is one member. A part with two such denials gives one nogood per choice of denial. `:ground`:
-  the declaration and the `genl` edges from `S` up to `W` and from each `Pi` up to its
-  `Qi`. A believed membership `(S' X)` of another type a believed `disjoint` separates from
-  `Pi` over `:monotonic` edges denies `Pi` as well (`separation-deniers`), and is the member
-  for that part, its declaration and edges in `:ground`. A part with no such denier leaves
-  the cover unrefuted: the cover is conditional on explicit negation and never on absence.
+  `(S X)` with `W` in `S`'s closure over the `holding-edges` together with, for every part
+  `Pi`, a believed denial `(not (Qi X))` with `Qi` in `Pi`'s closure over the
+  `holding-edges`. A denial of a supertype of a part denies the part: `(not (q X))` with a
+  `:monotonic` `(genl p1 q)` rules out `(p1 X)`. Members: the membership and one denial
+  per part, as a set, so one denial ruling out two parts is one member. A part with two
+  such denials gives one nogood per choice of denial. `:ground`: the declaration and the
+  holding `genl` edges from `S` up to `W` and from each `Pi` up to its `Qi`. A believed
+  membership `(S' X)` of another type a believed `disjoint` separates from `Pi` over
+  `:monotonic` edges denies `Pi` as well (`separation-deniers`), and is the member for
+  that part, its declaration and edges in `:ground`. A part with no such denier leaves the
+  cover unrefuted: the cover is conditional on explicit negation and never on absence.
   The declaration is a ground, not a member.
 
   A cover naming a part that a believed `(disjoint P W)` or `(disjoint W P)` separates from
@@ -424,14 +431,13 @@
         denials (group-by #(second (denial-of %))
                           (filter #(some-> (denial-of %) membership?) (:believed view)))
         decls   (filterv (fn [[_ t1 t2]] (not= t1 t2)) (declarations view 'disjoint 2))
-        adj     (reduce (fn [m [u v]] (update m u (fnil conj #{}) v)) {} (holding-edges view))
-        [hview hedges] (holding-view view edges adj)
+        [hview hedges adj] (holding view)
         by-term (group-by second (filter membership? (:believed view)))]
     (collect
      (concat
       (for [[_ w & parts :as d] covers
             [s x :as m] (filter membership? (:believed view))
-            :when (contains? (up view s) w)
+            :when (contains? (up hview s) w)
             :let  [per-part (for [p (distinct parts)]
                               (concat
                                (for [den  (get denials x)
@@ -443,7 +449,7 @@
             combo (combinations per-part)]
         {:kind    :covering
          :members (into #{m} (map :member) combo)
-         :ground  (into (conj (route-edges view edges s w) d) (mapcat :ground) combo)})
+         :ground  (into (conj (route-edges hview hedges s w) d) (mapcat :ground) combo)})
       (for [[_ w & parts :as cv] covers
             [_ a b :as d] (declarations view 'disjoint 2)
             :when (and (not= a b)
@@ -464,8 +470,7 @@
   routes from `s` up to `q`. With `q` equal to `s` the pair is a
   negation nogood, which belongs to no family here."
   [view]
-  (let [adj     (reduce (fn [m [u v]] (update m u (fnil conj #{}) v)) {} (holding-edges view))
-        [hview edges] (holding-view view (genl-edges view) adj)
+  (let [[hview edges] (holding view)
         denials (group-by #(second (denial-of %))
                           (filter #(some-> (denial-of %) membership?) (:believed view)))]
     (collect

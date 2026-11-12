@@ -28,7 +28,7 @@
 
 (use-fixtures :once
   (fn [f]
-    (let [kb (tu/fresh)]
+    (let [kb (tu/empty-kb)]
       ;; The world is loaded under the shipped cost RANKING whatever the run installed:
       ;; incremental forward chaining over a growing prover extent is complete only because the
       ;; ranking re-drives the join, so an unranked load leaves two `responsibleFor` conclusions
@@ -352,7 +352,7 @@
   (is (re-find #"action=\"/stats/blocks\"" (:body (GET "/stats"))))
   (is (nil? (jobs/latest :blocks)) "a page load runs no tally")
   (*app* {:request-method :post :uri "/stats/blocks" :scheme :http :params {} :headers {}})
-  (let [j    (jobs/wait (:id (jobs/latest :blocks)) (tu/load-budget-ms))
+  (let [j    (jobs/wait (:id (jobs/latest :blocks)))
         body (:body (GET "/stats"))]
     (is (= :done (:status j)))
     (is (re-find #"Definitional blocks" body))
@@ -653,9 +653,10 @@
     (let [r (GET "/find" "q=parentof")]                    ; the terms are parentOf / grandparentOf
       (is (= 200 (:status r)))
       (is (re-find #"parentOf" (:body r)))
-      (is (re-find #"grandparentOf" (:body r)))))          ; both contain "parentof"
+      (is (= "/term?q=parentOf" (get-in r [:headers "HX-Push-Url"])))))
   (testing "an uppercase query finds it too"
-    (is (re-find #"parentOf" (:body (GET "/find" "q=PARENTOF")))))
+    (is (= "/term?q=parentOf"
+           (get-in (GET "/find" "q=PARENTOF") [:headers "HX-Push-Url"]))))
   (testing "a regex query stays case-sensitive unless it carries (?i)"
     (is (not (re-find #"parentOf" (:body (GET "/find" "q=PARENT.F"))))
         "an uppercase regex does not match the lowercase spelling")
@@ -686,6 +687,9 @@
         (is (not (re-find #"Not a valid regular expression" (:body r))) q)))))
 
 (deftest find-jumps-straight-to-a-single-or-exact-term
+  (testing "a single substring match still jumps without a whole-name match"
+    (is (= "/term?q=grandparentOf"
+           (get-in (GET "/find" "q=grandpar") [:headers "HX-Push-Url"]))))
   (testing "an exact term name jumps to its page — even though it is a substring of another"
     (let [r (GET "/find" "q=parentOf")]                    ; also a substring of grandparentOf
       (is (re-find #"Sentexes by index" (:body r)))        ; the term page, not the results list
@@ -696,6 +700,40 @@
       (is (re-find #"Find terms" (:body r)))
       (is (nil? (get-in r [:headers "HX-Push-Url"])))
       (is (re-find #"grandparentOf" (:body r))))))
+
+(tu/deftest-kb find-exact-names-are-independent-of-the-results-page
+  (v/assert kb '(foo Foo) 'CxUniverse {:chain? false})
+  (binding [*app* (web/app kb)]
+    (doseq [q ["foo" "Foo" "FOO"]]
+      (let [r (GET "/find" (str "q=" q))]
+        (is (nil? (get-in r [:headers "HX-Push-Url"])))
+        (is (re-find #"Find terms" (:body r)))
+        (is (re-find #"/term\?q=foo" (:body r)))
+        (is (re-find #"/term\?q=Foo" (:body r))))))
+  (doseq [i (range 205)]
+    (v/assert kb (list 'has_value (symbol (str "A" i "Needle"))) 'CxUniverse
+              {:chain? false}))
+  (v/assert kb '(has_value Needle) 'CxUniverse {:chain? false})
+  (binding [*app* (web/app kb)]
+    (let [r (GET "/find" "q=needle")]
+      (is (= "/term?q=Needle" (get-in r [:headers "HX-Push-Url"])))
+      (is (re-find #"Sentexes by index" (:body r)))))
+  (v/assert kb '(needle Needle) 'CxUniverse {:chain? false})
+  (binding [*app* (web/app kb)]
+    (let [r (GET "/find" "q=needle")]
+      (is (nil? (get-in r [:headers "HX-Push-Url"])))
+      (is (re-find #"More than 200 matching terms" (:body r))))))
+
+(deftest a-failed-exact-name-read-reports-the-search-failure
+  (let [find-terms acc/find-terms]
+    (with-redefs [acc/find-terms (fn [kb q opts]
+                                   (if (= :regex (:match opts))
+                                     (throw (IllegalStateException. "exact read failed"))
+                                     (find-terms kb q opts)))]
+      (let [r (GET "/find" "q=parentof")]
+        (is (= 200 (:status r)))
+        (is (nil? (get-in r [:headers "HX-Push-Url"])))
+        (is (re-find #"Search failed: exact read failed" (:body r)))))))
 
 (deftest term-page-lists-sentexes-and-taxonomy
   (let [r (GET "/term" "q=dog")]
@@ -1150,6 +1188,11 @@
   (testing "a rule's parens count along the same scale"
     (let [body (:body (GET "/term" "q=heavierThan"))]
       (is (re-find #"sx-rule\"><span class=\"sx\"><span class=\"rb1\">\(</span>" body)))))
+
+(deftest a-rest-marker-renders-as-text-not-a-term-link
+  (let [out (str (#'web/render-form (web/render-env tu/*kb* {}) '(argN ?t 1 (?r . ?args))))]
+    (is (not (re-find #"q=\." out)))
+    (is (re-find #"\[:span.sx \"\.\"\]" out))))
 
 (defn- set-cookies
   "The `Set-Cookie` values on a response, as a vector — Ring allows a header to carry a
@@ -1935,7 +1978,7 @@
   (tu/with-terms [FruitFn fruitOf ripe Ann favoriteFood CxSide]
     (v/assert kb (list 'genlCx CxSide 'CxUniverse) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'reifiable_function FruitFn) 'CxUniverse {:strength :monotonic})
-    (v/assert kb (list 'functionCorrespondingPredicate FruitFn fruitOf) CxSide)
+    (v/assert kb (list 'functionCorrespondingPredicate FruitFn fruitOf 2) CxSide)
     (let [h (v/assert kb (list 'set/forwardRule
                                (list 'implies (list favoriteFood Ann (list FruitFn '?t))
                                      (list ripe '?t)))
@@ -3580,7 +3623,7 @@
     (is (= 200 (:status r)))
     (is (re-find #"Forward chaining derived|<h2>Jobs</h2>" (:body r))
         "the stats it changed, or the screen watching it")
-    (jobs/wait (:id (jobs/latest :chain)) 60000)
+    (jobs/wait (:id (jobs/latest :chain)))
     (is (= (inc before) (:runs (v/chain-stats kb))) "one run, whichever page answered")
     (let [body (:body (GET "/stats"))]
       (is (re-find #"Statistics" body) "and the result is on the page it changed")
@@ -3607,9 +3650,9 @@
         (is (= 400 (:status (POST uri {"max-derivations" "0"} origin))))))
     (testing "a real bound still runs, and so does no bound at all"
       (is (= 200 (:status (POST "/chain" {"max-derivations" "5"} origin))))
-      (jobs/wait (:id (jobs/latest :chain)) 60000)
+      (jobs/wait (:id (jobs/latest :chain)))
       (is (= 200 (:status (POST "/chain" {} origin))))
-      (jobs/wait (:id (jobs/latest :chain)) 60000))))
+      (jobs/wait (:id (jobs/latest :chain))))))
 
 (tu/deftest-kb a-strength-the-class-does-not-name-is-refused-rather-than-read-as-known-true
   ;; The control is a checkbox, so the value was read for *presence* — and any value at all
@@ -3747,7 +3790,10 @@
                    (catch clojure.lang.ExceptionInfo e e))]
         (when (instance? org.eclipse.jetty.server.Server r)
           (.stop ^org.eclipse.jetty.server.Server r))
-        (is (= :unauthorized (:type (ex-data r))))))))
+        (is (= :unauthorized (:type (ex-data r))))))
+    (testing "the public handler refuses an address with no token, and serves behind one"
+      (is (= :unauthorized (:type (tu/refusal-data #(web/handler nil {:host "0.0.0.0" :token nil})))))
+      (is (= 401 (:status (get* (web/handler nil {:host "0.0.0.0" :token "s3cret"}))))))))
 
 (deftest the-web-port-variable-moves-main-and-not-only-the-repl-browser
   ;; `dev-repl` read VAELII_WEB_PORT and `-main` did not, while the docs said the
@@ -4065,16 +4111,14 @@
                                        (str/split #";") first)}
               id     (second (re-find #"/inflight/poll\?id=([0-9a-f-]+)" (:body r)))
               poll   #(GET "/inflight/poll" (str "id=" id))]
-          (detach! 5000)
+          (detach! Long/MAX_VALUE)
           (is (str/includes? (:body r) "Still reading"))
           (is (some? id))
           (is (= 204 (:status (poll))) "nothing while it reads")
           (is (str/includes? (:body (GET "/jobs")) "Pages still reading"))
           (deliver release true)
-          (loop [n 0]
-            (when (and (= 204 (:status (poll))) (< n 300))
-              (Thread/sleep 10)
-              (recur (inc n))))
+          (while (= 204 (:status (poll)))
+            (Thread/sleep 10))
           (is (= "true" (get-in (poll) [:headers "HX-Refresh"])) "a reload once it is done")
           (is (= "stats done" (:body (GET "/stats" nil cookie))))
           (is (= 1 @calls) "answered from the finished read, not read again")))

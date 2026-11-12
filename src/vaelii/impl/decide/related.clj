@@ -430,7 +430,10 @@
   separation declaration the settle relabels can contradict (`reread-separated!`)?
   Count reads."
   [kb w]
-  (boolean (some #(pos? (reads/stored-count-with-functor (:index kb) %)) (orthogonal-functors w))))
+  (let [stored? #(pos? (reads/stored-count-with-functor (:index kb) %))]
+    (boolean (or (stored? 'orthogonal)
+                 (some #(and (symbol? %) (not= 'orthogonal %) (stored? %))
+                       ((:specs-global w) 'orthogonal))))))
 
 (defn take-moved!
   "The declarations whose related-types nogoods moved since the last call, and the queue

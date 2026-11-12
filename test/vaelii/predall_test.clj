@@ -19,7 +19,7 @@
   extensible `indeterminate_term` category (skolem is its built-in first member), so an
   author-asserted *Exists* placeholder passes and a skolemised witness does not — the
   exact antagonist of the *Exists* class.  The same category drives the UNA identity
-  exemption: the unique-name assumption is suspended for an unmerged indeterminate term.
+  exemption: the unique-name assumption is suspended for an indeterminate term.
 
   The tracer is predAllInstance on the `sign` / `-212` example.  The generator's
   generated rule (defeasible, direction `:both` — `set/defaultRule`'s default) fires on a
@@ -36,7 +36,7 @@
 
 ;; The KB is built per test because a test registers a prover of its own, which a KB
 ;; shared across tests would keep.
-(use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
+(use-fixtures :each (tu/neutral-fresh #(doto (tu/empty-kb) (tu/load-core!))))
 
 (tu/deftest-kb nested-comments-do-not-satisfy-a-specified-comment
   (tu/with-terms [CxTest fictional_defined FictionalDefinedTerm JimboMcFallible]
@@ -960,17 +960,10 @@
       "the genl declaration audits through the trp arm, not a gap"))
 
 ;; ==== the IndeterminateTerm identity exemption + the UNA matrix ============
-;; The unique-name assumption applies to DETERMINATE terms (distinct names are provably
-;; different, a term is never different from itself) but is SUSPENDED for an unmerged
-;; indeterminate_term: neither equals nor different is provable of it against a determinate
-;; term until a merge identifies it.  Built data-driven over the grid rather than N hand-written
-;; cases.
-;;
-;; The category is skolem plus whatever is declared (genl _ indeterminate_term); a
-;; non-evaluatable unreifiable NAT is determinate.  A rewriteOf merge restores UNA for a
-;; skolem (below), but for an explicitly-declared indeterminate kind the equality merge
-;; MIGRATES the kind membership onto the winner, so the winner inherits the
-;; indeterminacy.
+;; The unique-name assumption applies to DETERMINATE terms and is SUSPENDED for an
+;; indeterminate one (docs/predall.md, "The identity exemption").  The category is skolem
+;; plus whatever is declared (genl _ indeterminate_term); a non-evaluatable unreifiable NAT
+;; is determinate.
 
 (defn- a-skolem
   "Skolemize a witness through a head-existential rule and return the minted skolem
@@ -1034,11 +1027,32 @@
       (is (not (v/ask? kb (list 'different sk Other) 'CxUniverse)) "unmerged: exempt")
       (v/assert kb (list 'rewriteOf Real sk) 'CxUniverse)          ; identify sk with Real
       (is (v/ask? kb (list 'different sk Other) 'CxUniverse)
-          (str "once identified by rewriteOf, the SKOLEM itself obeys the UNA — its"
-               " representative has moved off it, which is the exemption's lifting"
-               " condition"))
+          (str "once identified by rewriteOf, the SKOLEM itself obeys the UNA — a merge"
+               " lifts a skolem's exemption"))
       (is (v/ask? kb (list 'different Real Other) 'CxUniverse)
           "control: the determinate rewrite target was never exempt"))))
+
+;; Each merge is written in both argument orders, and `rewriteOf` elects its first
+;; argument, so each name of a row is the elected representative in some run.
+(tu/deftest-kb two-names-of-one-class-answer-different-alike
+  (doseq [[x-kind y-kind exempt?] [[:stated :plain true] [:plain :stated true]
+                                   [:stated :stated true] [:skolem :stated true]
+                                   [:skolem :plain false] [:skolem :skolem false]]
+          merge ['sameAs 'equals 'rewriteOf]
+          swap? [false true]]
+    (tu/with-terms [Aa Zz Alice]
+      (let [term (fn [kind sym] (if (= :skolem kind) (a-skolem kb) sym))
+            x    (term x-kind Aa)
+            y    (term y-kind Zz)]
+        (doseq [[kind t] [[x-kind x] [y-kind y]] :when (= :stated kind)]
+          (v/assert kb (list 'indeterminate_term t) 'CxUniverse))
+        (v/assert kb (if swap? (list merge y x) (list merge x y)) 'CxUniverse)
+        (is (= [(not exempt?) (not exempt?) exempt? exempt?]
+               [(v/ask? kb (list 'different x Alice) 'CxUniverse)
+                (v/ask? kb (list 'different y Alice) 'CxUniverse)
+                (predall/indeterminate-term? kb x 'CxUniverse)
+                (predall/indeterminate-term? kb y 'CxUniverse)])
+            (pr-str [x-kind y-kind merge swap?]))))))
 
 (tu/deftest-kb negative-zero-permutations-are-canonicalized
   ;; -0.0 must not be a distinct term from 0.0.  Scope note: (= 0.0 -0.0) is true in Clojure, so the -0.0 rows

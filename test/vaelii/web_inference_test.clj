@@ -11,6 +11,7 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.browser.web :as web]
             [vaelii.core :as v]
+            [vaelii.impl.budget :as budget]
             [vaelii.test-util :as tu]))
 
 (def ^:dynamic *app* nil)
@@ -134,6 +135,15 @@
     (is (= 4 (count rows)))
     (is (every? #(= :timeout (:status %)) rows)
         "a zero-ms deadline times out every tactician's run")))
+
+(deftest compare-tacticians-holds-every-row-to-one-deadline-and-runs-a-repeat-once
+  (let [calls (atom 0)
+        rows  (with-redefs [budget/now #(if (= 1 (swap! calls inc)) 0 (quot Long/MAX_VALUE 2))]
+                (v/compare-tacticians tu/*kb* '(anc ?x ?z) 'CxSmoke
+                                      {:max-depth 10 :max-ms 1000
+                                       :tacticians [:cost :cost :depth-first]}))]
+    (is (= [[:cost :timeout] [:depth-first :timeout]]
+           (mapv (juxt :tactician :status) rows)))))
 
 (deftest the-search-page-runs-under-attach-holding-no-session
   ;; the page reads only the public surface, so it renders over a KB nobody registered —

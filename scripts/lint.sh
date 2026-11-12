@@ -12,10 +12,11 @@
 # runs the lanes one after another, for a machine with no headroom for two JVMs.
 #
 #   - glossary    structural lint for docs/glossary.md (badges + order + links)
-#   - versions    the coordinates this tree states twice agree (sibling version,
-#                 lein-cloverage)
+#   - versions    the coordinates this tree states twice agree (defproject's version,
+#                 lein-cloverage, slf4j-nop)
 #   - links       relative markdown links across README + docs/ resolve
 #   - drift       doc claims about the code still match the code
+#   - conflicts   no tracked file carries a git conflict marker
 #   - kondo       clj-kondo over src + test + bench   (native binary; a NOTE
 #                 under the row when the local version is not CI's)
 #   - cljfmt      `lein cljfmt check` — formatting     (config in project.clj :cljfmt)
@@ -27,7 +28,10 @@
 #                 scripts/unused-publics-baseline.txt
 #   - prose       metaphor and aphorism where a mechanism has a name, and the words
 #                 that name several mechanisms, against the per-file budget in
-#                 scripts/prose-baseline.txt (CONTRIBUTING §3.10)
+#                 scripts/prose-baseline.txt (CONTRIBUTING §3.10).  P7, a prose
+#                 sentence of 40 or more words, has its own per-file budget in
+#                 scripts/prose-length-baseline.txt.  The check's own tests,
+#                 scripts/test_check_prose.py, run first
 #   - derived     every stateful def under impl/ and every Reasoning field has a
 #                 derived-state register row, or a reason in its allowlist
 #   - doc-size    docstring lines past the 8th and comment lines per file, against
@@ -102,7 +106,7 @@ trap 'rm -f "$DIR"/* 2>/dev/null; rmdir "$DIR" 2>/dev/null' EXIT
 # summary <label> <outfile> — a short one-line success summary, drawn from the
 # tool's own output where a figure carries info, else fixed text.
 summary() {
-  local label="$1" o="$2" s=""
+  local label="$1" o="$2" s="" p7=""
   case "$label" in
     glossary)   s="$(grep -oE '\([0-9]+ entries\)' "$o" | head -1 | tr -d '()')" ;;
     versions)   s="$(sed -n 's/^lint-versions: OK (\(.*\))$/\1/p' "$o" | head -1)" ;;
@@ -114,7 +118,10 @@ summary() {
     shellcheck) s="scripts clean" ;;
     reflect)    s="$(grep -oE 'no reflection warnings.*' "$o" | head -1)" ;;
     unused)     s="$(grep -oE '[0-9]+ known.*' "$o" | head -1)" ;;
-    prose)      s="$(grep -oE '[0-9]+ of [0-9]+ allowed, [0-9]+ files remaining' "$o" | head -1)" ;;
+    prose)      s="$(grep -oE '[0-9]+ of [0-9]+ allowed, [0-9]+ files remaining' "$o" | head -1)"
+                # check-prose.py prints the P1-P6 line first and the `prose P7:` line second
+                p7="$(sed -n 's/^prose P7: \([0-9]* of [0-9]* allowed, [0-9]* files remaining\)$/\1/p' "$o")"
+                [[ -n $p7 ]] && s="$s; P7 $p7" ;;
     derived)    s="$(grep -oE '[0-9]+ stateful defs \([0-9]+ registered' "$o" | head -1)" ;;
     doc-size)   s="$(grep -oE '[0-9]+ excess docstring lines, [0-9]+ comment lines' "$o" | head -1)" ;;
   esac
@@ -248,7 +255,7 @@ kondo_version_note() {
 #
 #   A  cljfmt, reflect                              ~30s
 #   B  kondo, unused                                ~25s
-#   C  the eight cheap ones                         ~30s
+#   C  the other nine                               ~30s
 #
 # Wall clock is the longest lane's, where a serial run's was the sum.  A lane that
 # outgrows the other two is the signal to rebalance.
@@ -264,6 +271,16 @@ lane_b() {
   check unused     -- python3 scripts/check-unused-publics.py
 }
 
+# The prose row runs check-prose.py's tests and then the check.  Both run, and either
+# one failing fails the row.
+# shellcheck disable=SC2317,SC2329  # invoked through check's "$@"
+prose_check() {
+  local rc=0
+  python3 scripts/test_check_prose.py || rc=1
+  python3 scripts/check-prose.py || rc=1
+  return "$rc"
+}
+
 lane_c() {
   check glossary   -- bash scripts/lint-glossary.sh
   check versions   -- bash scripts/lint-versions.sh
@@ -274,7 +291,7 @@ lane_c() {
   # same file — one list, so it cannot be complete for one caller and short for the
   # other. It also checks itself against the tree, both directions.
   check shellcheck -- bash scripts/lint-shellcheck.sh
-  check prose      -- python3 scripts/check-prose.py
+  check prose      -- prose_check
   check derived    -- python3 scripts/check-derived-state.py
   check doc-size   -- python3 scripts/check-doc-size.py
 }

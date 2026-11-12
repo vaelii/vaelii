@@ -5,7 +5,7 @@
 # a full one to run before a tag or a perf-sensitive land:
 #
 #   lein gate           FAST — lint + test:
-#     lint   static analysis  (scripts/lint.sh — twelve checks in three concurrent lanes)
+#     lint   static analysis  (scripts/lint.sh — its checks, in three concurrent lanes)
 #     test   the suite        (`lein test`, `:default` selector, memory stores; incl. assert_cost_test)
 #
 #   lein release-gate   FULL — lint + test + uberjar + perf:
@@ -13,7 +13,7 @@
 #              of `vaelii.core` from it — `build_uberjar` below
 #     perf     the scaling claims (`lein perf` — growth ratios, not milliseconds)
 #
-# PERF — why it is not in the fast gate.  It is ~5 minutes and wants an idle box, so
+# PERF — why it is not in the fast gate.  It takes about an hour (SHAPE below), so
 # a gate that always ran it is one people skip, and a skipped gate catches nothing.
 # Two things buy the drop back:
 #   - the CONSTANT-cost class (a fixed op added to every write) is a COUNT, not a
@@ -28,7 +28,7 @@
 #     (`arity_fns_changed`): a constant added to every write passes the growth checks.
 #
 # The `:default` selector on the test stage — the `^:slow` half is yours to run:
-#   - `lein test :all` — the deferred tests, over a quarter of the assertions (project.clj).
+#   - `lein test :all` — the deferred tests, 47% of the assertions (CONTRIBUTING.md §5).
 #     `lein gate --all` / `lein release-gate --all` runs it here.  When the pending
 #     diff touches the index, TMS or inference files the slow tests drive and this
 #     gate ran `:default`, it prints "slow owed" beside "perf owed" (non-blocking).
@@ -73,8 +73,8 @@
 #   - **perf runs alone on purpose.**  It judges growth ratios rather than
 #     milliseconds, which is what makes it machine-independent — but a reading taken
 #     while the test shards saturate the box is noise, and a perf gate that goes
-#     amber under its own harness is one nobody trusts.  It is ~40s; that is a cheap
-#     price for a number that means something.
+#     amber under its own harness is one nobody trusts.  A full run took 46 to 74
+#     minutes over 283 checks (`logs/runs.tsv`, 2026-11-03 to 2026-11-06).
 #
 # The test stage itself is sharded across JVMs (`scripts/test-parallel.sh`), which is
 # safe because the in-memory registry isolates separate JVMs — see that script.  It
@@ -348,8 +348,8 @@ announce () {                  # announce <name> <blurb> <cmd...>
 
 # ---- what each stage actually checked ------------------------------------
 #
-# A stage row is a verdict and not a list of checks.  `✓ lint` is twelve independent checks
-# and `✓ perf` is forty-odd, and four green rows cannot tell a gate that covered
+# A stage row is a verdict and not a list of checks.  `✓ lint` and `✓ perf` each stand
+# for many independent checks, and four green rows cannot tell a gate that covered
 # something from one that skipped it — which is the question somebody quoting a
 # green gate is actually being asked, and the reason `--only` and `--skip` exist
 # at all.  So each passing stage prints what it ran.
@@ -434,7 +434,7 @@ report_stage () {              # report_stage <name> <exit-code> <seconds>
 
 # ---- the live perf bar ---------------------------------------------------
 #
-# perf runs ~40s of scaling checks and reports them all at once at the end, so its stage
+# perf runs about an hour of scaling checks and reports them all at once at the end, so its stage
 # would otherwise be a blank wait.  Under a live terminal it gets a filling bar instead.
 # `vaelii.bench.perf` names its check total in the opening banner and prints a
 # `perf-progress k/total …` marker as each check finishes; `perf_bar` reads the total from
@@ -503,10 +503,12 @@ run_stage () {                 # run_stage <name> <blurb> <cmd...>
 }
 
 # admit_test takes a gate slot for the test stage, waiting while every slot is held.  Under
-# GATE_NO_WAIT=1 with none free it stops the stages already running and exits 75.
+# GATE_NO_WAIT=1 with none free it stops the stages already running and exits 75.  GATE_SLOT
+# is exported so the `lein test-parallel` the stage runs takes no second slot.
 admit_test () {
   local rc=0
   gate_slot_take "$gate_cmd" "$@" || rc=$?
+  export GATE_SLOT
   if [[ $rc -ne 0 ]]; then
     { stop_stages; wait; } 2>/dev/null
     printf '%s✗ %s not run%s — no gate slot free and GATE_NO_WAIT is set\n' "$RED" "$gate_label" "$RST"
@@ -596,8 +598,9 @@ build_uberjar () {
   lein update-in : merge "{:target-path \"$dir/%s\" :auto-clean false}" -- uberjar || return
   jar=$(find "$dir" -name '*-standalone.jar' | head -1)
   [[ -n "$jar" ]] || { echo "uberjar: no standalone jar under $dir"; return 1; }
-  "${JAVA_CMD:-java}" -cp "$jar" clojure.main -e "(require 'vaelii.core)" || return
-  echo "uberjar: $(basename "$jar") ($(du -h "$jar" | awk '{print $1}')) loads vaelii.core"
+  "${JAVA_CMD:-java}" -cp "$jar" clojure.main \
+    -e "(require 'vaelii.core 'vaelii.host.serve 'vaelii.web)" || return
+  echo "uberjar: $(basename "$jar") ($(du -h "$jar" | awk '{print $1}')) loads vaelii.core and the two servers"
   command rm -rf "$dir"
 }
 
@@ -725,7 +728,7 @@ PERF_SENSITIVE_RE='^src/vaelii/core\.clj$|^src/vaelii/impl/(provers|resolution|e
 # and whole-KB round trips run).  The slow tests outside all three (the aspif solver, the
 # catalog load, the feed socket, the koinii wire scenarios) name no file here.  Edit it
 # when a slow test starts driving a file, or a file's slow tests lose their marks.
-SLOW_OWED_RE='^src/vaelii/core\.clj$|^src/vaelii/impl/(resolution|except|literal_cache|memory|columnar|dense_kv|dense_roots|reindex|tokens|kv|jtms|dense_jtms|settle|recheck|clashes|discovery|checks|violations|strength|levels|observe|chain|rete|provers|inference|tactics|plan|rules|inherit|taxonomy|special|sentex|wff|nat|context_nat|abduce|qcn|qcn_kb|stp)\.clj$|^src/vaelii/impl/types/(trie|postings|snapshot|dense_roots)\.clj$|^src/vaelii/impl/disk/index_snapshot\.clj$'
+SLOW_OWED_RE='^src/vaelii/core\.clj$|^src/vaelii/impl/(resolution|except|literal_cache|memory|columnar|dense_kv|dense_roots|reindex|tokens|kv|kb|reads|journal|recovery|caches|jtms|dense_jtms|settle|settle_phases|recheck|clashes|discovery|decide|decide/[a-z_]+|vantage|integrate|assert_entry|checks|violations|strength|levels|observe|chain|rete|provers|inference|tactics|plan|rules|inherit|taxonomy|special|sentex|wff|nat|nat_read|nat_maintenance|context_nat|rewrite|abduce|qcn|qcn_kb|stp)\.clj$|^src/vaelii/impl/types/(trie|postings|snapshot|dense_roots)\.clj$|^src/vaelii/impl/disk/index_snapshot\.clj$'
 #
 # RED_OWED_RE.  The files the `^:red` tests drive: every one asserts and asks through
 # `vaelii.core`, so the inference, TMS and context files answer for them, and the temporal
@@ -733,7 +736,7 @@ SLOW_OWED_RE='^src/vaelii/core\.clj$|^src/vaelii/impl/(resolution|except|literal
 # `pr_status_true_when_test`.  A test file holding a `^:red` mark owes the run too, and
 # `git grep` names those, so the list cannot drift from the marks.  Edit the regex when a
 # red test starts driving a file.
-RED_OWED_RE='^src/vaelii/core\.clj$|^src/vaelii/impl/(resolution|except|inherit|chain|settle|settle_phases|recheck|clashes|discovery|decide|decide/[a-z_]+|vantage|jtms|dense_jtms|taxonomy|nat|nat_read|nat_maintenance|context_nat|plan|tactics|rules|rete|strength|levels|special|checks|violations|provers|inference|abduce|wff|capabilities|qcn|qcn_kb|stp|interval|point|timepoint|duration|calendar|datetime|fluent|projection|relative|scenario|space)\.clj$|^resources/kb/'
+RED_OWED_RE='^src/vaelii/core\.clj$|^src/vaelii/impl/(resolution|assert_entry|kb|budget|rewrite|except|inherit|chain|settle|settle_phases|recheck|clashes|discovery|decide|decide/[a-z_]+|vantage|jtms|dense_jtms|taxonomy|nat|nat_read|nat_maintenance|context_nat|plan|tactics|rules|rete|strength|levels|special|checks|violations|provers|inference|abduce|wff|capabilities|qcn|qcn_kb|stp|interval|point|timepoint|duration|calendar|datetime|fluent|projection|relative|scenario|space)\.clj$|^resources/kb/'
 red_marked=$(git grep -lE '\^:red|\^\{:red true' -- test 2>/dev/null | sed 's/[.]/\\./g; s/^/^/; s/$/$/' | paste -sd'|' -)
 [[ -n "$red_marked" ]] && RED_OWED_RE="$RED_OWED_RE|$red_marked"
 

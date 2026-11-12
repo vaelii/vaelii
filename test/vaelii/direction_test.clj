@@ -213,6 +213,16 @@
       (is (nil? (v/handle-of kb (list vocal Rex) CxA)) (str "edge first: " edge-first?))
       (is (v/provable? kb (list vocal Rex) CxA) (str "edge first: " edge-first?)))))
 
+(tu/deftest-kb a-lazy-reader-s-membership-its-taxonomy-holds-stays-unstored-when-a-second-edge-re-joins-the-reader
+  (tu/with-terms [dog puppy vocal hasVoice Rex Pup Bark CxA]
+    (v/assert kb (list 'genl puppy dog) CxA)
+    (v/assert kb (list puppy Pup) CxA)
+    (lazy-voice-world! kb CxA dog vocal hasVoice Rex Bark)
+    (v/assert kb (list 'genl dog vocal) CxA)
+    (v/assert kb (list 'genl puppy vocal) CxA)
+    (is (nil? (v/handle-of kb (list vocal Rex) CxA)))
+    (is (v/provable? kb (list vocal Rex) CxA))))
+
 (tu/deftest-kb a-converse-reader-reads-the-genl-edges-its-placement-context-sees
   (doseq [edge-first? [true false]]
     (tu/with-terms [dog vocal hasVoice Rex Bark CxA CxB]

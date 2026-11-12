@@ -172,8 +172,6 @@
 
 (def value-of-sign (set/map-invert sign-of-value))
 
-(defn- term? [x] (and (symbol? x) (not (sx/variable? x))))
-
 (defn- attribute-of [pred] (if (= 'trendOf pred) :trend :sign))
 
 ;; ---- reading the KB into a state and a constraint list -------------------
@@ -184,7 +182,7 @@
   [kb context pred & vars]
   (for [[h b] (res/matches-visible kb (apply list pred vars) context)
         :let  [args (mapv #(get b %) vars)]
-        :when (every? term? args)]
+        :when (every? sx/plain-symbol? args)]
     (into [h] args)))
 
 (defn- stated-values
@@ -352,7 +350,7 @@
         attribute  (attribute-of pred)
         state      (reading kb context)]
     (when-not (= :inconsistent state)
-      (if (term? q)
+      (if (sx/plain-symbol? q)
         (answers-for state attribute q s neg?)
         (mapcat (fn [x]
                   (map (fn [[b sup]] [(assoc b q x) sup])
@@ -364,12 +362,12 @@
   prover-types/Prover
   (applicable? [_ _ goal _]
     (when-let [[_ q s] (goal-literal goal)]
-      (and (or (term? q) (sx/variable? q))
+      (and (or (sx/plain-symbol? q) (sx/variable? q))
            (or (sx/variable? s) (contains? sign-of-value s)))))
   ;; A constant: counting the reading's quantities costs the whole fixpoint.
   (est-bindings [_ _ goal _]
     (let [[_ q s] (goal-literal goal)]
-      (if (and (term? q) (not (sx/variable? s))) 1 8)))
+      (if (and (sx/plain-symbol? q) (not (sx/variable? s))) 1 8)))
   (cost         [_ _ _ _] :compute)
   ;; The stated sign facts are read into the reading and answered back out of it, so a
   ;; raw fact match adds nothing.

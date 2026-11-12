@@ -10,6 +10,12 @@ checkouts/
 kbs/
 logs/
 heapdumps/
+testbench/
+tmp/
+handbook/
+legal/
+licenses/
+CLAUDE.md
 
 # generated locally by a deploy/install run, never read by `lein uberjar`
 pom.xml

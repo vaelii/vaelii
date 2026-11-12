@@ -91,6 +91,27 @@
             (is (v/ask? kb (list outOf Tom 'Ann) CxHid) (str "fact before the except: " (not late-fact?)))
             (v/retract! kb fh)))))))
 
+(tu/deftest-kb a-route-the-except-does-not-hide-re-joins-what-rests-on-the-mark
+  (doseq [derived? [true false] gain [:premise :second-route]]
+    (tu/with-terms [srcMark altMark genMark relOf outOf Tom CxHid]
+      (let [U   'CxUniverse
+            M   {:strength :monotonic}
+            fwd #(list 'set/forwardRule (list 'implies %1 %2))]
+        (v/assert kb (list 'genlCx CxHid U) U)
+        (v/assert kb (fwd (list srcMark '?p) (list genMark '?p)) U M)
+        (v/assert kb (fwd (list altMark '?p) (list genMark '?p)) U M)
+        (v/assert kb (if derived?
+                       (list 'implies (list genMark '?p) (fwd (list '?p '?x '?y) (list outOf '?x '?y)))
+                       (fwd (list 'and (list genMark relOf) (list relOf '?x '?y)) (list outOf '?x '?y)))
+                  U M)
+        (let [sh (v/assert kb (list srcMark relOf) U M)]
+          (v/assert kb (list 'except (sx/sentex-handle sh)) CxHid M)
+          (v/assert kb (list relOf Tom 'Ann) CxHid)
+          (is (not (v/ask? kb (list outOf Tom 'Ann) CxHid)))
+          (v/assert kb (list (if (= :premise gain) genMark altMark) relOf) U M)
+          (is (v/ask? kb (list outOf Tom 'Ann) CxHid)
+              (str gain (if derived? ", the rule derived from the mark" ", the rule stated"))))))))
+
 ;; ---- 4. backward chaining ------------------------------------------------
 ;; `provers/candidate-rules` filters direction, belief, and context inheritance; a rule
 ;; hidden from the asking context by a believed except must not be a candidate either.

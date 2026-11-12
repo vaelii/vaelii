@@ -27,7 +27,7 @@
       retracting either fact or the declaration un-merges them. Any other collision is
       a nogood each context reading the pair decides
 
-  and `mergeable-values?` (checks.clj) is the code half.  So the matrix below is one
+  and `mergeable-values?` (decide/tuple.clj) is the code half.  So the matrix below is one
   question asked five ways: *does the generalized determinant reach the same verdict the
   arity-2 path reaches, in every context that can see both fillers?*
 

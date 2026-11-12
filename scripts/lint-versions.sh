@@ -2,9 +2,10 @@
 # scripts/lint-versions.sh — the version strings this tree states more than once
 # must agree.
 #
-# `defproject`'s version is written in three places and lein-cloverage's in two,
-# each with a "keep in sync" comment and nothing enforcing it.  A comment is not
-# a check: these drift, and each drift reads as something other than what it is.
+# `defproject`'s version is written in three places, and lein-cloverage's and
+# slf4j-nop's in two each, with a "keep in sync" comment and nothing enforcing it.
+# A comment is not a check: these drift, and each drift reads as something other
+# than what it is.
 #
 #   1. The README's install coordinate.  It is the same version string a second
 #      time.  Do not treat it as lagging — "it should name the last *release*" is
@@ -118,6 +119,17 @@ elif [[ "$declared" != "$injected" ]]; then
   echo "        → make both $declared, or both whatever the newer one should be" >&2
 fi
 
+# ---- 2b: slf4j-nop agrees between the :uberjar and :dev profiles ----
+# The :uberjar copy silences Jetty in the standalone jar and the :dev copy in every
+# lein task, and project.clj's comment on the :dev copy says they match.
+nops=$(sed -n 's/.*\[org\.slf4j\/slf4j-nop "\([^"]*\)"\].*/\1/p' "$PROJECT" | sort -u)
+if [[ -z "$nops" ]]; then
+  err "cannot read slf4j-nop's version from $PROJECT"
+elif (( $(printf '%s\n' "$nops" | wc -l) > 1 )); then
+  err "slf4j-nop drift: $PROJECT names $(tr '\n' ' ' <<<"$nops")"
+  echo "        → make every copy the same version" >&2
+fi
+
 # ---- 3: the release badge reads defproject's version ----
 # Off the `<title>`, which carries the version once; the `<text>` runs beside it
 # repeat it for the badge's shadow and blur layers, so the first match there would
@@ -149,6 +161,6 @@ if (( FAILS > 0 )); then
   echo "lint-versions: $FAILS disagreement(s)" >&2
   exit 1
 fi
-echo "lint-versions: OK (vaelii $engine in $PROJECT, $README and $BADGE, lein-cloverage $declared)"
+echo "lint-versions: OK (vaelii $engine in $PROJECT, $README and $BADGE, lein-cloverage $declared, slf4j-nop $nops)"
 exit
 }

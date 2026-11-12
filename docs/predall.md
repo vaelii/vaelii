@@ -209,6 +209,13 @@ admissible filler, defining evidence also walks stored mentions and usable suppo
 and eligibility are memoized within a declaration audit, not across invocations. This is a
 sweep to run at a checkpoint, not a check to run per write.
 
+**`typeAllSpecified` is the counterpart for a classification.** `(typeAllSpecified
+rigidity_kind relation)` requires every relation to have a believed membership in some
+member of `rigidity_kind`, where `predAllSpecified` requires a filler. A partition into the
+classifier's members does not satisfy it, since the partition says what each instance is
+and the requirement says the KB must know it. `kb-integrity` audits it in its own
+`:type-specified-violations` category ([integrity.md](integrity.md#what-a-type-specified-finding-means)).
+
 ## indeterminate_term: what makes a filler determinate
 
 A filler satisfies a *Specified* requirement only when it is **determinate**. A term is
@@ -217,7 +224,8 @@ extensible:
 
 - **Skolem constants** are the built-in first member. A skolem's membership is never a
   stored fact, because a firing mints one dynamically, so it is read off the `SkolemFn`
-  expression the constant was minted from ([skolem.md](skolem.md)).
+  expression the constant was minted from ([skolem.md](skolem.md)). A skolem is a member
+  only while no merge names it ([the identity exemption](#the-identity-exemption)).
 - **A further kind** joins with `(genl NewKind indeterminate_term)`. Membership in the
   subkind then reaches the category through the ordinary `genl` closure.
 
@@ -234,7 +242,7 @@ both the audit and the prover below call it, so the two cannot disagree about a 
 
 ## The identity exemption
 
-The unique-name assumption is **suspended** for an unmerged indeterminate term. Distinct
+The unique-name assumption is **suspended** for an indeterminate term. Distinct
 symbols normally denote distinct individuals, and `(different X Y)` is provable exactly
 when the arguments lie in no shared equivalence class ([equality.md](equality.md)). An
 indeterminate term stands for some object without determining which, so it is not provably
@@ -246,15 +254,19 @@ different from anything:
 (v/ask? kb (list 'different skolem-constant 'Alice) 'CxUniverse)   ; => true
 ```
 
-A merge is the lifting condition. `rewriteOf`, `sameAs` or `equals` moves the term's
-representative off the term itself, and the exemption reads that self-representative state
-rather than a mark of its own.
+A merge reads the two kinds of member differently. A stated membership of
+`indeterminate_term` or a subkind describes the referent, so it holds of every name in the
+term's equivalence class as the context sees the merges, and a merge keeps the exemption.
+A skolem's indeterminacy belongs to the name the firing minted, so a `rewriteOf`, `sameAs`
+or `equals` merging the skolem with any other name lifts it, a second skolem included.
+Every name of one class therefore answers `different` alike, and the audit reads the same
+rule (`predall_test/two-names-of-one-class-answer-different-alike`).
 
 Two consequences follow. A `different` goal with an indeterminate argument is
 unprovable as a whole, even where two of its other arguments are determinate and distinct.
 And `same-class?` is no longer the complement of a provable `different`: both read false of
-an unmerged indeterminate term, so a caller wanting *provably different* asks `different`
-and reads that answer.
+an indeterminate term and a name outside its class, so a caller wanting *provably
+different* asks `different` and reads that answer.
 
 ## Stratification
 
@@ -298,7 +310,9 @@ the conclusion's context. The firing is blocked where the guard has stopped hold
 comes back when it holds again. A context below the conclusion's that sees a merge or an
 indeterminacy declaration the conclusion's context does not reads a guard defeat of the
 conclusion, resting on the handles of that merge or declaration
-(`chain/different-guard-placements`). A merge, an indeterminacy declaration and their
+(`chain/different-guard-placements`). A declaration of another name of an argument's class
+rests the defeat on the declaration and on the merges joining the two names. A merge, an
+indeterminacy declaration and their
 retractions all reach the firing:
 
 ```clojure

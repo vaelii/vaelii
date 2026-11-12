@@ -82,13 +82,18 @@
 (def ^:private ^:const F-ABKINDS    31)
 (def ^:private ^:const F-SHAPELEN   32)
 (def ^:private ^:const F-SINGLE     33)
-;; The shape trie, whose node `[f n]` is two tokens interned whole as the length bindings'
-;; are: its leaf `[:shape-tuple :handles [f n ctx]]` and its node's children.
+;; The shape, calendar and `natFormula` argument tries, nodes `[f n]`, `[f frame y m]` and
+;; `[f pos term]` interned whole as the length bindings' are: each a leaf and its children.
 (def ^:private ^:const F-SHAPE      34)
 (def ^:private ^:const F-SHAPE-CTX  35)
-;; The opposed bodies by functor, two name sets `[tag f]` like `[:unary-denied pred]`.
+(def ^:private ^:const F-CAL        38)
+(def ^:private ^:const F-CAL-CTX    39)
+(def ^:private ^:const F-NATARG     41)
+(def ^:private ^:const F-NATARG-CTX 42)
+;; The opposed bodies and the calendar months by functor, name sets `[tag f]`.
 (def ^:private ^:const F-OFUNC      36)
 (def ^:private ^:const F-OBETWEEN   37)
+(def ^:private ^:const F-CALMONTHS  40)
 
 (def ^:private watched-key (bit-shift-left (long F-WATCHED) 56))  ; the watched-rule set, a single posting
 
@@ -264,6 +269,8 @@
    :tax-support          [:node-trie F-TAX F-TAX-CTX]
    :arity-binding        [:node-trie F-ABIND F-ABIND-CTX]
    :shape-tuple          [:node-trie F-SHAPE F-SHAPE-CTX]
+   :calendar             [:node-trie F-CAL F-CAL-CTX]
+   :nat-argument         [:node-trie F-NATARG F-NATARG-CTX]
    :argument-root        [:arg F-ARG F-ARG-CTX]
    :term-index           [:flat F-TERM]
    :exception-index      [:exception F-EXC-P]
@@ -276,6 +283,7 @@
    :opposed-between      [:names F-OBETWEEN]
    :arity-binding-kinds  [:names F-ABKINDS]
    :shape-lengths        [:names F-SHAPELEN]
+   :calendar-buckets     [:names F-CALMONTHS]
    :term-names           [:single F-SINGLE]
    :unary-multi          [:single F-SINGLE]
    :unary-kept-types     [:single F-SINGLE]
@@ -407,7 +415,12 @@
       34 (nleaf :shape-tuple)
       35 [:shape-tuple :children (node)]
       36 [:opposed-functor term]
-      37 [:opposed-between term])))
+      37 [:opposed-between term]
+      38 (nleaf :calendar)
+      39 [:calendar :children (node)]
+      40 [:calendar-buckets term]
+      41 (nleaf :nat-argument)
+      42 [:nat-argument :children (node)])))
 
 ;; ---- the mapped tail ----------------------------------------------------
 ;; A snapshot's roots are three columns: the packed keys sorted ascending (`mkeys`), the

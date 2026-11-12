@@ -1564,11 +1564,11 @@ fi
 # answer afterwards from the logs alone.
 echo
 if [[ "$START_REV" == "$END_REV" && "${START_DIRTY:-0}" -eq 0 && "${END_DIRTY:-0}" -eq 0 ]]; then
-  echo "${DIM}tree: stable — every run compiled $START_REV, src/ and test/ clean${OFF}"
+  echo "${DIM}tree: stable — every run compiled $START_REV, $REVISION_SCOPE clean${OFF}"
 else
   echo "${BOLD}tree: not stable across this matrix${OFF}"
   [[ "${START_DIRTY:-0}" -gt 0 ]] && \
-    echo "  ${RED}⚠${OFF} dirty at the start: ${START_DIRTY} uncommitted file(s) under src/ or test/" \
+    echo "  ${RED}⚠${OFF} dirty at the start: ${START_DIRTY} uncommitted file(s) under $REVISION_SCOPE" \
          "— every run compiled them, so this answers for no commit"
   [[ "${END_DIRTY:-0}" -gt 0 && "${START_DIRTY:-0}" -eq 0 ]] && \
     echo "  ${RED}⚠${OFF} dirty by the end: ${END_DIRTY} uncommitted file(s) — a run that started" \

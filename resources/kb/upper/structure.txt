@@ -1,0 +1,214 @@
+;; structure.txt — the data structures: a list, a multiset, a finite set and a map, each a
+;; structural term its constructor builds, a map's entries, the four relations that read
+;; one, and each constructor's corresponding predicate. Loaded into CxUniverse with the rest of
+;; kb/upper/. See docs/nat.md, "A data structure is a structural term".
+
+(comment data_structure "A finite collection a term spells out element by element: a list, a multiset, a finite set or a map. Its elements are the term's arguments, so a reader sees them without a fact per element.")
+(unary_predicate data_structure)
+(set/monotonic (eternal_predicate data_structure))
+(set/monotonic (genl data_structure nowhere_never))
+;; A data structure is what a structural term denotes, so it is not linguistic: the
+;; written term is.  It is a value and not what a logic is about, so it is not logical.
+(set/monotonic (disjoint data_structure logical))
+(set/monotonic (disjoint data_structure linguistic))
+(set/monotonic (disjoint data_structure quantitative))
+(set/monotonic (disjoint data_structure syncategorematic))
+
+(comment list "A finite sequence: its items in an order, each repeat kept. (ListFn a b b) and (ListFn b a b) are two lists of three items.")
+(unary_predicate list)
+(set/monotonic (eternal_predicate list))
+
+(comment multiset "A finite collection whose order is ignored and whose repeats are kept. (MultisetFn a b b) and (MultisetFn b a b) are one multiset, holding b twice.")
+(unary_predicate multiset)
+(set/monotonic (eternal_predicate multiset))
+
+(comment finite_set "A finite collection whose order and repeats are both ignored. (SetFn a b), (SetFn b a) and (SetFn a b a) are one set of two elements. Named finite_set because every type is already a set of its instances, and the set/ namespace is the assertion wrappers'.")
+(unary_predicate finite_set)
+(set/monotonic (eternal_predicate finite_set))
+
+(comment map "A finite collection of entries, each an (EntryFn ?key ?value), with one value for each key. Order is ignored.")
+(unary_predicate map)
+(set/monotonic (eternal_predicate map))
+;; The constructor tells the four kinds apart, so (SetFn 1 2) and (MultisetFn 1 2) are two
+;; structures with the same elements.  The declaration installs each kind's genl edge.
+(set/monotonic (separating data_structure list multiset finite_set map))
+
+(comment map_entry "A key paired with a value, as one entry of a map: (EntryFn 1 \"one\") pairs 1 with \"one\". Its order is content, so (EntryFn 1 2) and (EntryFn 2 1) are two entries.")
+(unary_predicate map_entry)
+(set/monotonic (eternal_predicate map_entry))
+(set/monotonic (genl map_entry nowhere_never))
+;; An entry is a pair, not a collection of elements, so it is no data_structure; it is a
+;; value a term denotes, as one is.
+(set/monotonic (disjoint map_entry data_structure))
+(set/monotonic (disjoint map_entry logical))
+(set/monotonic (disjoint map_entry linguistic))
+(set/monotonic (disjoint map_entry quantitative))
+(set/monotonic (disjoint map_entry syncategorematic))
+
+(comment ListFn
+         "(ListFn . ?items) denotes the list of ?items in the order written. (ListFn) is the empty list.")
+(implementationNote ListFn "An unreifiable_function application: it stays a structural term whose arguments a reader can see, and nothing is minted for it.")
+(unreifiable_function ListFn)
+(variable_arity_function ListFn)
+(unbounded_arity_function ListFn)
+(arityMin ListFn 0)
+(result ListFn list)
+(functionCorrespondingPredicate ListFn listOf 1)
+
+(comment MultisetFn
+         "(MultisetFn . ?elements) denotes the multiset of ?elements: the store sorts the arguments and keeps each repeat. (MultisetFn) is the empty multiset.")
+(implementationNote MultisetFn "An unreifiable_function application, like ListFn. commutativeInArgAndRest makes every order of the arguments one sentex.")
+(unreifiable_function MultisetFn)
+(variable_arity_function MultisetFn)
+(unbounded_arity_function MultisetFn)
+(arityMin MultisetFn 0)
+(result MultisetFn multiset)
+(commutativeInArgAndRest MultisetFn 1)
+(functionCorrespondingPredicate MultisetFn multisetOf 1)
+
+(comment SetFn
+         "(SetFn . ?elements) denotes the finite set of ?elements: the store sorts the arguments and drops each repeat, so (SetFn b a a) is stored as (SetFn a b). A set holding a set stays nested: (SetFn a (SetFn b)) has two elements. (SetFn) is the empty set.")
+(implementationNote SetFn "An unreifiable_function application, like ListFn. commutativeInArgAndRest sorts the arguments and distinctInArgAndRest drops a repeat, both by identity: two names a sameAs merges stay two arguments, and the relations compare them in the asking context.")
+(unreifiable_function SetFn)
+(variable_arity_function SetFn)
+(unbounded_arity_function SetFn)
+(arityMin SetFn 0)
+(result SetFn finite_set)
+(commutativeInArgAndRest SetFn 1)
+(distinctInArgAndRest SetFn 1)
+(functionCorrespondingPredicate SetFn setOf 1)
+
+(comment MapFn
+         "(MapFn . ?entries) denotes the map whose entries are ?entries, each an (EntryFn ?key ?value). The store sorts the entries and drops each repeat. (MapFn) is the empty map.")
+(implementationNote MapFn "An unreifiable_function application, like ListFn, with SetFn's two marks. The store refuses a ground term that gives one key two values (:not-well-formed), comparing by identity. A context whose sameAs merges two keys with different values reads a map that gives that key both: valueAt answers each value, and cardinalityOf counts both entries.")
+(unreifiable_function MapFn)
+(variable_arity_function MapFn)
+(unbounded_arity_function MapFn)
+(arityMin MapFn 0)
+(argAndRest MapFn 1 map_entry)
+(result MapFn map)
+(commutativeInArgAndRest MapFn 1)
+(distinctInArgAndRest MapFn 1)
+(functionCorrespondingPredicate MapFn mapOf 1)
+
+(comment EntryFn
+         "(EntryFn ?key ?value) denotes the entry of a map that pairs ?key with ?value. The order is content: (EntryFn 1 2) and (EntryFn 2 1) are two entries.")
+(implementationNote EntryFn "An unreifiable_function application, like ListFn.")
+(unreifiable_function EntryFn)
+(binary_function EntryFn)
+(arg EntryFn 1 thing)
+(arg EntryFn 2 thing)
+(result EntryFn map_entry)
+(functionCorrespondingPredicate EntryFn entryOf 1)
+
+(comment elementOf
+         "(elementOf ?element ?structure) means that ?element is an element of the data structure ?structure: one of a list's items, one of a multiset's or a set's elements, or one of a map's entries.")
+(implementationNote elementOf "Computed by the structure prover from a ground structure and never stored. Elements are compared in the asking context's normal form, so a sameAs that context sees makes two names one element: an open ?element binds one of each, in the order the term holds them, and a ground ?element holds of either name.")
+(binary_predicate elementOf)
+(set/monotonic (eternal_predicate elementOf))
+(arg elementOf 1 thing)
+(arg elementOf 2 data_structure)
+(positiveExample elementOf (Quote (elementOf 2 (SetFn 1 2))))
+(positiveExample elementOf (Quote (elementOf (EntryFn 1 "one") (MapFn (EntryFn 1 "one")))))
+(negativeExample elementOf (Quote (elementOf 3 (SetFn 1 2))))
+(not_assertible elementOf)
+
+(comment cardinalityOf
+         "(cardinalityOf ?count ?structure) means that ?structure has ?count elements: a list's length, a multiset's elements counting each repeat, a set's elements, or a map's entries.")
+(implementationNote cardinalityOf "Computed by the structure prover and never stored. A list's and a multiset's items are counted as written. A set's elements and a map's entries are counted in the asking context's normal form, so where (sameAs A B) holds, (SetFn A B) has 1 element.")
+(binary_predicate cardinalityOf)
+(set/monotonic (eternal_predicate cardinalityOf))
+(arg cardinalityOf 1 non_negative_integer)
+(arg cardinalityOf 2 data_structure)
+(positiveExample cardinalityOf (Quote (cardinalityOf 3 (ListFn 1 2 2))))
+(positiveExample cardinalityOf (Quote (cardinalityOf 2 (SetFn 1 2 2))))
+(positiveExample cardinalityOf (Quote (cardinalityOf 0 (SetFn))))
+(negativeExample cardinalityOf (Quote (cardinalityOf 1 (MultisetFn 1 1))))
+(not_assertible cardinalityOf)
+
+(comment multiplicityOf
+         "(multiplicityOf ?count ?element ?structure) means that ?element occurs ?count times in ?structure: counted in a list or a multiset, and 1 or 0 in a set or a map.")
+(implementationNote multiplicityOf "Computed by the structure prover and never stored. Elements are compared in the asking context's normal form, so where (sameAs A B) holds, (MultisetFn A B) holds A twice. An open ?element binds one of each element with its count.")
+(ternary_predicate multiplicityOf)
+(set/monotonic (eternal_predicate multiplicityOf))
+(arg multiplicityOf 1 non_negative_integer)
+(arg multiplicityOf 2 thing)
+(arg multiplicityOf 3 data_structure)
+(positiveExample multiplicityOf (Quote (multiplicityOf 2 2 (MultisetFn 1 2 2))))
+(positiveExample multiplicityOf (Quote (multiplicityOf 0 3 (SetFn 1 2))))
+(negativeExample multiplicityOf (Quote (multiplicityOf 2 1 (SetFn 1 1))))
+(not_assertible multiplicityOf)
+
+(comment valueAt
+         "(valueAt ?value ?key ?structure) means that ?value is at ?key in ?structure: a map's value for the key, or a list's item at the position, counted from 1 as argument positions are.")
+(implementationNote valueAt "Computed by the structure prover and never stored. Keys and values are compared in the asking context's normal form, so a context that merges two keys of a map answers both their values. A multiset and a set have no keys.")
+(ternary_predicate valueAt)
+(set/monotonic (eternal_predicate valueAt))
+(arg valueAt 1 thing)
+(arg valueAt 2 thing)
+(arg valueAt 3 data_structure)
+(positiveExample valueAt (Quote (valueAt "two" 2 (MapFn (EntryFn 1 "one") (EntryFn 2 "two")))))
+(positiveExample valueAt (Quote (valueAt "b" 2 (ListFn "a" "b"))))
+(not_assertible valueAt)
+
+;; The corresponding predicates put the structure first: a variadic tail has no fixed
+;; last position. core.txt's rules derive argument 1's type from functionCorrespondingPredicate
+;; and each constructor's result; it is stated here as well, so it holds if those move.
+(comment listOf
+         "(listOf ?list . ?items) means that ?list is (ListFn . ?items). ListFn is the corresponding function, and its value is the first argument.")
+(implementationNote listOf "Computed by the structure prover and never stored. Ground items bind ?list to the canonical term. Over a ground ?list the items are patterns matched in order, compared in the asking context's normal form, and a dotted rest binds the items after them.")
+(variable_arity_predicate listOf)
+(unbounded_arity_predicate listOf)
+(set/monotonic (eternal_predicate listOf))
+(arityMin listOf 1)
+(arg listOf 1 list)
+(argAndRest listOf 2 thing)
+(positiveExample listOf (Quote (listOf (ListFn 1 2) 1 2)))
+(not_assertible listOf)
+
+(comment multisetOf
+         "(multisetOf ?multiset . ?elements) means that ?multiset is (MultisetFn . ?elements). MultisetFn is the corresponding function, and its value is the first argument.")
+(implementationNote multisetOf "Computed by the structure prover and never stored, as listOf is. Over a ground ?multiset each pattern takes one occurrence, in any order, and a dotted rest binds the occurrences none takes.")
+(variable_arity_predicate multisetOf)
+(unbounded_arity_predicate multisetOf)
+(set/monotonic (eternal_predicate multisetOf))
+(arityMin multisetOf 1)
+(arg multisetOf 1 multiset)
+(argAndRest multisetOf 2 thing)
+(positiveExample multisetOf (Quote (multisetOf (MultisetFn 1 2 2) 2 1 2)))
+(not_assertible multisetOf)
+
+(comment setOf
+         "(setOf ?set . ?elements) means that ?set is (SetFn . ?elements). SetFn is the corresponding function, and its value is the first argument.")
+(implementationNote setOf "Computed by the structure prover and never stored, as multisetOf is, except that two patterns may name one element.")
+(variable_arity_predicate setOf)
+(unbounded_arity_predicate setOf)
+(set/monotonic (eternal_predicate setOf))
+(arityMin setOf 1)
+(arg setOf 1 finite_set)
+(argAndRest setOf 2 thing)
+(positiveExample setOf (Quote (setOf (SetFn 1 2) 2 1)))
+(not_assertible setOf)
+
+(comment mapOf
+         "(mapOf ?map . ?entries) means that ?map is (MapFn . ?entries). MapFn is the corresponding function, and its value is the first argument.")
+(implementationNote mapOf "Computed by the structure prover and never stored, as setOf is.")
+(variable_arity_predicate mapOf)
+(unbounded_arity_predicate mapOf)
+(set/monotonic (eternal_predicate mapOf))
+(arityMin mapOf 1)
+(arg mapOf 1 map)
+(argAndRest mapOf 2 map_entry)
+(positiveExample mapOf (Quote (mapOf (MapFn (EntryFn 1 "one")) (EntryFn 1 "one"))))
+(not_assertible mapOf)
+
+(comment entryOf
+         "(entryOf ?entry ?key ?value) means that ?entry is (EntryFn ?key ?value). EntryFn is the corresponding function, and its value is the first argument.")
+(implementationNote entryOf "Computed by the structure prover and never stored.")
+(ternary_predicate entryOf)
+(set/monotonic (eternal_predicate entryOf))
+(arg entryOf 1 map_entry)
+(arg entryOf 2 thing)
+(arg entryOf 3 thing)
+(positiveExample entryOf (Quote (entryOf (EntryFn 1 "one") 1 "one")))
+(not_assertible entryOf)

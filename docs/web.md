@@ -453,7 +453,8 @@ can discard, with nothing arranging for it.
   one it was not given, and the check needs no server state. With the variable unset the
   key is 32 random bytes for the process's life, so a restart re-mints every cookie; set
   it to keep cookies across a restart or across replicas. The cookie carries `Secure`
-  when the request came over HTTPS.
+  when the browser reached the site over HTTPS, read through a TLS-terminating proxy's
+  `X-Forwarded-Proto` as the origin check reads it.
 - **The context is named from a digest of the token, not the token.** Every reader sees
   every context's name — `/find`, `CxWell`'s term page, `/op :contexts` — so a name that
   carried the token would hand any reader a cookie that resets or writes another
@@ -694,12 +695,12 @@ origin check, and it is the banner's second condition arriving here: a KB whose 
 was never built is refused too, because the engine's entry points throw `:unrecovered-kb` for
 one and a route that let the exception out would answer an error status — which is the
 silent no-op the whole page shape exists to avoid. So every route that changes a KB's
-content goes through **`writing`**: `/assert`,
-`/edit`, `/retract`, `/demo`, `/reasoning`, `/sandbox/reset`, every extension's `:write`
-route — and `/edit/preview`, which reads by really asserting and rolling back, and is
-therefore a writer for the duration. `/chain` and POST `/funnel` go through **`writing-job`**, the same
-guard for a write that *is* a job (below); the two submit the same chaining run and differ
-only in the page it lands on. `/kbs/load`, `/kbs/unload`, `/kbs/activate` and
+content goes through **`writing`** or **`writing-job`**. `writing` guards `/demo`,
+`/reasoning`, `/sandbox/reset`, every extension's `:write` route and `/edit/preview`, which
+reads by really asserting and rolling back, and is therefore a writer for the duration.
+`writing-job` is the same guard for a write that *is* a job (below), and guards POST
+`/assert`, `/edit` and `/retract`, `/chain` and POST `/funnel`. The last two submit the same
+chaining run and differ only in the page it lands on. `/kbs/load`, `/kbs/unload`, `/kbs/activate` and
 `/jobs/cancel` are **not** guarded: they write this process's registry rather than a KB,
 and cancelling a job has to stay reachable precisely *because* one is running. A job does not go
 through `writing` either: it takes the monitor on its own thread, and a request that waited for the
@@ -1272,8 +1273,9 @@ round-trip under `--attach`.
   Supertypes / Subtypes / Disjoint-with lines. A supertype line renders `genl` sentexes
   the argument groups already list, which is saying twice what the page says once; the one
   reading of a taxonomy the rows cannot give is position, and that is the picture. On an
-  imported ontology such a line is also the largest thing the page renders: `thing` has
-  110,128 subtypes there and one NAT collection is disjoint from 79,638 types.
+  imported ontology such a line is also the largest thing the page renders: on the
+  OpenCyc import ([kbs.md](kbs.md#opencyc-40-which-you-supply), about 114k types) `thing`
+  has nearly every type as a subtype.
   `vaelii.core/describe` answers all six readings — the three closures and the three
   declarations, `:genls-direct` / `:specs-direct` / `:disjoint-maximal` — for a caller that
   wants them ([api.md](api.md)); the page reads two, `:genls` and `:specs`, and only to
@@ -2089,7 +2091,11 @@ accent pair, the term-role colours (`--t-*`) and the nine-step spectrum (`--rb1`
   (`position: sticky`). Below 57rem the menubar takes a row of its own between the brand
   and the search, and the header scrolls away, since four or five lines of it would hold a
   third of a phone screen. A long KB name truncates with an ellipsis before the menubar
-  loses width. The search is an htmx *active search*: a debounced
+  loses width. Press `/` outside an input, textarea, select or contenteditable region
+  to focus the search box and select its current text. The shortcut uses the typed
+  character (including Shift where the keyboard layout requires it), leaves Ctrl,
+  Cmd and Alt combinations alone, and does not run during IME composition or after
+  another handler consumes the key. The search is an htmx *active search*: a debounced
   `hx-get` to `/find` swaps just the
   `#main` region, so it stays focused and no full reload happens. What you type is
   matched against **term names**: a query with no regex metacharacter is a

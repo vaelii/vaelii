@@ -8,6 +8,7 @@
   subsumption or disjointness), and :unknown."
   (:require [clojure.test :refer [deftest is use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.disjointness-ratchet :as dr]
             [vaelii.impl.integrity :as integrity]
             [vaelii.test-util :as tu]))
 
@@ -300,7 +301,7 @@
   (tu/with-neutral-kb [kb well-over-core]
     (is (= (v/disjointness-audit kb)
            (v/disjointness-audit kb 'CxWell))
-        "the no-context audit passes CxWell, the context below every middle context, as its
+        "the no-context audit passes CxWell, the context below the seven theories, as its
         vantage — every type and declaration CxWell sees, and no opt-in theory's")))
 
 ;; ---- the swept type set is read from the same vantage as its coverage -----
@@ -345,21 +346,31 @@
 
 ;; ---- coverage ratchet -------------------------------------------------------
 ;;
-;; The thresholds are the starter KB's current values, so a change that removes a
-;; separation fails here. The pair count floor catches a removal that a new
-;; well-separated type would hide in the percentages. Raise each number when coverage
-;; grows. Lower one only in the commit that removes the separation, and name the
+;; The disjoint thresholds are the starter KB's current values, so a change that removes
+;; a separation fails here. The pair count floor catches a removal that a new
+;; well-separated type would hide in the percentages. Raise each disjoint threshold when
+;; coverage grows. Lower one only in the commit that removes the separation, and name the
 ;; removed pairs in that commit.
 ;;
+;; The unknown-pair percentage passes while it is at most the committed value plus 0.5
+;; percentage points and under 10%, as `dr/ratchet-verdict` decides. A pass above the
+;; committed value prints a GitHub Actions `::warning` line, which shows the slack used
+;; as an annotation on the green check. A commit may move the committed value to its
+;; measurement, so the 10% ceiling is the bound on the cumulative growth.
+;;
 ;; The audit sweeps the nodes of the genl hierarchy visible from its vantage (default
-;; CxWell, the context below every middle context) less each `relation?` there, so the five
+;; CxWell, the context below the seven theories) less each `relation?` there, so the five
 ;; relations CxUniverse puts under a `genl` edge (`orthogonal`, `siblingDisjointException`
-;; and the three arity-class predicates) are not swept: 230 types, 26,335 pairs, 21,875
-;; of them disjoint (83.1%) and 1,855 unknown (7.0%). The seven pairs of target_following_predicate
-;; with instance_relation_predicate, binary_predicate, bounded_arity, fixed_arity_predicate,
-;; binary, at_least_binary and fixed_arity read unknown since the example predicates, its
-;; only starter members, left it. No opt-in theory's type is among the 230: CxWell does not see one, so the
-;; sweep does not either.
+;; and the three arity-class predicates) are not swept: 282 types, 39,621 pairs, 33,040
+;; of them disjoint (83.4%) and 2,545 unknown (6.4%). No opt-in theory's type is among the
+;; 282: CxWell does not see one, so the sweep does not either. The rigidity metatypes (the
+;; rigidity kinds, eternal_predicate, situation_predicate and core.txt's other temporal
+;; classes of relation) add open pairs and remove no separation. The percentage floors are
+;; the values the starter gives with them; the pair count floor catches a removal.
+
+(def ^:private unknown-committed-% 6.43)
+(def ^:private unknown-slack-pp 0.5)
+(def ^:private unknown-ceiling-% 10.0)
 
 (tu/deftest-kb disjointness-coverage-ratchet
   (let [a          (v/disjointness-audit kb)
@@ -368,13 +379,26 @@
         disjoint   (get by-status :disjoint 0)
         unknown    (get by-status :unknown 0)
         disjoint-% (* 100.0 (/ disjoint pairs))
-        unknown-%  (* 100.0 (/ unknown pairs))]
-    (is (>= disjoint 25373)
-        (format "disjoint pairs must not fall below 25373 (got %d)" disjoint))
-    (is (>= disjoint-% 83.51)
-        (format "disjoint coverage must not regress below 83.51%% (got %.2f%%)" disjoint-%))
-    (is (<= unknown-% 6.82)
-        (format "unknown pairs must not grow above 6.82%% (got %.2f%%)" unknown-%))))
+        unknown-%  (* 100.0 (/ unknown pairs))
+        verdict    (dr/ratchet-verdict unknown-committed-% unknown-% unknown-slack-pp
+                                       unknown-ceiling-%)]
+    (is (>= disjoint 33040)
+        (format "disjoint pairs must not fall below 33040 (got %d)" disjoint))
+    (is (>= disjoint-% 83.39)
+        (format "disjoint coverage must not regress below 83.39%% (got %.2f%%)" disjoint-%))
+    (is (:pass? verdict)
+        (format "unknown pairs must stay at most %.2f%% + %.1fpp and under %.1f%% (got %.2f%%)"
+                unknown-committed-% unknown-slack-pp unknown-ceiling-% unknown-%))
+    (doseq [line (dr/slack-lines unknown-committed-% unknown-% unknown-slack-pp verdict)]
+      (println line))))
+
+(tu/deftest-kb every-type-the-audit-sweeps-is-decided-against-not-assertible
+  (let [swept (remove #(or (= 'not_assertible %) (v/relation? kb % 'CxWell))
+                      (v/types kb 'CxWell))]
+    (is (< 200 (count swept)) "the sweep reads the starter's types")
+    (is (= {} (into {} (keep #(let [s (v/subsumption-status kb 'not_assertible % 'CxWell)]
+                                (when (#{:unknown :inconsistent} s) [% s])))
+                    swept)))))
 
 (tu/deftest-kb the-audits-between-two-writes-ask-a-ground-goal-once
   (tu/with-terms [a_kind b_kind]

@@ -242,16 +242,15 @@
       (is (= #{T2} (answers kb (list 'properSubintervalOf T1 '?y) '?y))))))
 
 (tu/deftest-kb a-depth-bounded-query-reaches-forever
-  ;; Forever's containment is a backward rule.  The registry alone (ask, or query with
-  ;; no depth) expands no rule, so it neither lists Forever nor stores anything for it;
-  ;; a query given a depth expands the rule, ground and open.
+  ;; ForeverProver answers Forever's containment beside the Allen prover, which the
+  ;; :forever channel keeps from answering the goal alone, and stores nothing for it.
   (tu/with-terms [T1 T2]
     (v/assert kb (list 'time_interval T1) C)
     (v/assert kb (list 'time_interval T2) C)
     (v/assert kb (list 'during T1 T2) C)
-    (testing "the registry alone does not expand the rule"
-      (is (not (v/ask? kb (list 'subintervalOf T1 'Forever) C)))
-      (is (= #{T1 T2} (answers kb (list 'subintervalOf T1 '?y) '?y))))
+    (testing "the registry alone reaches Forever, ground and open"
+      (is (true? (v/ask? kb (list 'subintervalOf T1 'Forever) C)))
+      (is (= #{T1 T2 'Forever} (answers kb (list 'subintervalOf T1 '?y) '?y))))
     (testing "a depth-bounded query reaches Forever, ground and open"
       (is (seq (v/query kb (list 'subintervalOf T1 'Forever) C {:max-depth 1})))
       (is (contains? (set (map '?y (v/query kb (list 'subintervalOf T1 '?y) C {:max-depth 1})))
@@ -534,7 +533,8 @@
   (tu/with-terms [A B]
     (v/assert kb (list 'before A B) C)
     (testing "(subintervalOf ?x ?x) holds of every interval — its denotation has :equal"
-      (is (= #{A B} (set (map #(get % '?x) (v/ask kb (list 'subintervalOf '?x '?x) C))))))
+      ;; time.txt's Forever is a time_interval too, and ForeverProver answers it
+      (is (= #{A B 'Forever} (set (map #(get % '?x) (v/ask kb (list 'subintervalOf '?x '?x) C))))))
     (testing "and the irreflexive relations hold of none"
       (is (empty? (v/ask kb (list 'before '?x '?x) C)))
       (is (empty? (v/ask kb (list 'properSubintervalOf '?x '?x) C)))

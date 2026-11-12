@@ -23,7 +23,7 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (v/assert-rule kb '[(p ?x)] '(q ?x) 'CxFunnel {:direction :forward})
       (v/assert kb '(p A) 'CxFunnel)
       (v/assert-rule kb '[(unfired ?x)] '(never ?x) 'CxFunnel {:direction :forward})
@@ -39,7 +39,7 @@
         (try (f)
              (finally
                (doseq [j (jobs/running)] (jobs/cancel! (:id j)))
-               (doseq [j (jobs/running)] (jobs/wait (:id j) 60000))
+               (doseq [j (jobs/running)] (jobs/wait (:id j)))
                (jobs/reset-registry!)
                (catalog/reset-registry!)
                (tu/clear-kb! kb)))))))
@@ -98,7 +98,7 @@
     (is (= 200 (:status r)))
     ;; the run settles inside the fast path on an idle box; wait for it either way, then the
     ;; funnel it lands on still classifies the rules
-    (jobs/wait (:id (first (jobs/jobs))) 30000)
+    (jobs/wait (:id (first (jobs/jobs))))
     (let [b (:body (GET "/funnel"))]
       (is (re-find #"The chaining funnel" b))
       (is (re-find #">fires<" b)))))

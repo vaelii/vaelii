@@ -453,12 +453,10 @@
 
 ;; ---- reading the KB into a network ---------------------------------------
 
-(defn- node-term? [x] (and (symbol? x) (not (sx/variable? x))))
-
 (defn- metric-term?
   "A term the metric network places: a node term, or a calendar moment (`tp/moment`)."
   [x]
-  (or (node-term? x) (some? (tp/moment x))))
+  (or (sx/plain-symbol? x) (some? (tp/moment x))))
 
 (def ^:private epochs
   "The node of each `tp/moment` frame the frame's calendar moments are placed from: the
@@ -479,7 +477,7 @@
   its frame's epoch node, its seconds after the epoch (`dt/epoch-second`) times `factor`;
   nil for any other term."
   [factor x]
-  (if (node-term? x)
+  (if (sx/plain-symbol? x)
     [x 0]
     (when-let [[frame fields] (tp/moment x)]
       (some->> (dt/epoch-second fields) (* factor) provers/round-magnitude (vector (epochs frame))))))
@@ -510,7 +508,7 @@
          :let  [b (second m), t (get b '?t), x (get b '?x)
                 [n lo] (anchor factor (list 'StartFn t))
                 [_ hi] (anchor factor (list 'EndFn t))]
-         :when (and n hi (node-term? x))]
+         :when (and n hi (sx/plain-symbol? x))]
      [k n x lo hi (conj sup (first m))])))
 
 (defn- placed
@@ -518,7 +516,7 @@
   under `Second`'s key `sk`, the constraint between their anchors (`anchor`), resting also
   on `sup`; nil under another key."
   [[sk factor sup] [k p q lo hi hs :as c]]
-  (if (and (node-term? p) (node-term? q))
+  (if (and (sx/plain-symbol? p) (sx/plain-symbol? q))
     c
     (let [[np op] (anchor factor p)
           [nq oq] (anchor factor q)
@@ -615,8 +613,8 @@
 
 (defn- inconsistency-detail
   "What makes the metric network `net` unsatisfiable: `{:pairs #{[p q]} :cycle #{instant}}`,
-  the pairs unsatisfiable as written and the instants on a negative cycle.  Either set is
-  empty when the other holds the whole clash."
+  the pairs unsatisfiable as written and the instants on a negative cycle.  A crossed bound
+  appears in both: it is a pair unsatisfiable as written and a two-instant negative cycle."
   [net]
   (let [node-vec (nm/by-print-key (nodes net))]
     {:pairs (unsatisfiable-pairs net)
@@ -762,7 +760,7 @@
   "Interval `i`'s `[[start end] handles]` from its `stated-endpoint`s and those facts'
   handles, an endpoint read when `(term? endpoint)`, by default a symbol.  nil when either
   is missing."
-  ([kb i context] (endpoints-with-support kb i context node-term?))
+  ([kb i context] (endpoints-with-support kb i context sx/plain-symbol?))
   ([kb i context term?]
    (let [[s sh] (stated-endpoint kb i context 'startOf term?)
          [e eh] (stated-endpoint kb i context 'endOf term?)]
@@ -777,7 +775,7 @@
         (into #{}
               (comp (mapcat #(res/matches-visible kb % context))
                     (map (comp #(get % '?i) second))
-                    (filter node-term?))
+                    (filter sx/plain-symbol?))
               patterns)))
 
 (defn intervals-with-endpoints
@@ -956,7 +954,7 @@
   stated constraint."
   [kb goal context]
   (let [[_ p q m] goal
-        nodes?    (and (node-term? p) (node-term? q))
+        nodes?    (and (sx/plain-symbol? p) (sx/plain-symbol? q))
         [sk f us] (when-not nodes? (second-key kb context))
         [np op]   (anchor f p)
         [nq oq]   (anchor f q)

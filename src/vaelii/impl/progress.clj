@@ -66,7 +66,7 @@
           (< s 3570.0) (format "%.1f min" (/ s 60))
           :else      (format "%.1f h" (/ s 3600)))))
 
-(defn- count-text
+(defn count-text
   "`n` with thousands separators."
   [n]
   (format "%,d" (long n)))

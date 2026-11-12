@@ -43,7 +43,8 @@
   half-escaped is easier to reason about than one with an entry point in it."
   (:refer-clojure :exclude [reset!])
   (:require [clojure.string :as str]
-            [vaelii.browser.access :as v])
+            [vaelii.browser.access :as v]
+            [vaelii.host.guard :as guard])
   (:import (java.lang.ref WeakReference)
            (java.nio.charset StandardCharsets)
            (java.security MessageDigest SecureRandom)
@@ -137,7 +138,8 @@
 (defn- set-cookie
   "The `Set-Cookie` value for `token`.  A **session** cookie (no `Max-Age`): a sandbox is
   scoped to the sitting.  `HttpOnly` because no script needs it, `SameSite=Lax` so another
-  site cannot drive a write with it, and `Secure` when the request came over HTTPS."
+  site cannot drive a write with it, and `Secure` when the browser reached the site over
+  HTTPS (`guard/request-scheme`, which reads a TLS-terminating proxy's header)."
   [token secure?]
   (str cookie-name "=" token "." (tag token) "; Path=/; HttpOnly; SameSite=Lax"
        (when secure? "; Secure")))
@@ -320,7 +322,7 @@
           resp  (handler (assoc req ::token token))]
       (when known (note-use! (kb-of) (context-for known)))
       (cond-> resp
-        (nil? known) (add-cookie (set-cookie token (= :https (:scheme req))))))))
+        (nil? known) (add-cookie (set-cookie token (= "https" (guard/request-scheme req))))))))
 
 ;; ---- the context itself --------------------------------------------------
 

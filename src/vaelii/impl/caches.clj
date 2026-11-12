@@ -447,6 +447,12 @@
     (if (some? v) (hit tally) (miss tally))
     v))
 
+(defn lru-peek
+  "The value `lru` holds at `k`, or nil, marking it the most recently used and leaving
+  the tally unchanged: for a reader that never computes the value on a miss."
+  [{:keys [^java.util.LinkedHashMap map]} k]
+  (locking map (.get map k)))
+
 (defn lru-put!
   "Hold `v` at `k` in `lru`, evicting the least recently used entries until the weight is
   back under the bound, and answer `v`.  A value heavier than the whole bound is evicted

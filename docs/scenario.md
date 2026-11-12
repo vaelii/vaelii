@@ -27,7 +27,7 @@ consistency, and so an arrangement nothing believed rules out.
 
 ## The search
 
-Ordinary backtracking, with the two refinements that make it bearable:
+The search is ordinary backtracking with two refinements that bound it:
 
 * **fewest possibilities first.** The most constrained undecided pair is chosen next, so a
   wrong choice is made where it is cheapest to be wrong about.
@@ -46,8 +46,8 @@ later. Nothing in it names a relation, a predicate or a table: everything it nee
 `qcn` and `qcn-kb`'s public surface — the network, its nodes, a constraint, the converse, and
 the pass.
 
-That is the same arrangement `qcn-kb` itself takes: a new calculus is a table and a prover,
-and it gets scenario extraction for free along with the caches and the entailment reading.
+`qcn-kb` takes the same arrangement: a new calculus is a table and a prover, and scenario
+extraction, the caches and the entailment reading run over it with no further code.
 
 ## Determinism
 
@@ -60,9 +60,9 @@ search makes break their ties on **content**:
 | which pair to decide next | fewest possibilities, then node order by how the nodes are written |
 | which relation to try first | the relation's own name |
 
-Never by a handle id, and never by map iteration order. Handles are allocated in assertion
-order, so keying on one would smuggle that order into the answer — the bug the whole engine
-is built to avoid, and the same reason the JTMS tie-breaks on content.
+Neither ordering reads a handle id or map iteration order. Handles are allocated in
+assertion order, so a tie broken on a handle would carry assertion order into the answer and
+break order independence. The JTMS breaks its ties on content for the same reason.
 
 The network itself is already order-independent: it is built by intersection, which is
 commutative and associative, and path consistency computes the unique greatest fixpoint below

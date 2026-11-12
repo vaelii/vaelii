@@ -213,7 +213,12 @@
   {:cover (str "a refuted cover names its membership and its negations, which the entry"
                " point's reads always find, so `assert` stores it and the settle decides it;"
                " the `:type` is carried by the violation the lift, the merge twin and"
-               " `abduce` refuse on")})
+               " `abduce` refuse on")
+   :incomplete-defining-contexts
+   (str "the asserted-leaves walk follows every valid justification a mention's own context"
+        " reads as `:supports`, and a believed derived mention has one, so no fixture reaches"
+        " a mention with none; the throw stays as the check against a support index that"
+        " disagrees with the TMS")})
 
 ;; ---- the checks ----------------------------------------------------------
 

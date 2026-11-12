@@ -593,8 +593,6 @@
 
 (defn- pct [n total] (if (pos? total) (format "%.1f%%" (* 100.0 (/ (double n) total))) "—"))
 
-(defn- commas [n] (format "%,d" (long n)))
-
 (defn- rule-lines [heading rules]
   (when (seq rules)
     (str "\n" heading "\n\n"
@@ -609,10 +607,10 @@
 ;; composable in any subset.
 
 (defn- render-rules [r]
-  (str (commas (:total r)) " rules — **" (commas (:never-count r)) " never fired** ("
-       (pct (:never-count r) (:total r)) "), " (commas (:all-defeated-count r))
-       " fired with every conclusion defeated, " (commas (:fired r))
-       " live; " (commas (:firings r)) " recorded firings in all.\n\n"
+  (str (progress/count-text (:total r)) " rules — **" (progress/count-text (:never-count r)) " never fired** ("
+       (pct (:never-count r) (:total r)) "), " (progress/count-text (:all-defeated-count r))
+       " fired with every conclusion defeated, " (progress/count-text (:fired r))
+       " live; " (progress/count-text (:firings r)) " recorded firings in all.\n\n"
        "A firing is a **currently supported** one: a rule whose conclusions have since been\n"
        "retracted has no live justification and is counted as never fired.\n"
        (rule-lines "### Never fired" (:never r))
@@ -621,24 +619,24 @@
          "\nThe lists are capped; the counts above are not.\n")))
 
 (defn- render-extents [e]
-  (str (commas (:predicates e)) " predicates, " (commas (:with-extent e))
-       " with an extent, " (commas (:stored e)) " stored facts, Gini "
+  (str (progress/count-text (:predicates e)) " predicates, " (progress/count-text (:with-extent e))
+       " with an extent, " (progress/count-text (:stored e)) " stored facts, Gini "
        (format "%.4f" (:gini e)) ".\n\n"
        "| extent | predicates |\n|---|---|\n"
        (str/join "\n" (for [[k n] (sort (:buckets e))]
-                        (str "| 10^" k " | " (commas n) " |")))
+                        (str "| 10^" k " | " (progress/count-text n) " |")))
        "\n\n### The heaviest\n\n"
        (str/join "\n" (for [[pred n] (:heaviest e)]
-                        (str "- `" pred "` — " (commas n))))
+                        (str "- `" pred "` — " (progress/count-text n))))
        "\n"))
 
 (defn- render-chains [c]
-  (str (commas (:functors c)) " functors in " (commas (:components c))
-       " components (" (commas (:cyclic c)) " cyclic, largest " (commas (:largest c))
-       "), over " (commas (:rules c)) " rules.\n\n"
+  (str (progress/count-text (:functors c)) " functors in " (progress/count-text (:components c))
+       " components (" (progress/count-text (:cyclic c)) " cyclic, largest " (progress/count-text (:largest c))
+       "), over " (progress/count-text (:rules c)) " rules.\n\n"
        "| depth | rules | at least |\n|---|---|---|\n"
        (str/join "\n" (for [[d n] (sort (:depths c))]
-                        (str "| " d " | " (commas n) " | "
+                        (str "| " d " | " (progress/count-text n) " | "
                              (if-let [f (get (:at-least c) d)]
                                (format "%.1f%%" (* 100.0 f))
                                "100.0%")
@@ -646,12 +644,12 @@
        "\n"))
 
 (defn- render-taxonomy [t]
-  (str (commas (:names t)) " type names — " (commas (:edged t))
+  (str (progress/count-text (:names t)) " type names — " (progress/count-text (:edged t))
        " carry a `genl` edge (" (pct (:edged t) (:names t)) ")"
        (if-let [root (:root t)]
-         (str ", " (commas (:rooted t)) " reach `" root "` ("
+         (str ", " (progress/count-text (:rooted t)) " reach `" root "` ("
               (pct (:rooted t) (:names t)) ").\n\n"
-              "Edged but not reaching the root: " (commas (:islands t))
+              "Edged but not reaching the root: " (progress/count-text (:islands t))
               " — the types sitting in disconnected islands, and the gap between the two\n"
               "fractions above is the finding rather than either one of them.\n")
          ;; no edge anywhere means no root to report against, which is a different statement
@@ -659,9 +657,9 @@
          ".\n\nNo `genl` edge anywhere, so there is no root to measure reach against.\n")))
 
 (defn- render-declarations [d]
-  (str (commas (:total d)) " argument declaration"
+  (str (progress/count-text (:total d)) " argument declaration"
        (when (not= 1 (:total d)) "s") " — **"
-       (commas (:stranded-count d))
+       (progress/count-text (:stranded-count d))
        (if (= 1 (:stranded-count d))
          " names a position its predicate does not have"
          " name a position their predicate does not have")
@@ -682,19 +680,19 @@
        (when (:truncated? d)
          "\nThe list is capped; the count above is not.\n")
        (when (pos? (:typed-thing-count d 0))
-         (str "\n**" (commas (:typed-thing-count d))
+         (str "\n**" (progress/count-text (:typed-thing-count d))
               (if (= 1 (:typed-thing-count d)) " declaration types" " declarations type")
               " a position `thing`**, which mints nothing; a narrower type in the\n"
               "declaration types the facts listed beside it.\n\n"
               (str/join "\n"
                         (for [{:keys [sentence context facts]} (:typed-thing d)]
                           (str "- `" (pr-str sentence) "` in `" context "` — "
-                               (commas facts) " stored fact" (when (not= 1 facts) "s"))))
+                               (progress/count-text facts) " stored fact" (when (not= 1 facts) "s"))))
               "\n"))))
 
 (defn- render-subsumption [s]
-  (str (commas (:total s)) " rules — **"
-       (commas (:subsumed-count s))
+  (str (progress/count-text (:total s)) " rules — **"
+       (progress/count-text (:subsumed-count s))
        (if (= 1 (:subsumed-count s))
          " is covered by another"
          " are covered by another")
@@ -718,7 +716,7 @@
          "\nThe list is capped; the count above is not.\n")))
 
 (defn- render-clashes [c]
-  (str (commas (:total c)) " rules — **" (commas (:pair-count c))
+  (str (progress/count-text (:total c)) " rules — **" (progress/count-text (:pair-count c))
        (if (= 1 (:pair-count c)) " pair" " pairs")
        " would clash if both fired**.\n\n"
        "One substitution makes the two conclusions incompatible and nothing in the two\n"

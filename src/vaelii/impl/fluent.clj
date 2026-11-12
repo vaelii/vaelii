@@ -53,10 +53,10 @@
   is `:merge` when every clashing value is a symbol (the pair `functional` would merge) and
   `:contradiction` otherwise (two numbers or strings `functional` refuses outright).
 
-  The candidate moments are the `time_point` members `ask` answers in `context` and the
-  later moment of each `instantBefore` pair it answers there, which holds an `(InstantFn
-  …)` moment no membership names.  `holdsAt` is asked of each filler at each.  The read
-  follows belief and is scoped to `context`."
+  The candidate moments are the `time_point` members, the later moment of each
+  `instantBefore` pair and the moment of each `happens` fact `ask` answers in `context`
+  (docs/time.md, \"Functionality at an instant\").  `holdsAt` is asked of each filler at
+  each.  The read follows belief and is scoped to `context`."
   [kb f context]
   (let [fillers  (fluent-fillers kb f context)
         subjects (into #{} (map first) fillers)
@@ -64,7 +64,9 @@
                        (concat (map #(get % '?t)
                                     (quasiquote/ask-prepared kb '(time_point ?t) context))
                                (map #(get % '?b)
-                                    (quasiquote/ask-prepared kb '(instantBefore ?a ?b) context))))]
+                                    (quasiquote/ask-prepared kb '(instantBefore ?a ?b) context))
+                               (map #(get % '?t)
+                                    (quasiquote/ask-prepared kb '(happens ?e ?t) context))))]
     (into #{}
           (for [t moments
                 s subjects

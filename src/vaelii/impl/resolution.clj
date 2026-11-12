@@ -50,7 +50,7 @@
   an equal form, and a variable inside it binds nothing.  Supports dotted rest patterns:
   a sublist `(. ?rest)` binds `?rest` to the whole remaining sequence, so
   `(?pred . ?args)` unifies with `(parentOf Tom Bob)` giving `?pred=parentOf`,
-  `?args=(Tom Bob)`."
+  `?args=(Tom Bob)`.  The entry points refuse a `.` outside that shape (`sx/dot-problem`)."
   ([x y] (unify x y no-bindings))
   ([x y bindings]
    (cond
@@ -71,8 +71,10 @@
    (cond
      (nil? bindings) nil
      (= xs ys)       bindings
-     (and (sequential? xs) (= '. (first xs))) (unify-var (second xs) (dot-tail ys) bindings)
-     (and (sequential? ys) (= '. (first ys))) (unify-var (second ys) (dot-tail xs) bindings)
+     (sx/rest-marker? xs) (if (sx/rest-marker? ys)
+                            (unify (second xs) (second ys) bindings)
+                            (unify-var (second xs) (dot-tail ys) bindings))
+     (sx/rest-marker? ys) (unify-var (second ys) (dot-tail xs) bindings)
      (and (sequential? xs) (sequential? ys) (seq xs) (seq ys))
      (unify-args (rest xs) (rest ys) (unify (first xs) (first ys) bindings))
      (and (sequential? xs) (sequential? ys) (empty? xs) (empty? ys))
@@ -115,9 +117,9 @@
                              (substitute b bindings)
                              pattern)
     (sx/quote-form? pattern) pattern
-    (and (sequential? pattern) (some #{'.} pattern))
-    (let [head (mapv #(substitute % bindings) (take-while #(not= '. %) pattern))
-          tail (substitute (second (drop-while #(not= '. %) pattern)) bindings)]
+    (sx/dotted? pattern)
+    (let [head (mapv #(substitute % bindings) (sx/positional pattern))
+          tail (substitute (last pattern) bindings)]
       (clojure.lang.PersistentList/create
        (if (sequential? tail)
          (into head tail)                  ; bound rest-var → splice the tail in
@@ -132,13 +134,31 @@
   [bindings]
   (into {} (map (fn [[k _]] [k (substitute k bindings)])) bindings))
 
+(defn resolve-vars
+  "`(select-keys (resolve-bindings bindings) vars)`, dereferencing only the variables of
+  `vars` that `bindings` binds.  A derivation's bindings also hold every renamed rule
+  variable it passed through, which the cut drops, so resolving them first is wasted.
+
+  `bindings` itself when it is already the answer: every key one of `vars` (a set) and
+  every value an atom that is not a variable, which `substitute` hands back as it is.
+  Most lookup answers are, and rebuilding each as a new map cost an ask over a transitive
+  predicate a fifth of its time."
+  [bindings vars]
+  (if (and (set? vars)
+           (reduce-kv (fn [_ k v]
+                        (if (and (contains? vars k) (not (coll? v)) (not (sx/variable? v)))
+                          true
+                          (reduced false)))
+                      true bindings))
+    bindings
+    (into {} (keep (fn [v] (when (contains? bindings v) [v (substitute v bindings)]))) vars)))
+
 (defn project-answer
   "A finished derivation's bindings, resolved and cut down to the variables the query
   asked about.  `nil` `answer-vars` projects nothing.  The projection is by name, so a
   query that writes `?var0` gets `?var0`.  See docs/inference.md, Resolution reads."
   [bindings answer-vars]
-  (let [resolved (resolve-bindings bindings)]
-    (if (nil? answer-vars) resolved (select-keys resolved answer-vars))))
+  (if (nil? answer-vars) (resolve-bindings bindings) (resolve-vars bindings answer-vars)))
 
 ;; ---- matching against the store -----------------------------------------
 
@@ -250,6 +270,8 @@
                          (not (sx/variable? (:context pat))))
             path
             (cond
+              (and pred (sx/dotted? body)) :functor-extent
+
               ;; A negative key holds its whole body as one token, so the trie matches a negative only exactly
               ;; and `p/lookup` answers `#{}` for every open negative. The secondary indexes (predicate extent,
               ;; argument roots) see inside a negative. Unconditional: the trie is no reference for this shape.
@@ -845,18 +867,35 @@
   [tax]
   #(or (contains? nat-quoting-predicates %) (tax/has-prop? tax :reifiable %)))
 
+(defn spelled-functors
+  "The functors whose permuting marks spell fact `sentence`, under a `not` too: its
+  predicate and the functor of every compound below it the canonical walk enters
+  (`sx/compound-functors` under `opaque-fn`), a set.  Empty for a rule."
+  [tax sentence]
+  (let [s (if (and (seq? sentence) (= 'not (first sentence))) (second sentence) sentence)]
+    (if (and (seq? s) (seq s) (not (sx/implies? (peek (sx/peel-rule-wrapper s)))))
+      (sx/compound-functors s (opaque-fn tax))
+      #{})))
+
 (defn meet-order
   "`sx/sentex`'s `:meet-order` read: for a function `f` some `(meetFunctionOf f R)`
   declares, `(fn [a b])` answering whether `a` lies below `b` by the registered
-  comparator of any such `R` (`datetime/order-comparators`), or nil when no declared
-  order has one.  A stored `(R a b)` fact is never read, so the canonical form does not
-  move with belief."
+  comparator of any such `R` or of an order `genl`-below it (`datetime/order-comparators`),
+  or nil when none has one.  A stored `(R a b)` fact is never read, so the canonical form
+  does not move with belief.  The orders below are read unscoped, as `store-marks` is."
   [tax]
   (fn [f]
     (let [rs (tax/meet-orders tax f)]
       (when (seq rs)
-        (when-let [cs (seq (keep datetime/order-comparators (sort-by nm/name-key rs)))]
+        (when-let [cs (seq (keep datetime/order-comparators
+                                 (sort-by nm/name-key (distinct (mapcat #(tax/specs-global tax %) rs)))))]
           (fn [a b] (boolean (some #(% a b) cs))))))))
+
+(defn distinct-from
+  "`sx/sentex`'s `:distinct-from` read: for a function `f` some `(distinctInArgAndRest f n)`
+  declares, the least such `n`, or nil."
+  [tax]
+  (fn [f] (let [ns (tax/distinct-positions tax f)] (when (seq ns) (apply min ns)))))
 
 (defn mention-declarations
   "The JTMS-IN `quotedArg` and `quotedArgAndRest` declarations on `f` typing position `n`,
@@ -888,55 +927,56 @@
   every reader shares."
   [kb]
   (let [tax (reasoning/taxonomy kb)]
-    {:symmetric?   #(tax/has-prop? tax :symmetric %)
-     :groups-of    (fn [f _arity] (tax/commuting-groups tax f))
-     :opaque?      (opaque-fn tax)
-     :mention-at?  (mention-at kb tax)
-     :associative? #(tax/has-prop? tax :associative %)
-     :idempotent?  #(tax/has-prop? tax :idempotent %)
-     :meet-order   (meet-order tax)}))
-
-(defn probe-spelling
-  "Literal `sentence` with every ground compound below it in the order the store holds
-  it (`sx/sort-compounds` under `store-marks`), the spelling a match probes the store
-  with.  `sentence` itself when no argument is a compound."
-  [kb sentence]
-  (if (and (seq? sentence) (some #(and (seq? %) (seq %)) (rest sentence)))
-    (sx/sort-compounds sentence (store-marks kb))
-    sentence))
+    {:symmetric?    #(tax/has-prop? tax :symmetric %)
+     :groups-of     (fn [f _arity] (tax/commuting-groups tax f))
+     :opaque?       (opaque-fn tax)
+     :mention-at?   (mention-at kb tax)
+     :associative?  #(tax/has-prop? tax :associative %)
+     :idempotent?   #(tax/has-prop? tax :idempotent %)
+     :meet-order    (meet-order tax)
+     :distinct-from (distinct-from tax)}))
 
 (defn nested-probes
   "The spellings literal `sentence` is probed in for the compounds below it that hold a
   variable, each in every argument order its own functor's permuting marks let a stored
   fact hold it in (`sx/nested-arrangements` under `store-marks`), `sentence` first.
-  `[sentence]` when no argument is a compound holding a variable."
+  `[sentence]` when no argument is a compound holding a variable.  A positive literal on a
+  `nat-quoting-predicates` predicate is probed with its expression, ground or open, in
+  every argument order (`sx/every-order`), since the payload is held as written."
   [kb sentence]
-  (let [s (if (and (seq? sentence) (= sx/not-functor (first sentence))) (second sentence) sentence)]
-    (if (and (seq? s) (some #(and (seq? %) (seq %) (not (sx/sortable-term? %))) (rest s)))
+  (let [s (if (and (seq? sentence) (= sx/not-functor (first sentence))) (second sentence) sentence)
+        E (when (and (identical? s sentence) (seq? s) (contains? nat-quoting-predicates (first s)))
+            (nth s 2 nil))]
+    (cond
+      (and (seq? E) (symbol? (first E)))
+      (mapv #(apply list (first s) (second s) % (drop 3 s)) (sx/every-order E (store-marks kb)))
+      (and (seq? s) (some #(and (seq? %) (seq %) (not (sx/sortable-term? %))) (rest s)))
       (sx/nested-arrangements sentence (store-marks kb))
-      [sentence])))
+      :else [sentence])))
 
 (def ^:dynamic *spelled-by*
-  "nil, or `[pred context entries]`: while bound, `kb-sentex` sorts a literal on `pred` in
-  `context` by the permuting marks `entries` lists (`mark-entries`' keys) and no others,
-  so `chain/respell-rows!` stores, and `core/handle-of` looks up, the spelling a reader
-  that believes those marks reads (`spelling-planner`)."
+  "nil, or `[functors context entries]`: while bound, `kb-sentex` sorts a literal in
+  `context` spelled by one of the set `functors` (`spelled-functors`), and each compound
+  below it applying one, by the permuting marks of those functors `entries` lists
+  (`mark-entries`' keys) and no others, so `chain/respell-rows!` stores, and
+  `core/handle-of` looks up, the spelling a reader that believes those marks reads
+  (`spelling-planner`)."
   nil)
 
 (defn- spelling-opts
-  "`sx/sentex`'s canonicalization reads in `kb` with predicate `p`'s marks restricted to the
-  permuting-mark `entries`.  Every other functor, a compound's below the literal among
-  them, is read by the marks the store sorts by.
+  "`sx/sentex`'s canonicalization reads in `kb` with the marks of each functor in the set
+  `fs` restricted to the permuting-mark `entries`.  Every other functor is read by the
+  marks the store sorts by.
 
   The groups are read unscoped: the fold decides the stored key, which every reader
   shares."
-  [kb p entries]
+  [kb fs entries]
   (let [tax (reasoning/taxonomy kb)]
     (assoc (store-marks kb)
-           :symmetric? #(if (= p %)
+           :symmetric? #(if (contains? fs %)
                           (contains? entries [:prop :symmetric %])
                           (tax/has-prop? tax :symmetric %))
-           :groups-of  (fn [f _arity] (if (= p f)
+           :groups-of  (fn [f _arity] (if (contains? fs f)
                                         (into #{} (filter #(contains? entries [:commuting f %]))
                                               (tax/commuting-groups tax f))
                                         (tax/commuting-groups tax f))))))
@@ -954,12 +994,21 @@
   [kb]
   (pos? (reads/stored-count-with-functor (:index kb) correspondence-predicate)))
 
+(defn stated-position
+  "The value position correspondence declaration `sentence` states, `(functionCorrespondingPredicate
+  F P N)` with `F` and `P` symbols and `N` a positive integer, or nil when it states none."
+  [sentence]
+  (let [[_ f pr n] sentence]
+    (when (and (= 4 (count sentence)) (symbol? f) (symbol? pr) (integer? n) (pos? n))
+      n)))
+
 (defn- visible-declarations
-  "The believed correspondence declarations `context` sees, as sentexes: IN, and stated in
+  "The believed correspondence declarations `context` sees, as sentexes: IN, well formed
+  (`stated-position`), and stated in
   `context`'s `genlCx` ancestor set (docs/nat.md, The corresponding predicate).  Every
   believed one when `context` is nil or a variable.  Read off the predicate extent and
   filtered in memory: the declarations are few, while an argument root holds every fact
-  about the predicate.  `reads/believed-with-args` reads both arities in one probe."
+  about the predicate."
   [kb context]
   (when (any-corresponding-predicates? kb)
     (let [tax  (reasoning/taxonomy kb)
@@ -968,31 +1017,29 @@
                  (constantly true))]
       (->> (reads/believed-with-args kb correspondence-predicate {})
            (keep #(p/get-sentex (:records kb) %))
+           (filter #(stated-position (:sentence %)))
            (filter sees)))))
 
 (defn believed-correspondences
   "The correspondence declarations `context` sees (`visible-declarations`) as `[function
-  predicate position-or-nil]` triples, kept where `match?` holds of the triple."
+  predicate position]` triples, kept where `match?` holds of the triple."
   [kb context match?]
   (when (any-corresponding-predicates? kb)
     (->> (visible-declarations kb context)
-         (map :sentence)
-         (filter #(<= 3 (count %) 4))
-         (map (fn [[_ f pr n]] [f pr (when (integer? n) n)]))
+         (map (fn [{[_ f pr n] :sentence}] [f pr n]))
          distinct
          (filter match?))))
 
 (defn correspondence-of
   "The `[predicate position]` declared for function `f` applied to `m` arguments among
-  the declarations `context` sees (`believed-correspondences`), or nil.  `position`
-  defaults to `m + 1`, the value last.  Nil when `context` sees more than one declaration
-  for `f` (docs/nat.md, The corresponding predicate)."
+  the declarations `context` sees (`believed-correspondences`), or nil.  Nil when the
+  position is past `m + 1`, and when `context` sees more than one declaration for `f`
+  (docs/nat.md, The corresponding predicate)."
   [kb f m context]
   (let [ds (believed-correspondences kb context #(= f (first %)))]
     (when (= 1 (count ds))
-      (let [[_ pr n] (first ds)
-            pos      (or n (inc m))]
-        (when (and (symbol? pr) (<= 1 pos (inc m)))
+      (let [[_ pr pos] (first ds)]
+        (when (<= pos (inc m))
           [pr pos])))))
 
 (defn insert-at
@@ -1008,13 +1055,11 @@
 
 (defn correspondence-declarations
   "The correspondence declarations `context` sees (`visible-declarations`) as `[function
-  predicate position-or-nil handle]` rows, in content order of the declaration."
+  predicate position handle]` rows, in content order of the declaration."
   [kb context]
   (when (any-corresponding-predicates? kb)
     (->> (visible-declarations kb context)
-         (filter #(<= 3 (count (:sentence %)) 4))
-         (map (fn [{[_ f pr n] :sentence h :id}] [f pr (when (integer? n) n) h]))
-         (filter #(symbol? (second %)))
+         (map (fn [{[_ f pr n] :sentence h :id}] [f pr n h]))
          (sort-by (fn [[f pr n h]] [(nm/print-key [f pr n]) h])))))
 
 (defn- application-of?
@@ -1029,7 +1074,7 @@
   "Is `t` an application whose functor is a variable, `(?fn AppleTree)`?  A dotted rest
   pattern, `(?pred . ?args)`, is a sentence pattern and is not one."
   [t]
-  (and (seq? t) (< 1 (count t)) (sx/variable? (first t)) (not-any? #{'.} t)))
+  (and (seq? t) (< 1 (count t)) (sx/variable? (first t)) (not (sx/dotted? t))))
 
 (defn- term-arguments
   "The arguments of compound `form` whose applications are terms: every one, except the
@@ -1124,13 +1169,17 @@
 
 (defn- respell-walk
   "The tests a respell in `kb` reads: `fixed?`, an open application of a
-  `reifiable_function` (the mark read unscoped); `app?`, that or a variable-functor
+  `reifiable_function` (the mark read unscoped) or of a data-structure constructor
+  (`built?`, `sx/structure-functions`); `app?`, that or a variable-functor
   application; `formula?`, `formula-position?` memoized for one respell; `modal`, the
   `modal_predicate`s, read unscoped (`tax/mention-marks`)."
   [kb]
   (let [tax    (reasoning/taxonomy kb)
-        fixed? (fn [t] (application-of? #(tax/has-prop? tax :reifiable %) t))]
+        fixed? (fn [t] (application-of? #(or (tax/has-prop? tax :reifiable %)
+                                             (contains? sx/structure-functions %))
+                                        t))]
     {:modal    (:modal (tax/mention-marks tax))
+     :built?   #(application-of? sx/structure-functions %)
      :fixed?   fixed?
      :app?     #(or (variable-application? %) (fixed? %))
      :formula? (memoize #(formula-position? kb %1 %2))}))
@@ -1218,8 +1267,7 @@
   "The value position declaration row `[f pr n h]` gives an application of `m` arguments,
   or nil when it is out of range."
   [[_ _ n _] m]
-  (let [pos (or n (inc m))]
-    (when (<= 1 pos (inc m)) pos)))
+  (when (<= n (inc m)) n))
 
 (defn- rule-readings
   "The readings of an application of `f` to `m` arguments in a rule, under declaration
@@ -1239,7 +1287,7 @@
 (defn- goal-readings
   "The readings of an application of `f` to `m` arguments in a goal: `rule-readings`'
   one where `f` has exactly one and the goal reads at one context (`scoped?`), and
-  otherwise one `{:functor :n :pos}` per distinct declaration shape among `f`'s
+  otherwise one `{:functor :pos}` per distinct declaration position among `f`'s
   declarations `decls` (every function's, for a variable `f`), read through a predicate
   variable, so each reader matches the declarations it sees."
   [decls scoped? f m]
@@ -1248,19 +1296,19 @@
       direct
       (->> decls
            (filter #(or (sx/variable? f) (= f (first %))))
-           (keep (fn [d] (when-let [pos (declared-position d m)] {:functor f :n (nth d 2) :pos pos})))
+           (keep (fn [d] (when-let [pos (declared-position d m)] {:functor f :pos pos})))
            distinct
-           (sort-by #(nm/print-key [(:n %) (:pos %)]))
+           (sort-by #(nm/print-key (:pos %)))
            vec))))
 
 (defn- reading-literals
-  "The literals stating `v` is the value of an application to `args` under `reading`;
-  `pv` is the predicate variable a declaration shape reads through."
+  "The literals stating `v` is the value of an application to `args` under `reading`, the
+  arguments in the reading's `:order` (0-based positions) where it has one; `pv` is the
+  predicate variable a declaration shape reads through."
   [reading args v pv]
   (if-let [pr (:pred reading)]
     [(apply list pr (insert-at args (:pos reading) v))]
-    [(apply list (cond-> [correspondence-predicate (:functor reading) pv]
-                   (:n reading) (conj (:n reading))))
+    [(list correspondence-predicate (:functor reading) pv (:pos reading))
      (apply list pv (insert-at args (:pos reading) v))]))
 
 (defn- take-reading!
@@ -1276,7 +1324,7 @@
             pv (when-not (:pred r) (application-variable t' "Predicate" (:used @state)))]
         (vswap! state #(-> % (update :used into (filter sx/variable?) [v pv])
                            (update :decls conj (:decls r [nil]))))
-        (reading-literals r args v pv)))))
+        (reading-literals r (if-let [o (:order r)] (map (vec args) o) args) v pv)))))
 
 (defn- respell-term
   "`t` with each application `app?` accepts in it, innermost first, replaced by its value
@@ -1305,8 +1353,8 @@
   vector of literals, or nil when it cannot be: an application with no reading, or a
   construct holding a reifiable one.  `(equals x (F a…))`, either way round, is the
   reading's own literals with `x` the value, and `x` is the application's value in
-  `state`.  A rule `l` is returned as it is
-  (`rule-form?`)."
+  `state`.  A rule `l` is returned as it is (`rule-form?`), and a deferred `l` keeps a
+  data structure as written: it computes from the value its bindings build."
   [walk readings state l]
   (cond
     (or (not (and (seq? l) (seq l))) (rule-form? l) (contains? nat-quoting-predicates (first l)))
@@ -1317,7 +1365,8 @@
     :else
     (let [pr  (first l)
           as  (vec (rest l))
-          a?s (vec (map-indexed #(arg-app? walk l %1 %2) as))
+          a?s (cond->> (vec (map-indexed #(arg-app? walk l %1 %2) as))
+                (sx/deferred-literal? l) (mapv (fn [a?] #(and (a? %) (not ((:built? walk) %))))))
           app (:app? walk)
           rt  (partial respell-term (:modal walk))]
       (cond
@@ -1373,19 +1422,35 @@
       (get-in @state [:vars f'] f'))
     form))
 
+(defn- hoisted-order
+  "The literals a respell `hoisted` from antecedents `antes`, in the order they can run
+  once the generators have bound their variables: a structure's corresponding-predicate
+  literal reads it before the one that reads a structure inside it.  A literal that never
+  can stays last, for `sx/check-naf-closed` to name."
+  [antes hoisted]
+  (loop [pending (vec hoisted)
+         bound   (into #{} (mapcat sx/form-variables) (remove sx/deferred-literal? (concat antes hoisted)))
+         acc     []]
+    (if-let [l (first (filter #(every? bound (sx/deferred-input-vars % bound)) pending))]
+      (recur (let [i (.indexOf ^java.util.List pending l)] (into (subvec pending 0 i) (subvec pending (inc i))))
+             (into bound (sx/form-variables l))
+             (conj acc l))
+      (into acc pending))))
+
 (defn- respell-rule
   "The `implies` form `r` with every open application in its antecedents respelled under
-  `state`'s choice, the literals stating the values added to its antecedents; `r` itself
-  when nothing changed, nil when one cannot be respelled.  The consequent stays as
-  written, except that an application the antecedents give a value takes it
-  (`substitute-bound`): a firing mints the rest (docs/nat.md, The corresponding
-  predicate).  A generator's consequent rule is left whole (`rule-form?`)."
+  `state`'s choice, the literals stating the values added ahead of its deferred ones
+  (`hoisted-order`); `r` itself when nothing changed, nil when one cannot be respelled.
+  The consequent stays as written, except that an application the antecedents give a
+  value takes it (`substitute-bound`): a firing mints the rest (docs/nat.md, The
+  corresponding predicate).  A generator's consequent rule is left whole (`rule-form?`)."
   [walk readings state r]
   (let [antes0 (vec (sx/rule-antecedents r))
         conseq (sx/rule-consequent r)
         antes  (mapv #(respell-literal walk readings state %) antes0)]
     (when (every? some? antes)
-      (let [antes' (into (into [] cat antes) (:hoisted @state))
+      (let [antes  (into [] cat antes)
+            antes' (into (hoisted-order antes (:hoisted @state)) antes)
             c      (if (rule-form? conseq) conseq (substitute-bound (:modal walk) state conseq))]
         (if (and (= antes' antes0) (= c conseq))
           r
@@ -1423,54 +1488,22 @@
       (and (= 'not (first l)) (= 2 (count l))) (list 'not (without-applications walk v (second l)))
       :else (apply list (first l) (map-indexed #(sub (arg-app? walk l %1 %2) %2) (rest l))))))
 
-(defn goal-alternatives
-  "Conjunction `goals` read through the correspondence declarations `context` sees, as the
-  vector of conjunctions whose answers the reader merges (docs/nat.md, The corresponding
-  predicate).  A nil or variable `context` reads every declaration through a predicate
-  variable (`goal-readings`).  An application with one believed correspondence reads its
-  predicate; with several, or a variable-functor application outside a sentence position
-  (`arg-app?`), one conjunction per distinct declaration shape.  An `and` goal is read as
-  its conjuncts.  An application with no reading becomes `unmatched`, so the conjunction
-  answers nothing.  The reifiable mark is read unscoped."
-  [kb goals unmatched context]
-  (let [walk (respell-walk kb)
-        app  (:app? walk)]
-    (if (not-any? #(and (seq? %) (some (fn [a] (seq (applications-in (:modal walk) app a)))
-                                       (term-arguments (:modal walk) %)))
-                  goals)
-      [goals]
-      (let [goals (into [] (mapcat (fn conjuncts [g] (if (and (seq? g) (= 'and (first g)))
-                                                       (mapcat conjuncts (rest g))
-                                                       [g])))
-                        goals)
-            decls   (delay (correspondence-declarations kb context))
-            scoped? (and (symbol? context) (not (sx/variable? context)))
-            rs    (readings-of (sx/form-variables goals)
-                               (fn [state]
-                                 (let [gs (mapv #(respell-literal walk (fn [f m] (goal-readings @decls scoped? f m))
-                                                                  state %)
-                                                goals)]
-                                   (when (every? some? gs)
-                                     (into (:hoisted @state) cat gs)))))]
-        (if (seq rs)
-          (into [] (comp (map first) (distinct)) rs)
-          [(mapv #(without-applications walk unmatched %) goals)])))))
-
 (def ^:dynamic *as-written*
   "While true, `kb-sentex` leaves a rule's open applications as written: the spelling
   `assert` records as a premise's written one (`integrate/spellings-key`)."
   false)
 
 (defn rule-respellings
-  "Every spelling of rule `sentence` its antecedents' open `reifiable_function`
-  applications read through the believed correspondences, as `[[spelling handle-sets] …]`
-  (`respell-rule`; the consequent stays as written).  The first takes each function's
-  content-least correspondence and is the one `kb-sentex` stores;
-  `chain/sync-rule-respellings!` stores the rest.  Nil when `sentence` is no rule or no
-  antecedent has a reading (docs/nat.md, The corresponding predicate)."
+  "Every spelling of rule `sentence` its antecedents' open `reifiable_function` and
+  data-structure applications read through the believed correspondences, as
+  `[[spelling handle-sets] …]` (`respell-rule`; the consequent stays as written).  The
+  first takes each function's content-least correspondence and is the one `kb-sentex`
+  stores; `chain/sync-rule-respellings!` stores the rest.  Nil when `sentence` is no rule
+  or no antecedent has a reading (docs/nat.md, The corresponding predicate)."
   [kb sentence context]
   (when (and (not *as-written*) (seq? sentence)
-             (seq (tax/props (reasoning/taxonomy kb) :reifiable)))
+             (or (seq (tax/props (reasoning/taxonomy kb) :reifiable))
+                 (sx/some-symbol? sx/structure-functions sentence)))
     (let [inner (volatile! nil)]
       (map-inner-rule #(vreset! inner %) sentence)
       (when-let [r @inner]
@@ -1480,7 +1513,11 @@
               (some->> (readings-of (sx/form-variables r)
                                     #(respell-rule walk (fn [f m] (rule-readings @decls f m)) % r))
                        (mapv (fn [[r' ds]]
-                               [(map-inner-rule (constantly r') sentence) (justification-sets ds)]))))))))))
+                               [(map-inner-rule (constantly r') sentence) (justification-sets ds)]))
+                       ;; a deferred literal's data structure alone leaves the rule as written
+                       (remove (fn [[r' _]] (= r' sentence)))
+                       not-empty
+                       vec))))))))
 
 (defn respell-applications
   "Rule `sentence` as `kb-sentex` stores it in `context`: the first of
@@ -1494,14 +1531,15 @@
   sentex, and the commutativity marks sort a declared set of positions at any arity
   (`tax/commuting-groups`; `store-marks`, docs/canonicalization.md).  Every construction
   that stores or looks one up goes through this.  The property read is global; while
-  `*spelled-by*` names this sentence's predicate and context, only the marks it lists
-  apply (`spelling-planner`).  A rule's open applications are read through their
-  corresponding predicates first (`respell-applications`)."
+  `*spelled-by*` names this sentence's context and one of its functors, only the marks it
+  lists apply to its functors (`spelling-planner`).  A rule's open applications are read
+  through their corresponding predicates first (`respell-applications`)."
   [kb sentence context]
-  (let [[p ctx entries] *spelled-by*]
+  (let [[fs ctx entries] *spelled-by*]
     (sx/sentex (respell-applications kb sentence context) context
-               (if (and p (= ctx context) (= p (permuted-functor sentence)))
-                 (spelling-opts kb p entries)
+               (if (and fs (= ctx context)
+                        (some fs (spelled-functors (reasoning/taxonomy kb) sentence)))
+                 (spelling-opts kb fs entries)
                  (store-marks kb)))))
 
 ;; ---- a permuting mark read per reader --------------------------------------
@@ -1536,6 +1574,34 @@
   [kb entries]
   (every? (fn [[_ sup]] (some #(held-everywhere? kb %) (keys sup))) entries))
 
+(defn split-mark-entries
+  "`f`'s `symmetric` and commuting marks with their supporters (`mark-entries`) when some
+  reader does not believe one of them (`uniform-marks?`), else nil."
+  [kb f]
+  (let [e (mark-entries (reasoning/taxonomy kb) f)]
+    (when (and (seq e) (not (uniform-marks? kb e))) e)))
+
+(defn split-functors
+  "The functors of fact `sentence` (`spelled-functors`) that some reader does not believe
+  a permuting mark of (`uniform-marks?` false), a set: the ones `*spelled-by*` and
+  `spelling-planner` spell per reader.  `ents` is `(fn [f])` answering `f`'s
+  `mark-entries` when some reader does not believe one, else nil."
+  ([kb sentence] (split-functors kb sentence #(split-mark-entries kb %)))
+  ([kb sentence ents]
+   (into (sorted-set) (filter ents) (spelled-functors (reasoning/taxonomy kb) sentence))))
+
+(defn probe-spelling
+  "Literal `sentence` with every ground compound below it in the order the store holds
+  it (`sx/sort-compounds` under `store-marks`), the spelling a match probes the store
+  with.  A compound applying a functor whose marks some reader does not believe
+  (`split-functors`) keeps its written order, which the per-reader filter reads
+  (`without-unbelieved-spellings`).  `sentence` itself when no argument is a compound."
+  [kb sentence]
+  (if (and (seq? sentence) (some #(and (seq? %) (seq %)) (rest sentence)))
+    (let [below (disj (split-functors kb sentence) (permuted-functor sentence))]
+      (sx/sort-compounds sentence (if (seq below) (spelling-opts kb below #{}) (store-marks kb))))
+    sentence))
+
 (defn- split-mention-at
   "`(fn [f n])`: is position `n` of `f` a mention the store keeps as written that a reader
   may not read as one, since no declaration typing it is stated in CxUniverse and
@@ -1558,10 +1624,13 @@
   "Does `sentence` hold an application with a compound argument whose functor the taxonomy
   marks as declaring a mention: the only positions `sx/mention-arrangements` probes?"
   [tax sentence]
-  (boolean (some (fn [t] (and (seq? t) (symbol? (first t))
-                              (some #(and (seq? %) (seq %)) (rest t))
-                              (declares-mention? tax (first t))))
-                 (tree-seq seq? seq sentence))))
+  ;; a KB declaring no mention walks no literal
+  (boolean (and (or (seq (tax/props tax :declares-quoted-arg))
+                    (seq (tax/props tax :declares-quoted-arg-and-rest)))
+                (some (fn [t] (and (seq? t) (symbol? (first t))
+                                   (some #(and (seq? %) (seq %)) (rest t))
+                                   (declares-mention? tax (first t))))
+                      (tree-seq seq? seq sentence)))))
 
 (defn mention-probes
   "The spellings of literal `sentence` beyond itself that a read probes for a fact stored
@@ -1615,6 +1684,48 @@
   (into #{} (keep (fn [[k sup]] (when (some #(supporter-believed? kb % reader) (keys sup)) k)))
         entries))
 
+(defn goal-alternatives
+  "Conjunction `goals` read through the correspondence declarations `context` sees, as the
+  vector of conjunctions whose answers the reader merges (docs/nat.md, The corresponding
+  predicate).  A nil or variable `context` reads every declaration through a predicate
+  variable (`goal-readings`).  An application with one believed correspondence reads its
+  predicate; with several, or a variable-functor application outside a sentence position
+  (`arg-app?`), one conjunction per declaration shape and per argument order the marks
+  `context` believes allow (`sx/every-order`, `split-mark-entries`).  An `and` goal is read
+  as its conjuncts, and an application with no reading becomes `unmatched`."
+  [kb goals unmatched context]
+  (let [walk (respell-walk kb)
+        app  (:app? walk)]
+    (if (not-any? #(and (seq? %) (some (fn [a] (seq (applications-in (:modal walk) app a)))
+                                       (term-arguments (:modal walk) %)))
+                  goals)
+      [goals]
+      (let [goals (into [] (mapcat (fn conjuncts [g] (if (and (seq? g) (= 'and (first g)))
+                                                       (mapcat conjuncts (rest g))
+                                                       [g])))
+                        goals)
+            decls   (delay (correspondence-declarations kb context))
+            scoped? (and (symbol? context) (not (sx/variable? context)))
+            marks   (store-marks kb)
+            reads   (fn [f m]
+                      (let [rs (goal-readings @decls scoped? f m)
+                            os (when (and (seq rs) (symbol? f) (not (sx/variable? f)))
+                                 (sx/every-order (apply list f (range m))
+                                                 (if-let [e (and scoped? (split-mark-entries kb f))]
+                                                   (spelling-opts kb #{f} (entries-at kb e context))
+                                                   marks)))]
+                        (if (next os)
+                          (vec (for [r rs, o os] (assoc r :order (vec (rest o)))))
+                          rs)))
+            rs    (readings-of (sx/form-variables goals)
+                               (fn [state]
+                                 (let [gs (mapv #(respell-literal walk reads state %) goals)]
+                                   (when (every? some? gs)
+                                     (into (:hoisted @state) cat gs)))))]
+        (if (seq rs)
+          (into [] (comp (map first) (distinct)) rs)
+          [(mapv #(without-applications walk unmatched %) goals)])))))
+
 (defn- hider-contexts
   "The contexts stating a `defeat` or an `except` whose target lies in the support of one
   of `handles`, and the contexts stating an `except` whose target lies in the support of
@@ -1643,35 +1754,35 @@
 
 (defn spelling-planner
   "`(fn [sentence context])` answering `{spelling entries}`: each spelling the readers of
-  `sentence`, written in `context`, read it in, with the marks that reader believes, or
-  nil when every reader believes every mark that sorts it (`uniform-marks?`) and so reads
-  the store's own spelling.  The fn holds for its own lifetime
-  one memo of each predicate's marks and whether they are uniform, and one of each
-  `[predicate context]`'s readers: a walk over a predicate's rows reads both once."
+  fact `sentence`, written in `context`, read it in, with the marks that reader believes
+  of its literal's predicate and of the functors of the compounds below it
+  (`split-functors`), or nil when every reader believes every mark that sorts it
+  (`uniform-marks?`) and so reads the store's own spelling.  The fn holds for its own
+  lifetime one memo of each functor's marks and whether they are uniform, and one of each
+  `[functors context]`'s readers: a walk over a predicate's rows reads both once."
   [kb]
   (let [tax  (reasoning/taxonomy kb)
         ents (memoize (fn [p] (let [e (mark-entries tax p)]
                                 (when (and (seq e) (not (uniform-marks? kb e))) e))))
-        rdrs (memoize (fn [p ctx]
-                        (let [e (ents p)]
+        rdrs (memoize (fn [fs ctx]
+                        (let [e (into {} (map ents) fs)]
                           (into [] (comp (map #(entries-at kb e %)) (distinct))
                                 (spelling-readers kb ctx (into [] (mapcat (comp keys val)) e))))))]
     (fn [sentence context]
-      (when-let [p (permuted-functor sentence)]
-        (when (ents p)
-          (into {} (map (fn [e] [(sx/sentence-of (sx/sentex sentence context (spelling-opts kb p e))) e]))
-                (rdrs p context)))))))
+      (let [fs (split-functors kb sentence ents)]
+        (when (seq fs)
+          (into {} (map (fn [e] [(sx/sentence-of (sx/sentex sentence context (spelling-opts kb fs e))) e]))
+                (rdrs fs context)))))))
 
 (defn reader-spelled-by
-  "The `*spelled-by*` binding that spells `sentence` as `reader` reads it, or nil when the
-  store's own spelling is the reader's."
+  "The `*spelled-by*` binding that spells fact `sentence` as `reader` reads it, or nil
+  when the store's own spelling is the reader's."
   [kb sentence reader]
   (when (and (symbol? reader) (not (sx/variable? reader)))
-    (let [tax  (reasoning/taxonomy kb)
-          p    (permuted-functor sentence)
-          ents (when p (mark-entries tax p))]
-      (when (and (seq ents) (not (uniform-marks? kb ents)))
-        [p reader (entries-at kb ents reader)]))))
+    (let [tax (reasoning/taxonomy kb)
+          fs  (split-functors kb sentence)]
+      (when (seq fs)
+        [fs reader (entries-at kb (into {} (map #(mark-entries tax %)) fs) reader)]))))
 
 (def ^:dynamic *prefetch-candidates*
   "Candidate handles per prefetch hint a retrieval path gives its record store, or `false`
@@ -1790,16 +1901,22 @@
         (lazy-cat hits (step others (into #{} (map (fn [[h b]] [h b])) hits))))
       hits)))
 
-(defn- as-written-probe
-  "The predicate of ground literal `sentence` when some reader may read it as written
-  where the store sorts it (`uniform-marks?` false, and the sort moves it), else nil."
+(defn- as-written-probes
+  "`[fs spellings]` for ground literal `sentence`: the functors whose marks spell it per
+  reader (`split-functors`), and the spellings a reader that does not believe them may hold
+  it in where the store sorts it.  Those are `sentence` itself when the sort moves it, and
+  every argument order of each compound below it applying one of `fs`
+  (`sx/reader-arrangements`), since a read spells such a compound in the store's order
+  before it gets here (`probe-spelling`).  Nil when there is none."
   [kb sentence context]
-  (when-let [p (permuted-functor sentence)]
-    (when (and (not (sx/variable? context)) (sx/ground-term? sentence))
-      (let [ents (mark-entries (reasoning/taxonomy kb) p)]
-        (when (and (seq ents) (not (uniform-marks? kb ents))
-                   (not= sentence (sx/sentence-of (kb-sentex kb sentence context))))
-          p)))))
+  (when (and (not (sx/variable? context)) (sequential? sentence) (sx/ground-term? sentence))
+    (let [fs (split-functors kb sentence)]
+      (when (seq fs)
+        (let [below (disj fs (permuted-functor sentence))
+              ss    (cond-> []
+                      (not= sentence (sx/sentence-of (kb-sentex kb sentence context))) (conj sentence)
+                      (seq below) (into (rest (sx/reader-arrangements sentence (store-marks kb) below))))]
+          (when (seq ss) [fs (into [] (distinct) ss)]))))))
 
 (defn raw-match
   "Match a literal in one **literal** context — no genlCx inheritance, no subtype
@@ -1807,14 +1924,15 @@
   probing the stored index with `match-one`.  Yields `[handle bindings stored-sentex]`."
   [kb sentence context]
   (let [ms (raw-match-with kb #(match-one kb % context) sentence)]
-    (if-let [p (as-written-probe kb sentence context)]
+    (if-let [[fs ss] (as-written-probes kb sentence context)]
       ;; the row a reader that does not believe the mark reads sits at the written
       ;; spelling, which the sort moves a ground probe off (`without-unbelieved-spellings`
       ;; keeps the one each reader reads)
       (lazy-cat ms (let [seen (into #{} (map (fn [[h b]] [h b])) ms)]
-                     (remove (fn [[h b]] (contains? seen [h b]))
-                             (binding [*spelled-by* [p context #{}]]
-                               (doall (match-one kb sentence context))))))
+                     (nm/distinct-by (fn [[h b]] [h b])
+                                     (remove (fn [[h b]] (contains? seen [h b]))
+                                             (binding [*spelled-by* [fs context #{}]]
+                                               (into [] (mapcat #(match-one kb % context)) ss))))))
       ms)))
 
 (defn- read-spelling
@@ -1833,28 +1951,34 @@
 
 (defn- reified-reading
   "`(fn [sentence])` answering whether `view-context` reads stored `sentence` in another
-  spelling under a `reifiable_function` mark some reader does not believe: it names a
-  constant minted for a function the reader does not believe reifiable, or holds an
-  application of one it does, outside a `natFormula` or `rewriteOf` payload.  Nil when
-  every reader believes every such mark.
-
-  The marks are read unscoped, a superset that the per-reader test narrows to
-  `view-context`."
+  spelling under a reifiable function's `reifiable_function` or permuting mark some reader
+  does not believe: it names a constant minted for a function the reader does not believe
+  reifiable, or one whose expression the permuting marks the reader believes sort
+  otherwise, or holds an application of a function it believes reifiable, outside a
+  `natFormula` or `rewriteOf` payload.  Nil when every reader believes every such mark.
+  The marks are read unscoped, a superset the per-reader test narrows to `view-context`."
   [kb view-context]
-  (let [tax   (reasoning/taxonomy kb)
-        ents  (fn [f] (let [k [:prop :reifiable f]] {k (tax/supporters tax k)}))
-        split (into {} (keep (fn [f] (let [e (ents f)]
-                                       (when (and (seq (val (first e))) (not (uniform-marks? kb e)))
-                                         [f (boolean (seq (entries-at kb e view-context)))]))))
-                    (tax/props tax :reifiable))]
-    (when (seq split)
+  (let [tax    (reasoning/taxonomy kb)
+        ents   (fn [f] (let [k [:prop :reifiable f]] {k (tax/supporters tax k)}))
+        split  (into {} (keep (fn [f] (let [e (ents f)]
+                                        (when (and (seq (val (first e))) (not (uniform-marks? kb e)))
+                                          [f (boolean (seq (entries-at kb e view-context)))]))))
+                     (tax/props tax :reifiable))
+        sorted (into {} (keep #(when-let [e (split-mark-entries kb %)] [% (entries-at kb e view-context)]))
+                     (tax/props tax :reifiable))]
+    (when (or (seq split) (seq sorted))
       (let [minted (memoize (fn [k] (some (fn [[_ _ st]] (let [e (nth (:sentence st) 2 nil)]
-                                                           (when (sequential? e) (first e))))
+                                                           (when (sequential? e) e)))
                                           (raw-match kb (list 'natFormula k '?e) 'CxUniverse))))
             other? (fn other? [form]
                      (cond
-                       (symbol? form) (and (namespace form)
-                                           (false? (get split (minted form))))
+                       (symbol? form) (boolean
+                                       (and (namespace form)
+                                            (let [E (minted form)
+                                                  f (first E)]
+                                              (or (false? (get split f))
+                                                  (when-let [b (get sorted f)]
+                                                    (not= E (sx/permute-args E (spelling-opts kb #{f} b))))))))
                        (sequential? form)
                        (let [f (first form)]
                          (or (and (true? (get split f)) (sx/ground-term? form))
@@ -1863,15 +1987,28 @@
                        :else false))]
         other?))))
 
+(defn- payload-unread?
+  "Does `natFormula` or `rewriteOf` row `s`, a match of `goal` under bindings `b`, hold its
+  payload in an argument order that the permuting marks the reader believes of the
+  payload's functor (`at`) do not give the goal's payload?"
+  [kb at goal b s]
+  (let [g (substitute goal b)
+        E (when (and (seq? s) (contains? nat-quoting-predicates (first s))) (nth s 2 nil))
+        G (when (and (seq? g) (= (first g) (first s))) (nth g 2 nil))]
+    (when (and (seq? E) (seq? G) (symbol? (first E)) (= (first E) (first G)))
+      (when-let [e (at (first E))]
+        (let [o (spelling-opts kb #{(first E)} e)]
+          (not= (sx/permute-args E o) (sx/permute-args G o)))))))
+
 (defn without-unbelieved-spellings
   "Drop the matches of `goal` whose spelling `view-context` does not read: a row stored as
-  written that the marks the reader believes sort otherwise, a row read in an argument
-  order those marks do not license, and a row spelled by a `reifiable_function` mark the
-  reader takes the other way (`reified-reading`).  A match of a permuting predicate stays
-  when the marks the reader believes spell the fact it reads to the stored row.  This runs
-  only when a permuting or reifiable mark is stored at all, and per predicate only when
-  some reader does not believe a mark (`uniform-marks?`); a variable or nil `view-context`
-  filters nothing."
+  written that the marks the reader believes sort otherwise, a row or a NAT payload read
+  in an argument order those marks do not license (`payload-unread?`), and a row spelled
+  by a `reifiable_function` mark the reader takes the other way (`reified-reading`).  A
+  match stays when the marks the reader believes, of its predicate and of the functors
+  below it (`split-functors`), spell the fact it reads to the stored row.  This runs only
+  when a permuting or reifiable mark is stored, and per functor only when some reader does
+  not believe a mark (`uniform-marks?`); a variable or nil `view-context` filters nothing."
   [kb view-context goal matches]
   (let [tax (reasoning/taxonomy kb)]
     (if-not (and (symbol? view-context) (not (sx/variable? view-context))
@@ -1894,11 +2031,12 @@
         (remove (fn [[_ b stored]]
                   (let [s (sx/sentence-of stored)]
                     (or (when-not (:antecedent stored)
-                          (when-let [pf (permuted-functor s)]
-                            (when-let [e (at pf)]
+                          (let [fs (into (sorted-set) (filter #(some? (at %))) (spelled-functors tax s))]
+                            (when (seq fs)
                               (not= s (sx/sentence-of
                                        (sx/sentex (read-spelling goal b s) view-context
-                                                  (spelling-opts kb pf e)))))))
+                                                  (spelling-opts kb fs (into #{} (mapcat at) fs))))))))
+                        (payload-unread? kb at goal b s)
                         (boolean (when-let [rr @rr] (rr s))))))
                 matches)))))
 
@@ -1918,7 +2056,9 @@
   below `f` across an odd number of `genlInverse` edges (`tax/signed-closure`).  Empty —
   one map read — on a KB declaring no `genlInverse`."
   [kb f context]
-  (second (tax/signed-closure (reasoning/taxonomy kb) :down f context)))
+  (let [tax (reasoning/taxonomy kb)]
+    ;; `signed-closure` builds the straight closure beside the empty swapped one
+    (if (tax/genl-inverse-free? tax) #{} (second (tax/signed-closure tax :down f context)))))
 
 (defn super-predicates
   "The **genl** closure of `f` from the vantage `context`: `sub-predicates` mirrored,
@@ -1931,7 +2071,8 @@
   "`swapped-sub-predicates` mirrored: the predicates above `f` across an odd number of
   `genlInverse` edges, which a negated pattern on `f` reads swapped."
   [kb f context]
-  (second (tax/signed-closure (reasoning/taxonomy kb) :up f context)))
+  (let [tax (reasoning/taxonomy kb)]
+    (if (tax/genl-inverse-free? tax) #{} (second (tax/signed-closure tax :up f context)))))
 
 (defn- without-unread-mentions
   "Drop the matches of `goal` that read a fact stored under a mention in another argument
@@ -2114,7 +2255,7 @@
   (and (sequential? sentence) (seq sentence)
        (symbol? (first sentence))
        (not= 'not (first sentence))
-       (not-any? #(= '. %) sentence)
+       (not (sx/dotted? sentence))
        (or (not (sx/variable? (first sentence)))
            (some sx/indexable-term? (rest sentence)))))
 
@@ -2184,8 +2325,10 @@
   (case *lead-side*
     :scoped   false
     :agnostic true
-    ;; :auto — read whichever side is smaller
-    (<= (long (reads/stored-count-with-arg-global ix pos term)) (count specs))))
+    ;; :auto — read whichever side is smaller.  A lone spec reads its one bucket either
+    ;; way, so it counts nothing.
+    (and (< 1 (count specs))
+         (<= (long (reads/stored-count-with-arg-global ix pos term)) (count specs)))))
 
 (defn- trie-prefix?
   "Is a non-permuting literal of `args` a ground prefix, which `lead-candidates` leads by
@@ -2395,14 +2538,14 @@
           ;; functor is kept so the caller's binding survives.
           pat-functor (if var-fn? (constantly (first sentence)) identity)
           ;; `i` indexes `args-for`'s arrangement vector; -1 is `args` as written, the row a reader that does
-          ;; not believe the candidate functor's mark reads (`as-written-probe`).
+          ;; not believe the candidate functor's mark reads (`as-written-probes`).
           pat-for (fn [f' pctx i]
                     (let [pf (pat-functor f')
                           k  [pf pctx i]]
                       (if-some [p (get @pats k)]
                         p
                         (let [p (if (neg? i)
-                                  (binding [*spelled-by* [pf pctx #{}]]
+                                  (binding [*spelled-by* [#{pf} pctx #{}]]
                                     (kb-sentex kb (cons pf args) pctx))
                                   (kb-sentex kb (cons pf (nth (args-for f') i)) pctx))]
                           (vswap! pats assoc k p)
@@ -2482,14 +2625,21 @@
   `[handle bindings stored]` set, but reached by context-scoped index reads of the
   sub-predicates' own nodes instead of the `|specs| × |context-up|` product of trie
   walks.  Falls back to `matches-visible` for any shape it does not handle, and for a
-  literal with a spec stored under another functor (`folded-spec?`) or read swapped
-  (`swapped-sub-predicates`)."
+  literal with a spec stored under another functor (`folded-spec?`), read swapped
+  (`swapped-sub-predicates`), a NAT payload `nested-probes` reorders, or a compound whose
+  functor's marks some reader does not believe (`split-functors`)."
   [kb sentence view-context]
-  (if (and (hierarchical-literal? sentence) (not (sx/variable? (first sentence)))
-           (= 3 (count sentence))
-           (seq (swapped-sub-predicates kb (first sentence) view-context)))
-    ;; a `genlInverse` spec is stored with its arguments the other way round, which the
-    ;; argument-root reads below do not exchange: the reference fan-out reads it
+  (if (or (and (hierarchical-literal? sentence) (not (sx/variable? (first sentence)))
+               (= 3 (count sentence))
+               (seq (swapped-sub-predicates kb (first sentence) view-context)))
+          (and (seq? sentence) (contains? nat-quoting-predicates (first sentence))
+               (next (nested-probes kb sentence)))
+          (and (seq? sentence) (some #(and (seq? %) (seq %)) (rest sentence))
+               (seq (disj (split-functors kb sentence) (first sentence)))))
+    ;; a `genlInverse` spec is stored with its arguments the other way round, a NAT
+    ;; payload is an argument root as written, and a compound some reader reads as
+    ;; written is an argument root in either order, which the argument-root reads below
+    ;; do not reorder: the reference fan-out reads them
     (matches-visible* kb sentence view-context)
     (matches-hierarchical-over
      kb (probe-spelling kb sentence) view-context
@@ -2575,20 +2725,22 @@
 (defn- values-of
   "`{value [fact-handle …]}` for the ground NAT expression `E` read from `context`: the
   value each corresponding fact `match` answers names, spelled under `context`'s merges,
-  with the facts naming it.  Empty when the declarations `context` sees give `E`'s
-  function no single correspondence.  `match` is `matches-visible`'s retrieval."
-  [kb E context match]
-  (let [args (rest E)]
-    (if-let [[pr pos] (correspondence-of kb (first E) (count args) context)]
-      (let [visible? (visible-supporter-fn kb context)]
-        (reduce (fn [acc [h b]]
-                  (let [v (get b '?v)]
-                    (if (or (nil? v) (sequential? v))
-                      acc
-                      (update acc (normal-form kb v visible?) (fnil conj []) h))))
-                {}
-                (match kb (goal-normal-form kb (apply list pr (insert-at args pos '?v)) context) context)))
-      {})))
+  with the facts naming it.  Empty when `cor`, the `[predicate position]` the declarations
+  `context` sees give `E`'s function (`correspondence-of`), is nil.  `match` is
+  `matches-visible`'s retrieval."
+  ([kb E context match]
+   (values-of kb E (correspondence-of kb (first E) (count (rest E)) context) context match))
+  ([kb E cor context match]
+   (if-let [[pr pos] cor]
+     (let [visible? (visible-supporter-fn kb context)]
+       (reduce (fn [acc [h b]]
+                 (let [v (get b '?v)]
+                   (if (or (nil? v) (sequential? v))
+                     acc
+                     (update acc (normal-form kb v visible?) (fnil conj []) h))))
+               {}
+               (match kb (goal-normal-form kb (apply list pr (insert-at (rest E) pos '?v)) context) context)))
+     {})))
 
 (defn- names-object-constant?
   "Does `form` name a reified object constant (`nat/`), at any nesting?"
@@ -2620,17 +2772,16 @@
 (defn- without-edge-read-matches
   "`matches` of the positive unary `sentence` `(q …)` less each match of a membership
   `(s x)` the `genl` fan read where an edge reading of `(q x)` rests on it
-  (`exc/edge-read-functors`) and `view-context` sees no path from `s` to `q` held at
+  (`exc/edge-read?`) and `view-context` sees no path from `s` to `q` held at
   `:monotonic`: the stored reading answers for `x` there.  One presence check
-  (`reads/stores-opposed-with-functor?`) while no body of `q` is stored in both
-  polarities.  See docs/inference.md, \"An edge's reading\"."
+  (`reads/stores-unary-kept?`) while the index keeps no fact of `q` beside another unary
+  fact of its term.  See docs/inference.md, \"An edge's reading\"."
   [kb view-context sentence matches]
   (let [q (when (and (sequential? sentence) (= 2 (count sentence))) (first sentence))]
     (if (and (seq matches) (sx/plain-symbol? q) (not= sx/not-functor q)
              (symbol? view-context) (not (sx/variable? view-context))
-             (reads/stores-opposed-with-functor? (:index kb) q))
+             (reads/stores-unary-kept? (:index kb) q))
       (let [recs    (:records kb)
-            idx     (:index kb)
             tax     (reasoning/taxonomy kb)
             holding (delay (holding-class kb))
             strict? (fn [s] (when-let [hs (tax/reach-support tax :genl s q view-context @holding [:monotonic])]
@@ -2638,8 +2789,7 @@
         (remove (fn [[h]]
                   (let [s (:sentence (p/get-sentex recs h))]
                     (and (seq? s) (= 2 (count s)) (not= q (first s))
-                         (reads/stored-opposed? idx (list q (second s)))
-                         (contains? (exc/edge-read-functors kb h) q)
+                         (exc/edge-read? kb h q)
                          (not (strict? (first s))))))
                 matches))
       matches)))
@@ -2691,12 +2841,19 @@
   `*hierarchical-retrieval*` is false.  A sentex an `except` hides from `view-context` is
   filtered out.  Answers are cached per KB by the alpha-renamed literal and the change
   clock (`vaelii.impl.literal-cache`), keyed also on every var that selects a path.
-  `cached?` false neither consults nor fills the cache.  docs/inference.md, Resolution reads."
+  `cached?` false neither consults nor fills the cache.  A negation in a store holding no
+  negative fact answers empty off one count read.  docs/inference.md, Resolution reads."
   ([kb sentence view-context] (matches-visible kb sentence view-context true))
   ([kb sentence view-context cached?]
    (let [sentence (probe-spelling kb sentence)]
-     (if-not (and cached? lc/*enabled*)
+     (cond
+       (and (sx/negation? sentence) (zero? (reads/stored-count-at (:index kb) [:false])))
+       ()
+
+       (not (and cached? lc/*enabled*))
        (visible-matches kb sentence view-context)
+
+       :else
        (let [[canonical rename] (lc/canonicalize sentence)]
          (lc/rename-matches
           unify rename
@@ -2711,9 +2868,10 @@
   (CxUniverse when nil): the value each visible corresponding fact names, spelled under
   `context`'s merges, with the believed facts naming it.  Empty when the declarations
   `context` sees give `E`'s function no single correspondence; a variable `context`
-  reads every declaration and every context."
-  [kb E context]
-  (values-of kb E (or context sx/root-context) matches-visible))
+  reads every declaration and every context.  `cor` is `correspondence-of`'s answer, where
+  the caller holds it."
+  ([kb E context] (values-of kb E (or context sx/root-context) matches-visible))
+  ([kb E cor context] (values-of kb E cor (or context sx/root-context) matches-visible)))
 
 ;; ---- whose declarations bind a tuple ------------------------------------
 
@@ -2833,7 +2991,8 @@
 
 ;; ---- the argument-constraint chokepoint ---------------------------------
 ;; Two instance-level constraints are looked up: `arg` (one position) and `argAndRest` (a position and
-;; every later one). The other spellings are sugar whose forward rules (core.txt) store them. The
+;; every later one). The other spellings are sugar whose forward rules store them (core.txt's for the
+;; `argN` projections, the shared interface rule in interface-rules.txt for `args`). The
 ;; type-level (`genlArg`, `argsGenl`, `argAndRestGenl`) and quoted (`quotedArg`) twins come back on the
 ;; same entries under their own `:kind`.
 
@@ -3165,15 +3324,15 @@
 
 (defn prove-from
   "The resumable core of `prove`: run the DFS from an explicit `stack` (and the
-  `solutions` so far) under `bounds`, a map of optional caps:
+  `solutions` so far) under `bounds`, a map of optional caps (nil runs to completion):
     :deadline `System/nanoTime` instant   :max-results   :max-depth   :max-term-growth
     :leaf-solver (see `leaf-solutions`)   :est-override (see `planned-antecedents`)
+    :truncated   an atom set true when `:max-depth` refuses a rule whose consequent unifies
   Returns `{:solutions <vector> :status <kw> :stack <frames>}`; `:status` is `:complete`
-  (`:stack` empty), else `:timeout` or `:capped` with a non-empty `:stack` to resume from.
-  A leaf the deadline stops inside goes back on the stack marked `:unbounded-leaf?`.
-  With `bounds` nil it runs to completion."
+  (`:stack` empty), else `:timeout` or `:capped` with a non-empty `:stack` to resume from;
+  a leaf the deadline stops inside goes back marked `:unbounded-leaf?`."
   [kb rules-fn context
-   {:keys [deadline max-results max-depth max-term-growth leaf-solver est-override]}
+   {:keys [deadline max-results max-depth max-term-growth leaf-solver est-override truncated]}
    stack solutions]
   ;; One search scope per segment (`observe/with-search-scope`); the loop is eager, as the macro needs.
   ;; `prove-seq` opens a scope per call, which is sound because a query writes nothing. The defeated set is
@@ -3271,9 +3430,16 @@
                                        :term-base (grown-term-base term-base b)})
                         ;; Expansion cut short, not exhausted: the goal re-enters its path, the depth bound bit, or the term
                         ;; ceiling was passed (`default-max-term-growth`); see `*dead-end*`. Facts are still read.
+                        depth-cut?  (boolean (and max-depth (>= depth max-depth)))
                         cut?        (or (contains? seen k)
-                                        (boolean (and max-depth (>= depth max-depth)))
+                                        depth-cut?
                                         (> (long (term-depth g)) ceiling))
+                        _           (when (and truncated depth-cut? (not @truncated)
+                                               (not (contains? seen k))
+                                               (some #(subsuming-unify kb g (:consequent (freshen-rule % names))
+                                                                       bindings context)
+                                                     (rules-fn g)))
+                                      (reset! truncated true))
                         ;; asked once per expanded goal rather than once per rule: whether an
                         ;; answer to this goal *could* be one belief has defeated is a property
                         ;; of the goal, and it is false for every goal on a KB with no defeats

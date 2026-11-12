@@ -36,112 +36,142 @@
 ;; ---- the computing kinds: the types the relations below are typed over ----
 ;; A software_tool is software that performs one bounded operation per invocation. It
 ;; has no mass, so it is placed under computational_system, which is intangible.
+(unary_predicate computational_system)
 (comment computational_system "Software that computes when it runs.")
+(set/monotonic (time_invariant_relation computational_system))
 (positiveExampleComment computational_system "a running Python interpreter")
 (positiveExampleComment computational_system "a running database server process")
 (positiveExampleComment computational_system "a running web service")
 (negativeExampleComment computational_system "the hardware that runs a computational system, which is a separate thing")
-(genl computational_system intangible)
+(set/monotonic (genl computational_system intangible))
 ;; Software computes when it runs, so it is built, run, upgraded and retired in time: a
 ;; computational system is temporal.  The type covers software that runs.  An abstract
 ;; machine, such as a Turing machine taken as a mathematical object, is not a
 ;; computational system; it would be a type of its own, on the atemporal side.
-(genl computational_system temporal)
+(set/monotonic (genl computational_system temporal))
 ;; A computational system is not something that happens, and is not a form the KB
 ;; represents.
 (disjoint computational_system event)
 (disjoint computational_system expression)
 
+(unary_predicate software_tool)
 (comment software_tool "A computational system that performs one bounded operation each time an agent invokes it.")
 (positiveExampleComment software_tool "a command-line program")
 (positiveExampleComment software_tool "a Model Context Protocol tool")
 (positiveExampleComment software_tool "a web API endpoint")
-(genl software_tool computational_system)
+(set/monotonic (genl software_tool computational_system))
+(set/monotonic (time_invariant_relation software_tool))
 
+(unary_predicate command_line_tool)
 (comment command_line_tool "A software tool invoked by a command line that a shell runs.")
+(set/monotonic (time_invariant_relation command_line_tool))
 (positiveExampleComment command_line_tool "a text-search program")
 (positiveExampleComment command_line_tool "a file-copy program")
-(genl command_line_tool software_tool)
+(set/monotonic (genl command_line_tool software_tool))
 
+(unary_predicate mcp_tool)
 (comment mcp_tool "A software tool that a Model Context Protocol server lists and runs on request.")
+(set/monotonic (time_invariant_relation mcp_tool))
 (positiveExampleComment mcp_tool "a file-reading MCP tool")
 (positiveExampleComment mcp_tool "a calendar-lookup MCP tool")
-(genl mcp_tool software_tool)
+(set/monotonic (genl mcp_tool software_tool))
 
 ;; The edges to acausal and causal separate the two kinds below, through core.txt's
 ;; (partition thing causal acausal), so no disjoint is stated between them.
+(unary_predicate read_only_software_tool)
 (comment read_only_software_tool "A software tool whose invocation reads state and changes none.")
+(set/monotonic (time_varying_relation read_only_software_tool))
 (positiveExampleComment read_only_software_tool "a text-search tool")
 (positiveExampleComment read_only_software_tool "a directory-listing tool")
 (positiveExampleComment read_only_software_tool "a DNS-lookup tool")
-(genl read_only_software_tool software_tool)
-(genl read_only_software_tool acausal)
+(set/monotonic (genl read_only_software_tool software_tool))
+(set/monotonic (genl read_only_software_tool acausal))
 
+(unary_predicate write_capable_software_tool)
 (comment write_capable_software_tool "A software tool whose invocation can change state outside the invocation.")
+(set/monotonic (time_varying_relation write_capable_software_tool))
 (positiveExampleComment write_capable_software_tool "a file-deletion tool")
 (positiveExampleComment write_capable_software_tool "a message-sending tool")
 (positiveExampleComment write_capable_software_tool "a database-update tool")
-(genl write_capable_software_tool software_tool)
-(genl write_capable_software_tool causal)
+(set/monotonic (genl write_capable_software_tool software_tool))
+(set/monotonic (genl write_capable_software_tool causal))
 
+(unary_predicate information)
 (comment information "Information as carried, apart from the medium that holds it. A reading of the information can be a cause where the information is not.")
+(set/monotonic (time_invariant_relation information))
 (positiveExampleComment information "the text of a document")
 (positiveExampleComment information "a recording")
 (positiveExampleComment information "the content of a file")
 (negativeExampleComment information "the paper or the disk that holds the information, which is a separate thing")
-(genl information intangible)
-(genl information acausal)
+(set/monotonic (genl information intangible))
+(set/monotonic (genl information acausal))
 
+(unary_predicate digital_artifact)
 (comment digital_artifact "Information encoded as bits, apart from the storage medium that carries it.")
+(set/monotonic (time_invariant_relation digital_artifact))
 (positiveExampleComment digital_artifact "a file")
 (positiveExampleComment digital_artifact "a byte stream")
 (positiveExampleComment digital_artifact "a web page")
-(genl digital_artifact information)
+(set/monotonic (genl digital_artifact information))
 
+(unary_predicate media_resource)
 (comment media_resource "A digital artifact retrievable over a network at a URL.")
+(set/monotonic (time_invariant_relation media_resource))
 (positiveExampleComment media_resource "a hosted photograph")
 (positiveExampleComment media_resource "a streamed film")
 (positiveExampleComment media_resource "the audio file of a podcast episode")
-(genl media_resource digital_artifact)
+(set/monotonic (genl media_resource digital_artifact))
 
+(unary_predicate image)
 (comment image "A media resource holding a static visual representation.")
+(set/monotonic (time_invariant_relation image))
 (positiveExampleComment image "a photograph")
 (positiveExampleComment image "a diagram")
 (positiveExampleComment image "a scanned page")
-(genl image media_resource)
+(set/monotonic (genl image media_resource))
 
+(unary_predicate video)
 (comment video "A media resource holding moving images, with or without audio.")
+(set/monotonic (time_invariant_relation video))
 (positiveExampleComment video "a film clip")
 (positiveExampleComment video "a screen recording")
-(genl video media_resource)
+(set/monotonic (genl video media_resource))
 ;; A media resource can be neither an image nor a video, so the pair is a disjoint and
 ;; not a partition of media_resource.
 (disjoint image video)
 
+(unary_predicate tool_invocation)
 (comment tool_invocation "An event in which an agent calls a software tool with arguments and receives a result.")
 (positiveExampleComment tool_invocation "one run of a text-search command")
 (positiveExampleComment tool_invocation "one request to a web API endpoint")
-(genl tool_invocation event)
+(set/monotonic (genl tool_invocation event))
 
+(unary_predicate tool_receipt)
 (comment tool_receipt "An attributed record that a tool invocation produced: what the tool returned, as evidence of the call. A sentence a receipt reports holds in the KB only where a separate assertion states it.")
 (positiveExampleComment tool_receipt "the captured output of one command run")
 (positiveExampleComment tool_receipt "the response to one web API request")
-(genl tool_receipt acausal_event)
+(set/monotonic (genl tool_receipt acausal_event))
 (disjoint tool_receipt tool_invocation)
 
+(unary_predicate ip_address)
 (comment ip_address "A string denoting an Internet Protocol network address.")
 (positiveExampleComment ip_address "192.0.2.1")
 (positiveExampleComment ip_address "2001:db8::1")
 (negativeExample ip_address (Quote (ip_address "example.org")))
-(genl ip_address string)
+(set/monotonic (genl ip_address string))
+(set/monotonic (time_invariant_relation ip_address))
 
+(unary_predicate ipv4_address)
 (comment ipv4_address "A string denoting a 32-bit Internet Protocol version 4 address.")
 (positiveExampleComment ipv4_address "192.0.2.1")
+(unary_predicate ipv6_address)
 (comment ipv6_address "A string denoting a 128-bit Internet Protocol version 6 address.")
 (positiveExampleComment ipv6_address "2001:db8::1")
 ;; Every IP address is of one version or the other. The partition installs both genl
 ;; edges to ip_address and separates the two parts.
-(partition ip_address ipv4_address ipv6_address)
+(set/monotonic (partition ip_address ipv4_address ipv6_address))
+(set/monotonic (time_invariant_relation ipv4_address))
+(set/monotonic (time_invariant_relation ipv6_address))
 ;; Each value kind below string is a term kind, forced-monotonic as string is (core.txt).
 (forced_monotonic_predicate ip_address)
 (forced_monotonic_predicate ipv4_address)
@@ -150,24 +180,28 @@
 ;; ---- a media resource's address ------------------------------------------
 (comment resourceUrl "(resourceUrl ?resource ?url) means that ?resource is retrievable at ?url, e.g. an https address.")
 (set/monotonic (instance_relation_predicate resourceUrl))
+(set/monotonic (time_varying_relation resourceUrl))
 (arg resourceUrl 1 media_resource)
 (quotedArg resourceUrl 2 string)
 
 ;; ---- a tool's name, its declared arguments and its availability ----------
 (comment toolName "(toolName ?tool ?name) means that ?name is the identifier ?tool is invoked by, e.g. the program name of a command-line tool, the tool name a Model Context Protocol server lists.")
 (set/monotonic (instance_relation_predicate toolName))
+(set/monotonic (time_varying_relation toolName))
 (arg toolName 1 software_tool)
 (quotedArg toolName 2 string)
 (set/monotonic (functional toolName))
 
 (comment toolArgType "(toolArgType ?tool ?key ?type) means that ?tool accepts an argument named ?key whose values belong to ?type, e.g. a key named pattern whose values are strings.")
 (ternary_predicate toolArgType)
+(set/monotonic (time_invariant_relation toolArgType))
 (arg toolArgType 1 software_tool)
 (quotedArg toolArgType 2 string)
 (genlArg toolArgType 3 thing)
 
 (comment toolArgComment "(toolArgComment ?tool ?key ?comment) means that ?comment documents the argument of ?tool named ?key, e.g. a sentence saying what a pattern argument matches.")
 (ternary_predicate toolArgComment)
+(set/monotonic (time_invariant_relation toolArgComment))
 (arg toolArgComment 1 software_tool)
 (quotedArg toolArgComment 2 string)
 (quotedArg toolArgComment 3 string)
@@ -181,11 +215,13 @@
 ;; disjointness then contradicts.
 (comment agentHasTool "(agentHasTool ?agent ?tool) means that ?tool is available to ?agent: ?agent can use ?tool, invoking it if it is software and wielding, wearing or riding it if it is not. ?tool is any temporal thing, software or physical, e.g. a command-line program, a hammer or a jetpack.")
 (set/monotonic (instance_relation_predicate agentHasTool))
+(set/monotonic (time_varying_relation agentHasTool))
 (arg agentHasTool 1 thing)
 (arg agentHasTool 2 temporal)
 
 (comment probesPredicate "(probesPredicate ?tool ?predicate) means that an invocation of ?tool can return evidence about a sentence whose predicate is ?predicate.")
 (set/monotonic (instance_relation_predicate probesPredicate))
+(set/monotonic (time_invariant_relation probesPredicate))
 (arg probesPredicate 1 software_tool)
 (arg probesPredicate 2 predicate)
 
@@ -199,6 +235,7 @@
 ;; and the tool the instrument, so nothing here concludes hasCapability of the tool.
 (comment toolEnablesCapability "(toolEnablesCapability ?tool ?happeningKind) means that whoever has ?tool available can be the doer of a happening of kind ?happeningKind. ?tool is any temporal thing, software or physical: a tool that fetches an image and returns what it shows enables image_viewing, and a jetpack enables flying.")
 (binary_predicate toolEnablesCapability)
+(set/monotonic (time_varying_relation toolEnablesCapability))
 (arg toolEnablesCapability 1 temporal)
 (genlArg toolEnablesCapability 2 happening)
 
@@ -218,17 +255,20 @@
 ;; ---- invocations and receipts --------------------------------------------
 (comment toolInvoked "(toolInvoked ?invocation ?tool) means that ?invocation is a call of ?tool.")
 (set/monotonic (instance_relation_predicate toolInvoked))
+(set/monotonic (eternal_predicate toolInvoked))
 (arg toolInvoked 1 tool_invocation)
 (arg toolInvoked 2 software_tool)
 
 (comment toolInvocationArg "(toolInvocationArg ?invocation ?key ?value) means that ?invocation passed the argument named ?key with the value ?value, in the text form the call carried, e.g. the key pattern with the value written for one run.")
 (ternary_predicate toolInvocationArg)
+(set/monotonic (situation_predicate toolInvocationArg))
 (arg toolInvocationArg 1 tool_invocation)
 (quotedArg toolInvocationArg 2 string)
 (quotedArg toolInvocationArg 3 string)
 
 (comment receipt "(receipt ?invocation ?receipt) means that ?invocation produced ?receipt as the record of its output.")
 (set/monotonic (instance_relation_predicate receipt))
+(set/monotonic (eternal_predicate receipt))
 (arg receipt 1 tool_invocation)
 (arg receipt 2 tool_receipt)
 
@@ -236,6 +276,7 @@
 (comment dnsResolvesTo "(dnsResolvesTo ?name ?address) means that DNS resolves the host name ?name to the address ?address, under the resolver in effect where the fact is stated. One name can resolve to several addresses.")
 (positiveExampleComment dnsResolvesTo "example.org resolved to 192.0.2.1")
 (set/monotonic (instance_relation_predicate dnsResolvesTo))
+(set/monotonic (time_varying_relation dnsResolvesTo))
 (quotedArg dnsResolvesTo 1 string)
 (quotedArg dnsResolvesTo 2 string)
 
@@ -254,24 +295,32 @@
 ;; system install its node agent runs in, which runsOn a computer for a bare-metal node
 ;; and runsOn a hypervisor for a virtual one.
 
+(unary_predicate computer)
 (comment computer "An electronic device built around a programmable processor and the memory it runs programs from: the hardware a computational system runs on. A computer that is switched off or broken is still one.")
+(set/monotonic (time_invariant_relation computer))
 (positiveExampleComment computer "a laptop")
 (positiveExampleComment computer "a rack-mounted server")
 (positiveExampleComment computer "a single-board computer")
 (negativeExampleComment computer "a virtual machine, which is a computational system that runs on a computer")
-(genl computer electronic_device)
+(set/monotonic (genl computer electronic_device))
 (set/monotonic (disjoint person computer))
 (comment (disjoint person computer) "A person may run on a computer, as software whose execution environment the computer hosts, but is not one.")
 
+(unary_predicate virtual_machine)
 (comment virtual_machine "A computational system that emulates a whole computer and runs its own operating system kernel on a hypervisor.")
+(set/monotonic (time_invariant_relation virtual_machine))
 (positiveExampleComment virtual_machine "a cloud server instance")
 (positiveExampleComment virtual_machine "a guest operating system under a desktop hypervisor")
 
+(unary_predicate software_container)
 (comment software_container "A computational system that runs processes isolated from the rest of its host while sharing the host's operating system kernel.")
+(set/monotonic (time_invariant_relation software_container))
 (positiveExampleComment software_container "a container started from an image by a container runtime")
 (negativeExampleComment software_container "a box or a cup, which is a container")
 
-(comment software_service "A computational system that runs continuously and answers requests sent to it.")
+(unary_predicate software_service)
+(comment software_service "A computational system that runs continuously and answers requests sent to it. Its ability to serve is constitutive: editing it so it can no longer serve makes it a different thing, not the same service losing a role. An outage alone does not change its kind.")
+(set/monotonic (time_invariant_relation software_service))
 (positiveExampleComment software_service "a web server")
 (positiveExampleComment software_service "a database server")
 (positiveExampleComment software_service "a mail transfer agent")
@@ -281,30 +330,39 @@
 ;; tool is a computational system that is none of the three.
 (set/monotonic (separating computational_system virtual_machine software_container software_service))
 
-(comment mcp_server "A software service that answers its clients over the Model Context Protocol, listing its tools and running them on request.")
+(unary_predicate mcp_server)
+(comment mcp_server "A software service that answers its clients over the Model Context Protocol, listing its tools and running them on request. Serving over MCP is constitutive to this kind, not a changeable role of the same service.")
+(set/monotonic (time_invariant_relation mcp_server))
 (positiveExampleComment mcp_server "a memory server an assistant stores notes in")
 (positiveExampleComment mcp_server "a server that exposes a chat platform's messages")
-(genl mcp_server software_service)
+(set/monotonic (genl mcp_server software_service))
 
 (comment runsOn "(runsOn ?system ?host) means that ?system executes on ?host, a computer or another computational system: a service on a container, a container on a virtual machine or on a computer. Transitive, so a service on a container on a computer runs on that computer. No other fact about ?system is thereby a fact about ?host, nor the reverse.")
 (set/monotonic (instance_relation_predicate runsOn))
+(set/monotonic (time_varying_relation runsOn))
 (arg runsOn 1 computational_system)
 (arg runsOn 2 thing)
 (set/monotonic (transitive runsOn))
 
+(unary_predicate kubernetes_cluster)
 (comment kubernetes_cluster "A computational system that schedules and runs containerized workloads across a set of nodes under one control plane, each node an operating system install that runs on a computer or on a hypervisor.")
+(set/monotonic (time_invariant_relation kubernetes_cluster))
 (positiveExampleComment kubernetes_cluster "a managed Kubernetes cluster rented from a cloud provider")
 (positiveExampleComment kubernetes_cluster "a three-node cluster of single-board computers")
-(genl kubernetes_cluster computational_system)
+(set/monotonic (genl kubernetes_cluster computational_system))
 
+(unary_predicate network)
 (comment network "A collection of things that can address one another over shared links.")
+(set/monotonic (time_invariant_relation network))
 (positiveExampleComment network "a home local area network")
 (positiveExampleComment network "a mesh virtual private network")
-(genl network intangible)
+(set/monotonic (genl network intangible))
 
+(unary_predicate kubernetes_namespace)
 (comment kubernetes_namespace "A named scope inside one Kubernetes cluster that holds some of the cluster's workloads and keeps their names apart from those of other namespaces.")
+(set/monotonic (time_invariant_relation kubernetes_namespace))
 (positiveExampleComment kubernetes_namespace "the namespace a cluster runs its own system services in")
-(genl kubernetes_namespace intangible)
+(set/monotonic (genl kubernetes_namespace intangible))
 
 ;; A cluster performs computation; a network and a namespace do not, and neither is a
 ;; body of people (organization) or something outside time (abstract), since each is
@@ -314,6 +372,7 @@
 
 (comment clusterNode "(clusterNode ?cluster ?node) means that ?node is a node of ?cluster: the operating system install the cluster's node agent runs in, which runsOn a computer for a bare-metal node and runsOn a hypervisor for a virtual one. Membership only: controlPlaneNode and workerNode state the node's role.")
 (set/monotonic (instance_relation_predicate clusterNode))
+(set/monotonic (time_varying_relation clusterNode))
 (arg clusterNode 1 kubernetes_cluster)
 (arg clusterNode 2 computational_system)
 
@@ -331,11 +390,13 @@
 
 (comment onNetwork "(onNetwork ?thing ?network) means that ?thing is a member of ?network, addressable on it. Not carried along runsOn: a container on a host is not thereby on the host's networks.")
 (set/monotonic (instance_relation_predicate onNetwork))
+(set/monotonic (time_varying_relation onNetwork))
 (arg onNetwork 1 thing)
 (arg onNetwork 2 network)
 
 (comment kubernetesNamespaceOf "(kubernetesNamespaceOf ?namespace ?cluster) means that ?namespace is a namespace in ?cluster. Functional: a namespace is in one cluster.")
 (set/monotonic (instance_relation_predicate kubernetesNamespaceOf))
+(set/monotonic (time_invariant_relation kubernetesNamespaceOf))
 (arg kubernetesNamespaceOf 1 kubernetes_namespace)
 (arg kubernetesNamespaceOf 2 kubernetes_cluster)
 (set/monotonic (functional kubernetesNamespaceOf))
@@ -345,6 +406,7 @@
 ;; in different naming contexts.  Either mark would equate two systems that share a name.
 (comment hostnameOf "(hostnameOf ?thing ?name) means that ?name names ?thing in some naming context: DNS, a machine's own configured name, a private network's name service or a container runtime. Two things with one name are not thereby one thing, and a name read from inside a container names the container, not its host.")
 (set/monotonic (instance_relation_predicate hostnameOf))
+(set/monotonic (time_varying_relation hostnameOf))
 (arg hostnameOf 1 thing)
 (quotedArg hostnameOf 2 string)
 (not (functional hostnameOf))
@@ -378,35 +440,42 @@
 ;; nothing else.  Admin does not entail shell, since a web service's administrator need
 ;; have no shell on its host.
 
+(unary_predicate resource_access)
 (comment resource_access "Acting on a resource under a grant of access to it.")
 (positiveExampleComment resource_access "reading a repository one has been given read access to")
 (positiveExampleComment resource_access "logging in to a server one holds an account on")
-(genl resource_access happening)
+(set/monotonic (genl resource_access happening))
 
+(unary_predicate read_access)
 (comment read_access "Reading a resource's contents or state under a grant.")
-(genl read_access resource_access)
+(set/monotonic (genl read_access resource_access))
 
+(unary_predicate write_access)
 (comment write_access "Changing a resource's contents or state under a grant.")
-(genl write_access resource_access)
+(set/monotonic (genl write_access resource_access))
 
+(unary_predicate shell_access)
 (comment shell_access "Running commands on a resource, through a login shell or an equivalent command interface, under a grant.")
-(genl shell_access resource_access)
+(set/monotonic (genl shell_access resource_access))
 
+(unary_predicate admin_access)
 (comment admin_access "Administering a resource under a grant: changing its configuration, or granting access to it to others.")
-(genl admin_access resource_access)
+(set/monotonic (genl admin_access resource_access))
 
+(unary_predicate deploy_access)
 (comment deploy_access "Deploying or rolling out workloads onto a resource under a grant.")
-(genl deploy_access resource_access)
+(set/monotonic (genl deploy_access resource_access))
 
 (comment ReadAccessFn "(ReadAccessFn ?resource) means the happening kind of reading ?resource's contents or state under a grant, a kind below read_access. A grant is stated as (hasCapability ?principal (ReadAccessFn ?resource)).")
 (reifiable_function ReadAccessFn)
 (unary_function ReadAccessFn)
-(functionCorrespondingPredicate ReadAccessFn readAccessOf)
+(functionCorrespondingBinaryPredicate ReadAccessFn readAccessOf)
 (arg ReadAccessFn 1 thing)
 (genlResult ReadAccessFn read_access)
 
 (comment readAccessOf "(readAccessOf ?resource ?kind) means that ?kind is the happening kind of reading ?resource under a grant: (ReadAccessFn ?resource) is ?kind.")
 (binary_predicate readAccessOf)
+(set/monotonic (time_invariant_relation readAccessOf))
 (arg readAccessOf 1 thing)
 (genlArg readAccessOf 2 read_access)
 (set/monotonic (functional readAccessOf))
@@ -414,12 +483,13 @@
 (comment WriteAccessFn "(WriteAccessFn ?resource) means the happening kind of changing ?resource's contents or state under a grant, a kind below write_access. A grant is stated as (hasCapability ?principal (WriteAccessFn ?resource)).")
 (reifiable_function WriteAccessFn)
 (unary_function WriteAccessFn)
-(functionCorrespondingPredicate WriteAccessFn writeAccessOf)
+(functionCorrespondingBinaryPredicate WriteAccessFn writeAccessOf)
 (arg WriteAccessFn 1 thing)
 (genlResult WriteAccessFn write_access)
 
 (comment writeAccessOf "(writeAccessOf ?resource ?kind) means that ?kind is the happening kind of changing ?resource under a grant: (WriteAccessFn ?resource) is ?kind.")
 (binary_predicate writeAccessOf)
+(set/monotonic (time_invariant_relation writeAccessOf))
 (arg writeAccessOf 1 thing)
 (genlArg writeAccessOf 2 write_access)
 (set/monotonic (functional writeAccessOf))
@@ -427,12 +497,13 @@
 (comment ShellAccessFn "(ShellAccessFn ?resource) means the happening kind of running commands on ?resource under a grant, a kind below shell_access. A grant is stated as (hasCapability ?principal (ShellAccessFn ?resource)).")
 (reifiable_function ShellAccessFn)
 (unary_function ShellAccessFn)
-(functionCorrespondingPredicate ShellAccessFn shellAccessOf)
+(functionCorrespondingBinaryPredicate ShellAccessFn shellAccessOf)
 (arg ShellAccessFn 1 thing)
 (genlResult ShellAccessFn shell_access)
 
 (comment shellAccessOf "(shellAccessOf ?resource ?kind) means that ?kind is the happening kind of running commands on ?resource under a grant: (ShellAccessFn ?resource) is ?kind.")
 (binary_predicate shellAccessOf)
+(set/monotonic (time_invariant_relation shellAccessOf))
 (arg shellAccessOf 1 thing)
 (genlArg shellAccessOf 2 shell_access)
 (set/monotonic (functional shellAccessOf))
@@ -440,12 +511,13 @@
 (comment AdminAccessFn "(AdminAccessFn ?resource) means the happening kind of administering ?resource under a grant, a kind below admin_access. A grant is stated as (hasCapability ?principal (AdminAccessFn ?resource)).")
 (reifiable_function AdminAccessFn)
 (unary_function AdminAccessFn)
-(functionCorrespondingPredicate AdminAccessFn adminAccessOf)
+(functionCorrespondingBinaryPredicate AdminAccessFn adminAccessOf)
 (arg AdminAccessFn 1 thing)
 (genlResult AdminAccessFn admin_access)
 
 (comment adminAccessOf "(adminAccessOf ?resource ?kind) means that ?kind is the happening kind of administering ?resource under a grant: (AdminAccessFn ?resource) is ?kind.")
 (binary_predicate adminAccessOf)
+(set/monotonic (time_invariant_relation adminAccessOf))
 (arg adminAccessOf 1 thing)
 (genlArg adminAccessOf 2 admin_access)
 (set/monotonic (functional adminAccessOf))
@@ -453,12 +525,13 @@
 (comment DeployAccessFn "(DeployAccessFn ?resource) means the happening kind of deploying workloads onto ?resource under a grant, a kind below deploy_access. A grant is stated as (hasCapability ?principal (DeployAccessFn ?resource)).")
 (reifiable_function DeployAccessFn)
 (unary_function DeployAccessFn)
-(functionCorrespondingPredicate DeployAccessFn deployAccessOf)
+(functionCorrespondingBinaryPredicate DeployAccessFn deployAccessOf)
 (arg DeployAccessFn 1 thing)
 (genlResult DeployAccessFn deploy_access)
 
 (comment deployAccessOf "(deployAccessOf ?resource ?kind) means that ?kind is the happening kind of deploying workloads onto ?resource under a grant: (DeployAccessFn ?resource) is ?kind.")
 (binary_predicate deployAccessOf)
+(set/monotonic (time_invariant_relation deployAccessOf))
 (arg deployAccessOf 1 thing)
 (genlArg deployAccessOf 2 deploy_access)
 (set/monotonic (functional deployAccessOf))
@@ -477,6 +550,7 @@
 
 (comment custodianOf "(custodianOf ?person ?thing) means that ?person is responsible for keeping ?thing in working order: the one to call when it breaks. Not access: a custodian need hold no grant over ?thing, and one who holds a grant need not be its custodian.")
 (set/monotonic (instance_relation_predicate custodianOf))
+(set/monotonic (time_varying_relation custodianOf))
 (arg custodianOf 1 person)
 (arg custodianOf 2 thing)
 
@@ -488,16 +562,21 @@
 ;; grant of it is (hasCapability ?principal (FileLookupFn ?namespace)).  Lookup is a
 ;; precondition of reading a file, and entails no read access.
 
+(unary_predicate filesystem_namespace)
 (comment filesystem_namespace "A rooted tree of names in which an absolute file path is resolved. Not a host, a storage device or a mount point: two namespaces over the same storage need not resolve a path alike.")
+(set/monotonic (time_invariant_relation filesystem_namespace))
 (positiveExampleComment filesystem_namespace "the file tree a container's processes see")
 (positiveExampleComment filesystem_namespace "the file tree of a computer's root filesystem")
-(genl filesystem_namespace intangible)
+(set/monotonic (genl filesystem_namespace intangible))
 
+(unary_predicate file_path_reference)
 (comment file_path_reference "An absolute path taken together with the filesystem namespace it is resolved in. A reference to look a file up by, which does not say that the file exists or can be read.")
-(genl file_path_reference linguistic)
+(set/monotonic (time_invariant_relation file_path_reference))
+(set/monotonic (genl file_path_reference linguistic))
 
+(unary_predicate file_lookup)
 (comment file_lookup "Resolving paths in a filesystem namespace under a grant. A precondition of reading any file in the namespace, which does not say that a given path exists or can be read.")
-(genl file_lookup resource_access)
+(set/monotonic (genl file_lookup resource_access))
 
 (comment FilePathRefFn "(FilePathRefFn ?namespace ?path) means the reference made of the filesystem namespace ?namespace and the absolute path string ?path. Does not say that a file exists at the path.")
 (reifiable_function FilePathRefFn)
@@ -509,18 +588,21 @@
 
 (comment filePathRefOf "(filePathRefOf ?namespace ?path ?reference) means that ?reference is the reference made of ?namespace and the absolute path string ?path: (FilePathRefFn ?namespace ?path) is ?reference.")
 (ternary_predicate filePathRefOf)
+(set/monotonic (time_invariant_relation filePathRefOf))
 (arg filePathRefOf 1 filesystem_namespace)
 (quotedArg filePathRefOf 2 string)
 (arg filePathRefOf 3 file_path_reference)
 
 (comment pathNamespace "(pathNamespace ?reference ?namespace) means that ?reference's path is resolved in the filesystem namespace ?namespace. Functional: a reference has one namespace.")
 (set/monotonic (instance_relation_predicate pathNamespace))
+(set/monotonic (time_invariant_relation pathNamespace))
 (arg pathNamespace 1 file_path_reference)
 (arg pathNamespace 2 filesystem_namespace)
 (set/monotonic (functional pathNamespace))
 
 (comment pathText "(pathText ?reference ?path) means that ?path is the absolute path string of ?reference. Functional: a reference has one path.")
 (set/monotonic (instance_relation_predicate pathText))
+(set/monotonic (time_invariant_relation pathText))
 (arg pathText 1 file_path_reference)
 (quotedArg pathText 2 string)
 (set/monotonic (functional pathText))
@@ -533,20 +615,22 @@
 (comment FileLookupFn "(FileLookupFn ?namespace) means the happening kind of resolving paths in the filesystem namespace ?namespace under a grant, a kind below file_lookup. A grant is stated as (hasCapability ?principal (FileLookupFn ?namespace)).")
 (reifiable_function FileLookupFn)
 (unary_function FileLookupFn)
-(functionCorrespondingPredicate FileLookupFn fileLookupOf)
+(functionCorrespondingBinaryPredicate FileLookupFn fileLookupOf)
 (arg FileLookupFn 1 filesystem_namespace)
 (genlResult FileLookupFn file_lookup)
 
 (comment fileLookupOf "(fileLookupOf ?namespace ?kind) means that ?kind is the happening kind of resolving paths in ?namespace under a grant: (FileLookupFn ?namespace) is ?kind.")
 (binary_predicate fileLookupOf)
+(set/monotonic (time_invariant_relation fileLookupOf))
 (arg fileLookupOf 1 filesystem_namespace)
 (genlArg fileLookupOf 2 file_lookup)
 (set/monotonic (functional fileLookupOf))
 
 ;; ==== pull requests on a forge =================================================
 ;; A pull request is named by its repository and its number, built by PullRequestFn and
-;; read back through pullRequestOf, value last.  prStatus gives the stage it is at, and
-;; takes no time argument: a status holds over the time of the context it is stated in.
+;; read back through pullRequestOf, value last.  Its status is its membership in the
+;; status kinds below pull_request, and like any membership it holds over the time of the
+;; context it is stated in.
 ;; holdsReadyLatch says whose call it is that a repository's drafts are ready, and is not
 ;; a grant.  Merging is an access kind, and a grant of it is (hasCapability ?principal
 ;; (MergeAccessFn ?repository)).  Every merge changes its repository's target branch, so
@@ -556,11 +640,36 @@
 ;; (not (hasCapability ?principal (WriteAccessFn ?repository))), which defeats that
 ;; default; a default-strength denial does not.
 
+(unary_predicate forge_repository)
 (comment forge_repository "A version-controlled repository as a forge hosts it, with its branches and the pull requests opened against it. Stays the same repository as commits land and branches move.")
-(genl forge_repository digital_artifact)
+(set/monotonic (time_invariant_relation forge_repository))
+(set/monotonic (genl forge_repository digital_artifact))
 
+(unary_predicate pull_request)
 (comment pull_request "A request on a forge to merge a branch's commits into a branch of a repository, with its discussion and reviews. Stays the same request through every change of status and every push to its branch.")
-(genl pull_request digital_artifact)
+(set/monotonic (time_invariant_relation pull_request))
+(set/monotonic (genl pull_request digital_artifact))
+
+;; Every pull request is open, merged or closed, and every open one is a draft or ready
+;; for review.  A pull request moves between these and stays the same request, so each
+;; status kind is time-varying.
+(unary_predicate open_pr)
+(comment open_pr "A pull request open on its forge: neither merged nor closed. A draft or ready for review.")
+(set/monotonic (time_varying_relation open_pr))
+(unary_predicate merged_pr)
+(comment merged_pr "A pull request its forge has merged into its target branch. A merged pull request is never reopened.")
+(set/monotonic (time_varying_relation merged_pr))
+(unary_predicate closed_pr)
+(comment closed_pr "A pull request closed without being merged. Its forge can reopen it.")
+(set/monotonic (time_varying_relation closed_pr))
+(set/monotonic (partition pull_request open_pr merged_pr closed_pr))
+(unary_predicate draft_pr)
+(comment draft_pr "An open pull request its author has marked not ready for review. Its forge refuses to merge it.")
+(set/monotonic (time_varying_relation draft_pr))
+(unary_predicate ready_pr)
+(comment ready_pr "An open pull request ready for review, whether or not it is approved or can merge cleanly.")
+(set/monotonic (time_varying_relation ready_pr))
+(set/monotonic (partition open_pr draft_pr ready_pr))
 
 (comment PullRequestFn "(PullRequestFn ?repository ?number) means the pull request numbered ?number in ?repository. A forge never gives one number to two pull requests of one repository, so the pair fixes the request. Says nothing about its status or whether the forge still serves it.")
 (reifiable_function PullRequestFn)
@@ -572,48 +681,31 @@
 
 (comment pullRequestOf "(pullRequestOf ?repository ?number ?pullRequest) means that ?pullRequest is the pull request numbered ?number in ?repository: (PullRequestFn ?repository ?number) is ?pullRequest. A query joins on it to reach a repository's pull requests.")
 (ternary_predicate pullRequestOf)
+(set/monotonic (time_invariant_relation pullRequestOf))
 (arg pullRequestOf 1 forge_repository)
 (arg pullRequestOf 2 positive_integer)
 (arg pullRequestOf 3 pull_request)
 
-(comment pull_request_status "A stage a pull request can be at on its forge. A stage, not a pull request: it outlasts every request that passes through it.")
-(genl pull_request_status nowhere_never)
-
-(comment PullRequestDraft "Open, and marked by its author as not ready for review. A forge refuses to merge a pull request at this stage.")
-(pull_request_status PullRequestDraft)
-
-(comment PullRequestReady "Open and ready for review, whether or not it is approved or can merge cleanly.")
-(pull_request_status PullRequestReady)
-
-(comment PullRequestMerged "Merged into its target branch by the forge. Final: a merged pull request is never reopened.")
-(pull_request_status PullRequestMerged)
-
-(comment PullRequestClosed "Closed without being merged. Not final: the forge can reopen it.")
-(pull_request_status PullRequestClosed)
-
-(comment prStatus "(prStatus ?pullRequest ?status) means that ?pullRequest is at the stage ?status on its forge. One stage at a time. Takes no time argument: it holds over the time of the context it is stated in.")
-(set/monotonic (instance_relation_predicate prStatus))
-(arg prStatus 1 pull_request)
-(arg prStatus 2 pull_request_status)
-(set/monotonic (functional prStatus))
-
 (comment holdsReadyLatch "(holdsReadyLatch ?person ?repository) means that a draft pull request of ?repository waits on ?person to mark it ready or clear it to be. Not a permission: it grants no capability over ?repository, and a capability holder need not hold it.")
 (set/monotonic (instance_relation_predicate holdsReadyLatch))
+(set/monotonic (time_varying_relation holdsReadyLatch))
 (arg holdsReadyLatch 1 person)
 (arg holdsReadyLatch 2 forge_repository)
 
+(unary_predicate merge_access)
 (comment merge_access "Merging a pull request into a repository under a grant. A merge changes the repository's target branch, so every merge is a write.")
-(genl merge_access write_access)
+(set/monotonic (genl merge_access write_access))
 
 (comment MergeAccessFn "(MergeAccessFn ?repository) means the happening kind of merging pull requests into ?repository under a grant, a kind below merge_access. A grant is stated as (hasCapability ?principal (MergeAccessFn ?repository)). Says nothing about which pull requests are ready to merge.")
 (reifiable_function MergeAccessFn)
 (unary_function MergeAccessFn)
-(functionCorrespondingPredicate MergeAccessFn mergeAccessOf)
+(functionCorrespondingBinaryPredicate MergeAccessFn mergeAccessOf)
 (arg MergeAccessFn 1 forge_repository)
 (genlResult MergeAccessFn merge_access)
 
 (comment mergeAccessOf "(mergeAccessOf ?repository ?kind) means that ?kind is the happening kind of merging pull requests into ?repository under a grant: (MergeAccessFn ?repository) is ?kind.")
 (binary_predicate mergeAccessOf)
+(set/monotonic (time_invariant_relation mergeAccessOf))
 (arg mergeAccessOf 1 forge_repository)
 (genlArg mergeAccessOf 2 merge_access)
 (set/monotonic (functional mergeAccessOf))
@@ -630,21 +722,25 @@
 ;; digital artifact can be a carrier and content at once: a web page is information, and
 ;; the web page carries the article it shows.
 
+(unary_predicate conceptual_work)
 (comment conceptual_work "Information composed as one work, which stays the same work in each copy and each encoding of it. A copy of a work is a carrier of the work and is not the work.")
+(set/monotonic (time_invariant_relation conceptual_work))
 (positiveExampleComment conceptual_work "the novel Moby-Dick")
 (positiveExampleComment conceptual_work "the information content of a newspaper article")
 (negativeExampleComment conceptual_work "a physical copy of a newspaper article, which carries the work")
 (negativeExampleComment conceptual_work "the information content of a cell's DNA, which is information that nobody composed")
-(genl conceptual_work information)
+(set/monotonic (genl conceptual_work information))
 
 (comment carries "(carries ?carrier ?info) means that the temporal ?carrier holds ?info in its medium: reading the medium in the right way gives ?info. A carrier and the information it holds are two things, so destroying a carrier destroys the carrier and not, by that alone, the information. Not functional in position 2: one carrier holds more than one piece of information, e.g. a tree's rings hold the tree's age and each year's rainfall.")
 (binary_predicate carries)
 (set/monotonic (instance_relation_predicate carries))
+(set/monotonic (time_agnostic_relation carries))
 (arg carries 1 temporal)
 (arg carries 2 information)
 
 (comment subInformationOf "(subInformationOf ?part ?whole) means that the information ?part is a component of the information ?whole, e.g. a chapter in a book or a frame in a video. A spec of intangiblePartOf, since information has no mass. Declared transitive, so a part of a part is a part.")
 (set/monotonic (instance_relation_predicate subInformationOf))
+(set/monotonic (time_agnostic_relation subInformationOf))
 (arg subInformationOf 1 information)
 (arg subInformationOf 2 information)
 (set/monotonic (transitive subInformationOf))
@@ -658,35 +754,106 @@
 ;; sentex_handle_term quoted, so a text KB writes it as an (ist Cx S) reference.
 (comment agentClaims "(agentClaims ?agent (sentexHandle H)) means that ?agent presents the sentex named by the handle in position 2 as true. A claim is not a belief: the KB believes the sentex only where a context the reader sees asserts it. Declared target_following_predicate, so retracting the sentex retracts each claim that names it. No rule concludes agentClaims from carries: a carrier that holds a sentex by quoting, denying or mocking it is not thereby concluded to present it as true.")
 (binary_predicate agentClaims)
+(set/monotonic (time_varying_relation agentClaims))
 (set/monotonic (instance_relation_predicate agentClaims))
 (arg agentClaims 1 thing)
 (arg agentClaims 2 thing)
 (quotedArg agentClaims 2 sentex_handle_term)
 (target_following_predicate agentClaims)
 
+;; ---- Discord channels and permissions ---------------------------------------
+(unary_predicate communication_channel)
+(comment communication_channel "A logical route or shared venue established for transmitting messages. The channel has no spatial location and cannot itself be a cause. A channel may be one-way or reciprocal and may remain available without messages. A physical carrier, message content, or a bare frequency or address is not itself a communication channel.")
+(set/monotonic (time_invariant_relation communication_channel))
+(set/monotonic (genl communication_channel aspatial))
+(set/monotonic (genl communication_channel temporal))
+(set/monotonic (genl communication_channel acausal))
+(positiveExampleComment communication_channel "an established mailing list through which subscribers exchange messages")
+(positiveExampleComment communication_channel "an empty chat room that remains available for conversation")
+(positiveExampleComment communication_channel "a configured one-way logical link carrying telemetry")
+(negativeExampleComment communication_channel "a fiber-optic cable, which is a physical carrier")
+(negativeExampleComment communication_channel "a radio frequency without an established message route")
+(negativeExampleComment communication_channel "the content of one transmitted message")
+
+(unary_predicate discord_channel)
+(comment discord_channel "A communication space managed by Discord and fixed by its snowflake ID. Includes threads. It is not its messages, audience, or a connector subscription.")
+(set/monotonic (time_invariant_relation discord_channel))
+(set/monotonic (genl discord_channel communication_channel))
+
+(comment DiscordChannelFn "(DiscordChannelFn ?snowflake) means the Discord channel or thread whose ID is the decimal string ?snowflake. Does not imply that it exists now or is readable.")
+(reifiable_function DiscordChannelFn)
+(unary_function DiscordChannelFn)
+(quotedArg DiscordChannelFn 1 string)
+(result DiscordChannelFn discord_channel)
+(functionCorrespondingBinaryPredicate DiscordChannelFn discordChannelOf)
+
+(comment discordChannelOf "(discordChannelOf ?snowflake ?channel) means that ?channel is the Discord channel whose ID is the decimal string ?snowflake: (DiscordChannelFn ?snowflake) is ?channel.")
+(binary_predicate discordChannelOf)
+(set/monotonic (time_invariant_relation discordChannelOf))
+(quotedArg discordChannelOf 1 string)
+(arg discordChannelOf 2 discord_channel)
+(set/monotonic (functional discordChannelOf))
+
+(unary_predicate channel_view)
+(comment channel_view "Access to a Discord channel under its effective VIEW_CHANNEL permission. Does not imply READ_MESSAGE_HISTORY, SEND_MESSAGES, connector delivery, or permission to disclose content there.")
+(set/monotonic (genl channel_view resource_access))
+
+(comment ChannelViewFn "(ChannelViewFn ?channel) means the happening kind of accessing Discord channel ?channel under VIEW_CHANNEL permission, a kind below channel_view. A grant is (hasCapability ?principal (ChannelViewFn ?channel)).")
+(reifiable_function ChannelViewFn)
+(unary_function ChannelViewFn)
+(arg ChannelViewFn 1 discord_channel)
+(genlResult ChannelViewFn channel_view)
+(functionCorrespondingBinaryPredicate ChannelViewFn channelViewOf)
+
+(comment channelViewOf "(channelViewOf ?channel ?kind) means that ?kind is the happening kind of accessing Discord channel ?channel under VIEW_CHANNEL permission: (ChannelViewFn ?channel) is ?kind.")
+(binary_predicate channelViewOf)
+(set/monotonic (time_invariant_relation channelViewOf))
+(arg channelViewOf 1 discord_channel)
+(genlArg channelViewOf 2 channel_view)
+(set/monotonic (functional channelViewOf))
+(comment discordChannelName "(discordChannelName ?channel ?name) means that ?name is an observed human-readable name of Discord channel ?channel in the stated context and time. A label, not identity: channels can be renamed and names need not be unique.")
+(set/monotonic (instance_relation_predicate discordChannelName))
+(set/monotonic (time_varying_relation discordChannelName))
+(arg discordChannelName 1 discord_channel)
+(quotedArg discordChannelName 2 string)
+(not (functional discordChannelName))
+(not (functionalInArg discordChannelName 1))
+
+(comment discordAccountId "(discordAccountId ?person ?snowflake) means that ?person is authorized to use the Discord account whose stable user ID is the decimal string ?snowflake, in the stated context and time. It does not equate the person with the account, require a unique account per person, or exclude shared accounts.")
+(set/monotonic (instance_relation_predicate discordAccountId))
+(set/monotonic (time_varying_relation discordAccountId))
+(arg discordAccountId 1 person)
+(quotedArg discordAccountId 2 string)
+(not (functional discordAccountId))
+(not (functionalInArg discordAccountId 1))
+
 ;; ---- the message a claim came from ------------------------------------------
 ;; discordMessageClaims records where a stored claim came from, as agentClaims records
 ;; who presents it, and is typed and marked as agentClaims is: position 2 holds a sentex
 ;; handle, so it declares thing.  The claimer is the sentex's creator, read from its
 ;; provenance, and is not an argument.
+(unary_predicate discord_message)
 (comment discord_message "A message posted on Discord, fixed by its snowflake id. Discord holds its text and its author, and an edit or a deletion there does not make it a different message.")
-(genl discord_message digital_artifact)
+(set/monotonic (time_invariant_relation discord_message))
+(set/monotonic (genl discord_message digital_artifact))
 
 (comment DiscordMessageFn "(DiscordMessageFn ?snowflake) means the Discord message whose snowflake id is ?snowflake, written as a decimal string. A snowflake is unique across Discord, so the id alone fixes the message. Does not say that the message can still be fetched.")
 (reifiable_function DiscordMessageFn)
 (unary_function DiscordMessageFn)
 (quotedArg DiscordMessageFn 1 string)
 (result DiscordMessageFn discord_message)
-(functionCorrespondingPredicate DiscordMessageFn discordMessageOf)
+(functionCorrespondingBinaryPredicate DiscordMessageFn discordMessageOf)
 
 (comment discordMessageOf "(discordMessageOf ?snowflake ?message) means that ?message is the Discord message whose snowflake id is ?snowflake, written as a decimal string: (DiscordMessageFn ?snowflake) is ?message.")
 (binary_predicate discordMessageOf)
+(set/monotonic (time_invariant_relation discordMessageOf))
 (quotedArg discordMessageOf 1 string)
 (arg discordMessageOf 2 discord_message)
 (set/monotonic (functional discordMessageOf))
 
 (comment discordMessageClaims "(discordMessageClaims ?message (sentexHandle H)) means that the Discord message ?message asserts, in natural language, what the sentex named by the handle states. Records where the claim came from, not that it is true. Declared target_following_predicate, so retracting the sentex retracts each receipt that names it.")
 (binary_predicate discordMessageClaims)
+(set/monotonic (time_invariant_relation discordMessageClaims))
 (set/monotonic (instance_relation_predicate discordMessageClaims))
 (arg discordMessageClaims 1 discord_message)
 (arg discordMessageClaims 2 thing)
@@ -698,6 +865,7 @@
 ;; propositionalContent independently of another information's data content.
 (comment dataContent "(dataContent ?info ?string) means that ?string, taken as written, is what ?info holds: the exact sequence of symbols, independent of any byte encoding that stores it. Functional: one piece of information has one data content.")
 (binary_predicate dataContent)
+(set/monotonic (time_agnostic_relation dataContent))
 (set/monotonic (instance_relation_predicate dataContent))
 (arg dataContent 1 information)
 (quotedArg dataContent 2 string)
@@ -705,6 +873,7 @@
 
 (comment propositionalContent "(propositionalContent ?info ?proposition) means that ?info says ?proposition. Not functional: one piece of information can say more than one proposition, and two pieces of information with equal data content can say different propositions, e.g. the same words from two different speakers.")
 (binary_predicate propositionalContent)
+(set/monotonic (time_agnostic_relation propositionalContent))
 (set/monotonic (instance_relation_predicate propositionalContent))
 (arg propositionalContent 1 information)
 (arg propositionalContent 2 proposition)
@@ -715,6 +884,7 @@
 ;; kind, and a thing can have more than one name.
 (comment nameString "(nameString ?thing ?name) means that ?name is a string that names ?thing, e.g. a person's name as written. A thing can have more than one name string.")
 (binary_predicate nameString)
+(set/monotonic (time_varying_relation nameString))
 (arg nameString 1 thing)
 (quotedArg nameString 2 string)
 
@@ -735,12 +905,14 @@
 (comment perceives
          "(perceives ?perceiver ?perceived) means ?perceiver takes in ?perceived through some sense. The most general perception relation; sees specializes it, and seeImage and watchVideo reach it through sees for a spatial second argument.")
 (set/monotonic (instance_relation_predicate perceives))
+(set/monotonic (time_varying_relation perceives))
 (arg perceives 1 thing)
 (arg perceives 2 spatial)
 
 (comment sees
          "(sees ?seer ?seen) means ?seer takes in ?seen through sight. Spec of perceives.")
 (set/monotonic (instance_relation_predicate sees))
+(set/monotonic (time_varying_relation sees))
 (arg sees 1 thing)
 (arg sees 2 spatial)
 (genl sees perceives)
@@ -748,6 +920,7 @@
 (comment seeImage
          "(seeImage ?seer ?image) means ?seer takes in a static image through sight and perceives what it shows. Its second argument is the image itself, which need not be located, so it concludes sees only of a spatial image (the rule below).")
 (set/monotonic (instance_relation_predicate seeImage))
+(set/monotonic (time_invariant_relation seeImage))
 (arg seeImage 1 thing)
 (arg seeImage 2 thing)
 (set/forwardRule
@@ -757,6 +930,7 @@
 (comment watchVideo
          "(watchVideo ?watcher ?video) means ?watcher takes in a video, a temporal sequence of images, through sight. The video need not be located, so it concludes sees only of a spatial video (the rule below).")
 (set/monotonic (instance_relation_predicate watchVideo))
+(set/monotonic (time_invariant_relation watchVideo))
 (arg watchVideo 1 thing)
 (arg watchVideo 2 thing)
 (set/forwardRule
@@ -771,9 +945,10 @@
 ;; ability to be its doer. Taking in an image changes nothing about what it depicts,
 ;; so image_viewing is a kind of acausal_event, abstract.txt's intersection of acausal
 ;; and event, whose own comment names an observation as an example.
+(unary_predicate image_viewing)
 (comment image_viewing
          "An event of taking in a static image through sight and perceiving what it shows. The event-kind counterpart of seeImage: (hasCapability ?x image_viewing) means ?x can be the doer of one.")
-(genl image_viewing acausal_event)
+(set/monotonic (genl image_viewing acausal_event))
 
 ;; ==== relationships and plural identity ======================================
 ;; Relationship vocabulary narrower than CxSocial's own, which CxTra sees: nesting
@@ -798,6 +973,7 @@
 (comment chosenSiblingOf
          "(chosenSiblingOf ?x ?y) means ?x and ?y are siblings by choice, not by birth: family by choice, so a spec of relativeOf. Neither implies nor is implied by the biological siblingOf.")
 (set/monotonic (instance_relation_predicate chosenSiblingOf))
+(set/monotonic (time_varying_relation chosenSiblingOf))
 (set/monotonic (symmetric chosenSiblingOf))
 (arg chosenSiblingOf 1 person)
 (arg chosenSiblingOf 2 person)
@@ -813,10 +989,12 @@
 ;; apart from no intangible or aspatial type by that route, so two more separations are
 ;; stated here: a construct is not the computational system its mind runs in, and it is
 ;; one person, not an organization, a group of people acting as one body.
+(unary_predicate construct)
 (comment construct "A person whose mind runs on a computational substrate rather than a biological one: an artificial agent with social agency, continuity of identity, and accountability for what it does.")
+(set/monotonic (time_varying_relation construct))
 (positiveExampleComment construct "an artificial agent that keeps its identity, memory and relationships from one conversation to the next")
 (negativeExampleComment construct "the computer or the container a construct runs on, which is a separate thing")
-(genl construct person)
+(set/monotonic (genl construct person))
 (set/monotonic (disjoint construct organism))
 (set/monotonic (disjoint construct computational_system))
 (set/monotonic (disjoint construct organization))
@@ -825,13 +1003,16 @@
 ;; seat, and the construct has it: hasSeat relates the two, and runsOn places the seat on
 ;; a container, a virtual machine or a computer.  hasSeat is not functional, since a
 ;; construct can move from one seat to another or run in several at once.
+(unary_predicate seat)
 (comment seat "A computational system in which a construct runs: the execution environment its mind's processes live in, such as a container or a virtual machine.")
+(set/monotonic (time_varying_relation seat))
 (positiveExampleComment seat "a container a construct's sessions run in")
 (negativeExampleComment seat "the construct itself, which is a person and has its seat")
-(genl seat computational_system)
+(set/monotonic (genl seat computational_system))
 
 (comment hasSeat "(hasSeat ?construct ?seat) means that ?construct runs in ?seat. Says nothing about what ?seat runs on, which runsOn states.")
 (set/monotonic (instance_relation_predicate hasSeat))
+(set/monotonic (time_varying_relation hasSeat))
 (arg hasSeat 1 construct)
 (arg hasSeat 2 seat)
 (not (functional hasSeat))
@@ -842,6 +1023,7 @@
 (comment founderOf
          "(founderOf ?founder ?construct) means that ?founder is the person who founded the construct ?construct: who designed it and brought it into being.")
 (set/monotonic (instance_relation_predicate founderOf))
+(set/monotonic (eternal_predicate founderOf))
 (set/monotonic (asymmetric founderOf))
 (arg founderOf 1 person)
 (arg founderOf 2 construct)
@@ -857,14 +1039,21 @@
 ;; person who passes from one part to another goes on existing.  Memberships are checked
 ;; without time, so the partition is read of a person at one time: the KB states the
 ;; arrangement that holds, and a change retracts the membership it ends.
+(unary_predicate singlet)
 (comment singlet "A person with no alters. Time-varying: a singlet can stop being one and go on existing, as a person who comes to have alters becomes a plural system.")
+(set/monotonic (time_varying_relation singlet))
+(unary_predicate plural_system)
 (comment plural_system "A person who has two or more alters: for a human, the body its alters share, not the alters taken together. Time-varying: a plural system can stop being one and go on existing, as a body whose alters integrate into one identity becomes a singlet.")
+(set/monotonic (time_varying_relation plural_system))
+(unary_predicate alter)
 (comment alter "One of the identities of a plural system, a person in its own right. Time-varying: an alter can stop being one and go on existing, since the arrangement of the system it belongs to can change.")
+(set/monotonic (time_varying_relation alter))
 (set/monotonic (partition person singlet plural_system alter))
 
 (comment alterOf
          "(alterOf ?alter ?system) means that ?alter is one of the identities of the plural system ?system. Functional: an alter belongs to one system.")
 (set/monotonic (instance_relation_predicate alterOf))
+(set/monotonic (time_varying_relation alterOf))
 (set/monotonic (asymmetric alterOf))
 (arg alterOf 1 alter)
 (arg alterOf 2 plural_system)
@@ -873,6 +1062,7 @@
 (comment headmateOf
          "(headmateOf ?x ?y) means that ?x and ?y are two alters of the same plural system. Read by the rule below from alterOf.")
 (set/monotonic (instance_relation_predicate headmateOf))
+(set/monotonic (time_varying_relation headmateOf))
 (set/monotonic (symmetric headmateOf))
 (arg headmateOf 1 alter)
 (arg headmateOf 2 alter)

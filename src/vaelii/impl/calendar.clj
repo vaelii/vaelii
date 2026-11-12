@@ -8,6 +8,8 @@
   `vaelii.impl.datetime/bounds`.  See docs/time.md, \"The calendar clock\"."
   (:require [vaelii.impl.datetime :as dt]
             [vaelii.impl.point :as point]
+            [vaelii.impl.provers :as provers]
+            [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.stp :as stp]
             [vaelii.impl.taxonomy :as tax]
@@ -40,18 +42,18 @@
   [a b]
   (some-> (dt/paired-extents a b) relation-of))
 
-(defn- named? [x] (and (symbol? x) (not (sx/variable? x))))
-
 (defn- extent-in
-  "`x`'s half-open extent in no zone: a term's own (`dt/extent`), or for a named interval
-  the believed `startOf` and `endOf` facts visible in `context` naming one `InstantFn`
-  moment each (`stp/endpoints-with-support`), the start before the end; else nil."
+  "`[extent handles]` of `x` in no zone: a term's own (`dt/extent`) with no handle, or for a
+  named interval the believed `startOf` and `endOf` facts visible in `context` naming one
+  `InstantFn` moment each (`stp/endpoints-with-support`), the start before the end, with
+  their handles; else nil."
   [kb context x]
-  (or (dt/extent x)
-      (when (named? x)
-        (when-let [[[s e]] (stp/endpoints-with-support kb x context dt/instant-term?)]
-          (let [ext [(dt/instant-fields s) (dt/instant-fields e)]]
-            (when (neg? (compare (first ext) (second ext))) ext))))))
+  (if-let [ext (dt/extent x)]
+    [ext #{}]
+    (when (sx/plain-symbol? x)
+      (when-let [[[s e] hs] (stp/endpoints-with-support kb x context dt/instant-term?)]
+        (let [ext [(dt/instant-fields s) (dt/instant-fields e)]]
+          (when (neg? (compare (first ext) (second ext))) [ext hs]))))))
 
 (defn- instant-order
   "The point-algebra base relation between two `InstantFn` terms, or nil when either is
@@ -73,11 +75,19 @@
   [x]
   (or (sx/variable? x) (dt/instant-term? x)))
 
+(def ^:private clock-predicates
+  "Every predicate a goal this prover answers is on."
+  (-> (set (keys endpoint-slot))
+      (into (keys point/instant-denotation))
+      (into (keys stp/interval-denotation))))
+
 (defn- shape
   "Which family `goal` belongs to — `:endpoint`, `:instant`, `:interval`, `:stated` for an
-  interval goal naming a named interval, or `:negated` for the negation of an instant or
-  interval goal — or nil when this prover cannot answer it.  `applicable?` and `solve` both
-  read it."
+  interval goal naming a named interval, `:negated` for the negation of an instant or
+  interval goal, or `:open` for an instant or interval goal with a variable beside a term
+  of its kind or, for an interval goal, beside a named interval, which it answers once the
+  variable is bound — or nil when this prover cannot answer it.  `applicable?` and `solve`
+  both read it."
   [goal]
   (if (sx/negation? goal)
     (when (#{:instant :interval} (shape (second goal))) :negated)
@@ -89,26 +99,36 @@
                (dt/instant-term? a) (dt/instant-term? b))                   :instant
           (and (stp/interval-denotation pred)
                (some? (dt/paired-extents a b)))                             :interval
-          (and (stp/interval-denotation pred) (or (named? a) (named? b))
-               (or (named? a) (dt/extent a)) (or (named? b) (dt/extent b))) :stated)))))
+          (and (stp/interval-denotation pred) (or (sx/plain-symbol? a) (sx/plain-symbol? b))
+               (or (sx/plain-symbol? a) (dt/extent a)) (or (sx/plain-symbol? b) (dt/extent b))) :stated
+          (and (some sx/variable? [a b])
+               (if (point/instant-denotation pred)
+                 (some dt/instant-term? [a b])
+                 (and (stp/interval-denotation pred)
+                      (some #(or (sx/plain-symbol? %) (dt/extent %) (dt/utc-extent %)) [a b]))))
+          :open)))))
 
 (defn- solve-goal
-  "`goal`'s solutions, at most one: a ground check, a negated ground check, which holds
-  when the check fails, or one variable bound to the one term the calendar gives it."
+  "`goal`'s solutions as `[bindings handles]`, at most one: a ground check, a negated ground
+  check, which holds when the check fails, or one variable bound to the one term the
+  calendar gives it.  The handles are the time vocabulary's declaration
+  (`time-vocabulary-visible?`) and a named interval's stated bounds; an `:open` goal has
+  none."
   [kb goal context]
-  (let [[pred a b] goal]
+  (let [[pred a b] goal
+        vocab #(res/declared-by kb :transitive 'instantBefore context)]
     (case (shape goal)
       :endpoint (let [i (dt/instant-term (nth (dt/bounds a) (endpoint-slot pred)))]
                   (if (sx/variable? b)
-                    [{b i}]
-                    (when (= i b) [{}])))
-      :instant  (when (contains? (point/instant-denotation pred) (instant-order a b)) [{}])
-      :interval (when (contains? (stp/interval-denotation pred) (relation a b)) [{}])
-      :stated   (when-let [ea (extent-in kb context a)]
-                  (when-let [eb (extent-in kb context b)]
+                    [[{b i} (vocab)]]
+                    (when (= i b) [[{} (vocab)]])))
+      :instant  (when (contains? (point/instant-denotation pred) (instant-order a b)) [[{} (vocab)]])
+      :interval (when (contains? (stp/interval-denotation pred) (relation a b)) [[{} (vocab)]])
+      :stated   (when-let [[ea ha] (extent-in kb context a)]
+                  (when-let [[eb hb] (extent-in kb context b)]
                     (when (contains? (stp/interval-denotation pred) (relation-of [ea eb]))
-                      [{}])))
-      :negated  (when (empty? (solve-goal kb (second goal) context)) [{}])
+                      [[{} (-> (vocab) (into ha) (into hb))]])))
+      :negated  (when (empty? (solve-goal kb (second goal) context)) [[{} (vocab)]])
       nil)))
 
 ;; ---- the prover ---------------------------------------------------------
@@ -124,10 +144,14 @@
   (applicable? [_ kb goal context]
     (and (some? (shape goal)) (time-vocabulary-visible? kb context)))
   ;; the three figures: docs/time.md, "Cost, and what it claims"
-  (est-bindings [_ _ _ _] 1)
+  (est-bindings [_ _ goal _] (if (= :open (shape goal)) provers/deferred-est 1))
   (cost         [_ _ _ _] :lookup)
   (completeness [_ _ _ _] 50)
-  (solve [_ kb goal context] (solve-goal kb goal context)))
+  (solve [_ kb goal context] (map first (solve-goal kb goal context)))
+  prover-types/SupportingProver
+  (support-functors [_] clock-predicates)
+  (support-sources [_] (conj stp/endpoint-predicates 'transitive))
+  (solve-with-support [_ kb goal context] (solve-goal kb goal context)))
 
 (defn calendar-prover
   "The calendar-clock prover, to register with `vaelii.core/add-prover`."

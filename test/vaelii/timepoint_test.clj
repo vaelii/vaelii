@@ -21,6 +21,7 @@
             [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.walk :as walk]
             [vaelii.core :as v]
+            [vaelii.impl.datetime :as dt]
             [vaelii.impl.interval :as iv]
             [vaelii.impl.point :as pt]
             [vaelii.impl.qcn-kb :as qkb]
@@ -30,7 +31,7 @@
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded #(doto % (tu/load-core!)
-                                      (v/add-reasoner :point :allen)
+                                      (v/add-reasoner :point :allen :tightest-start-bound)
                                       (v/add-prover (pt/includes-instant-prover)))))
 (use-fixtures :each (tu/neutral))
 
@@ -127,7 +128,9 @@
      [CxClues [:at Presidency (InstantFn 2003 7 1 0 0 0)] :false]
      [CxClues [:at Presidency (InstantFn 2019 7 1 0 0 0)] :false]
      [CxClues [:at Presidency (StartFn Keynote)] :false]
-     [CxClues [:allen Keynote Presidency] #{:before}]]
+     [CxClues [:allen Keynote Presidency] #{:before}]
+     [CxClues [:allen Presidency (YearFn 2009)] #{:contains :started-by :overlapped-by}]
+     [CxClues [:allen Keynote (YearFn 2004)] #{:starts :during :finishes :equal}]]
    :checks
    '[[CxClues :consistent]
      [CxCluesLater {:fixes #{:pardon-2020-lower :pardon-in-office-end
@@ -243,7 +246,8 @@
   its support asked of the point network as a goal of its own: the reference the interval
   network's point narrowing, which reads all of them off one closed network, is held to."
   [kb ctx]
-  (let [things (into #{} (comp (keep tp/thing-of) (filter symbol?))
+  (let [things (into #{} (comp (keep tp/thing-of)
+                               (filter #(or (symbol? %) (dt/extent %) (dt/utc-extent %))))
                      (qkb/nodes (qkb/network kb pt/instants ctx)))]
     (reduce
      (fn [acc [x y]]
@@ -490,7 +494,7 @@
           day '(InstantFn 2000 1 1 0 0 0)]
       (v/assert kb (list 'startOf Since day) c)
       (v/assert kb (list 'startOf Since Noon) CxElse)
-      (is (= [{'?x Since}] (v/query kb (list 'includesInstant '?x day) c)))
+      (is (= #{{'?x Since} {'?x 'Forever}} (set (v/query kb (list 'includesInstant '?x day) c))))
       (is (empty? (v/query kb (list 'includesInstant '?x Noon) c))))))
 
 (tu/deftest-kb a-stored-inclusion-is-answered-beside-the-network
@@ -533,8 +537,46 @@
       (v/assert kb (list 'instantBefore (list 'StartFn Party) Noon) c)
       (v/assert kb (list 'instantBefore Noon (list 'EndFn Party)) c)
       (v/assert kb (list 'instantBefore (list 'EndFn Party) Dusk) c)
-      (is (= [{'?x Party}] (vec (v/query kb (list 'includesInstant '?x Noon) c))))
+      (is (= #{{'?x Party} {'?x 'Forever}} (set (v/query kb (list 'includesInstant '?x Noon) c))))
       (is (= #{Noon (list 'StartFn Party)}
              (set (map '?t (v/query kb (list 'includesInstant Party '?t) c)))))
       (is (= #{Dusk (list 'EndFn Party)}
              (set (map '?t (v/query kb (list 'not (list 'includesInstant Party '?t)) c))))))))
+
+(defn- tightest-start-bounds
+  "The set of `tightestStartBoundOf` answers for `x` read from `c`."
+  [kb x c]
+  (set (map '?t (v/ask kb (list 'tightestStartBoundOf x '?t) c))))
+
+(tu/deftest-kb two-unordered-lower-bounds-give-no-tightest-start-bound-until-a-fact-orders-them
+  (tu/with-terms [Now Clock1 Clock2]
+    (let [c 'CxUniverse]
+      (v/assert kb (list 'instantNotBefore Now Clock1) c)
+      (v/assert kb (list 'instantAfter Now Clock2) c)
+      (is (= #{} (tightest-start-bounds kb Now c)))
+      (v/assert kb (list 'instantBefore Clock1 Clock2) c)
+      (is (= #{Clock2} (tightest-start-bounds kb Now c))))))
+
+(tu/deftest-kb two-lower-bounds-stated-equal-are-both-tightest-start-bounds
+  (tu/with-terms [Now Clock1 Clock2]
+    (let [c 'CxUniverse]
+      (v/assert kb (list 'instantNotBefore Now Clock1) c)
+      (v/assert kb (list 'instantEqual Clock1 Clock2) c)
+      (is (= #{Clock1 Clock2} (tightest-start-bounds kb Now c))))))
+
+(tu/deftest-kb a-tightest-start-bound-reads-the-facts-the-asking-context-sees
+  (tu/with-terms [Now Clock1 Clock2 CxLog CxLogSpec]
+    (let [c 'CxUniverse]
+      (v/assert kb (list 'genlCx CxLogSpec CxLog) c)
+      (v/assert kb (list 'instantNotBefore Now Clock1) c)
+      (v/assert kb (list 'instantBefore Clock1 Clock2) c)
+      (v/assert kb (list 'instantNotBefore Now Clock2) CxLog)
+      (is (= [#{Clock1} #{Clock2} #{Clock2}]
+             (map #(tightest-start-bounds kb Now %) [c CxLog CxLogSpec]))))))
+
+(tu/deftest-kb a-bound-the-point-terms-alone-fix-is-no-tightest-start-bound
+  (tu/with-terms [Party Dawn]
+    (let [c 'CxUniverse]
+      (is (= #{} (tightest-start-bounds kb Party c)))
+      (v/assert kb (list 'instantNotBefore (list 'StartFn Party) Dawn) c)
+      (is (= #{Dawn} (tightest-start-bounds kb Party c))))))

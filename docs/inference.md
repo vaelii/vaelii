@@ -84,7 +84,7 @@ which chainer will *use* what the index already holds.
 believed like any other rule and posted under all of its predicates, so it is findable
 by its terms and readable in the browser; what it never does is fire. That is how a
 rule the engine does *not* execute is still written down where a reader looks for it —
-`core.txt`'s two rules equating `commutative` with `(commutativeInArgAndRest ?p 1)`, a
+`core.txt`'s rules equating `commutative` with `(commutativeInArgAndRest ?p 1)`, a
 relationship the taxonomy's commuting table implements in code
 ([taxonomy.md](taxonomy.md)). Two consequences follow: an inert rule is the one
 rule shape whose *antecedent* predicate may be a **variable**, exempt from the
@@ -184,7 +184,9 @@ literal puts at the `nonempty` argument bound to each type
   `C` yet places nothing either and owes its rule a re-join at the batch's settle, so the
   batch's whole taxonomy decides every such firing in any arrival order. Outside a batch,
   an edge arriving in a later write blocks the placed firing's justification
-  (`chain/lazy-firing-blocked?`), and the sweep removes the conclusion.
+  (`chain/lazy-firing-blocked?`), and the sweep removes the conclusion. The sweep records
+  the firing as a refusal, and a re-join of the reader releases it only once
+  `lazy-firing-blocked?` stops holding (`chain/refusal-state`).
 - A `genl` edge arriving, departing or moving in belief queues `:all-rejoin` the forward
   readers whose placement it moves (`special/lazy-guard-readers`): one concluding on a
   predicate at or below the edge's lower end beside a lazy rule reading a predicate at or
@@ -651,8 +653,8 @@ justification the conclusion already holds — Θ(k²) `same-antecedents?` compa
 apiece, testing mutual containment by index rather than building two hash sets, which
 allocates nothing and is a large line in the W4 profile (~430k firings over ~66k
 conclusions at 1k). `jtms/*dedup-cache*`, which `chain/chain` binds for the length of a
-run, builds each conclusion's key set from `-supports` on the first ask and answers
-every later one in a single hash probe.
+run and `chain/place-nogoods!` for a settle pass's placement, builds each conclusion's key
+set from `-supports` on the first ask and answers every later one in a single hash probe.
 
 That cache is one of three fast paths on the placement path, with the `ensure-node`
 no-op skip (a node already present at a depth no higher moves neither the network nor the
@@ -793,22 +795,37 @@ strength, as a stated claim undercuts an inherited `:default` one
 ([inherit.md](inherit.md#specificity-undercuts-and-does-not-arbitrate)). `ask?`, `query`
 and `argue` answer `(perishing Hydra)` false, `(beast Hydra)` stays believed, and
 `contradictions` reports nothing. A `genl` edge carries no `exceptWhen`, so a denial is
-the exception a `:default` edge takes for one term.
+the exception a `:default` edge takes for one term. A separation and a cover convict the
+reading the same way: `(immortal Hydra)` of either strength under `(disjoint perishing
+immortal)` undercuts it, and so do denials of every part of a stored cover of
+`perishing`.
 
-The reading is a stored sentex, the **edge reading**. For a membership `(s x)` beside a
-stored denial of `(q x)` with `s` below `q` (the `supertype` candidate,
-[nmtms.md](nmtms.md#the-nogood-families)), `chain/sync-edge-readings!` stores `(q x)` at
-each placement of the membership and the path that sees no path of `:monotonic` edges,
-under the informant `edgeReading`, justified by the membership and the path's edge
-supporters. The sync reads the dependents of the members of the term's `supertype` nogoods
-only, those that left in the pass included (`membership/take-moved!`). Each stored denial
-of `(q x)` places a guard defeat of the reading resting on the denial and the reading's
-antecedents (`chain/edge-reading-defeat-placements`). A reader that sees the denial
-believed reads the reading's justification invalid, and only that justification: a second
-support of `(q x)`, stated or derived, stands and meets the denial as a negation pair. A
-pair whose positive side holds only as edge readings is no nogood (`exc/edge-read-only?`).
+The reading is a stored sentex, the **edge reading**. Each route of a membership nogood
+(`membership/routes`, [nmtms.md](nmtms.md#the-nogood-families)) lists as `:climbs` the
+links from a held type `s` up to the type `q` the nogood reads it in.
+`chain/sync-edge-readings!` stores `(q x)` for each climb
+and its membership `(s x)`, at each placement of the membership and a path from `s` to `q`
+that sees no path of `:monotonic` edges. The reading's informant is `edgeReading`, and its
+justification holds the membership and the path's edge supporters. A climb is a
+`:strict-links` of its route too, so the nogood over `(s x)` is placed only where a
+`:monotonic` path is seen. `chain/membership-routes` drops a climb from both lists when
+every supporter of every edge on every path from `s` to `q` is `:monotonic`: such a climb
+holds at every reader and owes no reading.
+
+The reading's convicting members undercut it (`chain/edge-reading-defeat-placements`).
+Each stored denial of `(q x)` places a guard defeat of the reading at the maximal contexts
+that see both, resting on the denial and the reading's antecedents. Each membership nogood
+holding the reading whose other members no edge reading alone concludes places one at the
+placements its routes give, resting on those members and the route's grounds. That nogood
+is not placed itself (`chain/reading-led?`). A reader that sees a defeat in force reads
+the reading's justification invalid, and only that justification: a second support of
+`(q x)`, stated or derived, stands and meets the convicting members as a nogood. A pair
+whose positive side holds only as edge readings is no nogood (`exc/edge-read-only?`). Two
+readings a nogood convicts, `(perishing Hydra)` from `(beast Hydra)` and `(immortal
+Hydra)` from `(god Hydra)`, have no other member to undercut either, so the nogood is
+placed between them as a dilemma: both stay believed, and `contradictions` reports it.
 Where a path of `:monotonic` edges is seen, the edge contraposes, no reading is stored,
-and the `supertype` nogood weighs the membership against the denial.
+and the nogood weighs the membership against its convicting members.
 
 The fan and the chainer read the reading instead of the membership.
 `res/without-hidden-matches` drops a fan match of `(s x)` for a goal on `q` where an edge
@@ -817,8 +834,8 @@ reading of `(q x)` rests on the match and the reader sees no `:monotonic` path
 `:monotonic` path is seen (`chain/edge-read-links`), so a rule on `(q ?x)` fires on the
 reading and follows its undercut. A reading leaves with its denial, its membership or its
 edge, and its membership is re-chained so that the firings through the link are placed
-again. `constraint_nogood_test` holds each claim in every arrival order at both denial
-strengths.
+again. `constraint_nogood_test` holds each claim in every arrival order at both strengths
+of the convicting member.
 
 ### `genlInverse`: the fan with the arguments swapped
 
@@ -924,8 +941,12 @@ about the rule.
   the edges.
 - **An edge moving re-joins the rule.** An arriving edge offers the trigger index the
   tuple it is stated at, and the pairs it adds through edges already stored are reached
-  by joining, so `chain/closure-rejoin-rules` re-joins in full every forward rule with an
-  antecedent on that relation. A departing edge puts the same rules back on the agenda
+  by joining, so `chain/closure-rejoins` re-joins every forward rule with an antecedent
+  on that relation. A `(genl s t)` edge between symbols adds only pairs from the global
+  closure below `s` to the one above `t`. Each `genl` antecedent starts its join from those
+  pairs (`chain/edge-closure-starts`), and a rule whose antecedents take none is not
+  re-joined. Any other edge, a cover, and a `genl` antecedent of another shape re-join the
+  rule in full. A departing edge puts the same rules back on the agenda
   (`special/resubsumption-seeds`, `special/departed-edge-seeds`), so a second path
   re-derives the conclusion the departed edge's path licensed. Both are conditional on the
   antecedent keys some stored rule reads (`reads/stored-rule-key?`), so a KB whose rules
@@ -973,7 +994,9 @@ forward chaining agree about the rule.
   of a type a declaration separates the bound end from, the set `(disjoint qa ?y)`
   answers as a query at a reader that sees every declaration. With both ends open it
   contributes nothing, and the stored sentences answer alone. The literal waits for a
-  binder (`open-ends`). A literal whose variables the other antecedents all bind is
+  binder (`open-ends`). A rule whose only antecedent is `(disjoint ?a ?b)` therefore
+  fires on the stated pairs alone, in every arrival order, while `ask` answers every
+  separated pair. A literal whose variables the other antecedents all bind is
   joined after every planned literal (`chain/planned-join`), so it tests two bound ends
   and never enumerates the types separated from one of them.
 - **A `disjoint` literal a closure literal waits on leads a second join.** In `(and
@@ -1012,12 +1035,16 @@ forward chaining agree about the rule.
   (`special/recheck-on-separation`). The next settle re-decides the firings and refusals
   whose bindings name a moved type, and re-joins the rule once per moved type with a
   `disjoint` antecedent's variable end bound to it (`chain/fire-rule-over-types`).
-  A `disjoint` antecedent with a ground end among the moved types re-joins the rule in
-  full. So a `genl` edge retracted between two marked types separates them as an edge
-  never stated does, one arriving withdraws the firing, and the write costs the types it
-  moves rather than the rule's extent: `perf`'s `separation-rule-under-moving-edge`
-  measures one edge beside n unrelated `unary` types. Any other sentence costs taxonomy
-  reads and no index read, which `assert_cost_test` asserts.
+  The re-join binds both ends of a `disjoint` antecedent when another positive,
+  non-evaluable antecedent names either one. It binds neither end when no other
+  antecedent names one, because the arrival join reads that literal from the stored
+  sentences alone. A `disjoint` antecedent with a ground end among the moved types
+  re-joins the rule in full. So a `genl` edge retracted between two marked types
+  separates them as an edge never stated does, one arriving withdraws the firing, and the
+  write costs the types it moves rather than the rule's extent: `perf`'s
+  `separation-rule-under-moving-edge` measures one edge beside n unrelated `unary` types.
+  Any other sentence costs taxonomy reads and no index read, which `assert_cost_test`
+  asserts.
 - **A rule concluding `disjoint` takes the matcher alone**, for the closure arm's reason.
 
 `closure_join_test` asserts the five separation spellings, the two bounded arms, the
@@ -1710,7 +1737,10 @@ may have been answered by a shallower one. So `false`, with `:unenumerated` empt
 guarantees the answers are every answer the KB entails at that depth; `true` is the signal to raise the bound and stop when
 the flag clears and the answer set holds still. A cyclic rule set always has one deeper
 level the bound refuses, so it is `:truncated?` at every depth — which is the report the
-bound owes for a search it, not the data, terminated.
+bound owes for a search it, not the data, terminated. `prove-within` carries the same key
+in its partial result. On the DFS it is set where `res/prove-from` cuts a goal at
+`:max-depth` and a candidate rule's consequent unifies with it, and the loop guard has
+already cut a cyclic rule set's repeated goal there.
 
 The detection is off the plain `query` path entirely: `session` allocates the flag only
 under `:track-truncation?`, and `step!`'s candidate-rule probe runs only while it is set.
@@ -2174,6 +2204,16 @@ the cached closure, so its cost is the closure's size, not the handful of stored
 edges. A *partial* prover's estimate is not used — several are constants, and the
 index models fan-out better.
 
+The forward join (`chain/join-order`) consults no prover for a `genl` literal, and
+`chain/solve-closure` answers one with an end bound from that end's global closure, the
+reflexive member included. `est-matches` prices a `genl` literal with one end open from
+what the taxonomy holds, with no walk (`tax/held-closure-size`): 1 when no active edge
+leaves the bound end in the read direction, the closure's size when the cache holds it,
+and otherwise one more than the relation's active edges. `est-rows` takes the same size
+when there is one, and otherwise the stored edges' rows plus the reflexive row. A price
+read off the stored edges alone is 0 for a leaf, whose closure answers the leaf itself
+(`plan_test`, `a-genl-read-with-one-end-open-is-priced-at-its-closure-without-a-walk`).
+
 That substitution is an **extension point a caller opts into** (`plan/order`'s `:est-override`,
 built by `provers/registry-est-override`), and which caller matters: it is right exactly
 for an executor whose **leaf is the registry**, because only then is the closure what a
@@ -2248,7 +2288,14 @@ Ties break on written order, so a plan is a function of the conjunction and the 
 counts, never of iteration order. Planning applies wherever a conjunction enters:
 `prove`'s goal vector, each rule expansion in `prove`, the forward join, and each node's
 inline join in the node engine. Antecedents are substituted *before* planning, so the
-planner costs them against real values. Stored antecedent order is *canonical* order,
+planner costs them against real values. The forward join plans again whenever a step
+leaves exactly one row and two or more literals remain (`chain/replanned`): it orders the
+rest with that row's values substituted, so a literal is priced at the count of the value
+the row binds rather than at the predicate's estimate for an unknown one (`plan_test`,
+`a-forward-join-re-plans-the-literals-left-at-the-values-of-its-one-row`). The re-plan
+changes the order only, and each literal is joined in its own spelling. The
+`separation-lead` join and the delta re-join keep their first plan, and with the ranking
+off there is no re-plan. Stored antecedent order is *canonical* order,
 chosen so two spellings of one rule dedup to one sentex; it bears no relation to the
 estimated cost, so planning matters as much for a rule as for a query.
 
@@ -2293,30 +2340,22 @@ randomized trials are what `plan_test` affords; every conjunction the suite runs
 the sweep affords. A ranking bug is the structure that wants the larger sample: nothing
 throws and an answer set is quietly smaller.
 
-### Where the ranking is required
+### Tests that force the ranking
 
-The ranking carries more than cost in one place. The test forces the shipped reader back
-(`tu/shipped-fixture`, `tu/with-shipped`) rather than standing aside, so every
-configuration runs the same assertions.
+Three tests force the shipped reader back (`tu/shipped-fixture`, `tu/with-shipped`) rather
+than standing aside, so every configuration runs the same assertions: `plan_test`,
+`plan_levels_edge_test` and `provers_test`'s registry-costing test measure the ranking,
+which the switch removes.
 
-**Where a theory stops can be an ordering fact.** The event calculus reaches
-`instantBefore` with one end open and the calendar prover declines it. Unranked, that
-literal is reached last with both ends already ground, the clock answers, and a `holdsAt`
-the theory is documented not to reach becomes derivable. (`calendar_test`,
-`inertia-over-computed-moments-…`.)
-
-`plan_test`, `plan_levels_edge_test` and `provers_test`'s registry-costing test force it for
-the plain reason: they measure the ranking, which the switch removes.
-
-**So `VAELII_PLAN=0` is not answer-preserving in general**, and the sweep's claim is the
-narrower one: unranked answers identically everywhere the ranking is not the thing
-supplying an answer, and the exceptions are the forcing tests above rather than a silence.
-
-**Two other cases hold unranked without forcing.** A literal computed from its bindings
+**Three cases hold unranked without forcing.** A literal computed from its bindings
 waits for its binders unranked, under the readiness discipline above (`evaluatable_test`,
-`quote_test`). Incremental forward chaining over a *growing* transitive extent re-drives
-the join when the closure grows (the section below), so order independence — the first
-of the five properties — does not rest on the ranking picking the lead that re-drives it.
+`quote_test`). A literal a prover answers only once an open argument is bound waits the
+same way, at `provers/deferred-est`, so the event calculus reaches the calendar clock with
+both ends of an `instantBefore` bound in either order (`calendar_test`,
+`inertia-over-computed-moments-reads-the-clocks-order`). Incremental forward chaining over
+a *growing* transitive extent re-drives the join when the closure grows (the section
+below), so order independence — the first of the five properties — does not rest on the
+ranking picking the lead that re-drives it.
 
 ## Seeding a transitive closure (`special/transitive-seeds`)
 
@@ -2402,7 +2441,7 @@ Each of these datums re-joins the rules it moved, in full and not at a trigger p
 |---|---|---|
 | a permuting mark (`symmetric`, `commutative`, `commutativeInArgs`, `commutativeInArgAndRest`) | an antecedent on `P` or a super-predicate of it (`genls`, since the matcher asks whether any sub-predicate of the functor carries the mark) | `permuting-rejoin-rules` |
 | the `(transitive P)` declaration, or an edge of a declared walk (a fact on `P`, a sub-predicate, or an `inverse` partner) | an antecedent whose own functor is the declared one; over-approximating, since a re-join too many is a firing the TMS dedups and one too few depends on which hop arrived last | `transitive-rejoin-rules` |
-| a `genl` or `genlCx` edge, or a cover | an antecedent on the same relation (`special/closure-edge-relation`) | `closure-rejoin-rules` |
+| a `genl` or `genlCx` edge, or a cover | an antecedent on the same relation (`special/closure-edge-relation`); a `genl` edge between symbols joins from the pairs it adds instead (`edge-closure-starts`) | `closure-rejoins` |
 | a datum on a predicate a `SupportingProver` reads | `special/computed-reading-rules` | |
 | a datum on a lazy-forward rule's antecedent predicate, or the lazy rule itself | an antecedent on the functor the lazy rule concludes, and on through the lazy rules among those | `lazy-readers` |
 | a preservation declaration or its reach | `inherit/rejoin-rules` | |
@@ -2416,6 +2455,13 @@ stored fact (`integrate/commute-existing`), which reaches the rules as new conte
 already in canonical order is reached only by this re-join. `delta` is `planned-join`'s, nil
 for the full join. A rule is re-joined only when forward-capable and believed, because the
 index posts on storage.
+
+Inside a chaining run every arm but the closure arm owes its re-join
+(`chain/owe-computed-rejoins`): the rule gets one marker at the back of the agenda, and
+each datum that owes it before the marker runs shares that one join. n `genl` edges, each
+moving a rule on a predicate preserved along `genl`, cost one full join of the rule and
+not n (`lein perf`'s `preserved-reader-load`). The closure arm records its full joins per
+taxonomy generation (`chain/*closure-rejoins*`).
 
 ## Deferred antecedents in a forward join
 
@@ -2500,12 +2546,13 @@ work, and is what `deferred_forward_test` does.
 
 A prover that answers out of *stored facts* poses the question a deferred literal does
 not: the answer moves when the KB moves, and no antecedent of the rule names the facts it
-moved with. Five ship in this state, and the last two are in the default registry:
+moved with. Six ship in this state, and the last two are in the default registry:
 
 | prover | answers | reads |
 |---|---|---|
 | `stp/TemporalDistanceProver` | `temporalDistance` | every `temporalDistance` in the network, and the unit table |
 | `duration/DurationProver` | `totalDuration`, `overlapDuration` | `length`, the Allen relations, `startOf`/`endOf`, the metric constraints, the unit table |
+| `calendar/CalendarProver` | `startOf`, `endOf`, the instant orderings and the interval relations | the `(transitive instantBefore)` declaration, and a named interval's `startOf`/`endOf` |
 | `sign/SignProver` | `signOf`, `trendOf` | `signOf`, `trendOf`, `qualitativeSum` / `Difference` / `Product`, `derivativeOf`, `greaterInMagnitudeThan` |
 | `provers/QuantityProver` | the five measure comparisons | `dimensionOf`, `conversionFactor` |
 | `provers/TransitivePredicateProver` | every `(transitive P)` predicate this KB declares | the believed `P` edges its walk crosses — sub-predicate spellings and `inverse` partners included |
@@ -2525,9 +2572,8 @@ and each support element checked to be a handle as the answer is read. A prover 
 not implement it answers with an empty support, which is complete for a prover that reads
 nothing stored (`EvaluableProver`, `EvaluateProver`). `FactProver`, `SymmetricProver` and
 `InverseProver` read stored facts and name none of them (`provers/answers-with-support`),
-as does the calendar clock's reading of a named interval's stated bounds
-([time.md](time.md#the-calendar-clock)), and the forward join drops an empty-support answer
-from a prover that is not a `SupportingProver` (`chain/solve-computed`).
+and the forward join drops an empty-support answer from a prover that is not a
+`SupportingProver` (`chain/solve-computed`).
 
 Four things follow. The first three are the ones the qualitative and the inherited
 antecedents already get ([qcn.md](qcn.md), [inherit.md](inherit.md)):
@@ -2744,9 +2790,21 @@ taking the far conclusion and leaving the near one, and both arrival orders.
 `?args=(Tom Bob)`; `substitute` splices the tail back, so the same pattern with
 those bindings rebuilds `(parentOf Tom Bob)`. Ordinary sentences (no `.`) are
 unaffected — plain Clojure lists, no Java interop. This lets a rule quantify over an
-arbitrary predicate and its whole argument list. No rule in the shipped ontology uses
-one; `decontextualized_predicate`'s lift, which ranges over every argument list, is
-implemented in code rather than as a rule (see [contexts.md](contexts.md)).
+arbitrary predicate and its whole argument list: the argument-type rules in `core.txt`
+read `(?relation . ?args)`, and the structure relations take one (`(listOf ?list .
+?items)`). `decontextualized_predicate`'s lift, which ranges over every argument list,
+is implemented in code rather than as a rule (see [contexts.md](contexts.md)).
+
+The rest pattern has one shape, `sx/dotted?`: a list ending in `.` and one variable.
+Every reader of a dotted form (`unify`, `substitute`, the planner, the Rete alpha
+lookup, the canonicalizer, `StructureProver`) tests that predicate. Two rest patterns at
+the same point unify rest with rest, `(p . ?a)` with `(p . ?b)` giving `?a=?b`. The `.` is
+syntax and names no term. `assert`, `assert-inert`, `check`, an import and every read
+entry point refuse a `.` outside the shape as `:shape` (`sx/dot-problem`) under every
+`:naming` policy, so `(unary_predicate .)`, `(p . A)` and `(p ?x . ?a ?b)` reach no
+reader. A rest pattern stated as a fact is open, and `assert` refuses it as `:not-ground`.
+The marker keys no term index entry ([indexing.md](indexing.md#5-the-inverted-term-index)).
+`dot_test` asserts each of these.
 
 ## Quoted forms in unification
 
@@ -2815,6 +2873,25 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   cached closures (`genls`/`specs`, `context-up`/`context-down`). **Complete (100)** — the
   closure is authoritative, so `(genl dog ?y)` returns the full transitive set,
   and the engine skips facts/rules for it.
+- **GenlMonadProver** — `genlMonad` goals with at least one side ground, answered from
+  the `genlCx` closure between the two contexts' monads (a `CxTimeFn` slice's monad is its
+  first argument). **Complete (100)**: `genlMonad` is `not_assertible`, so no stored fact
+  answers it ([time.md](time.md)).
+- **ContextPartsProver** — `monad_context`, `cxMonadOf` and `cxTimeOf` goals with the
+  context ground, answered from the `natFormula` map of a slice's `cx/` constant: a
+  context that is not a slice is its own monad and covers `Forever`. `monad_context`
+  further asks `(context c)` at level 6. **Complete (100)**: all three are
+  `not_assertible` ([time.md](time.md#a-context-at-a-time-cxtimefn-and-the-monad)).
+- **SliceOrderProver** — `subtimeOf` and `subintervalOf` goals with at least one side
+  ground, answered from the `genlCx` closure between two slices of one monad: the time of
+  a slice that sees another lies within the other's. Each answered time takes the
+  relation's type, `time` or `time_interval`, at level 6. `:compute`, partial (50): stored facts, the
+  calendar and the interval calculus answer beside it.
+- **ForeverProver** — `(subintervalOf ?i Forever)` of each `time_interval` and
+  `(includesInstant Forever ?p)` of each `time_point`, solved at level 6, with an open
+  `Forever` side bound to `Forever`. Partial (50): a stored fact naming `Forever` answers
+  beside it, and the `:forever` channel keeps a calculus prover claiming the predicate from
+  answering such a goal alone.
 - **DisjointnessProver** — `disjoint` goals. `taxonomy/disjoint?` decides a ground one.
   An **open** one is enumerated from the declarations rather than from the vocabulary:
   a `(disjoint x y)` separates two subtrees and convicts `specs(x)` against `specs(y)`,
@@ -2925,7 +3002,8 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   `natFormula` statement, or on no statement, and a forward firing over it also rests on
   the antecedent that bound the formula. A backward rule or a conjunction runs an `argN`
   literal after the literal binding its formula, since `est-goal` reports `deferred-est`
-  for an open formula. Not complete (50): a stored `argN` fact answers beside it.
+  for an open formula. Complete (100): `argN` is `not_assertible`, so no stored fact
+  answers beside it.
 - **AggregateProver** — the five reductions over a query's solutions:
   `(agg/count ?n ?v Body)` binds `?n` to how many **distinct** `?v` satisfy
   `Body`, `Sum` / `Min` / `Max` / `Avg` to the arithmetic ones. `?v` is projected out,
@@ -3001,6 +3079,11 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   predicate the declaration sets against it, or by `Q` lying at or below both sides.
   Open-world: it fires on a stated tuple, never on an unprovable one. Ground only.
   `:lookup`, partial (50). See [taxonomy.md](taxonomy.md#predicate-metadata).
+- **StructureProver** — the four structure relations (`elementOf`, `cardinalityOf`,
+  `multiplicityOf`, `valueAt`) over a ground structure, and the five corresponding
+  predicates (`listOf`, `multisetOf`, `setOf`, `mapOf`, `entryOf`) in both directions.
+  Reads no stored fact: elements compare in the asking context's normal form. `:lookup`,
+  complete (100). See [nat.md](nat.md#a-data-structure-is-a-structural-term).
 - **CoveringProver** — a ground unary membership goal `(Part a)` for a `Part` some visible
   `(covering W …)` names: with `(W a)` believed and every other part believed **not** to
   hold of `a`, the remaining part holds. Explicit negation only, never an unprovable part.
@@ -3040,7 +3123,7 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   open is answered by the rules, and each answer's proof cites its rule.
 - **FactProver** — index matches (`matches-visible`). Partial (50).
 
-Thirty-two in all (`provers/default-provers`), and `provers/registry` is the live list — an application's own
+Thirty-seven in all (`provers/default-provers`), and `provers/registry` is the live list — an application's own
 provers sit beside them in the same atom.
 
 **No prover expands a rule.** Rule search is `core/query`'s, at a depth the caller

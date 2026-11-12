@@ -14,9 +14,9 @@ name: deep
 # contributor should not wait an hour for a verdict. That leaves five real gaps,
 # and this workflow is all five of them:
 #
-#   - **The `^:slow` half of the suite.** Thirty-two tests carry 78k of the
-#     suite's 280k assertions — the exhaustive cross-products and the randomized
-#     oracles. `lein gate` skips them, test.yml skips them, and a mark that
+#   - **The `^:slow` half of the suite.** These tests carry 47% of the suite's
+#     assertions (CONTRIBUTING.md §5 has the count) — the exhaustive
+#     cross-products and the randomized oracles. `lein gate` skips them, test.yml skips them, and a mark that
 #     defers a test is only honest if something eventually runs it. This is that
 #     something.
 #   - **The other seven backends.** Eight legal record×index pairs plus the
@@ -81,8 +81,8 @@ on:
 # check anyway — this job is the confirmation, and a confirmation is not worth a
 # month of minutes.
 #
-# The skip is silent by construction: a job whose `if` is false reports success,
-# so a run started on a billed copy goes green having done nothing. That is the
+# The skip is silent by construction: a job whose `if` is false is reported
+# `skipped`, so a run started on a billed copy runs no job. That is the
 # intended reading — "nothing to see here, ask the free copy" — and it is why
 # the condition is on every job rather than on the workflow.
 
@@ -432,8 +432,8 @@ jobs:
     # this workflow does work only where the minutes are free (see above `jobs:`)
     if: github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
-    # the instrumented `:default` suite took 157 minutes on 2026-10-19 and 342 on
-    # 2026-10-25; 360 is the hosted runner's limit
+    # the instrumented `:default` suite took 157 minutes on 2026-10-19 and 298 on
+    # 2026-11-09 in one JVM; 360 is the hosted runner's limit
     timeout-minutes: 360
     steps:
       # No credentials left in .git/config: nothing here pushes, and a token
@@ -468,8 +468,14 @@ jobs:
       # half again. The floor of 78 is ten points under the 88% of forms the tree
       # measures, so it fails on a collapse (a test namespace that stopped
       # running, an instrumentation that stopped taking) and not on drift.
+      #
+      # Pass 1 runs seven namespaces in one JVM, then pass 2 runs the rest in two JVMs on
+      # the runner's four cores, each over the namespaces scripts/ci-shard.sh's memory
+      # weights assign it (run 42549554706's 297 instrumented minutes split 147 and 150
+      # that way under cloverage's own probe). The merge writes the report and the
+      # verdict over the three JVMs' hits; scripts/coverage.sh's header has the passes.
       - name: Instrumented suite
-        run: ./scripts/coverage.sh :default --fail-under 78
+        run: ./scripts/coverage.sh :default --jobs 2 --fail-under 78
 
       - name: Upload report
         if: always()
@@ -478,6 +484,6 @@ jobs:
           name: coverage
           path: |
             target/coverage/
-            testbench/coverage/run.log
+            testbench/coverage/
           if-no-files-found: ignore
           retention-days: 14

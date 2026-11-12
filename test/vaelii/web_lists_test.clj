@@ -14,7 +14,7 @@
 
 (def ^:dynamic *app* nil)
 
-;;   CxUniverse  (genl mammal_t thing) (genl dog_t mammal_t) (disjoint mammal_t reptile_t)
+;;   CxUniverse  (genl mammal_t thing) (genl dog_t mammal_t) M (disjoint mammal_t reptile_t)
 ;;     ├─ CxL    (reptile_t Rex) default
 ;;     └─ CxR    (dog_t Rex) monotonic
 ;;   CxJ sees CxL and CxR, so the default member is defeated there.
@@ -23,13 +23,14 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (doseq [[c up] '[[CxL CxUniverse] [CxR CxUniverse] [CxJ CxL] [CxJ CxR]]]
         (v/assert kb (list 'genlCx c up) 'CxUniverse))
-      (doseq [s '[(genl mammal_t thing) (genl dog_t mammal_t) (disjoint mammal_t reptile_t)
+      (doseq [s '[(genl mammal_t thing) (disjoint mammal_t reptile_t)
                   (unary_predicate lonely_t) (unary_predicate thingly_t)
                   (genl thingly_t thing)]]
         (v/assert kb s 'CxUniverse))
+      (v/assert kb '(genl dog_t mammal_t) 'CxUniverse {:strength :monotonic})
       (v/assert kb '(reptile_t Rex) 'CxL)
       (v/assert kb '(dog_t Rex) 'CxR {:strength :monotonic})
       (v/assert kb '(wobbles W) 'CxDilemma)
@@ -169,7 +170,7 @@
   (let [other (v/open-kb tu/plain-memory-space)]
     (try
       (run-list "defeats")
-      (jobs/wait (:id (first (jobs/jobs))) 60000)
+      (jobs/wait (:id (first (jobs/jobs))))
       (is (re-find #"Last run: " (:body (GET "/lists"))))
       (is (not (re-find #"Last run: "
                         (:body ((web/app other) {:request-method :get :uri "/lists"})))))

@@ -8,7 +8,6 @@
             [vaelii.core :as v]
             [vaelii.impl.calendar :as cal]
             [vaelii.impl.datetime :as dt]
-            [vaelii.impl.plan :as plan]
             [vaelii.impl.point :as point]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.stp :as stp]
@@ -20,7 +19,7 @@
 ;; The KB is built per test because a test registers reasoners, which a KB shared
 ;; across tests would keep.
 (use-fixtures :each (tu/neutral-fresh
-                     #(doto (tu/fresh)
+                     #(doto (tu/empty-kb)
                         (tu/load-core-with! '[[CxChange "middle"]])
                         (v/add-prover (cal/calendar-prover)))))
 
@@ -190,11 +189,13 @@
 
 ;; ---- what the answer rests on, and what it does not displace ------------
 
-(tu/deftest-kb a-computed-answer-rests-on-nothing-stored
-  (testing "the prover reports no support, which is the claim that no retraction reaches it"
-    (is (not (satisfies? prover-types/SupportingProver (cal/calendar-prover))))
-    (is (= [#{}] (mapv second (provers/solve-goal-with-support
-                               kb '(during (MonthFn 2000 3) (YearFn 2000)) C)))))
+(tu/deftest-kb a-computed-answer-rests-on-the-time-vocabulary-declaration
+  (testing "the answer's support is the declaration the prover's scoping reads"
+    (is (satisfies? prover-types/SupportingProver (cal/calendar-prover)))
+    (is (some? (v/handle-of kb '(transitive instantBefore) 'CxUniverse)))
+    (is (= [#{(v/handle-of kb '(transitive instantBefore) 'CxUniverse)}]
+           (mapv second (provers/solve-goal-with-support
+                         kb '(during (MonthFn 2000 3) (YearFn 2000)) C)))))
   (testing "and there is no sentex to have a handle — the fixture's net-neutrality check
             is the other half of this"
     (v/ask kb '(startOf (YearFn 2000) ?i) C)
@@ -228,41 +229,146 @@
 
 ;; ---- where the event calculus stops -------------------------------------
 
-(tu/deftest-kb inertia-over-computed-moments-still-needs-its-edges-written-down
-  ;; Forced to the shipped planner rather than swept, and the reason is this test's own
-  ;; subject.  Where the event calculus stops is where it reaches `instantBefore` with
-  ;; one end OPEN, and which end is open is a fact about the order the conjuncts run
-  ;; in: ranked, the open literal is reached first and the calendar prover declines it;
-  ;; unranked, it is reached last with both ends already ground and the clock answers,
-  ;; deriving a `holdsAt` this test exists to say the theory does not reach.
-  (tu/with-shipped [#'plan/*enabled*]
-    ;; docs/time.md, "What `clipped` can see"
-    (let [W  'CxWell
-          t3 '(InstantFn 2000 1 15 15 0 0)
-          t4 '(InstantFn 2000 1 15 16 0 0)
-          t5 '(InstantFn 2000 1 15 17 0 0)
-          t6 '(InstantFn 2000 1 15 18 0 0)]
-      (tu/with-terms [AsleepFn Rex RexSleeps RexWakes]
-        (let [F (list AsleepFn Rex)]
-          (v/assert kb (list 'result AsleepFn 'fluent) W)
-          (v/assert kb (list 'happens RexSleeps t3) W)
-          (v/assert kb (list 'initiates RexSleeps F t3) W)
-          (v/assert kb (list 'happens RexWakes t5) W)
-          (v/assert kb (list 'terminates RexWakes F t5) W)
-          (testing "the clock orders the moments, and the theory reads none of it"
-            (is (v/ask? kb (list 'instantBefore t3 t5) W))
-            (is (empty? (v/sentexes-matching kb (list 'clipped '?a F '?b) W)))
-            (is (not (v/query? kb (list 'holdsAt F t4) W {:max-depth 3}))))
-          (doseq [[a b] [[t3 t4] [t4 t5] [t5 t6]]]
-            (v/assert kb (list 'instantBefore a b) W))
-          (testing "state the links and the whole theory reads them, exactly as it does
-                    for an afternoon of named moments"
+(tu/deftest-kb inertia-over-computed-moments-reads-the-clocks-order
+  ;; docs/time.md, "What `clipped` can see"
+  (let [W  'CxWell
+        t3 '(InstantFn 2000 1 15 15 0 0)
+        t4 '(InstantFn 2000 1 15 16 0 0)
+        t5 '(InstantFn 2000 1 15 17 0 0)
+        t6 '(InstantFn 2000 1 15 18 0 0)]
+    (tu/with-terms [AsleepFn Rex RexSleeps RexWakes]
+      (let [F (list AsleepFn Rex)]
+        (v/assert kb (list 'result AsleepFn 'fluent) W)
+        (v/assert kb (list 'happens RexSleeps t3) W)
+        (v/assert kb (list 'initiates RexSleeps F t3) W)
+        (v/assert kb (list 'happens RexWakes t5) W)
+        (let [ends (v/assert kb (list 'terminates RexWakes F t5) W)]
+          (testing "the clock orders the moments, so the fluent holds until the event that ends it"
             (is (v/query? kb (list 'holdsAt F t4) W {:max-depth 3}))
             (is (not (v/query? kb (list 'holdsAt F t6) W {:max-depth 3})))
-            (is (seq (v/sentexes-matching kb (list 'clipped t3 F t6) W))))
+            (is (empty? (v/sentexes-matching kb (list 'clipped '?a F '?b) W))
+                "no stored edge orders the moments, so no reason is stored"))
+          (doseq [[a b] [[t3 t4] [t4 t5] [t5 t6]]]
+            (v/assert kb (list 'instantBefore a b) W))
+          (testing "stated links store the reason, and the answers do not move"
+            (is (seq (v/sentexes-matching kb (list 'clipped t3 F t6) W)))
+            (is (v/query? kb (list 'holdsAt F t4) W {:max-depth 3}))
+            (is (not (v/query? kb (list 'holdsAt F t6) W {:max-depth 3}))))
           (v/retract! kb (v/handle-of kb (list 'instantBefore t5 t6) W))
-          (testing "and retracting a link takes the derived reason back with it"
-            (is (empty? (v/sentexes-matching kb (list 'clipped t3 F t6) W)))))))))
+          (testing "retracting a link takes the stored reason back, and the clock still orders the end"
+            (is (empty? (v/sentexes-matching kb (list 'clipped t3 F t6) W)))
+            (is (not (v/query? kb (list 'holdsAt F t6) W {:max-depth 3}))))
+          (v/assert kb (list 'instantBefore t5 t6) W)
+          (v/retract! kb ends)
+          (testing "retracting the end gives the fluent back past it"
+            (is (empty? (v/sentexes-matching kb (list 'clipped t3 F t6) W)))
+            (is (v/query? kb (list 'holdsAt F t6) W {:max-depth 3}))))))))
+
+(tu/deftest-kb an-initially-fluent-stops-at-an-event-the-clock-orders
+  (let [W  'CxWell
+        t4 '(InstantFn 2000 1 15 16 0 0)
+        t5 '(InstantFn 2000 1 15 17 0 0)
+        t6 '(InstantFn 2000 1 15 18 0 0)]
+    (tu/with-terms [IndoorsFn Rex RexLeaves]
+      (let [G (list IndoorsFn Rex)]
+        (v/assert kb (list 'result IndoorsFn 'fluent) W)
+        (v/assert kb (list 'initially G) W)
+        (v/assert kb (list 'happens RexLeaves t5) W)
+        (let [ends (v/assert kb (list 'terminates RexLeaves G t5) W)]
+          (testing "the fluent holds until the event the clock orders before the moment asked"
+            (is (v/query? kb (list 'holdsAt G t4) W {:max-depth 3}))
+            (is (not (v/query? kb (list 'holdsAt G t6) W {:max-depth 3}))))
+          (v/retract! kb ends)
+          (testing "retracting the end gives the fluent back past it"
+            (is (v/query? kb (list 'holdsAt G t6) W {:max-depth 3}))))))))
+
+(tu/deftest-kb a-NAF-conjunct-the-clock-answers-only-bound-waits-for-its-binder
+  ;; The clock literals come first as written, and the join runs them after the generator
+  ;; binds ?t.
+  (let [t3 '(InstantFn 2000 1 15 15 0 0)
+        t5 '(InstantFn 2000 1 15 17 0 0)
+        t6 '(InstantFn 2000 1 15 18 0 0)]
+    (tu/with-terms [rang Bell]
+      (v/assert kb (list rang Bell t5) 'CxWell)
+      (let [nothing-rang (fn [a b]
+                           (list 'unknown
+                                 (list 'thereExists '?t
+                                       (list 'and (list 'instantBefore a '?t)
+                                             (list 'instantBefore '?t b)
+                                             (list rang Bell '?t)))))]
+        (is (not (v/ask? kb (nothing-rang t3 t6) 'CxWell)))
+        (is (v/ask? kb (nothing-rang t6 t3) 'CxWell))))))
+
+(tu/deftest-kb a-rule-over-stated-bounds-fires-after-its-binder-in-any-order
+  (tu/with-terms [tagged early JanJun AprSep]
+    (let [at     (fn [m] (list 'InstantFn 2000 m 1 0 0 0))
+          fired? #(boolean (seq (v/sentexes-matching kb (list early JanJun) C)))]
+      (doseq [[i s e] [[JanJun 1 7] [AprSep 4 10]]]
+        (v/assert kb (list 'startOf i (at s)) C)
+        (v/assert kb (list 'endOf i (at e)) C))
+      (v/assert kb (list tagged JanJun) C)
+      (v/assert kb (tu/fwd [(list tagged '?x) (list 'overlaps '?x AprSep)] (list early '?x)) C)
+      (testing "the rule arriving last joins the open overlaps literal after tagged binds ?x"
+        (is (fired?)))
+      (let [second-end (v/assert kb (list 'endOf JanJun (at 3)) C)]
+        (testing "a second end leaves the interval no extent"
+          (is (not (fired?))))
+        (v/retract! kb second-end)
+        (testing "retracting the second end re-joins the rule"
+          (is (fired?)))))))
+
+(tu/deftest-kb the-functional-at-instant-audit-asks-at-each-event-s-moment
+  (let [[t3 t4 t5] (for [h [3 4 5]] (list 'InstantFn 2000 1 1 h 0 0))
+        W          'CxWell]
+    (tu/with-terms [HostStateFn Svc BoxA BoxB SwapA SwapB Other]
+      (v/assert kb (list 'reifiable_function HostStateFn) W)
+      (v/assert kb (list 'result HostStateFn 'fluent) W)
+      (v/assert kb (list 'functional_at_instant HostStateFn) W)
+      (doseq [[e t box] [[SwapA t3 BoxA] [SwapB t4 BoxB]]]
+        (v/assert kb (list 'happens e t) W)
+        (v/assert kb (list 'initiates e (list HostStateFn Svc box) t) W))
+      (v/assert kb (list 'happens Other t5) W)
+      (testing "no instantBefore names t5, and the clock orders it after both starts"
+        (is (= #{{:function HostStateFn :subject Svc :instant t5 :values #{BoxA BoxB} :kind :merge}}
+               (v/functional-at-instant-violations kb HostStateFn W)))))))
+
+(tu/deftest-kb an-open-instant-before-from-a-named-moment-answers-in-any-conjunct-order
+  (v/add-reasoner kb :point)
+  (let [W  'CxWell
+        c2 '(InstantFn 2000 1 5 0 0 0)]
+    (tu/with-terms [T1 T9 RexWakes]
+      (v/assert kb (list 'time_point T1) W)
+      (v/assert kb (list 'time_point T9) W)
+      (v/assert kb (list 'instantBefore T1 '(InstantFn 2000 1 1 0 0 0)) W)
+      (v/assert kb (list 'instantBefore '(InstantFn 2000 1 20 0 0 0) T9) W)
+      (v/assert kb (list 'happens RexWakes c2) W)
+      (testing "the point network orders c2, which only a happens fact names, between T1 and T9"
+        (is (v/ask? kb (list 'instantBefore T1 c2) W))
+        (is (v/ask? kb (list 'instantBefore c2 T9) W)))
+      (testing "c2 is no node, so the open instantBefore waits for happens to bind it"
+        (doseq [body [[(list 'happens '?e '?i) (list 'instantBefore T1 '?i) (list 'instantBefore '?i T9)]
+                      [(list 'instantBefore T1 '?i) (list 'instantBefore '?i T9) (list 'happens '?e '?i)]]
+                :let [exists (list 'thereExists '(?e ?i) (cons 'and body))
+                      order  (pr-str (mapv first body))]]
+          (is (true? (v/ask? kb exists W)) order)
+          (is (false? (v/ask? kb (list 'unknown exists) W)) order)
+          (is (= #{{'?e RexWakes '?i c2}} (set (v/query kb body W))) order))))))
+
+(tu/deftest-kb an-open-allen-goal-beside-a-calendar-term-answers-in-any-conjunct-order
+  (v/add-reasoner kb :allen)
+  (let [W 'CxWell, jan '(MonthFn 2000 1)]
+    (tu/with-terms [M Bell taggedQ]
+      (v/assert kb (list 'during M '(DayFn 2000 1 5)) W)
+      (v/assert kb (list taggedQ Bell jan) W)
+      (testing "the network places M in January, which no interval fact names"
+        (is (v/ask? kb (list 'during M jan) W)))
+      (testing "January is no node, so the open during waits for taggedQ to bind it"
+        (doseq [body [[(list taggedQ Bell '?m) (list 'during M '?m)]
+                      [(list 'during M '?m) (list taggedQ Bell '?m)]]
+                :let [exists (list 'thereExists '?m (cons 'and body))
+                      order  (pr-str (mapv first body))]]
+          (is (true? (v/ask? kb exists W)) order)
+          (is (= #{{'?m jan}} (set (v/query kb body W))) order))))))
 
 ;; ---- the vocabulary the answers are written in --------------------------
 

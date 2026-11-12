@@ -494,7 +494,8 @@
 ;; fails this test" rule above.  `matches_hierarchical_test` holds the set the three lead
 ;; sides must agree on and `lead_side_cost_test` holds the shape (`:auto` flat in the
 ;; hierarchy width, the scoped lead not) — the win this constant buys, so an updated count
-;; here cannot hide its regression.
+;; here cannot hide its regression.  The eternal check (`special/eternal-witnesses`) reads one
+;; `:argument-slot` per stored literal, asserted or concluded.
 ;;
 ;; **One `:opposed` read per settle is the negation placement's presence check**: the count of the
 ;; bodies stored in both polarities (`reads/stores-opposed?`, `chain/place-nogoods!`).  The
@@ -540,10 +541,10 @@
 ;; predicates, of the stored functors and of their length sets, which is the `+1` in
 ;; `:arity-binding`, `:predicate-extent` and `:trie-counts` of the fact workloads.
 ;;
-;; **One `:mint` read per settle pass**, in every workload: the mint withdrawal's presence
-;; check reads the mint family's count (`reads/stored-mint-count-global`).  No record these
-;; settles move can subsume a mint, so nothing else reads the family, `declared`'s filed
-;; mints included.
+;; **One `:mint` read per settle**: the mint withdrawal's presence check, or the same count
+;; read up front for a pass the settle skips (`settle/owes-nothing-up-front?`), which reads
+;; the `defeat` count once where the pass reads it twice: one `:trie-counts` less a skip.
+;; No record these settles move subsumes a mint, `declared`'s filed mints included.
 ;; `nat-orphan-teardown` settles twice per retraction.
 
 (def ^:private budgets
@@ -555,8 +556,8 @@
   [{:name    :plain
     :build   plain
     :sentexes 100
-    :reads   {:arity-binding 3 :exception-index 100 :opposed 100 :predicate-extent 1104
-              :rule-index 100 :term-index 2 :trie-counts 701 :trie-lookup 100 :mint 100}
+    :reads   {:arity-binding 3 :argument-slot 100 :exception-index 100 :opposed 100 :predicate-extent 1004
+              :rule-index 100 :term-index 2 :trie-counts 602 :trie-lookup 100 :mint 100}
     :writes  {:levels 500 :terms 400 :roots 1300 :term-names 202 :slots 300}}
 
    ;; **One membership read per assert above `plain`**: a unary fact's argument is read
@@ -576,8 +577,8 @@
    {:name    :membership
     :build   membership
     :sentexes 100
-    :reads   {:arity-binding 3 :argument-root 100 :argument-slot 100 :exception-index 100
-              :opposed 100 :predicate-extent 1500 :rule-index 100 :tax-support 100 :trie-counts 900
+    :reads   {:arity-binding 3 :argument-root 100 :argument-slot 200 :exception-index 100
+              :opposed 100 :predicate-extent 1000 :rule-index 100 :tax-support 100 :trie-counts 600
               :trie-lookup 100 :mint 100}
     :writes  {:levels 400 :terms 300 :roots 1000 :term-names 100 :slots 300}}
 
@@ -587,8 +588,8 @@
    {:name    :deep-membership
     :build   deep-membership
     :sentexes 100
-    :reads   {:arity-binding 11 :argument-root 100 :argument-slot 100 :exception-index 100
-              :opposed 100 :predicate-extent 1500 :rule-index 100 :tax-support 100 :trie-counts 900
+    :reads   {:arity-binding 11 :argument-root 100 :argument-slot 200 :exception-index 100
+              :opposed 100 :predicate-extent 1000 :rule-index 100 :tax-support 100 :trie-counts 600
               :trie-lookup 100 :mint 100}
     :writes  {:levels 400 :terms 300 :roots 1000 :term-names 100 :slots 300}}
 
@@ -601,9 +602,9 @@
    {:name    :relation-membership
     :build   relation-membership
     :sentexes 100
-    :reads   {:arity-binding 3 :argument-root 100 :argument-slot 100 :exception-index 100
-              :opposed 100 :predicate-extent 1500 :rule-index 100 :tax-support 100 :term-index 400
-              :trie-counts 900 :trie-lookup 100 :mint 100}
+    :reads   {:arity-binding 3 :argument-root 100 :argument-slot 200 :exception-index 100
+              :opposed 100 :predicate-extent 1000 :rule-index 100 :tax-support 100 :term-index 400
+              :trie-counts 600 :trie-lookup 100 :mint 100}
     :writes  {:levels 400 :terms 300 :roots 1000 :term-names 100 :slots 300}}
 
    ;; **The workload the entailment moves most.**  Every predicate is declared, so the shipped
@@ -622,12 +623,13 @@
    ;; stored, more specific membership withholds it (`checks/subsumed-mint`), which reads the
    ;; term's memberships once: the +100 `:argument-slot`.  A withheld mint skips the
    ;; admission checks, whose cover arm asks the provers once per cover over the type
-   ;; (`lein perf`'s `withheld-mint-beside-covers`).
+   ;; (`lein perf`'s `withheld-mint-beside-covers`).  The +100 `:predicate-extent` is
+   ;; `special/drop-replaced-routes!`'s route-edge count.
    {:name    :declared
     :build   declared
     :sentexes 100
-    :reads   {:arity-binding 2 :argument-root 200 :argument-slot 200 :exception-index 100
-              :opposed 100 :predicate-extent 1700 :rule-index 100 :trie-counts 2300
+    :reads   {:arity-binding 3 :argument-root 100 :argument-slot 200 :exception-index 100
+              :opposed 100 :predicate-extent 1800 :rule-index 100 :trie-counts 2100
               :trie-lookup 300 :mint 100}
     :writes  {:levels 500 :terms 300 :roots 1600 :term-names 0 :slots 300}}
 
@@ -644,8 +646,8 @@
    {:name    :negative
     :build   negative
     :sentexes 100
-    :reads   {:arity-binding 1 :exception-index 200 :opposed 100 :predicate-extent 1003
-              :rule-index 100 :tax-support 100 :term-index 2 :trie-counts 701 :trie-lookup 100 :mint 100}
+    :reads   {:arity-binding 1 :argument-slot 100 :exception-index 200 :opposed 100 :predicate-extent 1003
+              :rule-index 100 :tax-support 100 :term-index 2 :trie-counts 602 :trie-lookup 100 :mint 100}
     :writes  {:levels 400 :terms 400 :roots 1000 :term-names 103 :slots 101}}
 
    ;; **One `:trie-lookup` and one `:predicate-extent` read per assert above the unmarked
@@ -661,8 +663,8 @@
    {:name    :functional-in-arg-arity-2
     :build   functional-in-arg-arity-2
     :sentexes 100
-    :reads   {:arity-binding 2 :argument-root 100 :argument-slot 200 :exception-index 100
-              :opposed 100 :predicate-extent 1600 :rule-index 100 :trie-counts 1900
+    :reads   {:arity-binding 2 :argument-root 100 :argument-slot 100 :exception-index 100
+              :opposed 100 :predicate-extent 1500 :rule-index 100 :trie-counts 1700
               :trie-lookup 200 :mint 100}
     :writes  {:levels 500 :terms 400 :roots 1300 :term-names 200 :slots 300}}
 
@@ -672,8 +674,8 @@
    {:name    :compound
     :build   compound
     :sentexes 100
-    :reads   {:arity-binding 3 :exception-index 100 :opposed 100 :predicate-extent 1104
-              :rule-index 100 :term-index 2 :trie-counts 701 :trie-lookup 100 :mint 100}
+    :reads   {:arity-binding 3 :argument-slot 100 :exception-index 100 :opposed 100 :predicate-extent 1004
+              :rule-index 100 :term-index 2 :trie-counts 602 :trie-lookup 100 :mint 100}
     :writes  {:levels 800 :terms 600 :roots 1300 :term-names 104 :slots 300}}
 
    ;; 200 indexed sentexes for 100 asserts — the rule concludes one apiece
@@ -692,8 +694,8 @@
    {:name    :rule-fired
     :build   rule-fired
     :sentexes 200
-    :reads   {:arity-binding 4 :exception-index 300 :opposed 100 :predicate-extent 1700
-              :rule-index 300 :trie-counts 1000 :trie-lookup 200 :mint 100}
+    :reads   {:arity-binding 4 :argument-slot 200 :exception-index 300 :opposed 100 :predicate-extent 1500
+              :rule-index 300 :trie-counts 900 :trie-lookup 200 :mint 100}
     :writes  {:levels 1000 :terms 800 :roots 2600 :term-names 200 :slots 600}}
 
    ;; **The vocabulary write, and the first budget here that is not about a fact.**  What it
@@ -709,7 +711,7 @@
    {:name    :taxonomy-edge
     :build   taxonomy-edge
     :sentexes 100
-    :reads   {:arity-binding 100 :exception-index 300 :opposed 100 :predicate-extent 1400
+    :reads   {:arity-binding 100 :argument-slot 100 :exception-index 300 :opposed 100 :predicate-extent 1300
               :rule-index 400 :term-index 200 :trie-counts 900 :trie-lookup 100 :mint 100}
     :writes  {:levels 500 :terms 400 :roots 1300 :term-names 101 :slots 201}}
 
@@ -722,9 +724,8 @@
    ;; `:trie-lookup` 100: `(arity P n)` is a binary tuple, and no converse mark stands
    ;; over `arity`, so it reads no converse (`decide/note-candidate!`).
    ;;
-   ;; `:argument-root` and `:argument-slot` 100 each: the settle reads whether a stored
-   ;; `(unary_predicate P)` a declaration entails stands for P's length to withdraw
-   ;; (`special/withdrawn-type-entailments`): one read of each per declaration.
+   ;; `:argument-root` 100 and half of `:argument-slot` 200, one of each per declaration: the settle
+   ;; reads whether a `(unary_predicate P)` it entails stands (`special/withdrawn-type-entailments`).
    ;;
    ;; Half of the `:arity-binding` 800: a binding to a length other than one moves
    ;; whether P mints, so the settle reads P's IN bindings to ask whether a declaration
@@ -740,8 +741,8 @@
    {:name    :arity-declaration
     :build   arity-declaration
     :sentexes 100
-    :reads   {:arity-binding 800 :argument-root 100 :argument-slot 100 :exception-index 100
-              :opposed 100 :predicate-extent 1200 :rule-index 100 :term-index 200
+    :reads   {:arity-binding 800 :argument-root 100 :argument-slot 200 :exception-index 100
+              :opposed 100 :predicate-extent 1100 :rule-index 100 :term-index 200
               :trie-counts 900 :trie-lookup 100 :mint 200}
     :writes  {:levels 500 :terms 300 :roots 1300 :term-names 1 :slots 400}}
 
@@ -765,16 +766,16 @@
    {:name    :preserved-edges-4
     :build   preserved-edges-4
     :sentexes 100
-    :reads   {:arity-binding 100 :argument-root 2 :argument-slot 600 :exception-index 300 :opposed 100
-              :predicate-extent 3900 :rule-index 700 :term-index 200 :trie-counts 900
+    :reads   {:arity-binding 100 :argument-root 2 :argument-slot 700 :exception-index 300 :opposed 100
+              :predicate-extent 3800 :rule-index 700 :term-index 200 :trie-counts 900
               :trie-lookup 100 :mint 100}
     :writes  {:levels 500 :terms 400 :roots 1300 :term-names 200 :slots 300}}
 
    {:name    :preserved-edges-32
     :build   preserved-edges-32
     :sentexes 100
-    :reads   {:arity-binding 100 :argument-root 2 :argument-slot 600 :exception-index 300 :opposed 100
-              :predicate-extent 3900 :rule-index 700 :term-index 200 :trie-counts 900
+    :reads   {:arity-binding 100 :argument-root 2 :argument-slot 700 :exception-index 300 :opposed 100
+              :predicate-extent 3800 :rule-index 700 :term-index 200 :trie-counts 900
               :trie-lookup 100 :mint 100}
     :writes  {:levels 500 :terms 400 :roots 1300 :term-names 200 :slots 300}}])
 
@@ -788,8 +789,8 @@
     :build   plain-teardown
     :sentexes 0
     :unindexed 100
-    :reads   {:exception-index 100 :opposed 100 :predicate-extent 700
-              :tax-support 3400 :trie-counts 700 :mint 100}
+    :reads   {:exception-index 100 :opposed 100 :predicate-extent 900
+              :trie-counts 600 :mint 100}
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 1102 :term-names 202 :slots 201 :dead 302}}
 
@@ -798,15 +799,15 @@
     :build   rule-derived-teardown
     :sentexes 0
     :unindexed 200
-    :reads   {:exception-index 200 :opposed 100 :predicate-extent 900
-              :tax-support 3400 :trie-counts 700 :mint 100}
+    :reads   {:exception-index 200 :opposed 100 :predicate-extent 1100
+              :trie-counts 600 :mint 100}
     :writes  {}
     :retracts {:levels 1000 :terms 800 :roots 2204 :term-names 200 :slots 402 :dead 602}}
 
    ;; **The workload the orphan sweep's scope is priced by.**  The sweep reads the removed
    ;; region, not what the KB holds, so a bystander NAT population costs a teardown nothing:
-   ;; 8 predicate-extent and 0 term-index per retraction (`plain-teardown`'s own 7 and the
-   ;; correspondence presence check), where a sweep over the KB's population read 108 and 100.
+   ;; 9 predicate-extent and 0 term-index per retraction, `plain-teardown`'s own, where a
+   ;; sweep over the KB's population read about 100 more of each.
    ;; `:term-index` and `:trie-lookup` are absent rather than asserted at 0: a family the
    ;; workload never reads is a key the tally never emits, so one read of either fails this
    ;; budget.
@@ -814,15 +815,15 @@
     :build   nat-bystander-teardown
     :sentexes 0
     :unindexed 100
-    :reads   {:exception-index 100 :opposed 100 :predicate-extent 700
-              :tax-support 3400 :trie-counts 300 :mint 100}
+    :reads   {:exception-index 100 :opposed 100 :predicate-extent 900
+              :trie-counts 200 :mint 100}
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 1003 :term-names 102 :slots 102 :dead 301}}
 
    ;; 200 unindexed for 100 retractions: the use, plus the `natFormula` its removal orphaned.
    ;; That count is the workload's point: a sweep that stops finding the orphan unindexes 100
    ;; and leaves a raw `nat/` symbol behind, so the narrowing is admissible only while this
-   ;; stays 200. The reads are the region's, 15 predicate-extent and 3 term-index per
+   ;; stays 200. The reads are the region's, 17 predicate-extent and 3 term-index per
    ;; retraction, and the population does not enter them. The orphan question settles on the
    ;; `natFormula` clause, since a collected constant has its map and nothing else left, so it
    ;; reads neither the expression nor the declarations (`nat/minted-for`, held behind a delay).
@@ -832,24 +833,23 @@
     :build   nat-orphan-teardown
     :sentexes 0
     :unindexed 200
-    :reads   {:exception-index 200 :opposed 200 :predicate-extent 1300
-              :term-index 300 :tax-support 6800 :trie-counts 600 :mint 200}
+    :reads   {:exception-index 200 :opposed 200 :predicate-extent 1700
+              :term-index 300 :trie-counts 400 :mint 200}
     :writes  {}
-    :retracts {:levels 1200 :terms 1000 :roots 2204 :term-names 303 :slots 402 :dead 802}}
+    :retracts {:levels 1200 :terms 1000 :roots 2504 :term-names 303 :slots 402 :dead 802}}
 
    ;; **The workload the supersession reconcile's scope is priced by**, read by `:trie-lookup`:
    ;; the reconcile probes the store for each displaced spelling's restatement. A reconcile
    ;; scoped to the KB reads 10,000 of them here (100 merges x 100 retractions), and one scoped
-   ;; to the moved region reads none. Everything else is `plain-teardown`: 700
-   ;; `:predicate-extent`, 100 `:exception-index`, 100 `:opposed`, 700 `:trie-counts`; the
-   ;; victims' shape moves `:term-names`, `:slots` and `:dead`. `:term-index` and `:trie-lookup`
-   ;; are absent rather than asserted at 0, so one read of either fails this budget.
+   ;; to the moved region reads none. Every other read is `plain-teardown`'s; the victims' shape
+   ;; moves `:term-names`, `:slots` and `:dead`. `:term-index` and `:trie-lookup` are absent
+   ;; rather than asserted at 0, so one read of either fails this budget.
    {:name    :merge-bystander-teardown
     :build   merge-bystander-teardown
     :sentexes 0
     :unindexed 100
-    :reads   {:exception-index 100 :opposed 100 :predicate-extent 700
-              :tax-support 3400 :trie-counts 700 :mint 100}
+    :reads   {:exception-index 100 :opposed 100 :predicate-extent 900
+              :trie-counts 600 :mint 100}
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 1003 :term-names 102 :slots 102 :dead 301}}])
 

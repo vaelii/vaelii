@@ -57,8 +57,8 @@ with the tools installed inside the distribution. The suite's tests over a
 ```bash
 lein lint    # glossary, versions, doc links, doc drift, conflict markers, clj-kondo,
              # cljfmt, shellcheck, reflect (a compile pass), unused (a public var nothing
-             # calls), prose, derived (a stateful def with no register row) — twelve
-             # checks, run in three concurrent lanes
+             # calls), prose, derived (a stateful def with no register row), doc-size
+             # (docstring and comment lines over a file's budget), in three concurrent lanes
 lein fix     # reformats in place; cljfmt is the only auto-repairable check
 lein gate    # lint alongside the suite — the check before you push
 lein release-gate  # ...and the uberjar and the perf claims, before a tag or a perf-sensitive land
@@ -367,7 +367,7 @@ of the six public namespaces is frozen with its arglists in
 `test/golden/api-surface.edn`, and a keyword-set var (an option-key set such as
 `assert-opt-keys`, or `vaelii.serve/ops`) with its members; the protocols a doc invites
 an out-of-tree implementation of — the storage contracts, `KvBackend`, `Solver`,
-`Prover`, `Provider` — are frozen in `test/golden/spi-protocols.edn`. Removing a var or a
+`Prover` — are frozen in `test/golden/spi-protocols.edn`. Removing a var or a
 keyword-set member, or changing an arglist, is class 1 and takes the label with a migration
 line. Adding one is Additive. **Both move the
 golden**, which is the point: a golden that only moved on a break would be regenerated
@@ -530,13 +530,15 @@ sentence on one pass, with no inference about what a metaphor stands for or what
 pronoun points at. Eight rules:
 
 1. **Name the subject in every sentence.** No `it`, `that`, `this` or `the same` whose
-   referent is a preceding clause rather than a noun already written down.
+   referent is a preceding clause rather than a noun already written down. A docstring's
+   first sentence may open with a verb whose subject is the function (`Answers …`,
+   `Returns …`), as `clojure.core`'s docstrings do.
 2. **No pseudo-cleft.** Not "What keeps the wrap on its nippy release is the
    expected-version check." Write "The expected-version check keeps the wrap on the nippy
    release it was written against."
 3. **No verbless sentence and no fragment.** Every sentence has a subject and a finite
-   verb. Not "Two ways to be wrong, and they are not the same one." Write "This throws
-   for two distinct reasons."
+   verb, except the docstring opening rule 1 allows. Not "Two ways to be wrong, and they
+   are not the same one." Write "This throws for two distinct reasons."
 4. **No metaphor for a mechanism.** Name the mechanism:
 
    | Metaphor | What it actually is |
@@ -590,23 +592,29 @@ pronoun points at. Eight rules:
 
 5. **Mechanism first, reason second.** State what the code does, then why.
 6. **One claim per sentence.** No second claim chained onto the first with a subordinate
-   clause.
+   clause. The prose check's P7 flags a sentence of 40 or more words.
 7. **Use the glossary term or a plain noun.** No coined synonym for a term that already
    has an entry, and no new coinage without one.
 8. **No evaluative adjective without a number behind it** — load-bearing, honest, cheap,
    loud, worth writing down, earns its keep, the tempting alternative. Where the claim
    is quantitative, cite the test or bench that measures it (§8).
 
-**`lein lint`'s `prose` check** (`scripts/check-prose.py`) enforces the mechanical part:
-P1 banned metaphors, P2 banned rhetoric, P3 pseudo-cleft, P4 a copula with `are` straight
-after it, P5 the five words of the last table above other than `view`, and P6 `view` outside the context
-sense. It reads `src/`, `test/`, `bench/`, `docs/`, `scripts/`, `resources/kb/`
-and the root markdown against `scripts/prose-baseline.txt`, a per-file budget
-that only
-shrinks — a file absent from the baseline is held at zero, so new and rewritten files
-are clean by default. The sentence-form rules are held by review. This section states the
-rule, so it quotes the banned tokens in order to ban them and is exempt by name, the
-arrangement §3.6 and §3.7 already use.
+**`lein lint`'s `prose` check** (`scripts/check-prose.py`) enforces the mechanical part
+with seven codes. P1 flags banned metaphors, P2 banned rhetoric and P3 a pseudo-cleft. P4
+flags a copula with `are` straight after it. P5 flags the five words of the last table
+above other than `view`, and P6 flags `view` outside the context sense. P7 flags a prose
+sentence of 40 or more words in a markdown paragraph or list item, a comment or a
+docstring. The check reads `src/`, `test/`,
+`bench/`, `docs/`, `handbook/`, `scripts/`, `resources/kb/` and the root markdown. P1–P6
+hits count against `scripts/prose-baseline.txt` and P7 hits against
+`scripts/prose-length-baseline.txt`, each a per-file budget. A file absent from a budget
+is held at zero, so new and rewritten files are clean by default. `--update` lowers each
+listed count to the file's hits. It never raises a count, and it never adds a file the
+budget does not list. Raising a count or adding a file is a hand edit carrying its
+reason. `--seed` writes a budget file that does not exist yet and leaves an existing one
+as it is. The sentence-form rules are held by review. This section states the rule, so it
+quotes the banned tokens in order to ban them and is exempt by name, the arrangement §3.6
+and §3.7 already use.
 
 P4 is not a style rule but a guard on the other three. P1 and P2 name what to write
 instead, and a substitution made across the tree at once is how a batch of their hits
@@ -617,7 +625,9 @@ a pass leaves behind.
 must still read or a changelog entry must quote: the old keys in the Unreleased
 *Migration:* lines, `:stamp-inert` in a development build's `ops.log`, the `:window`
 dump framing, a durable fork's `::base-pinned` key and `matrix.plan`'s `roster` key. Each
-line carries its reason, and any other hit fails.
+line carries its reason, and any other hit fails. `scripts/prose-length-baseline.txt`
+holds a P7 count for each file that has sentences of 40 or more words. `--update` lowers
+a file's count after its sentences are split.
 
 ## 4. Adding things
 
@@ -691,6 +701,13 @@ mocks — the in-memory stores by default, with no external dependency.
 - **All KB scaffolding lives in `vaelii.test-util`**, which owns the `*kb*` var — a test
   namespace declares none of its own. Reach the KB through `tu/deftest-kb` (a `deftest`
   whose body has `kb` bound) or `tu/with-kb`.
+  `tu/fresh` loads the shared `kb/upper/interface-rules.txt`, so `args` has the same
+  meaning without loading the full ontology. Use `tu/empty-kb` for a deliberately
+  rule-free store, synthetic rule census, or destination for a dump-restoring loader
+  (`tu/load-core!`, `tu/load-starter!`, `tu/load-dumped!`); `tu/load-interface!` adds
+  those rules to an existing test KB without copying their declarations, and recovers
+  first an overlay fork opened unrecovered over a populated base, whose write would
+  otherwise be refused.
 - **Tests are net-neutral.** A test never permanently adds terms: it invents gensym'd
   temporaries with `tu/with-terms`, whose role is inferred from the symbol's own shape
   (§3.1) and whose generated name embeds it, so a failure names what it was about. The
@@ -720,11 +737,13 @@ mocks — the in-memory stores by default, with no external dependency.
   `tu/query-engine-override`, rather than standing aside — so `config_expected_delta`
   expects no shortfall anywhere, and any shortfall is a skip.
 - **Run both locally rather than asking CI for them.** The `deep` workflow runs the
-  same sixteen configurations, and one run of it is 209 job-minutes — the local
+  same sixteen configurations, and one run of it is 840 to 1,760 job-minutes
+  (`deep.yml`) — the local
   scripts cost wall time and nothing else, so they are the required run and CI is
   the confirmation.
 - **`^:slow` marks a test costing about a second or more on its own**, and `lein test`
-  skips those by default. They carry over a quarter of the suite's assertions, and a
+  skips those by default. On 2026-10-30 the 98 `^:slow` tests carried
+  381,179 of the 815,316 assertions `:all` ran (46.8%), and a
   change to the files they drive owes them: when the diff about to land touches the
   index, the TMS or inference (`SLOW_OWED_RE` in `scripts/gate.sh`), a `lein gate`
   run at `:default` prints "slow owed", names the files and `lein gate --all`, and blocks
@@ -757,8 +776,9 @@ mocks — the in-memory stores by default, with no external dependency.
   names its own four durable backends and never asks for the one the row is testing, so
   every row of `lein test-matrix` walks the same 9,717 offsets to reach the same answer.
   (A sweep row's env switch does reach the engine — those alter roots process-wide — but
-  over a three-assertion corpus it is not asking a new question.) One test carries the
-  mark today. `lein test-fuzz` runs it, and so does `deep`; nothing else does at all.
+  over a three-assertion corpus it is not asking a new question.) Two tests carry the
+  mark: the truncation sweep and the operation-log crash-cut sweep. `lein test-fuzz` runs
+  them, and so does `deep`; nothing else does at all.
   Each such sweep keeps a sampled twin at `:default` — a handful of seeded offsets
   through the same harness, so the thing that would otherwise rot silently between deep
   runs is the *harness*, and that part still runs on every commit.
@@ -877,6 +897,10 @@ remote shell. See [`.github/SECURITY.md`](.github/SECURITY.md).
 
   A subject says what changed, literally. It is not an aphorism about the change
   (§3.10).
+- **A commit that fixes an issue says so** with a `Fixes #NN` line, one per issue, or
+  `Refs #NN` for a partial fix. GitHub links the commit to the issue and closes the issue
+  when the commit reaches `develop`. The changelog entry for the change links the issue:
+  `([#NN](https://github.com/vaelii/vaelii/issues/NN))`.
 - **Sign off every commit** with `git commit -s`. This appends the `Signed-off-by:`
   trailer required by the [DCO](DCO); the DCO app blocks unsigned pull requests from
   merging. See §9.4.

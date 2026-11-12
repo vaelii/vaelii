@@ -74,6 +74,7 @@
   answer with the probe it already has (a hash lookup, a binary search, a bitmap test)."
   (:require [clojure.set :as set]
             [taoensso.trove :as trove]
+            [vaelii.impl.datetime :as dt]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.profile :as prof]
@@ -89,7 +90,7 @@
   is a number that is checked.  Bump it whenever a key shape changes: a new family, a renamed
   tag, a different arity, or a different value type at an existing key.  The families are in
   `index-families` and docs/indexing.md."
-  17)
+  20)
 
 (defn apply-op
   "Apply one `kv-batch` write op to map `m`, returning `[m' reply]`.  Only
@@ -149,6 +150,7 @@
         opposed-by-functor {:class :access-path
                             :class-evidence {:oracle '[vaelii.index-test/the-opposed-bodies-by-functor-follow-the-opposed-bodies]
                                              :via [:opposed-bodies]}}
+        calendar   (scan "context-nat/reconcile-link's calendar side, on a fact giving a point-order link")
         rules      (sole "chain/fire-rules-for" "resolution/concluding-rule-handles" "the solve's program")
         mints      (sole "special's mint withdrawal and its genlCx edge routes")
         supporters (sole "the taxonomy's supporter reads" "reindex")]
@@ -171,6 +173,11 @@
      :unary-denied-types (name-set :sentex membership)
      :shape-tuple (ctrie :sentex (assoc arity :root :shape-lengths))
      :shape-lengths (name-set :sentex arity)
+     :calendar (ctrie :sentex (assoc calendar :root :calendar-buckets))
+     :calendar-buckets (name-set :sentex calendar)
+     :nat-argument (ctrie :sentex {:canon? true :class :access-path
+                                   :class-evidence {:oracle '[vaelii.index-test/the-nat-argument-family-agrees-with-the-term-index]
+                                                    :via [:term-index]}})
      :self-tuple (ctrie :sentex (scan "decide.tuple's irreflexivity candidates, on a fact"))
      :opposed (ctrie :sentex (assoc opposed :root :opposed-bodies))
      :opposed-bodies (name-set :sentex opposed)
@@ -220,13 +227,12 @@
 ;; see the ragged-path note in the namespace docstring.
 (defn- leaf-key  [prefix] [:trie :handles prefix])
 
-;; the context root — the trie is ordered [pred args… ctx], so it narrows only
-;; left-to-right: it cannot count "context C" (the deepest level) without fixing everything
-;; to its left.  A flat set; cardinality is the set's own size.
+;; the context root — the trie is ordered [pred args… ctx], so it cannot count "context C",
+;; its deepest level, without fixing everything to its left.  A flat set.
 (defn- ctx-key  [c]     [:context-root c])
 
 ;; ---- the count tries that end in the context -----------------------------
-;; Thirteen families share one shape: a count trie whose last level is the context.  A
+;; Fifteen families share one shape: a count trie whose last level is the context.  A
 ;; `node` is the path above the context, and each node is three keys under the family's
 ;; `tag` — its count (how many handles sit under it, in every context), its children (the
 ;; contexts that state one) and, per child, the leaf holding that context's handles:
@@ -242,6 +248,8 @@
 ;;   :self-tuple        node [pred]            `pred`'s ground positive binary self
 ;;                                             tuples `(pred a a)`
 ;;   :shape-tuple       node [f n]             `f`'s positive facts of `n` arguments
+;;   :calendar          node [f frame y m]     `f`'s facts naming a time with a point in it
+;;   :nat-argument      node [f pos term]      the `(natFormula K (f …))` maps, `term` at `pos`
 ;;   :arity-binding     node [pred kind value] the facts binding `pred`'s length
 ;;                                             (`sx/arity-binding`): kind `:exact`,
 ;;                                             `:min` or `:var`, value nil for `:var`
@@ -342,11 +350,13 @@
 (defn- unary-denied-key [pred] [:unary-denied pred])
 (def ^:private unary-denied-types-key [(root-of :unary-denied)])
 
-;; The length set: per functor, the lengths its positive facts are stored at, the root
-;; level of the `:shape-tuple` trie, so a length leaves with its node's last fact.  Its
-;; members are numbers.
+;; The length set, the root level of `:shape-tuple`: per functor, the lengths its positive
+;; facts are stored at, so a length leaves with its node's last fact.
 (def ^:private shape-lengths-tag (root-of :shape-tuple))
 (defn- shape-lengths-key [f]   [shape-lengths-tag f])
+
+(def ^:private calendar-buckets-tag (root-of :calendar))
+(defn- calendar-buckets-key [f] [calendar-buckets-tag f])
 
 ;; The arity bindings' first two levels: `arity-bound-key` holds every predicate with a
 ;; stored length binding, which the arity family's ancestor cut probes once per type it
@@ -371,6 +381,15 @@
               (rest b)))
       [])))
 
+(defn- nat-argument-nodes
+  "`[[f pos term] ...]` - the `:nat-argument` nodes a positive `(natFormula K (f a1 …))` map
+  enters, one per argument `arg-slots` keys; empty for any other sentex."
+  [sentex]
+  (let [s (:sentence sentex)]
+    (if (and (nil? (:antecedent sentex)) (seq? s) (= 3 (count s)) (= 'natFormula (first s)))
+      (arg-slots {:sentence (nth s 2)})
+      [])))
+
 (defn- self-tuple?
   "Is `sentex` a ground positive binary tuple `(p a a)` with a plain symbol functor?"
   [sentex]
@@ -380,31 +399,15 @@
                     (and (symbol? f) (not= 'not f) (not (sx/variable? f)) (= a b)
                          (sx/ground-term? s)))))))
 
-(defn- arity-binding
-  "`[pred kind value]` of a fact `sentex` binding a relation's length
-  (`sx/arity-binding`), else nil."
-  [sentex]
-  (when (nil? (:antecedent sentex))
-    (sx/arity-binding (:sentence sentex))))
-
-(defn- fact-shape
-  "`[f n]` for a positive fact of `n` arguments with a plain symbol functor, else nil."
-  [sentex]
-  (let [s (:sentence sentex)]
-    (when (and (nil? (:antecedent sentex)) (seq? s) (<= 2 (count s)) (not (sx/negation? s)))
-      (let [f (first s)]
-        (when (and (symbol? f) (not (sx/variable? f)))
-          [f (dec (count s))])))))
-
 (defn- fact-nodes
   "`[[tag node] ...]` - the count-trie nodes a sentex enters.  A fact enters its predicate
-  extent, then the argument-root node of each indexable top-level argument, a ground
-  positive binary self tuple its `:self-tuple` node, a positive fact its `:shape-tuple`
-  node, and a length binding its `:arity-binding` node.  A negative
-  fact enters its positive body's nodes (polarity lives in the record), so
-  `sentexes-with-functor` covers both polarities.  A rule enters the rule extent's
-  `[:rule]` node, and its `[:solve]` / `[:lazy]` node when that engine is among its
-  `:engines`; its predicates live in the rule indexes.  Empty for a non-fact."
+  extent and the argument-root node of each indexable top-level argument.  A ground positive
+  binary self tuple enters its `:self-tuple` node, a positive fact its `:shape-tuple` node
+  and a length binding its `:arity-binding` node.  A fact naming a time enters the
+  `:calendar` node `[f frame y m]` of each point, and a `natFormula` map its
+  `nat-argument-nodes`.  A negative fact enters its positive body's nodes.  A rule enters the
+  rule extent's `[:rule]` node, and its `[:solve]` / `[:lazy]` node when that engine is
+  among its `:engines`.  Empty for a non-fact."
   [sentex]
   (if (some? (:antecedent sentex))
     (cond-> [[:rule-extent [:rule]]]
@@ -412,14 +415,17 @@
       (contains? (:engines sentex) :lazy)  (conj [:rule-extent [:lazy]]))
     (let [b (sx/body sentex)]
       (if (and (sequential? b) (seq b) (symbol? (first b)))
-        (let [ab (arity-binding sentex)
-              sh (fact-shape sentex)]
-          (cond-> (into [[:predicate-extent [(first b)]]]
-                        (map (fn [node] [:argument-root node]))
-                        (arg-slots sentex))
-            (self-tuple? sentex) (conj [:self-tuple [(first b)]])
-            sh                   (conj [:shape-tuple sh])
-            ab                   (conj [:arity-binding ab])))
+        (let [ab (sx/fact-arity-binding sentex)
+              sh (sx/fact-shape sentex)]
+          (-> (into [[:predicate-extent [(first b)]]]
+                    (map (fn [node] [:argument-root node]))
+                    (arg-slots sentex))
+              (cond->
+               (self-tuple? sentex) (conj [:self-tuple [(first b)]])
+               sh                   (conj [:shape-tuple sh])
+               ab                   (conj [:arity-binding ab]))
+              (into (map (fn [[frame y m]] [:calendar [(first b) frame y m]])) (dt/month-buckets b))
+              (into (map (fn [node] [:nat-argument node])) (nat-argument-nodes sentex))))
         []))))
 
 (defn root-keys
@@ -614,16 +620,24 @@
   "Conj onto the transient `ops` the write op entering `sentex`'s length in its functor's
   lengths.  No read."
   [ops sentex]
-  (if-let [[f n] (fact-shape sentex)]
+  (if-let [[f n] (sx/fact-shape sentex)]
     (conj! ops [:add-to-set (shape-lengths-key f) n])
     ops))
+
+(defn- calendar-adds
+  "Conj onto the transient `ops` the write ops entering the month of each `:calendar` node
+  `[f frame y m]` of `fnodes` (`fact-nodes`) in `f`'s months.  No read."
+  [ops fnodes]
+  (reduce (fn [ops [tag [f frame y m]]]
+            (if (identical? :calendar tag) (conj! ops [:add-to-set (calendar-buckets-key f) [frame y m]]) ops))
+          ops fnodes))
 
 (defn- binding-adds
   "Write ops entering a length binding's `[kind value]` in its predicate's kinds where
   its node holds no handle yet, and the predicate in `arity-bound-key` with its first
   kind, read before the write."
   [backend sentex]
-  (when-let [[p kind v :as node] (arity-binding sentex)]
+  (when-let [[p kind v :as node] (sx/fact-arity-binding sentex)]
     (when (zero? (->count (kv-get backend (node-count-key :arity-binding node))))
       (let [k (arity-binding-kinds-key p)]
         (cond-> [[:add-to-set k [kind v]]]
@@ -638,6 +652,13 @@
     (let [k (arity-binding-kinds-key p)]
       (cond-> [[:remove-from-set k [kind v]]]
         (== 1 (long (kv-count backend k))) (conj [:remove-from-set arity-bound-key p])))))
+
+(defn- calendar-retires
+  "Write ops taking the month of each `:calendar` node `[f frame y m]` `retires` (from
+  `node-retires`) says empties out of `f`'s months."
+  [retires]
+  (for [{:keys [tag dies?] [f frame y m] :node} retires :when (and dies? (identical? :calendar tag))]
+    [:remove-from-set (calendar-buckets-key f) [frame y m]]))
 
 (defn- shape-retires
   "Write ops taking a length out of its functor's lengths with the `:shape-tuple` node
@@ -926,6 +947,7 @@
         ops     (-> ops
                     (slot-adds backend sentex fnodes)                         ; reads the pre-write postings
                     (shape-adds sentex)
+                    (calendar-adds fnodes)
                     (as-> ops (reduce conj! ops (binding-adds backend sentex)))
                     (as-> ops (reduce conj! ops (denied-adds backend trie sentex))))] ; the trie
     {:ops    ops
@@ -952,6 +974,7 @@
         mrules  (mint-rule-retires sentex handle)
         names   (term-names-retires backend terms handle)   ; likewise
         slots   (-> (slot-retires backend sentex retires) (into (shape-retires retires))
+                    (into (calendar-retires retires))
                     (into (binding-retires backend retires))
                     (into (denied-retires backend trie sentex)))]
     {:ops    (concat (map (fn [t] [:remove-from-set (term-key t) handle]) terms)

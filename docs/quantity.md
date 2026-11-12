@@ -254,4 +254,6 @@ and still be believed the same.
   ([duration.md](duration.md)), which reads `normalize-quantity` and this tolerance but
   adds nothing to either.
 - Derived-unit algebra (`m/s`, `kg·m`) and transitive conversion chains.
+- An offset unit (Celsius against Kelvin): `conversionFactor` is a multiply, and no
+  declaration carries an additive term.
 - Binding mode: `(sameQuantity ?x M)` enumerates nothing; it is refused.

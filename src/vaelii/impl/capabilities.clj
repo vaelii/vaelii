@@ -146,6 +146,23 @@
     (doseq [[id prov] entries] (p/put-provenance store id prov)))
   nil)
 
+(defn delete-sentexes
+  "Delete every sentex record in `ids` — the store's bulk delete when it has one, else
+  `delete-sentex!` per handle, in the order given."
+  [store ids]
+  (if (has? p/BulkDeleting store)
+    (p/delete-sentex-batch store ids)
+    (run! #(p/delete-sentex! store %) ids))
+  nil)
+
+(defn delete-justifications
+  "Delete every justification record in `ids` — `delete-sentexes`'s twin."
+  [store ids]
+  (if (has? p/BulkDeleting store)
+    (p/delete-justification-batch store ids)
+    (run! #(p/delete-justification! store %) ids))
+  nil)
+
 (defn loop-sink
   "The sink every store has: `put` per record, and the premise mark the caller would have
   made itself.  It is the whole of what a store without `p/BulkLoading` does, kept in one
@@ -181,3 +198,28 @@
    (if (has? p/BulkLoading store)
      (p/open-justification-sink store opts)
      (loop-sink store p/put-justification false))))
+
+(defn reserve-ranges
+  "`reserved`, a sorted map of disjoint `lo → hi` handle ranges (nil for none), with the
+  `[lo hi)` pairs of `ranges` merged in: overlapping and adjacent ranges join, and an
+  empty one is dropped.  What a `HandleReserving` store keeps."
+  [reserved ranges]
+  (let [rs (sort-by first (concat (seq reserved)
+                                  (keep (fn [[lo hi]] (when (< (long lo) (long hi)) [(long lo) (long hi)]))
+                                        ranges)))]
+    (when (seq rs)
+      (into (sorted-map)
+            (reduce (fn [acc [lo hi]]
+                      (let [[plo phi] (peek acc)]
+                        (if (and plo (<= (long lo) (long phi)))
+                          (conj (pop acc) [plo (max (long phi) (long hi))])
+                          (conj acc [lo hi]))))
+                    [] rs)))))
+
+(defn skip-reserved
+  "The least handle at or above `h` that no range of `reserved` (`reserve-ranges`, or nil)
+  holds."
+  ^long [reserved ^long h]
+  (if-let [[_ hi] (when reserved (first (rsubseq reserved <= h)))]
+    (max h (long hi))
+    h))

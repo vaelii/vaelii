@@ -251,6 +251,67 @@
                (set (map #(get % '?who)
                          (:results (v/prove-within kb goal CxFam {:max-depth 1}))))))))))
 
+(tu/deftest-kb prove-within-reports-a-depth-cut-on-either-engine
+  (tu/with-terms [parentOf grandparentOf Tom Bob Ann Zed CxFam]
+    (grandparent-kb kb parentOf grandparentOf Tom Bob Ann Zed CxFam)
+    (let [goal  (list grandparentOf Tom '?who)
+          drive (fn [budget]
+                  (loop [r (v/prove-within kb goal CxFam budget), acc #{}]
+                    (let [acc (into acc (map #(get % '?who)) (:results r))]
+                      (if (:resume r)
+                        (recur (v/resume r budget) acc)
+                        [acc r]))))]
+      (doseq [engine [:dfs :inference]]
+        (binding [v/*query-engine* engine]
+          (testing (str engine " at a depth that refuses the rule")
+            (let [[acc r] (drive {:max-depth 0})]
+              (is (= :complete (:status r)))
+              (is (empty? acc))
+              (is (true? (:truncated? r)))))
+          (testing (str engine " at a depth the derivation fits in, resumed a result at a time")
+            (let [[acc r] (drive {:max-depth 1 :max-results 1})]
+              (is (= #{Ann Zed} acc))
+              (is (false? (:truncated? r))))))))))
+
+(tu/deftest-kb prove-within-reports-no-depth-cut-at-a-goal-its-path-already-holds
+  (tu/with-terms [aRel bRel Ann Bob CxLoop]
+    (v/assert kb (list 'implies (list aRel '?x '?y) (list bRel '?y '?x)) CxLoop)
+    (v/assert kb (list 'implies (list bRel '?x '?y) (list aRel '?y '?x)) CxLoop)
+    (v/assert kb (list aRel Ann Bob) CxLoop)
+    (doseq [engine [:dfs :inference]]
+      (binding [v/*query-engine* engine]
+        (let [r (v/prove-within kb (list bRel Bob '?w) CxLoop {:max-depth 2})]
+          (is (= #{Ann} (set (map #(get % '?w) (:results r)))) (str engine))
+          (is (= (= :inference engine) (:truncated? r))
+              (str engine ": (bRel Bob ?w) recurs at the bound; the DFS's loop check refuses"
+                   " it at any depth, and the node engine reports a cyclic rule set truncated"
+                   " at every depth (docs/inference.md)")))))))
+
+(tu/deftest-kb prove-under-refuse-depth-cut-refuses-a-cut-and-answers-a-cycle-on-either-engine
+  (tu/with-terms [parentOf grandparentOf Tom Bob Ann Zed CxFam aRel bRel CxLoop]
+    (grandparent-kb kb parentOf grandparentOf Tom Bob Ann Zed CxFam)
+    (v/assert kb (list 'implies (list aRel '?x '?y) (list bRel '?y '?x)) CxLoop)
+    (v/assert kb (list 'implies (list bRel '?x '?y) (list aRel '?y '?x)) CxLoop)
+    (v/assert kb (list aRel Ann Bob) CxLoop)
+    (let [goal    (list grandparentOf Tom '?who)
+          refused #((juxt :type :status) (tu/refusal-data %))
+          who     #(set (map (fn [b] (get b %2)) %1))]
+      (doseq [engine [:dfs :inference]]
+        (binding [v/*query-engine* engine]
+          (testing (str engine " at a depth that cuts the rule")
+            (is (= [:budget-exhausted :depth-cut]
+                   (refused #(v/prove kb goal CxFam {:max-depth 0 :refuse-depth-cut? true}))
+                   (refused #(v/provable? kb goal CxFam {:max-depth 0 :refuse-depth-cut? true}))))
+            (is (empty? (v/prove kb goal CxFam {:max-depth 0})) "without the flag it prunes"))
+          (testing (str engine " at a depth the derivation fits in")
+            (is (= #{Ann Zed} (who (v/prove kb goal CxFam {:max-depth 1 :refuse-depth-cut? true})
+                                   '?who)))
+            (is (true? (v/provable? kb goal CxFam {:max-depth 1 :refuse-depth-cut? true}))))
+          (testing (str engine " over a cyclic rule set the loop check cuts before the depth")
+            (is (= #{Ann} (who (v/prove kb (list bRel Bob '?w) CxLoop
+                                        {:max-depth 2 :refuse-depth-cut? true})
+                               '?w)))))))))
+
 (tu/deftest-kb prove-bounds-carries-the-term-growth-ceiling
   (tu/with-terms [p SuccFn A CxRaise]
     ;; (implies (p (SuccFn ?x)) (p ?x)): every expansion wraps one more SuccFn, so the

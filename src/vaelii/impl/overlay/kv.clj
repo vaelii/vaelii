@@ -359,3 +359,43 @@
   `vaelii.impl.overlay.mount`, which refuses a base that is itself a fork."
   [backend]
   (instance? OverlayKv backend))
+
+(defn- layer-candidates
+  "`{k members}` over the scratch overlays `layers`: each key one holds a value or a removal
+  record at, with the set members it names there, `::scalar` for a counter, and `::all` for
+  a key one tombstoned."
+  [layers]
+  (let [add (fn [acc k ms] (if (= ::all (acc k)) acc (update acc k #(into (if (set? %) % #{}) ms))))]
+    (reduce (fn [acc [k v]]
+              (cond
+                (= k deleted-keys-key) (reduce #(assoc %1 %2 ::all) acc v)
+                (= k cleared-key) acc
+                (reserved-key? k) (add acc (second k) v)
+                (set? v) (add acc k v)
+                :else (if (contains? acc k) acc (assoc acc k ::scalar))))
+            {} (mapcat p/kv-entries layers))))
+
+(defn align-ops
+  "The `kv-batch` ops that make `target`'s merged contents equal `source`'s at every key
+  the scratch overlays `layers` wrote, both `KvBackend`s that merge: a counter is put, or
+  deleted where `source` holds none, and a set gains or loses each member a layer names
+  there, or each member of either side at a key a layer tombstoned.  Applying the ops
+  twice leaves the contents they left."
+  [target source layers]
+  (into []
+        (mapcat
+         (fn [[k ms]]
+           (let [nv (p/kv-get source k) tv (p/kv-get target k)]
+             (if (or (number? nv) (number? tv))
+               (cond (= (some-> nv long) (some-> tv long)) nil
+                     (nil? nv) [[:delete k]]
+                     :else [[:put k (long nv)]])
+               (let [ms (if (= ::all ms)
+                          (into (set (p/kv-members source k)) (p/kv-members target k))
+                          (when (set? ms) ms))]
+                 (keep (fn [m]
+                         (let [in-source? (p/kv-member? source k m) in-target? (p/kv-member? target k m)]
+                           (cond (and in-source? (not in-target?)) [:add-to-set k m]
+                                 (and in-target? (not in-source?)) [:remove-from-set k m])))
+                       ms))))))
+        (layer-candidates layers)))

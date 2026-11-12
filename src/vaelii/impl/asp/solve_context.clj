@@ -199,20 +199,12 @@
   [kb base]
   (filter rules/assumption? (program-rules kb base)))
 
-(defn- registry-bounds
-  "`res/prove` bounds whose leaf is the prover registry (`provers/solve-goal`, costed by
-  `provers/registry-est-override`), so a grounding join reaches an antecedent a registered
-  prover or evaluatable answers, as `vaelii.core/query` does."
-  [kb base]
-  {:leaf-solver  provers/solve-goal
-   :est-override (provers/registry-est-override kb base)})
-
 (defn- ground-heads
   "The distinct ground choice heads: each assumptionRule's antecedents proved in `base`
-  over `registry-bounds`, its head substituted per solution the rule's `exceptWhen` guard
+  over `provers/registry-bounds`, its head substituted per solution the rule's `exceptWhen` guard
   admits."
   [kb base]
-  (let [bounds (registry-bounds kb base)]
+  (let [bounds (provers/registry-bounds kb base)]
     (distinct
      (for [rsx (assumption-rules kb base)
            :let [ante  (vec (:antecedent rsx))
@@ -391,7 +383,7 @@
   [kb base head->id program-preds]
   (let [choice-preds (into program-preds (map first) (keys head->id))
         idx          (choice-arg-index (keys head->id))
-        bounds       (registry-bounds kb base)]
+        bounds       (provers/registry-bounds kb base)]
     (for [rsx (constraint-rules kb base)
           :let [body   (vec (:antecedent rsx))
                 conseq (:consequent rsx)
@@ -449,7 +441,7 @@
                                                  (rules/constraint-of rsx))))
                       {:type :not-well-formed :sentence (sx/sentence-of rsx)})))
     (let [rows (distinct (ground-constraint-body kb base body (list* 'sumKey weight counted group-vars)
-                                                 preds head->id idx (registry-bounds kb base)))
+                                                 preds head->id idx (provers/registry-bounds kb base)))
           _    (check-sum-weights rsx (map (fn [[_ _ [_ w]]] w) rows) false)
           grouped (group-by (fn [[_ _ [_ _ _ & g]]] (zipmap group-vars g)) rows)]
       (if (and (empty? rows) (empty? group-vars))
@@ -678,7 +670,7 @@
                       {:type :choice-head-not-positive :negated (vec neg) :base base})))
     (when (seq heads)
       (let [head->id (into {} (map-indexed (fn [i s] [s (inc i)])) heads)
-            bounds   (registry-bounds kb base)
+            bounds   (provers/registry-bounds kb base)
             srules   (solve-rules kb base)
             dpreds   (into #{} (map #(first (:consequent %))) srules)
             preds    (into dpreds (map first) heads)

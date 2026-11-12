@@ -5,10 +5,11 @@
 # Format: <count>\t<path>\t<reason>.  A file absent from this list is held at ZERO,
 # so a new file and a rewritten one are clean by default.
 #
-# The ratchet: `--update` LOWERS a count and never raises one.  Raising a count is a
-# hand edit that carries its reason on the line, so a regression shows up in the diff
-# rather than in a refresh.  A file whose real count is below its budget fails until it
-# is lowered with `--update`, which is what keeps the number on this page moving down.
+# The ratchet: `--update` LOWERS a count.  It never raises one, and it never adds a file
+# this list does not name.  Raising a count or adding a file is a hand edit that carries
+# its reason on the line, so a regression shows up in the diff rather than in a refresh.
+# A file whose real count is below its budget fails until it is lowered with `--update`,
+# which is what keeps the number on this page moving down.
 #
 # The entries are P5 names the code must still read or a changelog entry must quote
 # (CONTRIBUTING.md §3.10); every other file is at ZERO.

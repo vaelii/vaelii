@@ -3,10 +3,11 @@
 ;; physical-structure relations tangiblePartOf/locatedIn/madeOf, tangiblePartOf's twin
 ;; intangiblePartOf for things without mass, the event relations
 ;; doneBy/performedBy and input/output, and the two type-level relations
-;; largerThan/partType. Loaded into CxUniverse with the rest of kb/upper/.
+;; typeLargerThan/partType. Loaded into CxUniverse with the rest of kb/upper/.
 
 (comment body_part "A part an organism grew. It stays a body part once transplanted into another organism or shed from its own.")
 (unary_predicate body_part)
+(set/monotonic (time_invariant_relation body_part))
 (positiveExampleComment body_part "a wing")
 (positiveExampleComment body_part "a heart")
 (positiveExampleComment body_part "a leaf")
@@ -14,7 +15,7 @@
 ;; says every biological thing is one of the two.  The separating declaration below
 ;; installs each part's genl edge to biological; core.txt states organism's as a
 ;; sentence too.
-(separating biological organism body_part)
+(set/monotonic (separating biological organism body_part))
 ;; A leg of lamb or a chicken wing is food and a body part at once.
 (orthogonal food body_part)
 ;; An orthogonal is not inherited along genl, so each overlapping pair is stated or
@@ -25,13 +26,15 @@
 ;; formation substance.  Bread, an apple and sea salt are a made, a natural and a
 ;; formation food, and an apple is biological food.  An engineered bacterium is made and
 ;; biological.
+(unary_predicate origin_type)
 (comment origin_type "A type of tangible by where its form came from: made or natural.")
 (metatype origin_type)
-(genl origin_type type)
-(typeGenl origin_type tangible)
+(set/monotonic (genl origin_type type))
+(set/monotonic (typeGenl origin_type tangible))
 ;; Each membership is definitional, so origin_type is forced-monotonic and
 ;; typeOrthogonal's rule concludes an orthogonal from one alone (docs/nmtms.md).
 (forced_monotonic_predicate origin_type)
+(set/monotonic (time_invariant_relation origin_type))
 (origin_type made)
 (origin_type natural)
 (partitionedByType tangible origin_type)
@@ -56,73 +59,91 @@
 
 (comment building "An artifact that is a fixed structure enclosing space.")
 (unary_predicate building)
+(set/monotonic (time_invariant_relation building))
 
 (comment clothing "An artifact worn on the body.")
 (unary_predicate clothing)
-(genl clothing made)
+(set/monotonic (time_invariant_relation clothing))
+(set/monotonic (genl clothing made))
 
-(comment container "A made thing whose function is to hold other objects in its interior. Every container is made and hollow.")
+(comment container "A made thing whose function is to hold other objects in its interior. Every container is made, and made to be hollow.")
 (unary_predicate container)
+(set/monotonic (time_invariant_relation container))
 (positiveExampleComment container "a cup")
 (positiveExampleComment container "a box")
 (positiveExampleComment container "a bag")
 (positiveExampleComment container "a building")
-(genl container made)
-(genl container hollow)
+(set/monotonic (genl container made))
+;; A container is made to be hollow, and a box crushed flat is still a box.  So hollow
+;; follows from container by a default rule rather than a genl edge, and a stated denial
+;; overrides it.  The rule-macro suggestion to make it an edge is declined.
+(set/defaultRule (set/forwardRule (implies (and (container ?x)) (hollow ?x))))
+(declined_rule_macro (genl container hollow))
 
 (comment context "A context: the second half of a sentex, and what a sentence holds in.")
+(set/monotonic (time_invariant_relation context))
 
 (comment electronic_device "A mechanism built around an electronic circuit: the circuit and the parts that carry it make up the whole object. An organism with an implanted circuit contains an electronic device but is not one. Defined by how it is built, not by what it does, so it is rigid: a dead phone or an unplugged board is still one.")
 (unary_predicate electronic_device)
+(set/monotonic (time_invariant_relation electronic_device))
 (positiveExampleComment electronic_device "a phone")
 (positiveExampleComment electronic_device "a router")
 (positiveExampleComment electronic_device "a computer")
 (positiveExampleComment electronic_device "a bare circuit board")
 (positiveExampleComment electronic_device "a dead phone")
 (positiveExampleComment electronic_device "an unplugged board")
-(genl electronic_device made)
-(genl electronic_device mechanism)
+(set/monotonic (genl electronic_device made))
+(set/monotonic (genl electronic_device mechanism))
 (set/monotonic (orthogonal electronic_device machine))
 (comment (orthogonal electronic_device machine) "A fan-cooled desktop computer is both, a wind-up clock is a machine but not electronic, and a single-board computer is electronic but not a machine.")
 
 (comment feather "A light keratin body part covering a bird.")
 (unary_predicate feather)
-(genl feather body_part)
+(set/monotonic (time_invariant_relation feather))
+(set/monotonic (genl feather body_part))
 
 (comment fin "A flat body part a fish steers and propels itself with.")
 (unary_predicate fin)
-(genl fin body_part)
+(set/monotonic (time_invariant_relation fin))
+(set/monotonic (genl fin body_part))
 
 (comment food "A physical object eaten by an animal for nourishment.")
+(set/monotonic (time_agnostic_relation food))
 
 (comment formation "A natural tangible whose form came from physical processes, neither grown nor made.")
 (unary_predicate formation)
+(set/monotonic (time_invariant_relation formation))
 (positiveExampleComment formation "a rock")
 (positiveExampleComment formation "a crystal")
 (positiveExampleComment formation "a river")
 (positiveExampleComment formation "a star")
 (positiveExampleComment formation "a dune")
-(genl formation natural)
+(set/monotonic (genl formation natural))
 ;; Nothing grown is a formation.  The separating declaration below also installs
 ;; (genl formation tangible), and formation's edge to natural derives the same edge.
-(separating tangible formation biological)
+(set/monotonic (separating tangible formation biological))
 
 (comment fur "The hair covering a mammal.")
 (unary_predicate fur)
-(genl fur body_part)
+(set/monotonic (time_invariant_relation fur))
+(set/monotonic (genl fur body_part))
 
 (comment furniture "An artifact for use in a room.")
 (unary_predicate furniture)
+(set/monotonic (time_invariant_relation furniture))
 (positiveExampleComment furniture "a chair")
 (positiveExampleComment furniture "a table")
 (positiveExampleComment furniture "a bed")
-(genl furniture made)
+(set/monotonic (genl furniture made))
 
+(unary_predicate glass_stuff)
 (comment glass_stuff "A hard, brittle, transparent substance.")
-(genl glass_stuff substance)
+(set/monotonic (time_invariant_relation glass_stuff))
+(set/monotonic (genl glass_stuff substance))
 
-(comment hollow "Has, at that time, an interior space that other things can occupy. A thing can stop being hollow and still exist: a box crushed flat stops being hollow, and a hand is hollow only while it is cupped. What a thing is shaped like, not what it is for, and a container is one kind of made hollow thing. Spatiotemporal rather than tangible, since a cave is a space in rock and is made of nothing.")
+(comment hollow "Has, at that time, an interior space that other things can occupy. A thing can stop being hollow and still exist: a box crushed flat stops being hollow, and a hand is hollow only while it is cupped. What a thing is shaped like, not what it is for, and a container is made to be hollow. Spatiotemporal rather than tangible, since a cave is a space in rock and is made of nothing.")
 (unary_predicate hollow)
+(set/monotonic (time_varying_relation hollow))
 (positiveExampleComment hollow "a cup")
 (positiveExampleComment hollow "a box")
 (positiveExampleComment hollow "a building")
@@ -132,7 +153,9 @@
 (negativeExampleComment hollow "a solid Rubik's cube")
 (negativeExampleComment hollow "an empty clenched fist")
 (negativeExampleComment hollow "a box crushed flat")
-(genl hollow spatiotemporal)
+(set/monotonic (genl hollow spatiotemporal))
+(set/monotonic (genl hollow causal))
+(comment (genl hollow causal) "A hollow can be a cause without being tangible: a cave shelters, echoes and floods.")
 ;; A cup is hollow and made, a pitcher plant hollow and alive, a cupped hand hollow and a
 ;; part an organism grew; a bread bowl is hollow and food.  Stuff has no interior of its own.
 (orthogonal hollow made)
@@ -143,48 +166,61 @@
 ;; are hollow and not biological, and a leaf is biological and not hollow.
 (orthogonal biological hollow)
 (set/monotonic (disjoint hollow substance))
+(orthogonal hollow tangible)
+(comment (orthogonal hollow tangible) "A cup is hollow and tangible, a cave is hollow and made of nothing, and a solid stone is tangible and not hollow.")
+(orthogonal hollow uninterrupted)
+(comment (orthogonal hollow uninterrupted) "A cave is hollow and present without a break, and a box taken apart and put back together is hollow and intermittent.")
 
 (comment language "A system of signs a person speaks, writes or signs in.")
+(set/monotonic (time_invariant_relation language))
 
-(comment largerThan
-         "(largerThan ?kind1 ?kind2) means that a ?kind1 is bigger than a ?kind2. A claim about two KINDS rather than about two things — a type_relation_predicate — so (largerThan dog cat) says dogs are bigger than cats and says nothing whatever about any particular dog. Transitive and asymmetric, so a cycle of size claims is a contradiction the KB reports rather than a chain it walks. Declared transitiveInArgInverse on both positions along genl, which is what carries a claim down to subkinds: a kind of dog is larger than a kind of cat. That distribution is itself a claim about largerThan, which is why it is declared rather than assumed — the same inheritance is false of a chihuahua and a maine coon, and nothing in a sentence says which case it is in.")
-(set/monotonic (type_relation_predicate largerThan))
-(genlArg largerThan 1 tangible)
-(genlArg largerThan 2 tangible)
-(set/monotonic (transitive largerThan))
-(set/monotonic (asymmetric largerThan))
-(set/monotonic (transitiveInArgInverse largerThan 1 genl))
-(set/monotonic (transitiveInArgInverse largerThan 2 genl))
+(comment typeLargerThan
+         "(typeLargerThan ?kind1 ?kind2) means that a ?kind1 is bigger than a ?kind2. A claim about two KINDS rather than about two things — a type_relation_predicate — so (typeLargerThan dog cat) says dogs are bigger than cats and says nothing whatever about any particular dog. Transitive and asymmetric, so a cycle of size claims is a contradiction the KB reports rather than a chain it walks. Declared transitiveInArgInverse on both positions along genl, which is what carries a claim down to subkinds: a kind of dog is larger than a kind of cat. That distribution is itself a claim about typeLargerThan, which is why it is declared rather than assumed — the same inheritance is false of a chihuahua and a maine coon, and nothing in a sentence says which case it is in.")
+(set/monotonic (type_relation_predicate typeLargerThan))
+(set/monotonic (time_agnostic_relation typeLargerThan))
+(genlArg typeLargerThan 1 tangible)
+(genlArg typeLargerThan 2 tangible)
+(set/monotonic (transitive typeLargerThan))
+(set/monotonic (asymmetric typeLargerThan))
+(set/monotonic (transitiveInArgInverse typeLargerThan 1 genl))
+(set/monotonic (transitiveInArgInverse typeLargerThan 2 genl))
 
 (comment leaf "A flat green body part a plant photosynthesizes with.")
 (unary_predicate leaf)
-(genl leaf body_part)
+(set/monotonic (time_invariant_relation leaf))
+(set/monotonic (genl leaf body_part))
 
 (comment leg "A body part an animal stands and walks on.")
 (unary_predicate leg)
-(genl leg body_part)
+(set/monotonic (time_invariant_relation leg))
+(set/monotonic (genl leg body_part))
 
+(unary_predicate liquid)
 (comment liquid "A substance that flows and takes the structure of its container.")
-(genl liquid substance)
+(set/monotonic (genl liquid substance))
 
 (comment locatedIn
          "(locatedIn ?object ?place) means that ?object sits within ?place. CxMereology states that a part is located wherever its whole is. Both arguments are physical objects: a region is the spatial calculi's business, and partOfRegion is the relation to reach for there.")
 (implementationNote locatedIn "Declared transitive, so the transitive prover walks a chain of containments at query time and stores no conclusion of it. CxMereology states (transitiveInArgInverse locatedIn 1 tangiblePartOf), so a goal about a part's location is answered at query time from its whole's.")
 (set/monotonic (instance_relation_predicate locatedIn))
+(set/monotonic (time_varying_relation locatedIn))
 (arg locatedIn 1 tangible)
 (arg locatedIn 2 tangible)
 (set/monotonic (transitive locatedIn))
 
 (comment machine "A mechanism with parts that move relative to each other, driven by an energy source. Defined by its parts, not its use, so a stopped clock is still one.")
 (unary_predicate machine)
+(set/monotonic (time_invariant_relation machine))
 (positiveExampleComment machine "a wind-up clock")
 (positiveExampleComment machine "a car engine")
 (positiveExampleComment machine "a hand-cranked pencil sharpener")
 (positiveExampleComment machine "a stopped clock")
-(genl machine made)
-(genl machine mechanism)
+(set/monotonic (genl machine made))
+(set/monotonic (genl machine mechanism))
 
+(unary_predicate made)
 (comment made "A tangible shaped by an agent's action, or by something made. Contrast natural.")
+(set/monotonic (time_invariant_relation made))
 (positiveExampleComment made "a chair")
 (positiveExampleComment made "a widget from a factory machine")
 (positiveExampleComment made "steel")
@@ -200,6 +236,7 @@
 
 (comment mechanism "A physical object whose parts, in their arrangement, set up a characteristic causal operation: mechanical coupling, electronic circuitry, or both. Defined by its construction, not its use or whether it is running, so a stopped clock or an unplugged board is still one. Most mechanisms are made, but not all: a juvenile Issus planthopper grows interlocking gears on its hind legs.")
 (unary_predicate mechanism)
+(set/monotonic (time_invariant_relation mechanism))
 (positiveExampleComment mechanism "a wind-up clock")
 (positiveExampleComment mechanism "a phone")
 (positiveExampleComment mechanism "a fan-cooled desktop computer")
@@ -207,25 +244,32 @@
 (positiveExampleComment mechanism "the hind-leg gears of a juvenile Issus planthopper")
 (negativeExampleComment mechanism "a cloned sheep")
 (negativeExampleComment mechanism "steel")
-(genl mechanism tangible)
+(set/monotonic (genl mechanism tangible))
 
 (comment madeOf
          "(madeOf ?object ?substance) means that ?object is made of ?substance. About one particular object and the stuff it is made of, so it is instance-level; what a whole kind is made of is a claim about that kind. Partial rather than exhaustive — a thing may be made of several substances, and saying it is made of one does not deny the others.")
 (set/monotonic (instance_relation_predicate madeOf))
+(set/monotonic (time_invariant_relation madeOf))
 (arg madeOf 1 tangible)
 (arg madeOf 2 substance)
 
+(unary_predicate metal_stuff)
 (comment metal_stuff "A hard, dense, conducting substance — iron, copper, gold.")
-(genl metal_stuff substance)
+(set/monotonic (time_invariant_relation metal_stuff))
+(set/monotonic (genl metal_stuff substance))
 
+(unary_predicate mercury)
 (comment mercury "The metallic element quicksilver, as stuff: the metal in an old thermometer, a barometer or a dental amalgam. Mercury is liquid at ordinary room temperature and pressure. Mercury freezes at about -39 °C, so its state of matter depends on the temperature a context assumes.")
-(genl mercury metal_stuff)
+(set/monotonic (time_invariant_relation mercury))
+(set/monotonic (genl mercury metal_stuff))
 ;; A portion of mercury is an individual, so mercury is a first-order `type`.  Mercury is
 ;; not a stuff_type_by_substance: that metatype separates its members, and mercury is
 ;; below metal_stuff, one of them.
 (type mercury)
 
+(unary_predicate natural)
 (comment natural "A tangible whose form no living thing's action gave it. Contrast made.")
+(set/monotonic (time_invariant_relation natural))
 (positiveExampleComment natural "a wild sheep")
 (positiveExampleComment natural "a coral reef")
 (positiveExampleComment natural "a rock")
@@ -233,6 +277,7 @@
 (positiveExampleComment natural "a star")
 
 (comment organization "A group of people acting as one body.")
+(set/monotonic (time_invariant_relation organization))
 (positiveExampleComment organization "a company")
 (positiveExampleComment organization "a school")
 (positiveExampleComment organization "a team")
@@ -244,6 +289,7 @@
 (set/monotonic (instance_relation_predicate partOf))
 (set/monotonic (transitive partOf))
 (set/monotonic (reflexive partOf))
+(set/monotonic (time_agnostic_relation partOf))
 ;; Antisymmetry was weighed and declined: two coextensive regions stay two regions, so
 ;; two things each part of the other are not thereby one.  anti_symmetric is
 ;; forced-monotonic, so the denial is believed while no (anti_symmetric partOf) is, and
@@ -255,6 +301,7 @@
 (arg properPartOf 1 thing)   ;; a proper part of any kind, as partOf's part is of any kind
 (arg properPartOf 2 thing)   ;; a whole of any kind, as partOf's whole is of any kind
 (set/monotonic (instance_relation_predicate properPartOf))
+(set/monotonic (time_agnostic_relation properPartOf))
 (set/monotonic (irreflexive properPartOf))
 (set/monotonic (transitive properPartOf))
 (genl properPartOf partOf)
@@ -278,10 +325,22 @@
                     (properSubSituationOf ?x ?y))))
   "Left unexcepted on purpose. A proper reading's definition concludes a proper sub-situation, so a part, and the root rule denies one. Both fire for one tuple only where the facts already contradict the root rule: a part whose whole is stated a proper part of it. Both rules are strict definitions, so that clash is the one the facts owe, and an exception would hide it.")
 
+(comment permanentPartOf
+         "(permanentPartOf ?part ?whole) means that ?part is a part of ?whole that could not stop being one while both exist. A region's parts and a situation's parts are permanent parts. A wheel is a part of a car and no permanent part, since it can come off. Declared transitive, and both positions declare thing, as partOf's do.")
+(binary_predicate permanentPartOf)
+(arg permanentPartOf 1 thing)   ;; a permanent part of any kind: a region, a stage of a situation
+(arg permanentPartOf 2 thing)   ;; a whole of any kind, as partOf's whole is of any kind
+(set/monotonic (instance_relation_predicate permanentPartOf))
+(set/monotonic (time_invariant_relation permanentPartOf))
+(set/monotonic (transitive permanentPartOf))
+(set/monotonic (reflexive permanentPartOf))
+(genl permanentPartOf partOf)
+
 (comment tangiblePartOf
          "(tangiblePartOf ?part ?whole) means that the tangible ?part is a component of the tangible ?whole. A part of a part is a part. Structural parthood between physical objects — not membership in a collection, and not the spatial containment partOfRegion states of regions.")
 (implementationNote tangiblePartOf "Declared transitive, so the transitive prover answers a chain of parthood at query time and stores no conclusion of it.")
 (set/monotonic (instance_relation_predicate tangiblePartOf))
+(set/monotonic (time_varying_relation tangiblePartOf))
 (arg tangiblePartOf 1 tangible)
 (arg tangiblePartOf 2 tangible)
 (set/monotonic (transitive tangiblePartOf))
@@ -293,9 +352,10 @@
 ;; of a person, a person as part of an organization) stays plain partOf and neither spec:
 ;; partOf is not partitioned into the two.
 (comment intangiblePartOf
-         "(intangiblePartOf ?part ?whole) means that the intangible ?part is a component of the intangible ?whole. A part of a part is a part. Structural parthood between things without mass, as tangiblePartOf states between tangible things. A tangible part of an intangible whole, or an intangible part of a tangible whole, stays plain partOf and neither spec.")
+         "(intangiblePartOf ?part ?whole) means that the intangible ?part is a component of the intangible ?whole. A part of a part is a part. Structural parthood between things without mass, as tangiblePartOf states between tangible things. This includes permanent parts of a work and removable software or organizational components, so the relation is time-agnostic. A tangible part of an intangible whole, or an intangible part of a tangible whole, stays plain partOf and neither spec.")
 (implementationNote intangiblePartOf "Declared transitive, so the transitive prover answers a chain of parthood at query time and stores no conclusion of it.")
 (set/monotonic (instance_relation_predicate intangiblePartOf))
+(set/monotonic (time_agnostic_relation intangiblePartOf))
 (arg intangiblePartOf 1 intangible)
 (arg intangiblePartOf 2 intangible)
 (set/monotonic (transitive intangiblePartOf))
@@ -316,6 +376,8 @@
 (comment partType
          "(partType ?wholeKind ?partKind) means that a ?wholeKind has a ?partKind among its parts. The type-level reading of tangiblePartOf: (partType bird wing) says birds have wings, where (tangiblePartOf LeftWing Pingu) says one thing is part of another. Declared transitiveInArgInverse along genl on the FIRST position only, and the asymmetry is the claim: a kind of bird has whatever parts birds have, so penguins have wings without a word being written about penguins, while the second position preserves nothing — birds having wings says nothing about which kinds of wing they have. Linked to tangiblePartOf by typeToInstancePred, which records that the two are readings of one relation and deliberately moves no claim between them: going from the kinds to their members needs a quantifier reading (every bird has SOME wing) that nothing here fixes, and guessing it is how a claim about kinds quietly becomes a false claim about individuals.")
 (set/monotonic (type_relation_predicate partType))
+(set/monotonic (time_agnostic_relation partType))
+(not (eternal_predicate partType))
 (genlArg partType 1 tangible)
 (genlArg partType 2 tangible)
 (set/monotonic (transitiveInArgInverse partType 1 genl))
@@ -323,17 +385,23 @@
 
 (comment petal "A coloured body part of a flower.")
 (unary_predicate petal)
-(genl petal body_part)
+(set/monotonic (time_invariant_relation petal))
+(set/monotonic (genl petal body_part))
 
 (comment root "The body part a plant anchors itself and draws water with.")
 (unary_predicate root)
-(genl root body_part)
+(set/monotonic (time_invariant_relation root))
+(set/monotonic (genl root body_part))
 
+(unary_predicate stone)
 (comment stone "A hard mineral substance.")
-(genl stone substance)
+(set/monotonic (time_invariant_relation stone))
+(set/monotonic (genl stone substance))
 
+(unary_predicate substance)
 (comment substance "A homogeneous stuff (water, iron) rather than a countable object.")
-(genl substance tangible)
+(set/monotonic (time_invariant_relation substance))
+(set/monotonic (genl substance tangible))
 ;; substance's instances are individuals, so it is a first-order `type`; the interArg on
 ;; typeGenl requires this because the stuff metatypes classify it (typeGenl … substance).
 (type substance)
@@ -343,7 +411,7 @@
 ;; core.txt states time's edges to temporal and aspatial, (partition time uninterrupted_time
 ;; intermittent_time), the intersections defining the two parts and (partition
 ;; uninterrupted_time time_point time_interval).
-(genl time acausal)
+(set/monotonic (genl time acausal))
 
 (comment uninterrupted_time "A time with no gap: a moment, or one unbroken stretch of time. The intersection of uninterrupted and time. Parent of time_point (a moment) and time_interval (a stretch).")
 
@@ -380,26 +448,28 @@
 (positiveExampleComment spatial_event "a sawing")
 (positiveExampleComment spatial_event "a footprint's step")
 (negativeExampleComment spatial_event "a contract expiring, an institutional change located nowhere")
-(intersection spatial_event event spatial)
+(set/monotonic (intersection spatial_event event spatial))
 ;; A spatial event is in some space and, as an event, in time, so it is spatiotemporal.
 ;; spatiotemporal is below spatial and temporal by genl edges and is no intersection, so
 ;; nothing derives the edge, and it is stated.
-(genl spatial_event spatiotemporal)
+(set/monotonic (genl spatial_event spatiotemporal))
 
 ;; --- subSituationOf: a situation that is part of another ---------------------
 (comment subSituationOf
          "(subSituationOf ?part ?whole) means that the situation ?part is a part of the situation ?whole. Declared transitive, so a part of a part is a part. A part's time is within its whole's time. The converse does not hold: two situations sharing a time are not thereby parts of one another. subSituationOf supplies parthood only. It rolls no role of the part up to the whole, and it closes no situation under the sum of its parts.")
+(set/monotonic (situation_predicate subSituationOf))
 (implementationNote subSituationOf "No rule concludes the temporal containment of a part in its whole. The upper ontology has no relation for one time falling within another that covers an intermittent time.")
 (set/monotonic (instance_relation_predicate subSituationOf))
 (arg subSituationOf 1 situation)
 (arg subSituationOf 2 situation)
 (set/monotonic (transitive subSituationOf))
 (set/monotonic (reflexive subSituationOf))
-(genl subSituationOf partOf)
+(genl subSituationOf permanentPartOf)
 
 (comment properSubSituationOf
          "(properSubSituationOf ?part ?whole) means that the situation ?part is a part of the situation ?whole and ?whole is not a part of ?part.")
 (set/monotonic (instance_relation_predicate properSubSituationOf))
+(set/monotonic (situation_predicate properSubSituationOf))
 (arg properSubSituationOf 1 situation)
 (arg properSubSituationOf 2 situation)
 (set/monotonic (irreflexive properSubSituationOf))
@@ -410,8 +480,10 @@
 
 ;; --- causal / acausal: whether a thing can occupy a cause slot -----------------
 (comment causal "A thing that can be a cause, i.e. can occupy the cause slot of a causal relation. A cause is in time, so causal is below temporal. One side of the causal/acausal division of thing.")
+(set/monotonic (time_invariant_relation causal))
 
 (comment acausal "A thing that cannot be a cause. The other side of the causal/acausal division of thing.")
+(set/monotonic (time_invariant_relation acausal))
 (positiveExampleComment acausal "the time 3 PM on 14 October 2024")
 (positiveExampleComment acausal "a property line")
 (positiveExampleComment acausal "an attribute")
@@ -424,39 +496,45 @@
 ;; Anything with mass can fill a cause slot: the rock dented the car. tangible is
 ;; core.txt's, and the edge is stated here beside causal's comment; with the partition it
 ;; also keeps every tangible out of acausal.
-(genl tangible causal)
+(set/monotonic (genl tangible causal))
 
 ;; A body of people can be a cause too: a company hires; a court rules. organization
 ;; is aspatial, and nothing separates aspatial from causal.
-(genl organization causal)
+(set/monotonic (genl organization causal))
+
+;; A person can be a cause too, whatever it is made of: a person decides, speaks and
+;; acts.  person is core.txt's and stays uncommitted on tangible or intangible, and
+;; nothing separates it from causal.
+(set/monotonic (genl person causal))
 
 ;; --- causal_event / acausal_event: events by whether they can cause ------------
 ;; defined via intersection; its rules derive the genls and membership.
 (comment causal_event "An event that is a cause: the intersection of causal and event.")
 (unary_predicate causal_event)
-(intersection causal_event causal event)
+(set/monotonic (intersection causal_event causal event))
 
 (comment acausal_event "An event that is not a cause: the intersection of acausal and event.")
 (unary_predicate acausal_event)
 (positiveExampleComment acausal_event "the act of observing")
 (positiveExampleComment acausal_event "the receiving of a message")
-(intersection acausal_event acausal event)
+(set/monotonic (intersection acausal_event acausal event))
 
 ;; --- travelling / flying: event kinds an ability names ------------------------
 ;; life.txt's hasCapability and capabilityType take an event kind as their second argument:
 ;; (hasCapability Tweety flying) says Tweety can be the doer of a flying event.
 (comment travelling "A causal event of getting from one place to another under the doer's own power. flying is a kind of travelling; another way of travelling is stated as its own event kind below travelling.")
 (unary_predicate travelling)
-(genl travelling causal_event)
+(set/monotonic (genl travelling causal_event))
 
 (comment flying "A travelling event through the air under the doer's own power. A kind of travelling, so whatever can fly can travel without that being stated twice.")
 (unary_predicate flying)
-(genl flying travelling)
+(set/monotonic (genl flying travelling))
 
 ;; --- causes: a causal thing brings a situation about ---------------------------
 (comment causes
          "(causes ?cause ?effect) means that ?cause brings ?effect about. The cause is a causal thing: a causal event, a tangible or an organization. The effect is a situation: something that holds or happens, over any extent. A chain of causes is itself a cause.")
 (implementationNote causes "Declared transitive, so the transitive prover answers a chain of causes at query time and stores no conclusion of it.")
+(set/monotonic (eternal_predicate causes))
 (positiveExampleComment causes "the flattery made the crow sing")
 (positiveExampleComment causes "the rock dented the car")
 (positiveExampleComment causes "the drought ruined the harvest")
@@ -473,10 +551,16 @@
           (instantNotAfter (StartFn ?cause) (StartFn ?effect))))
 
 ;; --- actor / thingPerceived: a happening's participants ---------------------
-(comment actor "(actor ?happening ?participant) means that ?participant participates meaningfully in ?happening.")
+(comment actor "(actor ?situation ?participant) means that ?participant participates meaningfully in ?situation.")
 (set/monotonic (instance_relation_predicate actor))
-(arg actor 1 happening)
+(arg actor 1 situation)
 (arg actor 2 thing)
+;; A situation is a whole that timeOf places in time and nothing slices by time.
+;; Participation records that whole history, not who is participating now: actor and
+;; every binary spec of it is a situation_predicate, and so eternal, even before or after
+;; either participant exists.
+(set/monotonic (situation_predicate actor))
+(set/forwardRule (implies (and (binary_predicate ?relation) (genl ?relation actor)) (situation_predicate ?relation)))
 
 (comment thingPerceived "(thingPerceived ?happening ?thing) means that ?thing is what is perceptually taken in during ?happening.")
 (set/monotonic (instance_relation_predicate thingPerceived))
@@ -513,7 +597,7 @@
 (set/monotonic (instance_relation_predicate input))
 (arg input 1 happening)
 (arg input 2 thing)   ;; what went into an event: a thing of any kind
-(genl input actor)
+(set/monotonic (genl input actor))
 (termsRelated input output)
 
 (comment destroyedInput "(destroyedInput ?happening ?thing) means that ?thing went into ?happening and ceased to exist there.")
@@ -543,7 +627,7 @@
 (set/monotonic (instance_relation_predicate output))
 (arg output 1 happening)
 (arg output 2 thing)   ;; what an event left behind, tangible or intangible
-(genl output actor)
+(set/monotonic (genl output actor))
 
 (comment tangibleOutput
          "(tangibleOutput ?happening ?thing) means that ?thing is a tangible output of ?happening.")
@@ -575,26 +659,35 @@
 
 (comment vehicle "An artifact for transporting people or goods.")
 (unary_predicate vehicle)
-(genl vehicle made)
+(set/monotonic (time_invariant_relation vehicle))
+(set/monotonic (genl vehicle made))
 
 (comment wing "A body part an animal flies with, such as a bird's, a bat's or an insect's.")
 (unary_predicate wing)
-(genl wing body_part)
+(set/monotonic (time_invariant_relation wing))
+(set/monotonic (genl wing body_part))
 (set/monotonic (disjoint wing fur))
 (comment (disjoint wing fur) "A bat's wing has fur on it: the fur is part of the wing, and nothing is both a wing and fur.")
 
+(unary_predicate wood)
 (comment wood "The fibrous substance a tree is made of.")
-(genl wood substance)
+(set/monotonic (time_invariant_relation wood))
+(set/monotonic (genl wood substance))
 
 ;; --- Lacuna proposals (upper ontology overhaul) ---
 ;; The metatype-order ladder (type / metatype / meta_metatype / at_least_metatype /
 ;; variable_order_type / fixed_order_type / type_type_by_order) and `nowhere_never` are declared
 ;; and commented in core.txt, beside their genl edges: a comment belongs with the
 ;; declaration it documents.
+(unary_predicate gas)
 (comment gas "A substance in the gaseous state of matter.")
+(unary_predicate plasma)
 (comment plasma "A substance in the plasma state of matter — an ionized gas.")
+(unary_predicate solid)
 (comment solid "A substance in the solid state of matter.")
+(unary_predicate stuff_type_by_state_of_matter)
 (comment stuff_type_by_state_of_matter "A disjoint_metatype classifying substances by physical state — solid, liquid, gas, plasma.")
+(unary_predicate stuff_type_by_substance)
 (comment stuff_type_by_substance "A disjoint_metatype classifying substances by material — wood, metal_stuff, glass_stuff, stone.")
 ;; Neither an organism nor a part it grew is stuff; stated once of biological, it reaches
 ;; both parts and every kind below them.
@@ -612,9 +705,10 @@
 ;; reaches machine, electronic_device and every kind below them.
 (set/monotonic (disjoint mechanism organism))
 (set/monotonic (disjoint mechanism substance))
-;; animal and vehicle are disjoint at the default strength rather than monotonic: a
-;; fiction below CxWell may deny the default monotonic and hold a term that is both. CxRealWorld
-;; restates the same separation monotonic, so the real world can never hold the overlap.
+;; animal and vehicle are disjoint at the default strength rather than monotonic: the Catbus
+;; in My Neighbor Totoro is both a cat and a bus, so a context for that film below CxWell may
+;; deny the default monotonic. CxRealWorld restates the same separation monotonic, so the
+;; real world can never hold the overlap.
 (disjoint animal vehicle)
 (set/monotonic (disjoint building furniture))
 (set/monotonic (disjoint building vehicle))
@@ -625,14 +719,21 @@
 (set/monotonic (disjoint_metatype stuff_type_by_state_of_matter))
 (set/monotonic (disjoint_metatype stuff_type_by_substance))
 (metatype stuff_type_by_state_of_matter)
+(set/monotonic (time_invariant_relation stuff_type_by_state_of_matter))
+;; A portion of stuff can change its phase and go on existing, so every member is
+;; time-varying.
+(set/monotonic (genl stuff_type_by_state_of_matter time_varying_relation))
+;; Every member is a type of substance, and a type is a unary predicate.
+(set/monotonic (genl stuff_type_by_state_of_matter unary_predicate))
 (metatype stuff_type_by_substance)
 ;; Every member of either metatype is a first-order type, whose instances are portions of stuff.
-(genl stuff_type_by_state_of_matter type)
-(genl stuff_type_by_substance type)
-(genl building container)
-(genl gas substance)
-(genl plasma substance)
-(genl solid substance)
+(set/monotonic (genl stuff_type_by_state_of_matter type))
+(set/monotonic (genl stuff_type_by_substance type))
+(set/monotonic (time_invariant_relation stuff_type_by_substance))
+(set/monotonic (genl building container))
+(set/monotonic (genl gas substance))
+(set/monotonic (genl plasma substance))
+(set/monotonic (genl solid substance))
 (stuff_type_by_state_of_matter gas)
 (stuff_type_by_state_of_matter liquid)
 (stuff_type_by_state_of_matter plasma)
@@ -643,5 +744,5 @@
 (stuff_type_by_substance wood)
 
 ;; typeGenl relates the substance metatypes to `substance` itself, both of them this file's.
-(typeGenl stuff_type_by_state_of_matter substance)
-(typeGenl stuff_type_by_substance substance)
+(set/monotonic (typeGenl stuff_type_by_state_of_matter substance))
+(set/monotonic (typeGenl stuff_type_by_substance substance))

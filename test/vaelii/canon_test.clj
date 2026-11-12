@@ -69,12 +69,19 @@
           r-immortal (v/assert-rule kb [(list person '?p)] (list 'not (list immortal '?p)) 'CxU {:direction :forward})   ; a nested `not` inside a rule
           r-likes    (v/assert-rule kb [(list person '?p)] (list likes '?p bone) 'CxU {:direction :forward})             ; a constant argument
           h-not      (v/assert kb (list 'not (list mortal tom)) 'CxU)
+          r-gen      (v/assert kb (list 'implies (list person '?r)
+                                        (list 'set/forwardRule
+                                              (list 'implies (list 'and (list likes '?r '?x) (list mortal '?x))
+                                                    (list 'not (list immortal '?x)))))
+                               'CxU {:direction :forward})
+          quoted     (list 'implies (list mortal tom) (list immortal bone))
+          h-quoted   (v/assert kb (list likes tom quoted) 'CxU)
           found      (fn [q] (set (map :id (v/find-sentexes kb q))))]
       (testing "a number is not a term-index key"
         (is (empty? (v/find-sentexes kb 1970))))
       (testing "a string is not a term-index key"
         (is (empty? (v/find-sentexes kb "a fine fellow"))))
-      (testing "the structural connectives are never term-indexed, even nested in a rule"
+      (testing "the structural connectives are never term-indexed, even nested in a rule or quoted in one"
         (is (empty? (v/find-sentexes kb 'implies)))
         (is (empty? (v/find-sentexes kb 'and)))
         (is (empty? (v/find-sentexes kb 'not))))           ; the (not (immortal ?p)) rule must not leak it
@@ -84,7 +91,9 @@
         (is (= #{h-born} (found (list birthYearOf tom 1970))))
         (is (set/subset? #{r-mortal h-not} (found mortal)))  ; a rule is found by its predicates
         (is (contains? (found immortal) r-immortal))          ; the stripped-`not` literal's predicate
-        (is (contains? (found bone) r-likes))))))              ; and by a constant argument
+        (is (contains? (found bone) r-likes))                ; and by a constant argument
+        (is (contains? (found likes) r-gen))                 ; a generator by the rule it quotes
+        (is (= #{h-quoted} (found quoted)))))))              ; a ground compound a connective heads
 
 ;; ---- rules identical up to variable names collapse to one handle --------
 

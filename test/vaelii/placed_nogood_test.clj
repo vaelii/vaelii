@@ -548,26 +548,26 @@
   "`[rr believed? (cat Rex) believed?]` at CxA after the writes `ops`, in order.
 
   ```
-  CxA  (disjoint dog cat) M   (poodle Rex) M   (pp Rex)
-       E = (genl poodle dog) :default          L = (cat Rex) :default     (:edge, :cat)
-       (not (genl poodle dog)) M                                         (:neg)
+  CxA  (genl poodle dog) M   (poodle Rex) M   (pp Rex)
+       E = (disjoint dog cat) :default         L = (cat Rex) :default     (:sep, :cat)
+       (not (disjoint dog cat)) M                                        (:neg)
        the guarded rule pp ⇒ rr, guarded by (cat ?x)                     (:rule)
   ```
 
-  The membership nogood {(poodle Rex), L} climbs E and places D_M, the defeat of L, resting
+  The membership nogood {(poodle Rex), L} reads E and places D_M, the defeat of L, resting
   on E.  The negation pair on E places D_E, the defeat of E.  D_E takes D_M out of force,
   so L is believed and the guard holds."
   [arm ops]
   (tu/with-neutral-kb [kb tu/fresh]
     (tu/with-terms [cat dog poodle pp rr Rex CxA]
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
-      (v/assert kb (list 'disjoint dog cat) CxA {:strength :monotonic})
+      (v/assert kb (list 'genl poodle dog) CxA {:strength :monotonic})
       (v/assert kb (list poodle Rex) CxA {:strength :monotonic})
       (v/assert kb (list pp Rex) CxA)
       (let [l (reduce (fn [l op]
                         (case op
-                          :edge (do (v/assert kb (list 'genl poodle dog) CxA) l)
-                          :neg  (do (v/assert kb (list 'not (list 'genl poodle dog)) CxA
+                          :sep  (do (v/assert kb (list 'disjoint dog cat) CxA) l)
+                          :neg  (do (v/assert kb (list 'not (list 'disjoint dog cat)) CxA
                                               {:strength :monotonic})
                                     l)
                           :cat  (v/assert kb (list cat Rex) CxA)
@@ -580,7 +580,7 @@
     (testing (name arm)
       (is (= #{[false true]}
              (into #{} (map #(guard-through-a-defeated-edge arm %))
-                   (tu/orders [:edge :neg :cat :rule])))))))
+                   (tu/orders [:sep :neg :cat :rule])))))))
 
 (tu/deftest-kb an-except-lowering-a-nogood-member-s-class-requeues-the-guards-watching-the-loser
   ;;   CxD  (disjoint dog cat) M   X = (xx Rex) M   Y = (yy Rex) :default
@@ -688,11 +688,11 @@
   `ops`, in order.
 
   ```
-  CxD          (disjoint dog cat) M   (poodle Rex) M   (pp Rex)
-               E = (genl poodle dog) :default                              (:edge)
+  CxD          (genl poodle dog) M   (poodle Rex) M   (pp Rex)
+               E = (disjoint dog cat) :default                             (:sep)
                L = (cat Rex) :default; D_M defeats L, resting on E         (:cat)
                the guarded rule pp => rr, guarded by (cat ?x)             (:rule)
-   └─ CxR      (not (genl poodle dog)) M; D_E defeats E at CxR             (:neg)
+   └─ CxR      (not (disjoint dog cat)) M; D_E defeats E at CxR            (:neg)
   ```
 
   At CxD, D_M hides L, so the firing F = (rr Rex) is placed at CxD.  At CxR, D_E hides E,
@@ -702,13 +702,13 @@
     (tu/with-terms [cat dog poodle pp rr Rex CxD CxR]
       (v/assert kb (list 'genlCx CxD 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxR CxD) 'CxUniverse)
-      (v/assert kb (list 'disjoint dog cat) CxD {:strength :monotonic})
+      (v/assert kb (list 'genl poodle dog) CxD {:strength :monotonic})
       (v/assert kb (list poodle Rex) CxD {:strength :monotonic})
       (v/assert kb (list pp Rex) CxD)
       (let [n    (reduce (fn [n op]
                            (case op
-                             :edge (do (v/assert kb (list 'genl poodle dog) CxD) n)
-                             :neg  (v/assert kb (list 'not (list 'genl poodle dog)) CxR
+                             :sep  (do (v/assert kb (list 'disjoint dog cat) CxD) n)
+                             :neg  (v/assert kb (list 'not (list 'disjoint dog cat)) CxR
                                              {:strength :monotonic})
                              :cat  (do (v/assert kb (list cat Rex) CxD) n)
                              :rule (do (v/assert kb (guarded-rule arm pp cat rr) CxD) n)))
@@ -722,7 +722,7 @@
     (testing (name arm)
       (is (= #{[true false true]}
              (into #{} (map #(guard-through-a-ground-defeated-below arm %))
-                   (tu/orders [:edge :neg :cat :rule])))))))
+                   (tu/orders [:sep :neg :cat :rule])))))))
 
 (defn- breed-cycle
   "The reading of the defeat-dependency cycle after the writes `ops`, in order:
@@ -731,38 +731,38 @@
   and `:s` are the same three readings at CxR and CxS.
 
   ```
-  CxA  (disjoint dog cat) M   (disjoint bird fish) M   (poodle Rex) M   (sparrow Tweety) M
-       (dog_breed poodle) M   (bird_breed sparrow) M
+  CxA  (poodle Rex) M   (sparrow Tweety) M   (dog_breed poodle) M   (bird_breed sparrow) M
        L1 = (cat Rex) :default                                                  (:l1)
        L2 = (fish Tweety) :default                                              (:l2)
-       R1 = (fish ?x) & (dog_breed ?t) => (genl ?t dog)                         (:r1)
-       R2 = (cat ?x) & (bird_breed ?t) => (genl ?t bird)                        (:r2)
+       R1 = (fish ?x) & (dog_breed ?t) => (disjoint ?t cat)                     (:r1)
+       R2 = (cat ?x) & (bird_breed ?t) => (disjoint ?t fish)                    (:r2)
   CxR under CxA   (except G), G the ground of the defeat whose loser is first,
                   written at its position or once G is stored                   (:ex)
   CxS under CxA, beside CxR
-  G1 = (genl poodle dog) from R1 over L2;  G2 = (genl sparrow bird) from R2 over L1
+  G1 = (disjoint poodle cat) from R1 over L2;  G2 = (disjoint sparrow fish) from R2 over L1
   D1 defeats L1 and rests on G1;  D2 defeats L2 and rests on G2
   ```"
   [ops]
   (tu/with-neutral-kb [kb tu/fresh]
-    (tu/with-terms [cat dog fish bird poodle sparrow dog_breed bird_breed Rex Tweety CxA CxR CxS]
+    (tu/with-terms [cat fish poodle sparrow dog_breed bird_breed Rex Tweety CxA CxR CxS]
       (doseq [[c up] [[CxA 'CxUniverse] [CxR CxA] [CxS CxA]]]
         (v/assert kb (list 'genlCx c up) 'CxUniverse))
-      (doseq [s [(list 'disjoint dog cat) (list 'disjoint bird fish) (list poodle Rex)
-                 (list sparrow Tweety) (list dog_breed poodle) (list bird_breed sparrow)]]
+      (doseq [s [(list poodle Rex) (list sparrow Tweety) (list dog_breed poodle)
+                 (list bird_breed sparrow)]]
         (v/assert kb s CxA {:strength :monotonic}))
       (let [first (if (neg? (nm/compare-form [(list cat Rex) CxA] [(list fish Tweety) CxA])) :l1 :l2)
-            rule  (fn [lit breed sup]
+            rule  (fn [lit breed other]
                     (list 'set/forwardRule
-                          (list 'implies (list 'and (list lit '?x) (list breed '?t)) (list 'genl '?t sup))))
-            g1s   (list 'genl poodle dog)
-            g2s   (list 'genl sparrow bird)
+                          (list 'implies (list 'and (list lit '?x) (list breed '?t))
+                                (list 'disjoint '?t other))))
+            g1s   (list 'disjoint poodle cat)
+            g2s   (list 'disjoint sparrow fish)
             write (fn [op]
                     (case op
                       :l1 (v/assert kb (list cat Rex) CxA)
                       :l2 (v/assert kb (list fish Tweety) CxA)
-                      :r1 (v/assert kb (rule fish dog_breed dog) CxA {:strength :monotonic})
-                      :r2 (v/assert kb (rule cat bird_breed bird) CxA {:strength :monotonic})
+                      :r1 (v/assert kb (rule fish dog_breed cat) CxA {:strength :monotonic})
+                      :r2 (v/assert kb (rule cat bird_breed fish) CxA {:strength :monotonic})
                       :ex nil))
             except (fn [hs]
                      (let [g (v/handle-of kb (if (= :l1 first) g1s g2s) CxA)]
@@ -781,7 +781,7 @@
           (:ex hs) (assoc :r (at CxR) :s (at CxS)))))))
 
 (tu/deftest-kb a-defeat-dependency-cycle-is-broken-in-content-order
-  ;; Each defeat rests, through a rule-derived :default type edge, on the other's loser.
+  ;; Each defeat rests, through a rule-derived :default separation, on the other's loser.
   ;; The defeat whose loser is first in content order is in force:
   ;; its loser and the edge resting on it are hidden, and the other loser is believed.
   (let [readings (into #{} (map breed-cycle) (tu/orders [:l1 :l2 :r1 :r2]))
@@ -825,10 +825,11 @@
   ```
   CxA  (disjoint dog cat) M   W = (poodle Rex) M   (dog_breed poodle) M        (:w, :breed)
        :guard  (dog_breed ?t) & (poodle ?x) => (genl ?t dog), guarded by (cat ?x)  (:rule)
-       :self   (dog_breed ?t) & (cat ?x) => (genl ?t dog)                          (:rule)
+       :self   (dog_breed ?t) & (cat ?x) => (disjoint ?t cat)                      (:rule)
   CxB under CxA   L = (cat Rex) :default, in CxA under :own                        (:l)
-  G = (genl poodle dog).  D defeats L at L's context and rests on G; under :guard and
-  :own the guard defeat of G at L's context rests on L, and under :self G rests on L.
+  G = (genl poodle dog), and (disjoint poodle cat) under :self.  D defeats L at L's
+  context and rests on G; under :guard and :own the guard defeat of G at L's context
+  rests on L, and under :self G rests on L.
   ```"
   [shape arm ops]
   (tu/with-neutral-kb [kb tu/fresh]
@@ -836,7 +837,8 @@
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
       (v/assert kb (list 'disjoint dog cat) CxA {:strength :monotonic})
-      (let [conc (list 'genl '?t dog)
+      (let [conc (if (= :self shape) (list 'disjoint '?t cat) (list 'genl '?t dog))
+            gs   (if (= :self shape) (list 'disjoint poodle cat) (list 'genl poodle dog))
             lctx (if (= :own shape) CxA CxB)
             rule (case [(if (= :own shape) :guard shape) arm]
                    [:self nil]       (list 'set/forwardRule
@@ -856,8 +858,8 @@
                                        :rule  (v/assert kb rule CxA {:strength :monotonic})
                                        :l     (v/assert kb (list cat Rex) lctx))]))
                        ops)
-            g    (v/handle-of kb (list 'genl poodle dog) CxA)]
-        {:first (if (neg? (nm/compare-form [(list 'genl poodle dog) CxA] [(list cat Rex) lctx])) :g :l)
+            g    (v/handle-of kb gs CxA)]
+        {:first (if (neg? (nm/compare-form [gs CxA] [(list cat Rex) lctx])) :g :l)
          :read  (mapv #(boolean (and % (v/believed? kb % lctx))) [(:w hs) g (:l hs)])}))))
 
 (tu/deftest-kb a-guard-defeat-and-a-nogood-defeat-resting-on-each-other-are-broken-in-content-order
@@ -929,7 +931,7 @@
   CxA  (disjoint tya tyb) M   R = (tyb ?x) => (tya ?x) M                  (:rule)
   CxB ⊂ CxA   (tyb IndB) M                                                (:b)
               (exceptWhen (tyc ?x) R), which stores a guarded copy of R   (:guard)
-  CxC ⊂ CxB   (genl tyc tyb)   (tyc IndB)                                (:genl :c)
+  CxC ⊂ CxB   (genl tyc tyb) M   (tyc IndB)                              (:genl :c)
               (tyd IndZ) and an except of it                             (:except)
   ```
   A = (tya IndB) at CxB rests on R's firing and on its guarded copy's.  The guard defeat
@@ -951,7 +953,7 @@
             :rule   (v/assert kb rule CxA M)
             :b      (v/assert kb (list tyb IndB) CxB M)
             :guard  (v/assert kb (list 'exceptWhen (list tyc '?x) rule) CxB)
-            :genl   (v/assert kb (list 'genl tyc tyb) CxC)
+            :genl   (v/assert kb (list 'genl tyc tyb) CxC M)
             :c      (v/assert kb (list tyc IndB) CxC)
             :except (let [z (v/assert kb (list tyd IndZ) CxC)]
                       (v/assert kb (list 'except (list 'sentexHandle z)) CxC))))
@@ -1492,3 +1494,62 @@
           (is (<= 4 (count (filter seq (vals fresh))))))
         (is (= fresh (pass-placements kb false)))
         (is (= fresh (pass-placements kb true)))))))
+
+(tu/deftest-kb a-cover-route-a-separation-above-the-whole-subsumes-is-left-out
+  (testing "CxUniverse: genl s→whole→top :monotonic and d1→other, d2→other at `edge`;
+            (partition whole p1 p2 p3); (disjoint top other) above the whole, or (disjoint
+            other p) under each part; X holds s, d1 and d2.  Above the whole, the disjoint
+            nogood of s and either denier is placed wherever a cover route through it would
+            be and climbs what the denier climbs, so the cover places no route and the
+            climbs are those every route kept gives, as under a stored
+            siblingDisjointException.  Under the parts, the cover keeps a route per choice
+            of a denier for each part.  At :default, the edge reading (other X) adds four
+            nogoods, whose cover routes are left out the same way."
+    (doseq [[above? edge n cover] [[true :monotonic 3 0] [true :default 7 0] [false :monotonic 3 10]]]
+      (tu/with-terms [s whole top other d1 d2 p1 p2 p3 X]
+        (let [M  {:strength :monotonic}
+              U  'CxUniverse
+              ds (if above?
+                   [(list 'disjoint top other)]
+                   (for [p [p1 p2 p3]] (list 'disjoint other p)))]
+          (doseq [[a b o] [[s whole M] [whole top M] [d1 other {:strength edge}] [d2 other {:strength edge}]]]
+            (v/assert kb (list 'genl a b) U o))
+          (doseq [sen (cons (list 'partition whole p1 p2 p3) ds)]
+            (v/assert kb sen U M))
+          (doseq [t [s d1 d2]]
+            (v/assert kb (list t X) U))
+          (let [c      (decide/synced kb)
+                w      (decide/unscoped-closures (reasoning/taxonomy kb))
+                ngs    (membership/nogoods-of c X)
+                routes #(@#'chain/membership-routes kb w (:records kb) %)
+                climbs #(into #{} (comp (mapcat routes) (mapcat :climbs)) ngs)
+                row    [above? edge]]
+            (is (= [row n cover]
+                   [row (count ngs) (count (filter (fn [r] (some #(= :cover (first %)) (:keys r)))
+                                                   (mapcat routes ngs)))]))
+            (is (= [row (with-redefs [tax/sib-exceptions? (constantly true)] (climbs))]
+                   [row (climbs)]))
+            (when (= :monotonic edge)
+              (is (= [row [true true]]
+                     [row (vec (for [ng ngs :when (= 2 (count (:members ng)))]
+                                 (boolean (seq (@#'chain/route-placements kb (:members ng)
+                                                                          (routes ng) nil)))))])))))))))
+
+(tu/deftest-kb a-membership-in-no-smaller-nogood-stays-believed-beside-a-cover-a-hard-clash-refutes
+  (testing "CxUniverse, all :monotonic but (c X): genl s→whole→top, d→other;
+            (partition whole p1 p2 p3); (disjoint top other); (disjoint c p3).  X holds s
+            and d at :monotonic, a hard clash, and c at :default.  The cover nogood {s d c}
+            refutes the cover with d for p1 and p2 and c for p3, and {s d} is placed wherever
+            it would be, so c is in no minimal nogood and stays believed."
+    (tu/with-terms [s whole top other d c p1 p2 p3 X]
+      (let [M {:strength :monotonic}
+            U 'CxUniverse]
+        (doseq [[a b] [[s whole] [whole top] [d other]]]
+          (v/assert kb (list 'genl a b) U M))
+        (doseq [sen [(list 'partition whole p1 p2 p3) (list 'disjoint top other) (list 'disjoint c p3)]]
+          (v/assert kb sen U M))
+        (v/assert kb (list s X) U M)
+        (v/assert kb (list d X) U M)
+        (let [hc (v/assert kb (list c X) U)]
+          (is (= #{2 3} (into #{} (map (comp count :members)) (membership/nogoods-of (decide/synced kb) X))))
+          (is (true? (v/believed? kb hc U))))))))

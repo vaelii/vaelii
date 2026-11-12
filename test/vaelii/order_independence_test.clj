@@ -82,28 +82,31 @@
 (defn- run-ops
   "Apply `ops` to a freshly cleared KB and return `observe`'s reading of it, after
   checking the justification verdicts against belief over the handles the ops left IN, at
-  each of their contexts (`tu/verdict-violations`)."
-  [ops observe]
-  (let [kb     (tu/fresh)
-        tms    (reasoning/tms kb)
-        before (set (jtms/in-datums tms))]
-    (doseq [op ops] (op kb))
-    (let [hs (into [] (remove before) (jtms/in-datums tms))]
-      (is (= [] (tu/verdict-violations kb hs (into #{} (keep #(:context (v/sentex kb %))) hs)))))
-    (observe kb)))
+  each of their contexts (`tu/verdict-violations`).  `build` makes the KB, `tu/fresh`
+  unless given (`tu/empty-kb` for a rule-free one)."
+  ([ops observe] (run-ops ops observe tu/fresh))
+  ([ops observe build]
+   (let [kb     (build)
+         tms    (reasoning/tms kb)
+         before (set (jtms/in-datums tms))]
+     (doseq [op ops] (op kb))
+     (let [hs (into [] (remove before) (jtms/in-datums tms))]
+       (is (= [] (tu/verdict-violations kb hs (into #{} (keep #(:context (v/sentex kb %))) hs)))))
+     (observe kb))))
 
 (defn- outcome-census
   "The distinct outcomes over `orderings`, each mapped to how many produced it (`:n`) and
   the index of the first that did (`:at`).  A sixteen-against-four split names the defective
   side, which a bare set of readings does not.  `interleavings` is deterministic, so the
-  index reproduces the ordering."
-  [orderings observe]
-  (reduce (fn [acc [i o]]
-            (if (contains? acc o)
-              (update-in acc [o :n] inc)
-              (assoc acc o {:n 1 :at i})))
-          {}
-          (map-indexed (fn [i ops] [i (run-ops ops observe)]) orderings)))
+  index reproduces the ordering.  `build` makes each KB, as in `run-ops`."
+  ([orderings observe] (outcome-census orderings observe tu/fresh))
+  ([orderings observe build]
+   (reduce (fn [acc [i o]]
+             (if (contains? acc o)
+               (update-in acc [o :n] inc)
+               (assoc acc o {:n 1 :at i})))
+           {}
+           (map-indexed (fn [i ops] [i (run-ops ops observe build)]) orderings))))
 
 (def ^:private census-lines
   "How many outcomes a failure prints in full; an `observe` reading something
@@ -127,12 +130,14 @@
 (defn- one-outcome-under!
   "Assert that every linear extension of `chains` agrees, and return the single outcome.
   `one-outcome!` is this with every op its own chain; use this form when an op depends on
-  an earlier one.  `cap` samples as in `one-outcome!`."
+  an earlier one.  `cap` samples as in `one-outcome!`; `build` makes each KB, as in
+  `run-ops`."
   ([label chains observe] (one-outcome-under! label chains observe nil))
-  ([label chains observe cap]
+  ([label chains observe cap] (one-outcome-under! label chains observe cap tu/fresh))
+  ([label chains observe cap build]
    (let [all    (interleavings chains)
          walked (cond->> all cap (sampled-orderings cap))
-         census (outcome-census walked observe)]
+         census (outcome-census walked observe build)]
      (is (= 1 (count census))
          (str label ": " (count census) " distinct outcomes across " (count walked)
               (when cap (str " sampled of " (count all))) " orderings —"
@@ -778,6 +783,19 @@
     (is (= [(list 'hasCapability 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))] (:rows result))))
   (tu/clear-kb! (tu/test-kb)))
 
+(deftest a-late-reifiable-declaration-re-spells-an-application-in-the-head
+  (let [head   '(BloodKinFn siblingOf)
+        ops    [(assert-op '(reifiable_function BloodKinFn))
+                (assert-op '(result BloodKinFn binary_predicate))
+                (assert-op (list 'genl head 'siblingOf))
+                #(v/assert (assoc % :naming :off) (list head 'Ann 'Bob) 'CxUniverse)]
+        result (one-outcome! "a head application" ops
+                             (fn [kb] {:base   (v/ask kb '(siblingOf Ann ?x) 'CxUniverse)
+                                       :head   (v/ask kb (list head 'Ann '?x) 'CxUniverse)
+                                       :minted (count (v/sentexes-matching kb (list 'natFormula '?k head) 'CxUniverse))}))]
+    (is (= {:base [{'?x 'Bob}] :head [{'?x 'Bob}] :minted 1} result)))
+  (tu/clear-kb! (tu/test-kb)))
+
 (deftest a-late-inner-declaration-names-the-outer-constant-as-a-first-one-does
   ;; The outer constant's name hashes its expression, so a use stored while `InnerFn` was
   ;; undeclared names a constant whose map holds the raw inner application.  The inner
@@ -818,7 +836,7 @@
                 :compound true}
         bare   (one-outcome! "a firing with no correspondence" fire #(dissoc (skill-reading %) :genl))
         spelt  (one-outcome! "a firing with a correspondence"
-                             (conj fire (assert-op '(functionCorrespondingPredicate SkillFn skillOf)))
+                             (conj fire (assert-op '(functionCorrespondingPredicate SkillFn skillOf 2)))
                              #(dissoc (skill-reading %) :genl))]
     (is (true? joined))
     (is (= [minted minted] [bare spelt])))
@@ -874,7 +892,7 @@
   "A KB that loads core.txt, for `run-ops-on`/`one-outcome-under-on!` above.  core.txt puts
   `reifiable_function` in the forced-monotonic set, so a denial of it is never believed,
   and the tests below ask the bare-KB denial tests' questions of a retraction."
-  #(doto (tu/fresh) (tu/load-core!)))
+  #(doto (tu/empty-kb) (tu/load-core!)))
 
 (defn- core-skill-reading
   "`skill-reading`, for a KB that loads core.txt: `hasCapability`'s arg 2 constraint
@@ -1213,7 +1231,16 @@
       :facts   '[(rv_lift Aa)]
       :in      'CxRvLift
       :observe (fn [kb] [(rows kb '(rv_lift ?x) U) (v/ask? kb '(rv_lift Aa) U)])
-      :expect  ['#{(rv_lift Aa)} true]}]))
+      :expect  ['#{(rv_lift Aa)} true]}
+     {:label   "eternal_predicate"
+      :decl    '(eternal_predicate rvEternal)
+      :revive  :denial
+      :setup   ['(natFormula CxRvSlice (CxTimeFn CxRvMonad (YearFn 2000)))]
+      :facts   '[(rvEternal Aa Bb)]
+      :in      'CxRvSlice
+      :observe (fn [kb] [(rows kb '(rvEternal ?x ?y) 'CxRvMonad) (v/ask? kb '(rvEternal Aa Bb) 'CxRvMonad)
+                         (v/ask? kb '(rvEternal Aa Bb) U)])
+      :expect  ['#{(rvEternal Aa Bb)} true false]}]))
 
 (defn- void-mark
   "The op storing the rule that concludes `decl` from `(rv_src P)`, and `(rv_src P)`:
@@ -1742,7 +1769,7 @@
         holds? #(boolean (seq (v/sentexes-matching % '(cf_q CfSubj) 'CxUniverse)))]
     (testing "a withdrawal leaves the conclusion standing on the other witness"
       (doseq [[first-drop second-drop] [[drop-p drop-r] [drop-r drop-p]]]
-        (let [kb (tu/fresh)]
+        (let [kb (tu/empty-kb)]
           (doseq [op [rule-p rule-r add-p add-r]] (op kb))
           (is (holds? kb) "two witnesses")
           (first-drop kb)
@@ -1752,7 +1779,8 @@
     (let [end (one-outcome-under! "both supports withdrawn"
                                   [[add-p drop-p] [add-r drop-r] [rule-p] [rule-r]]
                                   (fn [kb] {:records    (whole-reading kb)
-                                            :conclusion (holds? kb)}))]
+                                            :conclusion (holds? kb)})
+                                  nil tu/empty-kb)]
       (is (false? (:conclusion end))
           "the one outcome is the conclusion gone, not the conclusion kept")
       (is (= 2 (count (:records end)))
@@ -2941,6 +2969,85 @@
         (is (= (second never) (second split)) "the context below it reads each spelling as written"))))
   (tu/clear-kb! (tu/test-kb)))
 
+(defn- nested-reader-reading
+  "`reader-reading` over `sn_holds`, whose argument applies `SnPairFn`."
+  [kb reader]
+  {:asked   (mapv #(v/ask? kb % reader) '[(sn_holds (SnPairFn Bea Ada)) (sn_holds (SnPairFn Ada Bea))])
+   :answers (set (v/query kb '(sn_holds ?p) reader))
+   :drawn   (mapv #(v/ask? kb % reader) '[(sn_noted (SnPairFn Bea Ada)) (sn_noted (SnPairFn Ada Bea))])})
+
+(deftest a-mark-on-a-function-defeated-below-the-facts-is-read-per-reader
+  (doseq [[shape facts] nested-spelled-shapes]
+    (testing (str shape)
+      (let [h     (atom nil)
+            edge  #(v/assert % '(genlCx CxSnD CxUniverse) 'CxUniverse {:strength :monotonic})
+            deny  (fn [ctx] #(v/assert % '(not (commutative SnPairFn)) ctx {:strength :monotonic}))
+            read2 (fn [kb] (mapv #(nested-reader-reading kb %) '[CxUniverse CxSnD]))
+            ops   (fn [mark?] (into [edge] (nested-spelled-ops facts mark? h)))
+            never (one-outcome! (str shape ", never stated") (ops false) read2 ordering-sample)
+            held  (one-outcome! (str shape ", held") (ops true) read2 ordering-sample)
+            split (one-outcome! (str shape ", denied below") (conj (ops true) (deny 'CxSnD)) read2
+                                ordering-sample)
+            above (one-outcome! (str shape ", denied above") (conj (ops true) (deny 'CxUniverse)) read2
+                                ordering-sample)]
+        (is (= (first held) (first split)) "the context above the denial reads the mark")
+        (is (= (second never) (second split)) "the context below it reads each spelling as written")
+        (is (= never above) "denied where the facts are, the mark spells nothing"))))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest a-permuting-mark-on-a-reifiable-function-defeated-below-the-facts-is-read-per-reader
+  (doseq [[shape facts] nested-spelled-shapes]
+    (testing (str shape)
+      (let [h     (atom nil)
+            edge  #(v/assert % '(genlCx CxSnD CxUniverse) 'CxUniverse {:strength :monotonic})
+            deny  (fn [ctx] #(v/assert % '(not (commutative SnPairFn)) ctx {:strength :monotonic}))
+            read2 (fn [kb] [(nested-reader-reading kb 'CxUniverse)
+                            (assoc (nested-reader-reading kb 'CxSnD)
+                                   :payload (set (v/query kb '(natFormula ?k (SnPairFn Bea ?x)) 'CxSnD)))])
+            ops   (fn [mark?] (into [edge] (nested-spelled-ops facts mark? h true)))
+            never (one-outcome! (str shape ", never stated") (ops false) read2 ordering-sample)
+            held  (one-outcome! (str shape ", held") (ops true) read2 ordering-sample)
+            split (one-outcome! (str shape ", denied below") (conj (ops true) (deny 'CxSnD)) read2
+                                ordering-sample)
+            above (one-outcome! (str shape ", denied above") (conj (ops true) (deny 'CxUniverse)) read2
+                                ordering-sample)]
+        (is (= (first held) (first split)) "the context above the denial reads the mark")
+        (is (= (second never) (second split)) "the context below it reads the written order's constant")
+        (is (= never above) "denied where the facts are, the mark sorts no application"))))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest an-open-application-under-a-permuting-mark-defeated-below-reads-its-corresponding-predicate-per-reader
+  (let [h     (atom nil)
+        ops   (fn [mark?] (into [#(v/assert % '(genlCx CxSnD CxUniverse) 'CxUniverse {:strength :monotonic})
+                                 #(v/assert % '(functionCorrespondingPredicate SnPairFn snPairOf 3) 'CxUniverse)]
+                                (nested-spelled-ops (:one-spelling nested-spelled-shapes) mark? h true)))
+        read2 (fn [kb] (mapv #(set (v/query kb '(sn_holds (SnPairFn Ada ?x)) %)) '[CxUniverse CxSnD]))
+        never (one-outcome! "never stated" (ops false) read2 ordering-sample)
+        held  (one-outcome! "held" (ops true) read2 ordering-sample)
+        split (one-outcome! "denied below"
+                            (conj (ops true) #(v/assert % '(not (commutative SnPairFn)) 'CxSnD
+                                                        {:strength :monotonic}))
+                            read2 ordering-sample)]
+    (is (= (first held) (first split)) "the context above the denial reads the other order")
+    (is (= (second never) (second split)) "the context below it reads the written order alone"))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest a-reifiable-mark-denied-below-a-firing-is-read-per-reader
+  (let [h     (atom nil)
+        edge  #(v/assert % '(genlCx CxSnD CxUniverse) 'CxUniverse {:strength :monotonic})
+        read2 (fn [kb] (mapv #(nested-reader-reading kb %) '[CxUniverse CxSnD]))
+        ops   (fn [reifiable?] (into [edge] (nested-spelled-ops (:a-firing nested-spelled-shapes) false h
+                                                                reifiable?)))
+        never (one-outcome! "never declared" (ops false) read2 ordering-sample)
+        held  (one-outcome! "held" (ops true) read2 ordering-sample)
+        split (one-outcome! "denied below"
+                            (conj (ops true) #(v/assert % '(not (reifiable_function SnPairFn)) 'CxSnD
+                                                        {:strength :monotonic}))
+                            read2 ordering-sample)]
+    (is (= (first held) (first split)) "the context above the denial reads the constant")
+    (is (= (second never) (second split)) "the context below it reads the application"))
+  (tu/clear-kb! (tu/test-kb)))
+
 (deftest a-genlcx-edge-bringing-a-defeat-under-the-facts-splits-their-spellings
   ;; The denial and its defeat sit in CxSwD, the fact in CxSwF, both under CxUniverse
   ;; where the mark is: CxSwD reads the fact only once `(genlCx CxSwD CxSwF)` arrives, and
@@ -3278,14 +3385,14 @@
 
   The lattice is prompt 03's and prompt 08's:
 
-      CxUniverse   (genl chi thing) (genl dog thing) (genl cat thing)  (disjoint dog cat)
-       └─ CxA      (genl chi dog)                 :default
-            └─ CxB (not (genl chi dog))           :monotonic
+      CxUniverse   (genl chi thing) (genl dog thing) (genl cat thing)  (genl chi dog)
+       └─ CxA      (disjoint dog cat)             :default
+            └─ CxB (not (disjoint dog cat))       :monotonic
                    (chi Kit)  (cat Kit)
 
-  CxB disbelieves the edge, so from CxB `chi` is not a `dog` and the two memberships of
-  `Kit` clash with nothing.  Everything above CxA is known-true; the one defeasible
-  ingredient is the edge, which is what the denial withdraws."
+  CxB disbelieves the separation, so from CxB `chi` and `cat` are not disjoint and the two
+  memberships of `Kit` clash with nothing.  Everything in CxUniverse is known-true; the
+  one defeasible ingredient is the separation, which is what the denial withdraws."
   [cat-strength order]
   (tu/with-neutral-kb [kb tu/fresh]
     (tu/with-terms [CxA CxB chi_t dog_t cat_t Kit]
@@ -3293,12 +3400,12 @@
         (v/assert kb (list 'genl t 'thing) 'CxUniverse {:strength :monotonic}))
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse {:strength :monotonic})
       (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse {:strength :monotonic})
-      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
-      (v/assert kb (list 'genl chi_t dog_t) CxA)
+      (v/assert kb (list 'genl chi_t dog_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'disjoint dog_t cat_t) CxA)
       (let [refused (atom 0)
             write!  {:chi    #(v/assert kb (list chi_t Kit) CxB)
                      :cat    #(v/assert kb (list cat_t Kit) CxB {:strength cat-strength})
-                     :denial #(v/assert kb (list 'not (list 'genl chi_t dog_t)) CxB
+                     :denial #(v/assert kb (list 'not (list 'disjoint dog_t cat_t)) CxB
                                         {:strength :monotonic})}]
         (doseq [k order]
           (try ((write! k)) (catch clojure.lang.ExceptionInfo _ (swap! refused inc))))
@@ -3306,7 +3413,7 @@
          :stored  (count (filter some?
                                  [(v/handle-of kb (list chi_t Kit) CxB)
                                   (v/handle-of kb (list cat_t Kit) CxB)
-                                  (v/handle-of kb (list 'not (list 'genl chi_t dog_t)) CxB)]))
+                                  (v/handle-of kb (list 'not (list 'disjoint dog_t cat_t)) CxB)]))
          :chi?    (v/ask? kb (list chi_t Kit) CxB)
          :cat?    (v/ask? kb (list cat_t Kit) CxB)
          :contra  (count (v/contradictions kb))}))))
@@ -3320,9 +3427,9 @@
   ;; turned on arrival order would be one the writer cannot predict, so the entry point
   ;; stores the sentence in every order.
   ;;
-  ;; The separation is derived: it reaches `chi` over the `:default` `(genl chi dog)` edge in
-  ;; CxA, and the denial in CxB takes that edge out of CxB's view.  One outcome, all six
-  ;; orders, both strengths.
+  ;; The separation is `:default` in CxA and reaches `chi` over the known-true `(genl chi
+  ;; dog)`, and the denial in CxB takes the separation out of CxB's view.  One outcome, all
+  ;; six orders, both strengths.
   (doseq [cat-strength [:monotonic :default]]
     (testing (str "(cat Kit) " cat-strength)
       (let [readings (mapv #(lattice-cell! cat-strength %) lattice-orders)]

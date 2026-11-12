@@ -513,11 +513,11 @@
   (prop-long "VAELII_SANDBOX_IDLE_MINUTES" 1440 1 nil))
 
 (defn max-query-depth
-  "The rule-expansion ceiling the daemon holds the reads that take no clock to — `:query`,
-  `:query?`, `:query-status` and `:argue` (`VAELII_MAX_QUERY_DEPTH`, default 256; 0 lifts
-  it).  A request may name a smaller `:max-depth` and is refused for naming a larger one
-  (`vaelii.host.serve/search-bounds`).  A read that takes a clock is held to
-  `max-query-ms` instead, and to no depth."
+  "The rule-expansion ceiling the daemon holds `:query`, `:query?`, `:query-status`,
+  `:argue`, `:prove`, `:provable?` and `:prove-within` to, beside `max-query-ms`
+  (`VAELII_MAX_QUERY_DEPTH`, default 256; 0 lifts it).  A request may name a smaller
+  `:max-depth` and is refused for naming a larger one; the three provers fill an absent one
+  with it (`vaelii.host.serve/search-bounds`)."
   []
   (prop-long "VAELII_MAX_QUERY_DEPTH" 256 0 nil))
 

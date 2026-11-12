@@ -73,9 +73,10 @@ consults belief, the stored content or the KB's naming policy.
 `assert` calls `nm/check!` and `check` (docs/api.md, "Validating without writing") calls
 `nm/blocking-problems`; both read the KB's policy, and both are `nm/problems` underneath.
 It reports, in order: the context's own name, then **every literal's** functor, then
-every literal's atomic symbol **arguments**, then any `ist` context slot, then a dotted
-rest marker where one cannot appear. The argument step is lexical: it asks whether a
-spelling is an individual, a type or a predicate at all. Whether the argument is of the
+every literal's atomic symbol **arguments**, then any `ist` context slot. A `.` is not
+a name: a `.` outside a rest marker is refused as `:shape` before this check runs
+([inference.md](inference.md#dotted-rest-patterns)). The argument step is lexical: it asks
+whether a spelling is an individual, a type or a predicate at all. Whether the argument is of the
 *right* type is `arg`'s job.
 
 ### Literals, wrappers, and arguments
@@ -114,6 +115,11 @@ role, the consequent included: `(implies (holds ?x ?s) ?s)` is written `(implies
 ?x (?pred . ?args)) (?pred . ?args))`, which binds the functor and the arguments in the
 antecedent.
 
+A literal's functor is a symbol, or a ground application of a `reifiable_function`,
+which `assert` reifies to its `nat/` constant before this check runs
+([nat.md](nat.md#an-application-as-a-sentences-predicate)); the check passes that constant
+in functor position. A compound functor that reaches the check is refused `:functor`.
+
 A rule's outermost functor is `implies`, which is engine vocabulary, so the descent is
 what reaches the author's names: `(implies (penguin ?x) (lives_in ?x cold_place))` is
 refused for its consequent, the position where derived and generated content lands.
@@ -142,6 +148,7 @@ names only.
 
 **The one exemption.** `sentexHandle` stands at arity 1 and is not a predicate: it names
 a stored sentex by its id, a term constructor with a literal's shape, and states nothing.
+`assert` refuses it as a whole sentence (`:shape`).
 `nm/unary-spelling-exempt` is the list, and a name belongs on it only if it names no
 relation.
 
@@ -187,7 +194,7 @@ names a unary predicate — a kind or a property — and is legal only at arity 
 A rejection is **data before it is prose**. `nm/problems*` yields one
 `{:class :role :symbol :literal}` map per violation, with `:class` one of
 `:context-name` `:functor` `:lexeme-functor` `:functor-arity` `:functor-unary` `:argument`
-`:ist-context` `:dot-marker`, and `nm/message` renders one; `problems` is the two
+`:ist-context`, and `nm/message` renders one; `problems` is the two
 composed. `assert` spells out the sentence it refused, and a caller counting violations
 groups by class: a message embeds the literal, so it is unique per record.
 
@@ -223,8 +230,8 @@ are decoded, and a non-zero result is logged and returned in the summary as
 
 ```
 this corpus and `assert` disagree: <n> of <total> records (<pct>) hold names `assert`
-would refuse: context-name <n>, argument <n>, functor <n>, functor-arity <n>,
-dot-marker <n> — they are stored, findable and countable, but re-asserting one throws
+would refuse: context-name <n>, argument <n>, functor <n>, functor-arity <n>
+— they are stored, findable and countable, but re-asserting one throws
 under :naming :strict
 ```
 
@@ -265,8 +272,9 @@ bare variable, a `(not A B)` whose record and index disagree about what it says,
 predicate's declaration in a shape its `:wff` arm refuses (`:not-well-formed`,
 `special/wff-problems`) puts an individual or a self-loop into the taxonomy, or an `arg`
 position that is not an integer into the argument constraints. A non-finite measure
-magnitude (`:not-well-formed`, `checks/quantity-shape-problem`) throws out of every
-duration and metric goal in its context. An inline `exceptWhen` over a fact
+magnitude (`:not-well-formed`, `checks/term-shape-problem`) throws out of every
+duration and metric goal in its context, and a `MapFn` term giving one key two values
+(the same check) makes `valueAt` answer both. An inline `exceptWhen` over a fact
 (`:not-well-formed`, `rules/exceptWhen-not-a-rule`) qualifies nothing a rule concludes. A sentex in a query context, or in a context
 that is not a symbol (`:shape`), is in no context a read reaches. An import skips each of
 these and counts it in `:refused` under that `:type`, as it does for the structural

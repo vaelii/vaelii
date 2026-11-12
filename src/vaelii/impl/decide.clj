@@ -21,22 +21,6 @@
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
 
-(defn unscoped-closures
-  "The unscoped closures of `tax`, under their `tax/…-global` names, and `tax` itself as
-  `:tax`: the taxonomy a family keeps its rows through, handed to `:note!`, `:recovered`
-  and `:sync`.  The rows are a superset over every reader, kept where no reader exists,
-  and each reader scopes what it reads."
-  [tax]
-  {:tax                 tax
-   :genls-global        (partial tax/genls-global tax)
-   :specs-global        (partial tax/specs-global tax)
-   :genl?-global        (partial tax/genl?-global tax)
-   :genls-global-meets? (partial tax/genls-global-meets? tax)
-   :genls-global-among  (partial tax/genls-global-among tax)
-   :covers-over-global  (tax/covers-over-global-fn tax)
-   :context-up-global   (partial tax/context-up-global tax)
-   :context-down-global (partial tax/context-down-global tax)})
-
 (def registry
   "Every family, each a map of the parts the candidate index runs, `w` an `unscoped-closures` map:
 
@@ -72,8 +56,9 @@
     injection  "a premise of core.txt's rules concluding (functional P) and (functionalInArg P 1)"
     surjection "a premise of core.txt's rule concluding (functional P)"
     bijection  "a premise of core.txt's rules concluding (injection P) and (surjection P)"
-    functionCorrespondingPredicate "a premise of core.txt's rules concluding (arg P n T) from a function's result"
-    result     "a premise of core.txt's rules concluding (arg P n T) from a function's result"
+    functionCorrespondingPredicate "a premise of core.txt's rule concluding (arg P n T) from a function's result"
+    functionCorrespondingBinaryPredicate "a premise of core.txt's rule concluding (functionCorrespondingPredicate F P 2), which is forced-monotonic"
+    result     "a premise of core.txt's rule concluding (arg P n T) from a function's result"
     fixed_arity           "an arity policy, read beside the arity bindings, so it goes OUT only by retraction as a length does"
     fixed_arity_predicate "an arity policy, read beside the arity bindings, so it goes OUT only by retraction as a length does"
     fixed_arity_function  "an arity policy, read beside the arity bindings, so it goes OUT only by retraction as a length does"
@@ -177,10 +162,28 @@
   KB that declares only baseline members.  Read KB-wide, the union over every reader,
   which a read walk splits into the declarations its reader sees and misses."
   [tax]
-  (into {} (for [kind forced-kinds
-                 pred (tax/props tax kind)
-                 :when (not (global? tax kind pred))]
-             [[kind pred] (tax/prop-supporter-contexts tax kind pred)])))
+  (if (not-any? #(seq (tax/props tax %)) forced-kinds)
+    {}
+    (into {} (for [kind forced-kinds
+                   pred (tax/props tax kind)
+                   :when (not (global? tax kind pred))]
+               [[kind pred] (tax/prop-supporter-contexts tax kind pred)]))))
+
+(defn unscoped-closures
+  "The unscoped closures of `tax`, under their `tax/…-global` names, and `tax` itself as
+  `:tax`: the taxonomy a family keeps its rows through, handed to `:note!`,
+  `:recovered` and `:sync`.  The rows are a superset over every reader, kept where no reader exists,
+  and each reader scopes what it reads."
+  [tax]
+  {:tax                 tax
+   :genls-global        (partial tax/genls-global tax)
+   :specs-global        (partial tax/specs-global tax)
+   :genl?-global        (partial tax/genl?-global tax)
+   :genls-global-meets? (partial tax/genls-global-meets? tax)
+   :genls-global-among  (partial tax/genls-global-among tax)
+   :covers-over-global  (tax/covers-over-global-fn tax)
+   :context-up-global   (partial tax/context-up-global tax)
+   :context-down-global (partial tax/context-down-global tax)})
 
 (defn forced-literal?
   "Is `literal` in the forced-monotonic set: its functor is `forced-monotonic?` as
@@ -312,6 +315,15 @@
                             #(if (= gen (::genlcx %)) % (assoc % ::genlcx gen)))]
     [(when (not= gen (::genlcx old)) (or (::genlcx old) 0))
      (not (contains? old ::genlcx))]))
+
+(defn edge-moved?
+  "Would `take-edge-cursor!` answer a move or a first read: has a `genlCx` edge moved since
+  the last call read the cursor, or has no call read it since the candidate index was
+  emptied?  Reads without taking."
+  [kb]
+  (let [c @(reasoning/nogood-candidates kb)]
+    (or (not (contains? c ::genlcx))
+        (not= (tax/relation-gen (reasoning/taxonomy kb) :genlCx) (::genlcx c)))))
 
 (defn placements-owed?
   "Is every placement owed: no placement pass has read the edge cursor since the

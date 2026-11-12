@@ -22,6 +22,7 @@
 (comment after
          "(after ?interval1 ?interval2) means that ?interval1 begins strictly after ?interval2 ends. They share no time and do not touch, so some gap separates them.")
 (set/monotonic (instance_relation_predicate after))
+(set/monotonic (eternal_predicate after))
 (arg after 1 temporal)
 (arg after 2 temporal)
 (set/inert (asymmetric after))
@@ -41,6 +42,7 @@
 (comment before
          "(before ?interval1 ?interval2) means that ?interval1 ends strictly before ?interval2 begins. They share no time and do not touch, so some gap separates them. One of Allen's thirteen base relations.")
 (set/monotonic (instance_relation_predicate before))
+(set/monotonic (eternal_predicate before))
 (arg before 1 temporal)
 (arg before 2 temporal)
 (set/inert (inverse before after))
@@ -60,6 +62,7 @@
 (comment clipped
          "(clipped ?instant1 ?fluent ?instant2) means that some event terminating ?fluent happens strictly between ?instant1 and ?instant2. What breaks inertia: a fluent an event started at ?instant1 still holds at ?instant2 exactly while nothing clipped it in between. Derived by CxChange and never stated — an event and its terminates fact are what a KB says, and the interval this covers is what follows from them. See docs/time.md.")
 (ternary_predicate clipped)
+(set/monotonic (eternal_predicate clipped))
 (arg clipped 1 time_point)
 (arg clipped 2 fluent)
 (arg clipped 3 time_point)
@@ -67,12 +70,14 @@
 (comment clippedBefore
          "(clippedBefore ?fluent ?instant) means that some event terminating ?fluent happens before ?instant, with no lower bound on when. The half-open reading of clipped, and what an initially-true fluent needs: nothing named the moment such a fluent began, so there is no first instant to bound the interval with. Derived by CxChange and never stated. See docs/time.md.")
 (set/monotonic (instance_relation_predicate clippedBefore))
+(set/monotonic (eternal_predicate clippedBefore))
 (arg clippedBefore 1 fluent)
 (arg clippedBefore 2 time_point)
 
 (comment contains
          "(contains ?interval1 ?interval2) means that ?interval1 begins strictly before ?interval2 and ends strictly after it. So ?interval2 falls wholly inside ?interval1 with room either side.")
 (set/monotonic (instance_relation_predicate contains))
+(set/monotonic (eternal_predicate contains))
 (arg contains 1 temporal)
 (arg contains 2 temporal)
 (set/inert (asymmetric contains))
@@ -90,83 +95,60 @@
 (comment CxMonadOfFn
          "(CxMonadOfFn ?context) means the monad ?context belongs to: the world, story or theory it is a context of, with no time in it. So (CxMonadOfFn (CxTimeFn CxStory (YearFn 2000))) is CxStory. The monad of a time slice is the monad of the context it slices, and the monad of a context that is not a time slice is that context itself. cxMonadOf is the corresponding predicate. See docs/time.md.")
 (unary_function CxMonadOfFn)
-(functionCorrespondingPredicate CxMonadOfFn cxMonadOf)
+(reifiable_function CxMonadOfFn)
+(functionCorrespondingBinaryPredicate CxMonadOfFn cxMonadOf)
 (arg CxMonadOfFn 1 context)
 (result CxMonadOfFn context)
 
 (comment cxMonadOf
-         "(cxMonadOf ?context ?monad) means that ?monad is the monad ?context belongs to, the context (CxMonadOfFn ?context) names. CxMonadOfFn is the corresponding function, and its value is the last argument. See docs/time.md.")
+         "(cxMonadOf ?context ?monad) means that ?monad is the monad ?context belongs to, the context (CxMonadOfFn ?context) names. CxMonadOfFn is the corresponding function, and its value is the last argument. A prover answers it from the natFormula map of a slice's cx/ constant, and nothing states it. See docs/time.md.")
 (binary_predicate cxMonadOf)
 (instance_relation_predicate cxMonadOf)
+(set/monotonic (eternal_predicate cxMonadOf))
 (arg cxMonadOf 1 context)
 (arg cxMonadOf 2 context)
+(not_assertible cxMonadOf)
 
 (comment CxTimeFn
-         "(CxTimeFn ?context ?time) means the time slice of ?context at ?time: what holds in ?context during ?time. So (CxTimeFn CxStory (YearFn 2000)) is the year 2000 of CxStory. Every application is a time_slice_context. ?context may itself be a slice: (CxTimeFn (CxTimeFn CxStory ?time1) ?time2) is the slice of CxStory at (TimeIntersectionFn ?time1 ?time2), by the rules over cxMonadOf and cxTimeOf below. Two applications that differ only in the time are ordered by subintervalOf on it, and by subtimeOf where the narrower time is a moment: the one at the narrower time is a subcontext of the one at the wider time and sees what it states. Two that differ only in the context are ordered by genlMonad on it the same way: the one along the sub-monad is a subcontext of the one along the super-monad. Two that differ in both are ordered when both orders hold, so (CxTimeFn CxSubStory (MonthFn 2000 1)) is a subcontext of (CxTimeFn CxStory (YearFn 2000)) under (genlMonad CxSubStory CxStory). CxTimeOfFn and CxMonadOfFn take an application apart. See docs/context-nat.md and docs/time.md.")
+         "(CxTimeFn ?context ?time) means the time slice of ?context at ?time: what holds in ?context during ?time. So (CxTimeFn CxStory (YearFn 2000)) is the year 2000 of CxStory. Every application is a time_slice_context and a subcontext of ?context, so it sees what ?context states. ?context may itself be a slice: (CxTimeFn (CxTimeFn CxStory ?time1) ?time2) is the slice of CxStory at (TimeIntersectionFn ?time1 ?time2), the monad cxMonadOf and the time cxTimeOf answer of it. Two applications that differ only in the time are ordered by subintervalOf on it, and by subtimeOf where the narrower time is a moment: the one at the narrower time is a subcontext of the one at the wider time and sees what it states. Two that differ only in the context are ordered by genlMonad on it the same way: the one along the sub-monad is a subcontext of the one along the super-monad. Two that differ in both are ordered when both orders hold, so (CxTimeFn CxSubStory (MonthFn 2000 1)) is a subcontext of (CxTimeFn CxStory (YearFn 2000)) under (genlCx CxSubStory CxStory). CxTimeOfFn and CxMonadOfFn take an application apart. See docs/context-nat.md and docs/time.md.")
 (implementationNote CxTimeFn "Written in a sentex's context slot, an application reifies to a cx/ constant.")
 (binary_function CxTimeFn)
+(set/monotonic (time_invariant_relation CxTimeFn))
 (arity CxTimeFn 2)
 (arg CxTimeFn 1 context)
 (arg CxTimeFn 2 time)
 (result CxTimeFn context)
 (result CxTimeFn time_slice_context)
+(contextArgGenlCx CxTimeFn 1)
 (contextArgSubrelation CxTimeFn 1 genlMonad)
 (contextArgSubrelation CxTimeFn 2 subintervalOf)
 (contextArgSubrelation CxTimeFn 2 subtimeOf)
+(contextArgFold CxTimeFn 1 TimeIntersectionFn)
+(contextArgCalendarSpelling CxTimeFn 2)
 
 (comment CxTimeOfFn
          "(CxTimeOfFn ?context) means the time ?context covers, so (CxTimeOfFn (CxTimeFn CxStory (YearFn 2000))) is (YearFn 2000). cxTimeOf is the corresponding predicate. See docs/time.md.")
 (unary_function CxTimeOfFn)
-(functionCorrespondingPredicate CxTimeOfFn cxTimeOf)
+(reifiable_function CxTimeOfFn)
+(functionCorrespondingBinaryPredicate CxTimeOfFn cxTimeOf)
 (arg CxTimeOfFn 1 context)
 (result CxTimeOfFn time)
 
 (comment cxTimeOf
-         "(cxTimeOf ?context ?time) means that ?time is the time ?context covers, the time (CxTimeOfFn ?context) names. CxTimeOfFn is the corresponding function, and its value is the last argument. See docs/time.md.")
+         "(cxTimeOf ?context ?time) means that ?time is the time ?context covers, the time (CxTimeOfFn ?context) names. CxTimeOfFn is the corresponding function, and its value is the last argument. A prover answers it from the natFormula map of a slice's cx/ constant: a context that is not a slice covers Forever, a slice of one covers its own time, and a slice of a slice covers the TimeIntersectionFn of the inner slice's time and its own. Nothing states it. See docs/time.md.")
 (binary_predicate cxTimeOf)
 (instance_relation_predicate cxTimeOf)
+(set/monotonic (eternal_predicate cxTimeOf))
 (arg cxTimeOf 1 context)
 (arg cxTimeOf 2 time)
-
-;; A slice of a slice is the slice of the inner slice's context at the intersection of
-;; the two times:
-;; (CxTimeFn (CxTimeFn ?context ?time1) ?time2) is the context
-;; (CxTimeFn ?context (TimeIntersectionFn ?time1 ?time2)).  The two parts state it
-;; through cxMonadOf and cxTimeOf.  Each rule reads the natFormula of the slice's cx/
-;; constant, so a slice written with an inner slice's cx/ constant answers through them;
-;; an inner slice spelled as a CxTimeFn application is a term, not a constant, and does
-;; not.  A context that is not a slice is its own monad, and a slice has the monad of the
-;; context it slices.
-(set/backwardRule
- (implies (and (monad_context ?monad))
-          (cxMonadOf ?monad ?monad)))
-(set/backwardRule
- (implies (and (natFormula ?slice (CxTimeFn ?context ?time)) (cxMonadOf ?context ?monad))
-          (cxMonadOf ?slice ?monad)))
-;; A slice of a context that is not a slice covers its own time, and a slice of a slice
-;; covers the intersection of the inner slice's time and its own.
-(set/backwardRule
- (implies (and (natFormula ?slice (CxTimeFn ?monad ?time)) (monad_context ?monad))
-          (cxTimeOf ?slice ?time)))
-(set/backwardRule
- (implies (and (natFormula ?slice (CxTimeFn ?context ?time))
-               (natFormula ?context (CxTimeFn ?inner ?innerTime))
-               (cxTimeOf ?context ?outer))
-          (cxTimeOf ?slice (TimeIntersectionFn ?outer ?time))))
-;; The equality itself, between the two spellings.  It concludes about CxTimeFn
-;; applications, so it answers no goal until the engine reads it (docs/nat.md, a rule or
-;; a goal that names an open application).
-(set/backwardRule
- (implies (and (context ?context) (time ?time1) (time ?time2))
-          (equals (CxTimeFn (CxTimeFn ?context ?time1) ?time2)
-                  (CxTimeFn ?context (TimeIntersectionFn ?time1 ?time2)))))
+(not_assertible cxTimeOf)
 
 (comment DatetimeFn
          "(DatetimeFn ?iso) means the interval a reduced-precision ISO 8601 string names, so (DatetimeFn \"2000\") is the year 2000, (DatetimeFn \"2000-01\") its January and (DatetimeFn \"2000-01-15T13\") one hour of its fifteenth day, down to the second. A string with a time may end in a UTC offset, Z or ±hh:mm, so (DatetimeFn \"2000-01-15T13:00-07:00\") is the minute that begins at 20:00 UTC; a string with no offset names wall-clock time in no zone, which is not ordered against an absolute time. A time_interval, like YearFn, MonthFn and DayFn. (DatetimeFn \"2000-01\") and (MonthFn 2000 1) name the same interval and order against each other. See docs/context-nat.md and docs/time.md.")
 (implementationNote DatetimeFn "An unreifiable_function application: it stays structural, so the string is readable inside the term and a reader can see which intervals contain which.")
 (unreifiable_function DatetimeFn)
 (unary_function DatetimeFn)
-(functionCorrespondingPredicate DatetimeFn datetimeOf)
+(functionCorrespondingBinaryPredicate DatetimeFn datetimeOf)
 (arg DatetimeFn 1 string)
 (result DatetimeFn time_interval)
 
@@ -174,6 +156,7 @@
          "(datetimeOf ?iso ?interval) means that ?interval is the interval the reduced-precision ISO 8601 string ?iso names, so (datetimeOf \"2000-01\" ?interval) holds of January 2000. DatetimeFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (implementationNote datetimeOf "The calendar prover reads the DatetimeFn term and does not answer this predicate.")
 (set/monotonic (instance_relation_predicate datetimeOf))
+(set/monotonic (eternal_predicate datetimeOf))
 (arg datetimeOf 1 string)
 (arg datetimeOf 2 time_interval)
 
@@ -182,7 +165,7 @@
 (implementationNote DatetimeRangeFn "An unreifiable_function application like DatetimeFn: it stays structural, so both strings are readable inside the term. The rules beside it answer its startOf and endOf wherever the calendar prover answers for a DatetimeFn term.")
 (unreifiable_function DatetimeRangeFn)
 (binary_function DatetimeRangeFn)
-(functionCorrespondingPredicate DatetimeRangeFn datetimeRangeOf)
+(functionCorrespondingPredicate DatetimeRangeFn datetimeRangeOf 3)
 (arg DatetimeRangeFn 1 string)
 (arg DatetimeRangeFn 2 string)
 (result DatetimeRangeFn time_interval)
@@ -201,6 +184,7 @@
 (comment datetimeRangeOf
          "(datetimeRangeOf ?from ?to ?interval) means that ?interval is the interval from the start of the one the reduced-precision ISO 8601 string ?from names to the end of the one ?to names, so (datetimeRangeOf \"2000-01\" \"2000-06\" ?interval) holds of January through June 2000. DatetimeRangeFn is the corresponding function, and its value is the last argument. Nothing reads this predicate: the rules beside DatetimeRangeFn read the term. See docs/time.md.")
 (ternary_predicate datetimeRangeOf)
+(set/monotonic (eternal_predicate datetimeRangeOf))
 (arity datetimeRangeOf 3)
 (arg datetimeRangeOf 1 string)
 (arg datetimeRangeOf 2 string)
@@ -211,7 +195,7 @@
 (implementationNote DayFn "An unreifiable_function application like YearFn and MonthFn: it stays structural, so the three fields are readable inside the term and a reader can see that the day sits inside its month.")
 (unreifiable_function DayFn)
 (ternary_function DayFn)
-(functionCorrespondingPredicate DayFn calendarDay)
+(functionCorrespondingPredicate DayFn calendarDay 4)
 (arg DayFn 1 integer)
 (arg DayFn 2 positive_integer)
 (arg DayFn 3 positive_integer)
@@ -221,6 +205,7 @@
          "(calendarDay ?year ?month ?day ?interval) means that ?interval is day ?day of month ?month of calendar year ?year, so (calendarDay 2000 1 15 ?interval) holds of the fifteenth of January 2000. DayFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (implementationNote calendarDay "The calendar prover reads the DayFn term and does not answer this predicate.")
 (quaternary_predicate calendarDay)
+(set/monotonic (eternal_predicate calendarDay))
 (arity calendarDay 4)
 (arg calendarDay 1 integer)
 (arg calendarDay 2 positive_integer)
@@ -230,6 +215,7 @@
 (comment during
          "(during ?interval1 ?interval2) means that ?interval1 falls wholly inside ?interval2, beginning strictly after it and ending strictly before it.")
 (set/monotonic (instance_relation_predicate during))
+(set/monotonic (eternal_predicate during))
 (arg during 1 temporal)
 (arg during 2 temporal)
 (set/inert (inverse during contains))
@@ -249,7 +235,7 @@
 (implementationNote EarliestEndFn "The instant network orders it at or before (EndFn ?thing) and at or after (EarliestStartFn ?thing). A structural unreifiable_function application, so a fact about the point names the thing it bounds.")
 (unreifiable_function EarliestEndFn)
 (unary_function EarliestEndFn)
-(functionCorrespondingPredicate EarliestEndFn earliestEndOf)
+(functionCorrespondingBinaryPredicate EarliestEndFn earliestEndOf)
 (arg EarliestEndFn 1 temporal)
 (result EarliestEndFn time_point)
 
@@ -257,6 +243,7 @@
          "(earliestEndOf ?thing ?instant) means that ?instant is the earliest moment ?thing can have ended, the moment (EarliestEndFn ?thing) names. EarliestEndFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (implementationNote earliestEndOf "The instant network reads the EarliestEndFn term and not this predicate, so a stated earliestEndOf fact orders nothing.")
 (set/monotonic (instance_relation_predicate earliestEndOf))
+(set/monotonic (eternal_predicate earliestEndOf))
 (arg earliestEndOf 1 temporal)
 (arg earliestEndOf 2 time_point)
 
@@ -265,7 +252,7 @@
 (implementationNote EarliestStartFn "The instant network orders it at or before (StartFn ?thing) and at or before (EarliestEndFn ?thing). A structural unreifiable_function application, so a fact about the point names the thing it bounds.")
 (unreifiable_function EarliestStartFn)
 (unary_function EarliestStartFn)
-(functionCorrespondingPredicate EarliestStartFn earliestStartOf)
+(functionCorrespondingBinaryPredicate EarliestStartFn earliestStartOf)
 (arg EarliestStartFn 1 temporal)
 (result EarliestStartFn time_point)
 
@@ -273,6 +260,7 @@
          "(earliestStartOf ?thing ?instant) means that ?instant is the earliest moment ?thing can have begun, the moment (EarliestStartFn ?thing) names. EarliestStartFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (implementationNote earliestStartOf "The instant network reads the EarliestStartFn term and not this predicate, so a stated earliestStartOf fact orders nothing.")
 (set/monotonic (instance_relation_predicate earliestStartOf))
+(set/monotonic (eternal_predicate earliestStartOf))
 (arg earliestStartOf 1 temporal)
 (arg earliestStartOf 2 time_point)
 
@@ -281,7 +269,7 @@
 (implementationNote EndFn "The instant network orders it after (StartFn ?thing).")
 (unreifiable_function EndFn)
 (unary_function EndFn)
-(functionCorrespondingPredicate EndFn endOf)
+(functionCorrespondingBinaryPredicate EndFn endOf)
 (arg EndFn 1 temporal)
 (result EndFn time_point)
 
@@ -289,12 +277,14 @@
          "(endOf ?interval ?instant) means that ?instant is the moment ?interval ends. One of the interval's two bounding instants, the other being its startOf. What joins the interval algebra to the point algebra and to the metric constraints stated over instants: one interval before another is exactly its end instant before the other's start. For a calendar term it is the first moment of the next term at the same precision: the end of (YearFn 2000) is (InstantFn 2001 1 1 0 0 0). See docs/time.md.")
 (implementationNote endOf "Stated of an ordinary interval, and computed for a calendar term.")
 (set/monotonic (instance_relation_predicate endOf))
+(set/monotonic (eternal_predicate endOf))
 (arg endOf 1 temporal)
 (arg endOf 2 time_point)
 
 (comment finishedBy
          "(finishedBy ?interval1 ?interval2) means that ?interval1 and ?interval2 end together, and ?interval1 began first. So ?interval2 is a closing part of ?interval1.")
 (set/monotonic (instance_relation_predicate finishedBy))
+(set/monotonic (eternal_predicate finishedBy))
 (arg finishedBy 1 temporal)
 (arg finishedBy 2 temporal)
 (set/inert (asymmetric finishedBy))
@@ -310,6 +300,7 @@
 (comment finishes
          "(finishes ?interval1 ?interval2) means that ?interval1 and ?interval2 end together, and ?interval1 began later. So ?interval1 is a closing part of ?interval2.")
 (set/monotonic (instance_relation_predicate finishes))
+(set/monotonic (eternal_predicate finishes))
 (arg finishes 1 temporal)
 (arg finishes 2 temporal)
 (set/inert (inverse finishes finishedBy))
@@ -326,48 +317,28 @@
          "The time interval that contains every time: every time interval is a subinterval of Forever, and every instant falls within it. It is the time of every monad_context, which covers all of its world's, story's or theory's time.")
 (time_interval Forever)
 
-;; Every interval falls within Forever, and every instant lies inside it.  Backward:
-;; answered when a query asks, never stored for every interval in the KB.
-(set/backwardRule
- (implies (and (time_interval ?interval))
-          (subintervalOf ?interval Forever)))
-;; kb-integrity pairs the root denial of a proper part's whole being its part
-;; (abstract.txt) with that definition, as a rule clash.  Acknowledged rather than
-;; excepted, for the reason the record gives.
-(acknowledgedFinding :rule-clash
-  (RulePairFn
-   (Quote (implies (properPartOf ?part ?whole) (not (partOf ?whole ?part))))
-   (Quote (implies (and (time_interval ?interval))
-                    (subintervalOf ?interval Forever))))
-  "Left unexcepted on purpose. Forever's definition concludes that every time interval is a subinterval of it, so a part, and the root rule denies one. Both fire for one tuple only where the facts already contradict the root rule: Forever stated a proper part of an interval. Both rules are strict definitions, so that clash is the one the facts owe, and an exception would hide it.")
-(set/backwardRule
- (implies (and (time_point ?instant))
-          (includesInstant Forever ?instant)))
-
-;; A monad context covers all of its time.
-(set/backwardRule
- (implies (and (monad_context ?monad))
-          (cxTimeOf ?monad Forever)))
+(implementationNote Forever "A prover answers (subintervalOf ?interval Forever) of each time_interval and (includesInstant Forever ?instant) of each time_point, and nothing states them for every time in the KB.")
 
 (comment genlMonad
-         "(genlMonad ?monad1 ?monad2) means that the monad ?monad1 falls under the monad ?monad2: a world, story or theory that inherits from another, with time left out. It orders monads alone, as subintervalOf orders times alone. See docs/time.md.")
+         "(genlMonad ?monad1 ?monad2) means that the monad ?monad1 falls under the monad ?monad2: a world, story or theory that inherits from another, with time left out. It orders monads alone, as subintervalOf orders times alone. A monad's time is Forever, so the monads of two contexts are genlMonad-ordered exactly when the genlCx closure orders them, and a prover answers genlMonad from that closure: state genlCx between the monads. See docs/time.md.")
 (binary_predicate genlMonad)
+(set/monotonic (eternal_predicate genlMonad))
 (arity genlMonad 2)
 (arg genlMonad 1 context)
 (arg genlMonad 2 context)
-;; A monad's time is Forever, so a genlCx path from one monad to another orders them as
-;; genlMonad does: the genlCx producer reads genlMonad off the genlCx closure, or off a
-;; stated genlMonad (docs/context-nat.md).
+(not_assertible genlMonad)
 
 (comment happens
          "(happens ?event ?instant) means that ?event occurs at ?instant. The one thing a narrative states about an event's place in time; whether the event changes anything is initiates and terminates, said separately, so an event nobody has said anything else about still has a time. See docs/time.md.")
 (set/monotonic (instance_relation_predicate happens))
+(set/monotonic (eternal_predicate happens))
 (arg happens 1 temporal)
 (arg happens 2 time_point)
 
 (comment hasSubinterval
          "(hasSubinterval ?interval1 ?interval2) means that ?interval2 falls within ?interval1, sharing an end, a start, or neither. Any of contains, startedBy, finishedBy or intervalEqual. Over two time intervals it is the converse of subintervalOf. It takes any two temporal things, as contains does.")
 (set/monotonic (instance_relation_predicate hasSubinterval))
+(set/monotonic (eternal_predicate hasSubinterval))
 (arg hasSubinterval 1 temporal)
 (arg hasSubinterval 2 temporal)
 
@@ -375,6 +346,7 @@
          "(holdsAt ?fluent ?instant) means that ?fluent is the case at ?instant. Derived by CxChange and never stated: it follows from an event that initiated the fluent earlier and nothing having terminated it since, which is inertia — a state persists until something ends it. See docs/time.md.")
 (implementationNote holdsAt "The CxChange rules concluding it are backward-only, because a fluent holds at every moment between its start and its end and materializing one fact per moment would store an unbounded extent for a question anybody can ask directly.")
 (set/monotonic (instance_relation_predicate holdsAt))
+(set/monotonic (eternal_predicate holdsAt))
 (arg holdsAt 1 fluent)
 (arg holdsAt 2 time_point)
 
@@ -382,17 +354,20 @@
          "(includesInstant ?thing ?instant) means that ?instant falls within ?thing: at or after (StartFn ?thing) and before (EndFn ?thing), the half-open convention of the calendar terms. A point outside the thing's bounds refutes it, and a point inside a range where a bound is uncertain leaves it unknown either way. See docs/time.md.")
 (implementationNote includesInstant "Answered from the instant network, and from a stored fact where one states it.")
 (set/monotonic (instance_relation_predicate includesInstant))
+(set/monotonic (eternal_predicate includesInstant))
 (arg includesInstant 1 temporal)
 (arg includesInstant 2 time_point)
 
 (comment initially
          "(initially ?fluent) means that ?fluent is the case before the narrative starts — true at the outset, with no event named as having started it. It gives inertia something to run from where no initiates fact does; a fluent that is neither initially true nor ever initiated holds nowhere. See docs/time.md.")
 (unary_predicate initially)
-(genl initially fluent)
+(set/monotonic (eternal_predicate initially))
+(set/monotonic (genl initially fluent))
 
 (comment initiates
          "(initiates ?event ?fluent ?instant) means that ?fluent is the case from ?instant onwards because ?event happened then. Stated of the event and the fluent together, since the same event can start one state and end another — waking starts being awake and ends being asleep. Says nothing on its own about whether the event occurred: that is happens, and both are needed. See docs/time.md.")
 (ternary_predicate initiates)
+(set/monotonic (eternal_predicate initiates))
 (arg initiates 1 causal)
 (arg initiates 2 fluent)
 (arg initiates 3 time_point)
@@ -401,12 +376,14 @@
          "(functional_at_instant ?function) means that ?function, whose value is carried as a fluent, has at most one value for one subject at any single instant. A fluent (?function ?subject ?value) states a value that holds over a stretch of time; two fluents of ?function for one subject holding at one instant with different values is a per-instant clash, the fluent-lane counterpart of functional over a bare literal. Values holding at different instants do not clash, which is what the fluent representation buys over a bare functional mark. See docs/time.md and docs/equality.md.")
 (implementationNote functional_at_instant "Read on demand by vaelii.core/functional-at-instant-violations rather than enforced at assert, because whether two fluents overlap at an instant follows from initiates, terminates and the clipping closure and is not known when a fluent is asserted. The audit mirrors functional's split, reporting two symbol values as a merge and two non-symbols as a contradiction.")
 (unary_predicate functional_at_instant)
-(genl functional_at_instant function)
+(set/monotonic (time_invariant_relation functional_at_instant))
+(set/monotonic (genl functional_at_instant function))
 
 (comment instantAfter
          "(instantAfter ?instant1 ?instant2) means that ?instant1 falls strictly later in time than ?instant2. A claim about moments rather than about intervals, which is why it is spelled apart from Allen's after. The converse of instantBefore.")
 (set/monotonic (instance_relation_predicate instantAfter))
 (set/monotonic (transitive instantAfter))
+(set/monotonic (eternal_predicate instantAfter))
 (arg instantAfter 1 time_point)
 (arg instantAfter 2 time_point)
 
@@ -414,12 +391,14 @@
          "(instantBefore ?instant1 ?instant2) means that ?instant1 falls strictly earlier in time than ?instant2. A claim about moments rather than about intervals, which is why it is spelled apart from Allen's before. The converse of instantAfter.")
 (set/monotonic (instance_relation_predicate instantBefore))
 (set/monotonic (transitive instantBefore))
+(set/monotonic (eternal_predicate instantBefore))
 (arg instantBefore 1 time_point)
 (arg instantBefore 2 time_point)
 
 (comment instantEqual
          "(instantEqual ?instant1 ?instant2) means that ?instant1 and ?instant2 are the same moment. The identity of the point algebra, and a claim about time rather than about the identity of the two terms, so it is not the equality closure's equals.")
 (set/monotonic (instance_relation_predicate instantEqual))
+(set/monotonic (eternal_predicate instantEqual))
 (arg instantEqual 1 time_point)
 (arg instantEqual 2 time_point)
 
@@ -428,7 +407,7 @@
 (implementationNote InstantFn "An unreifiable_function application like the calendar constructors, structural so the fields stay readable. The startOf and endOf of a calendar term are computed as InstantFn terms and never stored.")
 (unreifiable_function InstantFn)
 (fixed_arity_function InstantFn)
-(functionCorrespondingPredicate InstantFn calendarInstant)
+(functionCorrespondingPredicate InstantFn calendarInstant 7)
 (arity InstantFn 6)
 (arg InstantFn 1 integer)
 (arg InstantFn 2 integer)
@@ -442,6 +421,7 @@
          "(calendarInstant ?year ?month ?day ?hour ?minute ?second ?instant) means that ?instant is the moment those six calendar fields name, so (calendarInstant 2000 1 1 0 0 0 ?instant) holds of midnight at the start of 2000. InstantFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (implementationNote calendarInstant "The calendar prover reads the InstantFn term and does not answer this predicate.")
 (fixed_arity_predicate calendarInstant)
+(set/monotonic (eternal_predicate calendarInstant))
 (arity calendarInstant 7)
 (arg calendarInstant 1 integer)
 (arg calendarInstant 2 positive_integer)
@@ -454,18 +434,21 @@
 (comment instantNotAfter
          "(instantNotAfter ?instant1 ?instant2) means that ?instant1 falls at or before ?instant2. Either instantBefore or instantEqual, the ≤ of time. The complement of instantAfter, which over three jointly exhaustive relations is exactly its negation.")
 (set/monotonic (instance_relation_predicate instantNotAfter))
+(set/monotonic (eternal_predicate instantNotAfter))
 (arg instantNotAfter 1 time_point)
 (arg instantNotAfter 2 time_point)
 
 (comment instantNotBefore
          "(instantNotBefore ?instant1 ?instant2) means that ?instant1 falls at or after ?instant2. Either instantAfter or instantEqual, the ≥ of time. The complement of instantBefore, which over three jointly exhaustive relations is exactly its negation.")
 (set/monotonic (instance_relation_predicate instantNotBefore))
+(set/monotonic (eternal_predicate instantNotBefore))
 (arg instantNotBefore 1 time_point)
 (arg instantNotBefore 2 time_point)
 
 (comment instantNotEqual
          "(instantNotEqual ?instant1 ?instant2) means that ?instant1 and ?instant2 are different moments, one before the other. Either instantBefore or instantAfter, and the complement of instantEqual.")
 (set/monotonic (instance_relation_predicate instantNotEqual))
+(set/monotonic (eternal_predicate instantNotEqual))
 (arg instantNotEqual 1 time_point)
 (arg instantNotEqual 2 time_point)
 
@@ -474,7 +457,7 @@
 (implementationNote IntervalAfterFn "An unreifiable_function application, so ?instant is readable inside the term.")
 (unreifiable_function IntervalAfterFn)
 (unary_function IntervalAfterFn)
-(functionCorrespondingPredicate IntervalAfterFn intervalAfterOf)
+(functionCorrespondingBinaryPredicate IntervalAfterFn intervalAfterOf)
 (arg IntervalAfterFn 1 time_point)
 (result IntervalAfterFn time_interval)
 
@@ -484,9 +467,10 @@
           (startOf (IntervalAfterFn ?instant) ?instant)))
 
 (comment intervalAfterOf
-         "(intervalAfterOf ?instant ?interval) means that ?interval is the time after ?instant, the interval (IntervalAfterFn ?instant) names. IntervalAfterFn is the corresponding function, and its value is the last argument. Nothing reads this predicate: the rule beside IntervalAfterFn reads the term. See docs/time.md.")
+         "(intervalAfterOf ?instant ?interval) means that ?interval is the time after ?instant, the interval (IntervalAfterFn ?instant) names. IntervalAfterFn is the corresponding function, and its value is the last argument. The rule beside IntervalAfterFn reads the term, and the :exact-present check reads this predicate as naming a time with no end. See docs/time.md.")
 (binary_predicate intervalAfterOf)
 (instance_relation_predicate intervalAfterOf)
+(set/monotonic (eternal_predicate intervalAfterOf))
 (arg intervalAfterOf 1 time_point)
 (arg intervalAfterOf 2 time_interval)
 
@@ -495,7 +479,7 @@
 (implementationNote IntervalBeforeFn "An unreifiable_function application, so ?instant is readable inside the term.")
 (unreifiable_function IntervalBeforeFn)
 (unary_function IntervalBeforeFn)
-(functionCorrespondingPredicate IntervalBeforeFn intervalBeforeOf)
+(functionCorrespondingBinaryPredicate IntervalBeforeFn intervalBeforeOf)
 (arg IntervalBeforeFn 1 time_point)
 (result IntervalBeforeFn time_interval)
 
@@ -508,12 +492,14 @@
          "(intervalBeforeOf ?instant ?interval) means that ?interval is the time before ?instant, the interval (IntervalBeforeFn ?instant) names. IntervalBeforeFn is the corresponding function, and its value is the last argument. Nothing reads this predicate: the rule beside IntervalBeforeFn reads the term. See docs/time.md.")
 (binary_predicate intervalBeforeOf)
 (instance_relation_predicate intervalBeforeOf)
+(set/monotonic (eternal_predicate intervalBeforeOf))
 (arg intervalBeforeOf 1 time_point)
 (arg intervalBeforeOf 2 time_interval)
 
 (comment intervalEqual
          "(intervalEqual ?interval1 ?interval2) means that ?interval1 and ?interval2 begin together and end together. The identity of the interval algebra, and a claim about extent in time rather than about the identity of the two terms, so it is not the equality closure's equals.")
 (set/monotonic (instance_relation_predicate intervalEqual))
+(set/monotonic (eternal_predicate intervalEqual))
 (arg intervalEqual 1 temporal)
 (arg intervalEqual 2 temporal)
 (set/inert (negates intervalEqual meets))
@@ -528,7 +514,7 @@
 (implementationNote LatestEndFn "The instant network orders it at or after (EndFn ?thing) and at or after (LatestStartFn ?thing). A structural unreifiable_function application, so a fact about the point names the thing it bounds.")
 (unreifiable_function LatestEndFn)
 (unary_function LatestEndFn)
-(functionCorrespondingPredicate LatestEndFn latestEndOf)
+(functionCorrespondingBinaryPredicate LatestEndFn latestEndOf)
 (arg LatestEndFn 1 temporal)
 (result LatestEndFn time_point)
 
@@ -536,6 +522,7 @@
          "(latestEndOf ?thing ?instant) means that ?instant is the latest moment ?thing can have ended, the moment (LatestEndFn ?thing) names. LatestEndFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (implementationNote latestEndOf "The instant network reads the LatestEndFn term and not this predicate, so a stated latestEndOf fact orders nothing.")
 (set/monotonic (instance_relation_predicate latestEndOf))
+(set/monotonic (eternal_predicate latestEndOf))
 (arg latestEndOf 1 temporal)
 (arg latestEndOf 2 time_point)
 
@@ -544,7 +531,7 @@
 (implementationNote LatestStartFn "The instant network orders it at or after (StartFn ?thing) and at or before (LatestEndFn ?thing). A structural unreifiable_function application, so a fact about the point names the thing it bounds.")
 (unreifiable_function LatestStartFn)
 (unary_function LatestStartFn)
-(functionCorrespondingPredicate LatestStartFn latestStartOf)
+(functionCorrespondingBinaryPredicate LatestStartFn latestStartOf)
 (arg LatestStartFn 1 temporal)
 (result LatestStartFn time_point)
 
@@ -552,18 +539,21 @@
          "(latestStartOf ?thing ?instant) means that ?instant is the latest moment ?thing can have begun, the moment (LatestStartFn ?thing) names. LatestStartFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (implementationNote latestStartOf "The instant network reads the LatestStartFn term and not this predicate, so a stated latestStartOf fact orders nothing.")
 (set/monotonic (instance_relation_predicate latestStartOf))
+(set/monotonic (eternal_predicate latestStartOf))
 (arg latestStartOf 1 temporal)
 (arg latestStartOf 2 time_point)
 
 (comment length
-         "(length ?interval ?measure) means that ?interval lasts ?measure. Exact as (QuantityFn 2 Hour), and bounded as (QuantityIntervalFn 1 2 Hour) when only bounds are known. An interval's one primitive duration and the only quantitative fact stated about it, since totalDuration and overlapDuration are both computed from these. A duration, not a spatial extent.")
+         "(length ?interval ?measure) means that ?interval lasts ?measure. Exact as (QuantityFn 2 Hour), and bounded as (QuantityIntervalFn 1 2 Hour) when only bounds are known. An interval's one primitive duration and the only quantitative fact stated about it, since totalDuration and overlapDuration are both computed from these. A duration, not a spatial extent. The length of a temporal thing is its whole temporal extent, viewed from outside time, so it does not grow while the thing goes on and is eternal within the theory.")
 (set/monotonic (instance_relation_predicate length))
+(set/monotonic (eternal_predicate length))
 (arg length 1 temporal)
 (arg length 2 measure)
 
 (comment meets
          "(meets ?interval1 ?interval2) means that ?interval1 ends exactly where ?interval2 begins. No gap and no overlap, which is what separates it from before.")
 (set/monotonic (instance_relation_predicate meets))
+(set/monotonic (eternal_predicate meets))
 (arg meets 1 temporal)
 (arg meets 2 temporal)
 (set/inert (inverse meets metBy))
@@ -577,6 +567,7 @@
 (comment metBy
          "(metBy ?interval1 ?interval2) means that ?interval1 begins exactly where ?interval2 ends.")
 (set/monotonic (instance_relation_predicate metBy))
+(set/monotonic (eternal_predicate metBy))
 (arg metBy 1 temporal)
 (arg metBy 2 temporal)
 (set/inert (asymmetric metBy))
@@ -586,24 +577,19 @@
 (set/inert (negates metBy starts))
 
 (comment monad_context
-         "A context that is not a time slice: a world, story or theory taken over all of its time, such as CxStory, as opposed to one year of it. It is its own monad and its time is Forever, by the rules that read it. A backward rule concludes it of a context, and nothing states it. CxTimeFn's first argument is any context and not only a monad_context, so a slice of a slice is a slice. See docs/time.md.")
+         "A context that is not a time slice: a world, story or theory taken over all of its time, such as CxStory, as opposed to one year of it. It is its own monad and its time is Forever. A prover answers it of a context that is not a slice: no natFormula map names it a CxTimeFn application, and it is not a time_slice_context. Nothing states it. CxTimeFn's first argument is any context and not only a monad_context, so a slice of a slice is a slice. See docs/time.md.")
 (unary_predicate monad_context)
-(genl monad_context context)
+(set/monotonic (eternal_predicate monad_context))
+(set/monotonic (genl monad_context context))
 (not (arg CxTimeFn 1 monad_context))
-;; A context that no CxTimeFn natFormula names and that is not a time_slice_context is a
-;; monad_context (docs/time.md).
-(set/backwardRule
- (implies (and (context ?context)
-               (unknown (thereExists [?monad ?time] (natFormula ?context (CxTimeFn ?monad ?time))))
-               (unknown (time_slice_context ?context)))
-          (monad_context ?context)))
+(not_assertible monad_context)
 
 (comment MonthFn
          "(MonthFn ?year ?month) means the calendar month, as an interval — so (MonthFn 2000 1) is January 2000, and ?month is 1 through 12. January 2000 is inside 2000, and February is inside neither January nor itself twice over. See docs/context-nat.md.")
 (implementationNote MonthFn "An unreifiable_function application like YearFn and DayFn, structural so the ordering can read its fields.")
 (unreifiable_function MonthFn)
 (binary_function MonthFn)
-(functionCorrespondingPredicate MonthFn calendarMonth)
+(functionCorrespondingPredicate MonthFn calendarMonth 3)
 (arg MonthFn 1 integer)
 (arg MonthFn 2 positive_integer)
 (result MonthFn time_interval)
@@ -612,6 +598,7 @@
          "(calendarMonth ?year ?month ?interval) means that ?interval is month ?month, 1 through 12, of calendar year ?year, so (calendarMonth 2000 1 ?interval) holds of January 2000. MonthFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (implementationNote calendarMonth "The calendar prover reads the MonthFn term and does not answer this predicate.")
 (ternary_predicate calendarMonth)
+(set/monotonic (eternal_predicate calendarMonth))
 (arg calendarMonth 1 integer)
 (arg calendarMonth 2 positive_integer)
 (arg calendarMonth 3 time_interval)
@@ -620,13 +607,16 @@
          "(overlapDuration ?interval1 ?interval2 ?duration) means that ?duration is how long ?interval1 and ?interval2 overlap. Zero when they are temporallyDisjoint, the contained length when one is a subintervalOf the other, and at most the shorter length otherwise.")
 (implementationNote overlapDuration "Computed by the duration prover from the two lengths and the Allen relations still possible between them, and never stored. Where no one relation fixes the overlap, the answer is the bounded (QuantityIntervalFn 0 shorter unit), so an over-approximation renders as an interval and says as much.")
 (ternary_predicate overlapDuration)
+(set/monotonic (eternal_predicate overlapDuration))
 (arg overlapDuration 1 temporal)
 (arg overlapDuration 2 temporal)
 (arg overlapDuration 3 measure)
+(not_assertible overlapDuration)
 
 (comment overlappedBy
          "(overlappedBy ?interval1 ?interval2) means that ?interval2 begins first, and ?interval1 begins before ?interval2 ends and ends after it. So they share a middle stretch and each has time the other does not.")
 (set/monotonic (instance_relation_predicate overlappedBy))
+(set/monotonic (eternal_predicate overlappedBy))
 (arg overlappedBy 1 temporal)
 (arg overlappedBy 2 temporal)
 (set/inert (asymmetric overlappedBy))
@@ -637,6 +627,7 @@
 (comment overlaps
          "(overlaps ?interval1 ?interval2) means that ?interval1 begins first, and ?interval2 begins before ?interval1 ends and ends after it. So they share a middle stretch and each has time the other does not.")
 (set/monotonic (instance_relation_predicate overlaps))
+(set/monotonic (eternal_predicate overlaps))
 (arg overlaps 1 temporal)
 (arg overlaps 2 temporal)
 (set/inert (inverse overlaps overlappedBy))
@@ -647,18 +638,21 @@
 (comment precededBy
          "(precededBy ?interval1 ?interval2) means that ?interval1 begins at or after the moment ?interval2 ends. Either after or metBy. The converse of precedes.")
 (set/monotonic (instance_relation_predicate precededBy))
+(set/monotonic (eternal_predicate precededBy))
 (arg precededBy 1 temporal)
 (arg precededBy 2 temporal)
 
 (comment precedes
          "(precedes ?interval1 ?interval2) means that ?interval1 ends at or before the moment ?interval2 begins. Either before or meets, so it is the ordering that does not care whether the two touch. Derived rather than base, and the converse of precededBy.")
 (set/monotonic (instance_relation_predicate precedes))
+(set/monotonic (eternal_predicate precedes))
 (arg precedes 1 temporal)
 (arg precedes 2 temporal)
 
 (comment properSubintervalOf
          "(properSubintervalOf ?interval1 ?interval2) means that ?interval1 falls within ?interval2 and is not the whole of it. Any of during, starts or finishes.")
 (set/monotonic (instance_relation_predicate properSubintervalOf))
+(set/monotonic (eternal_predicate properSubintervalOf))
 (arg properSubintervalOf 1 time_interval)
 (arg properSubintervalOf 2 time_interval)
 (set/monotonic (irreflexive properSubintervalOf))
@@ -670,12 +664,14 @@
 (comment sharesTimeWith
          "(sharesTimeWith ?interval1 ?interval2) means that ?interval1 and ?interval2 have some time in common. Any relation but before, after, meets and metBy, so it is the complement of temporallyDisjoint.")
 (set/monotonic (instance_relation_predicate sharesTimeWith))
+(set/monotonic (eternal_predicate sharesTimeWith))
 (arg sharesTimeWith 1 temporal)
 (arg sharesTimeWith 2 temporal)
 
 (comment startedBy
          "(startedBy ?interval1 ?interval2) means that ?interval1 and ?interval2 begin together, and ?interval1 ends later. So ?interval2 is an opening part of ?interval1.")
 (set/monotonic (instance_relation_predicate startedBy))
+(set/monotonic (eternal_predicate startedBy))
 (arg startedBy 1 temporal)
 (arg startedBy 2 temporal)
 (set/inert (asymmetric startedBy))
@@ -686,7 +682,7 @@
 (implementationNote StartFn "The instant network orders it before (EndFn ?thing).")
 (unreifiable_function StartFn)
 (unary_function StartFn)
-(functionCorrespondingPredicate StartFn startOf)
+(functionCorrespondingBinaryPredicate StartFn startOf)
 (arg StartFn 1 temporal)
 (result StartFn time_point)
 
@@ -694,12 +690,14 @@
          "(startOf ?interval ?instant) means that ?instant is the moment ?interval begins. One of the interval's two bounding instants, the other being its endOf. What joins the interval algebra to the point algebra and to the metric constraints stated over instants. For a calendar term it is that term's first moment: the start of (YearFn 2000) is (InstantFn 2000 1 1 0 0 0). See docs/time.md.")
 (implementationNote startOf "Stated of an ordinary interval, and computed for a calendar term.")
 (set/monotonic (instance_relation_predicate startOf))
+(set/monotonic (eternal_predicate startOf))
 (arg startOf 1 temporal)
 (arg startOf 2 time_point)
 
 (comment starts
          "(starts ?interval1 ?interval2) means that ?interval1 and ?interval2 begin together, and ?interval1 ends earlier. So ?interval1 is an opening part of ?interval2.")
 (set/monotonic (instance_relation_predicate starts))
+(set/monotonic (eternal_predicate starts))
 (arg starts 1 temporal)
 (arg starts 2 temporal)
 (set/inert (inverse starts startedBy))
@@ -708,6 +706,7 @@
 (comment subintervalOf
          "(subintervalOf ?interval1 ?interval2) means that ?interval1 falls within ?interval2, sharing an end, a start, or neither. Any of during, starts, finishes or intervalEqual, so it is derived rather than base.")
 (set/monotonic (instance_relation_predicate subintervalOf))
+(set/monotonic (eternal_predicate subintervalOf))
 (arg subintervalOf 1 time_interval)
 (arg subintervalOf 2 time_interval)
 (set/monotonic (reflexive subintervalOf))
@@ -716,6 +715,7 @@
 (comment subtimeOf
          "(subtimeOf ?time1 ?time2) means that the time ?time1 lies within the time ?time2, whatever the two kinds of time: an interval inside an interval, an instant inside an interval, or a piece of an intermittent time inside the whole. A time is a subtime of itself. subintervalOf is the case of two intervals, and an instant a time includes is a subtime of it by the rule beside it. TimeIntersectionFn is the meet over it. See docs/time.md.")
 (set/monotonic (instance_relation_predicate subtimeOf))
+(set/monotonic (eternal_predicate subtimeOf))
 (arg subtimeOf 1 time)
 (arg subtimeOf 2 time)
 (set/monotonic (reflexive subtimeOf))
@@ -739,6 +739,7 @@
          "(temporalDistance ?instant1 ?instant2 ?measure) means that ?instant2 falls ?measure later than ?instant1. So a negative measure says ?instant2 comes first. Exact as (QuantityFn N Unit) and bounded as (QuantityIntervalFn Lo Hi Unit).")
 (implementationNote temporalDistance "A stated one is an ordinary fact. The metric prover closes every such constraint visible in a context by all-pairs shortest paths and answers the tightest separation they entail between any two instants, binding the measure when it is open and checking containment when it is ground.")
 (ternary_predicate temporalDistance)
+(set/monotonic (eternal_predicate temporalDistance))
 (arg temporalDistance 1 time_point)
 (arg temporalDistance 2 time_point)
 (arg temporalDistance 3 measure)
@@ -746,6 +747,7 @@
 (comment temporallyDisjoint
          "(temporallyDisjoint ?interval1 ?interval2) means that ?interval1 and ?interval2 have no time in common. Any of before, after, meets or metBy, so it is the complement of sharesTimeWith.")
 (set/monotonic (instance_relation_predicate temporallyDisjoint))
+(set/monotonic (eternal_predicate temporallyDisjoint))
 (arg temporallyDisjoint 1 temporal)
 (arg temporallyDisjoint 2 temporal)
 
@@ -753,19 +755,33 @@
          "(terminates ?event ?fluent ?instant) means that ?fluent stops being the case at ?instant because ?event happened then. The converse half of initiates. See docs/time.md.")
 (implementationNote terminates "A terminates fact arriving later withdraws a conclusion inertia had already drawn, and retracting its event brings the conclusion back.")
 (ternary_predicate terminates)
+(set/monotonic (eternal_predicate terminates))
 (arg terminates 1 causal)
 (arg terminates 2 fluent)
 (arg terminates 3 time_point)
 
+(comment tightestStartBoundOf
+         "(tightestStartBoundOf ?thing ?instant) means that ?instant is a known lower bound on the start of ?thing, and every other known lower bound on that start falls at or before it. A clock reading (instantNotBefore W ?instant) is such a bound on the moment W, so a later reading moves the answer from the earlier reading to itself. Two bounds the instant facts leave unordered give no answer. The answer moves as facts arrive, where (EarliestStartFn ?thing) names one moment that does not, so EarliestStartFn is not the corresponding function. See docs/time.md.")
+(implementationNote tightestStartBoundOf "The :tightest-start-bound reasoner answers it from the order over time points, over the facts the asking context sees. A known bound rests on at least one stated fact, so a bound the point terms alone fix, such as (EarliestStartFn ?thing), is none. A symbol ?thing is read both as a moment and as a thing with a start.")
+(binary_predicate tightestStartBoundOf)
+(set/monotonic (time_varying_relation tightestStartBoundOf))
+(instance_relation_predicate tightestStartBoundOf)
+(arg tightestStartBoundOf 1 temporal)
+(arg tightestStartBoundOf 2 time_point)
+(not_assertible tightestStartBoundOf)
+;; A bound on a bound's start is no tightest bound on the first thing's start.
+(not (transitive tightestStartBoundOf))
+
 (comment TimeIntersectionFn
-         "(TimeIntersectionFn ?time1 ?time2) means the time ?time1 and ?time2 have in common: the meet over subtimeOf, the largest time that is a subtime of both. So (TimeIntersectionFn (DatetimeRangeFn \"2000-01\" \"2000-06\") (DatetimeRangeFn \"2000-04\" \"2000-09\")) is April through June 2000, and the intersection of a year and a moment in it is that moment. Two times that share no time have no intersection. It is a subtime of each argument by the rules beside it, which read a believed time for both, and a subinterval of each where both are believed time_intervals. See docs/time.md.")
-(implementationNote TimeIntersectionFn "An unreifiable_function application, so both arguments are readable inside the term.")
+         "(TimeIntersectionFn . ?times) means the time all of ?times have in common: the meet over subtimeOf, the largest time that is a subtime of each. So (TimeIntersectionFn (DatetimeRangeFn \"2000-01\" \"2000-06\") (DatetimeRangeFn \"2000-04\" \"2000-09\")) is April through June 2000, and the intersection of a year and a moment in it is that moment. Two times that share no time have no intersection. An application of two times is a subtime of each by the rules beside it, which read a believed time for both, and a subinterval of each where both are believed time_intervals. See docs/time.md.")
+(implementationNote TimeIntersectionFn "An unreifiable_function application, so the arguments are readable inside the term.")
 (unreifiable_function TimeIntersectionFn)
-(binary_function TimeIntersectionFn)
-(arity TimeIntersectionFn 2)
-(functionCorrespondingPredicate TimeIntersectionFn timeIntersectionOf)
-(arg TimeIntersectionFn 1 time)
-(arg TimeIntersectionFn 2 time)
+(variable_arity_function TimeIntersectionFn)
+(unbounded_arity_function TimeIntersectionFn)
+(arityMin TimeIntersectionFn 2)
+(meetFunctionOf TimeIntersectionFn subtimeOf)
+(functionCorrespondingPredicate TimeIntersectionFn timeIntersectionOf 1)
+(argAndRest TimeIntersectionFn 1 time)
 (result TimeIntersectionFn time)
 
 ;; The intersection lies within each of the two times, and inside each as an interval
@@ -811,22 +827,24 @@
   "Left unexcepted on purpose. TimeIntersectionFn's definition concludes that an intersection is a subinterval of its second argument, so a part, and the root rule denies one. Both fire for one tuple only where the facts already contradict the root rule: an interval stated a proper part of its intersection with another. Both rules are strict definitions, so that clash is the one the facts owe, and an exception would hide it.")
 
 (comment timeIntersectionOf
-         "(timeIntersectionOf ?time1 ?time2 ?intersection) means that ?intersection is the time ?time1 and ?time2 have in common, the time (TimeIntersectionFn ?time1 ?time2) names. TimeIntersectionFn is the corresponding function, and its value is the last argument. Nothing reads this predicate: the rules beside TimeIntersectionFn read the term. See docs/time.md.")
-(ternary_predicate timeIntersectionOf)
-(arg timeIntersectionOf 1 time)
-(arg timeIntersectionOf 2 time)
-(arg timeIntersectionOf 3 time)
+         "(timeIntersectionOf ?intersection . ?times) means that ?intersection is the time all of ?times have in common, the time (TimeIntersectionFn . ?times) names. TimeIntersectionFn is the corresponding function, and its value is the first argument. Nothing reads this predicate: the rules beside TimeIntersectionFn read the term. See docs/time.md.")
+(variable_arity_predicate timeIntersectionOf)
+(unbounded_arity_predicate timeIntersectionOf)
+(set/monotonic (eternal_predicate timeIntersectionOf))
+(arityMin timeIntersectionOf 3)
+(argAndRest timeIntersectionOf 1 time)
 
 (comment time_slice_context
          "A context that is one stretch or moment of another context's time: an application of CxTimeFn, such as (CxTimeFn CxStory (YearFn 2000)), the year 2000 of CxStory. CxTimeFn's result type, so each application is one. cxMonadOf names its monad, a context that is not a time slice, and cxTimeOf the time it covers. See docs/time.md.")
 (unary_predicate time_slice_context)
-(genl time_slice_context context)
+(set/monotonic (eternal_predicate time_slice_context))
+(set/monotonic (genl time_slice_context context))
 
 (comment TimeOfFn
          "(TimeOfFn ?thing) means the time ?thing occupies: the moment or the stretches of time over which it exists, holds or happens. The time of an uninterrupted thing is an uninterrupted_time, and the time of an intermittent thing an intermittent_time. A time is its own time. A reifiable_function, one value per temporal thing, and timeOf is the corresponding predicate, so (TimeOfFn ?thing) and a believed (timeOf ?thing ?time) name one time. See docs/time.md.")
 (reifiable_function TimeOfFn)
 (unary_function TimeOfFn)
-(functionCorrespondingPredicate TimeOfFn timeOf)
+(functionCorrespondingBinaryPredicate TimeOfFn timeOf)
 (arg TimeOfFn 1 temporal)
 (result TimeOfFn time)
 
@@ -834,6 +852,7 @@
          "(timeOf ?thing ?time) means that ?time is the time ?thing occupies, the time (TimeOfFn ?thing) names. TimeOfFn is the corresponding function, and its value is the last argument. See docs/time.md.")
 (binary_predicate timeOf)
 (instance_relation_predicate timeOf)
+(set/monotonic (eternal_predicate timeOf))
 (arg timeOf 1 temporal)
 (arg timeOf 2 time)
 
@@ -845,21 +864,24 @@
 (comment timezone
          "(timezone ?name) means that the string ?name is the identifier of a named time zone in the IANA time-zone database, such as \"Europe/London\". A zone fixes a UTC offset only per moment, through its daylight-saving rules; ZonedDatetimeFn reads them.")
 (unary_predicate timezone)
-(genl timezone string)
+(set/monotonic (time_invariant_relation timezone))
+(set/monotonic (genl timezone string))
 
 (comment totalDuration
          "(totalDuration (list ?interval1 ?interval2 …) ?duration) means that ?duration is the sum of the listed intervals' lengths, which must all be of one dimension. Binary rather than ternary: the (list …) of components is one argument.")
 (implementationNote totalDuration "Computed by the duration prover, never stored. The gloss composer reads the signature as a description instead of substituting into it, since the (list …) is one argument.")
 (set/monotonic (instance_relation_predicate totalDuration))
+(set/monotonic (eternal_predicate totalDuration))
 (arg totalDuration 1 temporal)
 (arg totalDuration 2 measure)
+(not_assertible totalDuration)
 
 (comment YearFn
          "(YearFn ?year) means the calendar year, as an interval — so (YearFn 2000) is the whole of 2000. The coarsest of the three calendar constructors (with MonthFn and DayFn beneath it). A calendar term and the reduced-precision ISO string naming the same interval denote the same interval and order against each other. See docs/context-nat.md.")
 (implementationNote YearFn "An unreifiable_function application: it stays structural rather than minting a constant, because its one field is what says which years contain which.")
 (unreifiable_function YearFn)
 (unary_function YearFn)
-(functionCorrespondingPredicate YearFn calendarYear)
+(functionCorrespondingBinaryPredicate YearFn calendarYear)
 (arg YearFn 1 integer)
 (result YearFn time_interval)
 
@@ -867,6 +889,7 @@
          "(calendarYear ?year ?interval) means that ?interval is the calendar year numbered ?year, so (calendarYear 2000 ?interval) holds of the whole of 2000. YearFn is the corresponding function, and its value is the last argument; calendarMonth and calendarDay are the finer two. See docs/time.md.")
 (implementationNote calendarYear "The calendar prover reads the YearFn term and does not answer this predicate.")
 (set/monotonic (instance_relation_predicate calendarYear))
+(set/monotonic (eternal_predicate calendarYear))
 (arg calendarYear 1 integer)
 (arg calendarYear 2 time_interval)
 
@@ -875,7 +898,7 @@
 (implementationNote ZonedDatetimeFn "An unreifiable_function application like DatetimeFn: it stays structural, so the string and the zone are readable inside the term. The calendar prover reads the zone's rules from java.time and answers the interval relations; it answers no startOf or endOf, since an InstantFn moment is in no zone.")
 (unreifiable_function ZonedDatetimeFn)
 (binary_function ZonedDatetimeFn)
-(functionCorrespondingPredicate ZonedDatetimeFn zonedDatetimeOf)
+(functionCorrespondingPredicate ZonedDatetimeFn zonedDatetimeOf 3)
 (arg ZonedDatetimeFn 1 string)
 (arg ZonedDatetimeFn 2 timezone)
 (result ZonedDatetimeFn time_interval)
@@ -884,6 +907,7 @@
          "(zonedDatetimeOf ?iso ?zone ?interval) means that ?interval is the interval the reduced-precision ISO 8601 string ?iso names on the wall clock of the time zone ?zone. ZonedDatetimeFn is the corresponding function, and its value is the last argument.")
 (implementationNote zonedDatetimeOf "The calendar prover reads the ZonedDatetimeFn term and does not answer this predicate.")
 (ternary_predicate zonedDatetimeOf)
+(set/monotonic (time_invariant_relation zonedDatetimeOf))
 (arity zonedDatetimeOf 3)
 (arg zonedDatetimeOf 1 string)
 (arg zonedDatetimeOf 2 timezone)

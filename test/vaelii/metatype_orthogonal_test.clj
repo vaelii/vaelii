@@ -69,13 +69,34 @@
         (str "(orthogonal plant " o ") is derived and not stated"))
     (is (= :orthogonal (v/subsumption-status kb 'plant o)))))
 
+(def ^:private arity-types
+  '[unary binary ternary quaternary quinary fixed_arity variable_arity bounded_arity
+    unbounded_arity at_least_binary at_least_ternary at_least_quaternary at_least_quinary])
+
+(tu/deftest-kb every-relation-wide-arity-class-is-an-arity-type
+  (is (= (set arity-types)
+         (into #{} (map #(second (:sentence %)))
+               (v/sentexes-matching kb '(arity_type ?t) 'CxUniverse))))
+  (doseq [t (map #(second (:sentence %))
+                 (v/sentexes-matching kb '(relationTypeByArity ?t ?n) 'CxUniverse))]
+    (is (true? (v/ask? kb (list 'arity_type t) 'CxUniverse))
+        (str t " maps an arity and is an arity_type"))))
+
 (tu/deftest-kb abducibility-is-orthogonal-to-every-arity-type
-  (doseq [a '[unary binary ternary fixed_arity variable_arity bounded_arity unbounded_arity
-              at_least_binary at_least_ternary]]
+  (doseq [a arity-types]
     (is (true? (v/ask? kb (list 'arity_type a) 'CxUniverse)) (str a " is an arity_type"))
     (is (derived-not-stated? kb 'orthogonal a 'abducible_predicate 'CxUniverse)
         (str "(orthogonal " a " abducible_predicate) is derived"))
     (is (= :orthogonal (v/subsumption-status kb a 'abducible_predicate)))))
+
+(tu/deftest-kb assertibility-is-orthogonal-to-every-arity-type-and-every-type-order
+  (doseq [[classifier members] {'arity_type         arity-types
+                                'type_type_by_order '[type metatype meta_metatype]}]
+    (is (true? (v/ask? kb (list 'typeOrthogonal classifier 'not_assertible) 'CxUniverse)))
+    (doseq [m members]
+      (is (derived-not-stated? kb 'orthogonal m 'not_assertible 'CxUniverse)
+          (str "(orthogonal " m " not_assertible) is derived from " classifier))
+      (is (= :orthogonal (v/subsumption-status kb m 'not_assertible))))))
 
 (tu/deftest-kb a-type-of-each-order-may-be-empty-or-nonempty
   (doseq [o '[type metatype meta_metatype], e '[empty nonempty]]

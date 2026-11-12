@@ -20,7 +20,6 @@
             [vaelii.host.core-context :as core-context]
             [vaelii.host.seed :as seed]
             [vaelii.impl.io.text :as text]
-            [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.special :as special]
             [vaelii.impl.types.reasoning :as reasoning]
@@ -268,7 +267,7 @@
 
 (defn- load-shuffled!
   "The starter's sentences in the order `seed` shuffles them to, through the text
-  loader, then the starter's closing `unary_predicate` batch."
+  loader."
   [kb seed]
   (let [l (java.util.ArrayList. ^java.util.Collection (vec (starter-entries)))]
     (java.util.Collections/shuffle l (java.util.Random. (long seed)))
@@ -276,9 +275,6 @@
       (text/load-entries! (fn [s c o] (v/assert kb s c (or o {})))
                           (fn [s c] (v/assert-inert kb s c))
                           (vec l)))
-    (v/with-deferred-settle kb
-      (doseq [t (nm/by-print-key (v/specs kb 'thing))]
-        (v/assert kb (list 'unary_predicate t) 'CxUniverse)))
     kb))
 
 (defn- held-after

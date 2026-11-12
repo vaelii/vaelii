@@ -112,6 +112,7 @@
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.dense-kv :as dense]
             [vaelii.impl.dense-roots :as dense-roots]
+            [vaelii.impl.disk.backend :as disk]
             [vaelii.impl.disk.record-store :as drs]
             [vaelii.impl.except :as exc]
             [vaelii.impl.inherit :as inherit]
@@ -121,6 +122,8 @@
             [vaelii.impl.memory :as mem]
             [vaelii.impl.overlay.frozen :as frozen]
             [vaelii.impl.overlay.kv :as okv]
+            [vaelii.impl.overlay.mount :as mount]
+            [vaelii.impl.overlay.rebase :as rebase]
             [vaelii.impl.plan :as plan]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
@@ -2580,6 +2583,49 @@
              (nanos (let [e (v/assert kb (list 'except (list 'sentexHandle t)) 'CxEbuD M)]
                       (v/retract! kb e)))))))
 
+(defn- except-beside-facts-under-an-edge
+  "An `except` of one fact asserted and retracted, where the one firing from the fact also
+  rests on a `genl` edge with n other facts under it.
+  ```
+  CxPerf     (genl efe_lo efe_hi)   rule (efe_hi ?x) ⇒ (efe_q ?x)
+             (efe_lo PEfe0) … (efe_lo PEfe<n-1>)   (efe_lo PEfeT)
+   └─ CxEfeD (except (efe_lo PEfeT))
+  ```
+  The except re-chains the edge alone (`special/drain-except-moves!`'s `:rejoin`)."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}]
+    (v/assert kb '(genlCx CxEfeD CxPerf) 'CxUniverse M)
+    (v/with-deferred-settle kb
+      (v/assert kb '(genl efe_lo efe_hi) 'CxPerf M)
+      (v/assert kb '(set/forwardRule (implies (efe_hi ?x) (efe_q ?x))) 'CxPerf M)
+      (dotimes [i n] (v/assert kb (list 'efe_lo (symbol (str "PEfe" i))) 'CxPerf M)))
+    (let [t (v/assert kb '(efe_lo PEfeT) 'CxPerf M)]
+      (doall (for [_ (range 60)]
+               (nanos (let [e (v/assert kb (list 'except (list 'sentexHandle t)) 'CxEfeD M)]
+                        (v/retract! kb e))))))))
+
+(defn- route-gain-beside-unrelated-excepts
+  "`(rga_r PRgaT)`, a route the `except` of `(rga_p PRgaT)` does not hide, asserted and
+  retracted beside n `except`s of unrelated facts (`special/recheck-route-gains!`).
+  ```
+  CxPerf     rules (rga_p ?x) ⇒ (rga_q ?x), (rga_r ?x) ⇒ (rga_q ?x)
+             (rga_p PRga0) … (rga_p PRga<n-1>)   (rga_p PRgaT)
+   └─ CxRgaD (except (rga_p PRga0)) … (except (rga_p PRga<n-1>))   (except (rga_p PRgaT))
+  ```"
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        ex #(v/assert kb (list 'except (sx/sentex-handle %)) 'CxRgaD M)]
+    (v/assert kb '(genlCx CxRgaD CxPerf) 'CxUniverse M)
+    (v/with-deferred-settle kb
+      (v/assert kb '(set/forwardRule (implies (rga_p ?x) (rga_q ?x))) 'CxPerf M)
+      (v/assert kb '(set/forwardRule (implies (rga_r ?x) (rga_q ?x))) 'CxPerf M)
+      (dotimes [i n] (ex (v/assert kb (list 'rga_p (symbol (str "PRga" i))) 'CxPerf M))))
+    (ex (v/assert kb '(rga_p PRgaT) 'CxPerf M))
+    (doall (for [_ (range 60)]
+             (nanos (v/retract! kb (v/assert kb '(rga_r PRgaT) 'CxPerf M)))))))
+
 (defn- genlcx-edge-beside-seen-excepts
   "A `(genlCx CxGseSub CxGseUp)` edge asserted and retracted, beside n `except`s stated in
   `CxGseHide`, which `CxGseSub` sees before the edge, each of a fact a forward rule fired on.
@@ -2759,6 +2805,49 @@
                (nanos (let [e (v/assert kb (list 'except (list 'sentexHandle t)) 'CxPerf)]
                         (v/retract! kb e))))))))
 
+(defn- genl-edge-beside-guarded-firings
+  "n firings of `(gfg_mem ?x) (unknown (genl ?x gfg_top)) ⇒ (gfg_out ?x)`, each binding
+  `?x` to a type of its own, beside a `genl` edge between two fresh types asserted and
+  retracted, timed per edge.
+
+  The edge reaches the rule through its guard's `genl` literal, but moves no firing's
+  guard pair, since no firing's type lies below the edge's lower end.  A re-check of every
+  firing per edge reads here as growth."
+  [n]
+  (let [kb (fresh-kb)
+        t  (fn [s i] (symbol (str s i)))]
+    (v/with-deferred-settle kb
+      (v/assert kb '(set/forwardRule (implies (and (gfg_mem ?x) (unknown (genl ?x gfg_top)))
+                                              (gfg_out ?x)))
+                'CxPerf)
+      (dotimes [i n] (v/assert kb (list 'gfg_mem (t "gfgt_" i)) 'CxPerf)))
+    (doall (for [i (range 60)]
+             (nanos (let [e (v/assert kb (list 'genl (t "gfga_" i) (t "gfgb_" i)) 'CxPerf)]
+                      (v/retract! kb e)))))))
+
+(defn- genl-edge-beside-a-closure-antecedent-extent
+  "n types `(gce_mem T)` below `gce_top` beside the rule `(gce_mem ?x) (genl ?x gce_top) ⇒
+  (gce_out ?x)`, and a `genl` edge between two fresh types asserted, timed per edge, and
+  retracted.
+
+  The edge reaches the rule through its `genl` antecedent, but its upper end does not
+  reach `gce_top`, so it adds no pair the antecedent reads.  A re-join of the rule over
+  its extent per edge reads here as growth."
+  [n]
+  (let [kb (fresh-kb)
+        t  (fn [s i] (symbol (str s i)))]
+    (v/with-deferred-settle kb
+      (v/assert kb '(set/forwardRule (implies (and (gce_mem ?x) (genl ?x gce_top)) (gce_out ?x)))
+                'CxPerf)
+      (dotimes [i n]
+        (v/assert kb (list 'gce_mem (t "gcet_" i)) 'CxPerf)
+        (v/assert kb (list 'genl (t "gcet_" i) 'gce_top) 'CxPerf)))
+    (doall (for [i (range 60)]
+             (let [e  (volatile! nil)
+                   ns (nanos (vreset! e (v/assert kb (list 'genl (t "gcea_" i) (t "gceb_" i)) 'CxPerf)))]
+               (v/retract! kb @e)
+               ns)))))
+
 (defn- guard-defeats-at-a-reader
   "One firing of an `exceptWhen` rule, its blocker stated in each of n contexts below the
   rule's, so n guard defeats name the firing, and a reader below all n.
@@ -2866,6 +2955,50 @@
                      (v/assert kb (list 'conversionFactor (symbol (str "PcrUnit" i)) 'Kilogram 2)
                                'CxPerf))))
           n)))))
+
+(defn- preserved-reader-load
+  "n pairs, a `(bigP pa_i pb_i)` claim and a `(genl pl_i pa_i)` edge under it, loaded in one
+  deferred settle beside `(bigP ?x ?y) ⇒ (bigQ ?x ?y)` with `bigP` preserved along `genl`
+  at argument 1, timed per pair over three loads.
+
+  Each claim and edge moves what `bigP` licenses and owes the rule a full re-join, which the
+  run joins once (`chain/owe-computed-rejoins`).  A re-join per datum reads here as growth."
+  [n]
+  (doall
+   (for [_ (range 3)]
+     (let [kb (fresh-kb) M {:strength :monotonic}
+           t  (fn [s i] (symbol (str s i)))]
+       (v/assert kb '(genlCx CxPerf CxUniverse) 'CxUniverse M)
+       (doseq [d '[(binary_predicate bigP) (type_relation_predicate bigP)
+                   (transitiveInArgInverse bigP 1 genl)]]
+         (v/assert kb d 'CxUniverse M))
+       (v/assert kb '(set/forwardRule (implies (bigP ?x ?y) (bigQ ?x ?y))) 'CxPerf M)
+       (/ (nanos (v/with-deferred-settle kb
+                   (dotimes [i n]
+                     (v/assert kb (list 'bigP (t "pa_" i) (t "pb_" i)) 'CxPerf M)
+                     (v/assert kb (list 'genl (t "pl_" i) (t "pa_" i)) 'CxPerf M))))
+          n)))))
+
+(defn- genl-edge-beside-transitive-claims
+  "n claims `(bigT pta_i ptb_i)` of a predicate declared `(transitive bigT)` and preserved
+  along `genl` at both positions, beside `(bigT ?x ?y) ⇒ (bigTq ?x ?y)`, and a `genl` edge
+  between two fresh types asserted and retracted, timed per edge.
+
+  The edge's closures hold no claim's argument, so it moves no predicate
+  (`inherit/crossing-claim?`).  A re-join of the rule per edge reads here as growth."
+  [n]
+  (let [kb (fresh-kb) M {:strength :monotonic}
+        t  (fn [s i] (symbol (str s i)))]
+    (v/assert kb '(genlCx CxPerf CxUniverse) 'CxUniverse M)
+    (doseq [d '[(binary_predicate bigT) (type_relation_predicate bigT) (transitive bigT)
+                (transitiveInArgInverse bigT 1 genl) (transitiveInArgInverse bigT 2 genl)]]
+      (v/assert kb d 'CxUniverse M))
+    (v/assert kb '(set/forwardRule (implies (bigT ?x ?y) (bigTq ?x ?y))) 'CxPerf M)
+    (v/with-deferred-settle kb
+      (dotimes [i n] (v/assert kb (list 'bigT (t "pta_" i) (t "ptb_" i)) 'CxPerf M)))
+    (doall (for [i (range 60)]
+             (nanos (let [e (v/assert kb (list 'genl (t "pte_" i) (t "ptf_" i)) 'CxPerf M)]
+                      (v/retract! kb e)))))))
 
 (defn- lazy-reader-rejoin-outside-a-batch
   "n `plo_cls` memberships beside `(plo_cls ?r) ⇒ (ploArity ?r 2)` lazy-forward and
@@ -4182,9 +4315,9 @@
   Three readings, each on a store built afresh (untimed).
 
   At full size `record-arg-types!` minted `(genl lex/X fabric-textile)` off `madeOf` facts,
-  `fabric-textile` holding 100,677 specs, and `largerThan` is declared so and fans to 39
+  `fabric-textile` holding 100,677 specs, and `typeLargerThan` is declared so and fans to 39
   predicates.  Each edge queues the rule with a `{::preserving edge}` marker, and the re-check's
-  `moved-goal-test` reads the joint `genl` and `largerThan` reach of the type at each position.
+  `moved-goal-test` reads the joint `genl` and `typeLargerThan` reach of the type at each position.
   The bound is fixed and not a share of `settle-hour`: an edge's share is its share of the type's
   reach, read once a pass, the 64 specs it brings."
   [n]
@@ -5124,7 +5257,7 @@
     (doseq [c '[CxGcuSide CxGcuRule]]
       (v/assert kb (list 'genlCx c 'CxUniverse) 'CxUniverse m))
     (v/assert kb '(reifiable_function GcuFn) 'CxUniverse m)
-    (v/assert kb '(functionCorrespondingPredicate GcuFn gcuOf) 'CxGcuSide)
+    (v/assert kb '(functionCorrespondingPredicate GcuFn gcuOf 2) 'CxGcuSide)
     (v/assert kb '(set/forwardRule (implies (gcu_tagged (GcuFn ?t)) (gcu_ripe ?t))) 'CxGcuRule)
     (v/with-deferred-settle kb
       (doseq [i (range n)
@@ -5148,7 +5281,7 @@
         xs (mapv #(symbol (str "GdvX" %)) (range 8))]
     (v/assert kb '(genlCx CxGdvStory CxUniverse) 'CxUniverse m)
     (v/assert kb '(reifiable_function GdvFn) 'CxUniverse m)
-    (v/assert kb '(functionCorrespondingPredicate GdvFn gdvOf) 'CxUniverse m)
+    (v/assert kb '(functionCorrespondingPredicate GdvFn gdvOf 2) 'CxUniverse m)
     (v/with-deferred-settle kb
       (doseq [x xs, i (range n)]
         (v/assert kb (list 'gdvUse (symbol (str "GdvA" i)) (list 'GdvFn x)) 'CxUniverse)))
@@ -6035,8 +6168,10 @@
 (defn- context-nat-read-unwritten-slice-beside-monads
   "Sixty first asks, each after a write in another context, in a month slice nobody wrote
   into along one monad holding twenty year contexts, beside n other monads holding contexts
-  at the same twenty years.  Healthy 0.96x; with the read of the month's containing
-  terms chosen by its count of terms, reading every monad's context at the year, 3.65x."
+  at the same twenty years.  Healthy 1.01x-1.21x; with the read of the month's containing
+  terms chosen by its count of terms, reading every monad's context at the year, 3.65x.
+  With the monad's contexts read through the term index, which intersects `CxPerf`'s
+  posting of one `genlCx` edge per monad, 1.91x."
   [n]
   (let [kb (fresh-kb)
         M  {:strength :monotonic}
@@ -6070,8 +6205,9 @@
   "n named intervals, each bounded by two named moments of one chain and holding a slice
   along one monad, the chain stated first; then sixty times, the link past the chain's end
   stated and retracted.  The link pairs the slices at or before its first moment with those
-  at or after its second, each pair's comparisons read off the link's two walks along the
-  chain.  Healthy 6.07x; with a breadth-first walk along the chain per pair, 17.7x."
+  at or after its second, each pair's comparisons through an end of the link read off the
+  walks from that end (`point-order/*through*`).  Healthy 7.96x; with a walk along the
+  chain per comparison that holds, 51x."
   [n]
   (let [kb (fresh-kb)
         M  {:strength :monotonic}
@@ -6093,6 +6229,52 @@
                    t (nanos (vreset! h (link n)))]
                (v/retract! kb @h)
                t)))))
+
+(defn- calendar-link-append
+  "`slices` day slices along one monad, and one named interval starting at a calendar
+  moment in their first month, with a slice along the monad, beside `events` `happens`
+  facts timestamped in that month; then sixty times, the link from the interval's end to a
+  calendar moment after every day stated and retracted.  The link meets the calendar, so
+  its other side reads the slices a calendar comparison can order against the interval's
+  (`context-nat/calendar-candidates`): the months between its calendar bounds, and those on
+  the fewer side of them.  Both month reads take the first month."
+  [slices events]
+  (let [kb  (fresh-kb)
+        M   {:strength :monotonic}
+        day (fn [i] (list 'DayFn (+ 1000 (quot i 336)) (inc (mod (quot i 28) 12)) (inc (mod i 28))))]
+    (v/assert kb '(result CxPcFn context) 'CxUniverse M)
+    (v/assert kb '(unreifiable_function DayFn) 'CxUniverse M)
+    (v/assert kb '(unreifiable_function InstantFn) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPcFn 1 genlMonad) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPcFn 2 subintervalOf) 'CxUniverse M)
+    (v/assert kb '(genlCx CxPcMonad CxPerf) 'CxUniverse M)
+    (v/with-deferred-settle kb
+      (doseq [i (range slices)]
+        (v/assert kb '(pcNote PcItem PcVal) (list 'CxPcFn 'CxPcMonad (day i)) M))
+      (doseq [i (range events)]
+        (v/assert kb (list 'happens (symbol (str "PcEv" i)) (list 'InstantFn 1000 1 (inc (mod i 28)) 12 0 0))
+                  'CxPerf M))
+      (v/assert kb '(startOf PcI (InstantFn 1000 1 10 0 0 0)) 'CxUniverse M)
+      (v/assert kb '(endOf PcI PcE) 'CxUniverse M)
+      (v/assert kb '(pcNote PcItem PcVal) '(CxPcFn CxPcMonad PcI) M))
+    (doall (for [_ (range 60)]
+             (let [h (volatile! nil)
+                   t (nanos (vreset! h (v/assert kb '(instantBefore PcE (InstantFn 2100 1 1 0 0 0))
+                                                 'CxUniverse M)))]
+               (v/retract! kb @h)
+               t)))))
+
+(defn- context-nat-calendar-link-append
+  "`calendar-link-append` over n day slices.  Healthy 0.94x; with every slice of the
+  function read, 16.0x."
+  [n]
+  (calendar-link-append n 0))
+
+(defn- context-nat-calendar-link-beside-timestamps
+  "`calendar-link-append` over fifty day slices beside n timestamped facts.  Healthy 0.94x;
+  with each of them fetched per link, 1.49x at a load average of 160."
+  [n]
+  (calendar-link-append 50 n))
 
 (defn- sign-chain-rebuild
   "A `qualitativeSum` chain grown one link at a time, and after each of the last sixty
@@ -6226,6 +6408,41 @@
   []
   (let [dir (doto (perf-disk-dir) (delete-tree!) (.mkdirs))]
     (v/open-kb {:backend :disk-log :dir (.getAbsolutePath dir) :recover? false})))
+
+(defn- fork-follow
+  "Per arrival, a durable fork's reopen over a base that gained `arrivals` records since its
+  last mount: `rebase/follow-base!` and `rebase/fire-arrivals!`, timed together.  The base
+  holds `base-n` facts `(pff_dog PffD<i>)` and the fork `fork-n` under the same predicate, so
+  each arrival's postings are keys the fork wrote.  The base stays open and takes the fork's
+  minted ranges before each reading's arrivals, as `:fork-dirs` does.  Under `--only`
+  (2026-11-08, 2026-11-09) healthy readings were 0.39x-1.25x; a per-arrival rescan of the
+  earlier arrivals read 7.02x-10.62x, and a replay of the whole base read 221.98x."
+  [base-n fork-n arrivals]
+  (let [dir   (doto (perf-disk-dir) (delete-tree!) (.mkdirs))
+        path  (.getAbsolutePath dir)
+        M     {:strength :monotonic}
+        fact  #(list 'pff_dog (symbol (str "Pff" %1 %2)))
+        base  (fresh-kb)
+        spent (volatile! 0)
+        timed (fn [f] (fn [& args]
+                        (let [t (System/nanoTime)]
+                          (try (apply f args) (finally (vswap! spent + (- (System/nanoTime) t)))))))]
+    (try
+      (dotimes [i base-n] (v/assert base (fact "D" i) 'CxPerf (assoc M :chain? false)))
+      (let [f (v/fork base {:backend :disk-log :dir path})]
+        (dotimes [i fork-n] (v/assert f (fact "F" i) 'CxPerf M))
+        (v/close! f))
+      (with-redefs [rebase/follow-base!   (timed rebase/follow-base!)
+                    rebase/fire-arrivals! (timed rebase/fire-arrivals!)]
+        (doall (for [r (range 8)]
+                 (do (p/reserve-handles! (:records base) (mount/fork-dir-ranges [path]))
+                     (dotimes [i arrivals] (v/assert base (fact (str "A" r "N") i) 'CxPerf M))
+                     (vreset! spent 0)
+                     (v/close! (v/fork base {:backend :disk-log :dir path}))
+                     (quot @spent arrivals)))))
+      (finally
+        (disk/close-dir! path)
+        (delete-tree! dir)))))
 
 (defn- release-beside-watched-rules
   "One `release-withheld!` of 40 owed mints, divided by 40, beside n `exceptWhen` rules
@@ -6990,6 +7207,42 @@
              (nanos (let [d (v/assert kb '(disjoint pms_left pms_right) 'CxPerf M)]
                       (v/retract! kb d)))))))
 
+(defn- membership-ask-above-shared-sufficient-conditions
+  "A membership ask `(pdm_top PDM_j)` of a fresh term, above `pdm_k`, beside n types
+  `pdm_s_i` below `pdm_k`, each with `(defnSufficient pdm_s_i (and (pdm_k ?x) (greaterThan
+  ?x i)))`.  The walk at `pdm_top` reads the n conditions, and each opens with `(pdm_k
+  PDM_j)`, whose own walk reads the n conditions again.  Asking that conjunct once per
+  condition reads here as growth in n squared."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}]
+    (v/with-deferred-settle kb
+      (v/assert kb '(genl pdm_k pdm_top) 'CxPerf M)
+      (dotimes [i n]
+        (let [t (symbol (str "pdm_s" i))]
+          (v/assert kb (list 'genl t 'pdm_k) 'CxPerf M)
+          (v/assert kb (list 'defnSufficient t (list 'and '(pdm_k ?x) (list 'greaterThan '?x i)))
+                    'CxPerf M))))
+    (doall (for [j (range 60)]
+             (nanos (doall (v/ask kb (list 'pdm_top (symbol (str "PDM" j))) 'CxPerf)))))))
+
+(defn- membership-ask-below-a-chain-declaring-no-necessary
+  "A membership ask `(pdc_c0 PDC_j)` of a fresh term, at the bottom of a `genl` chain of n
+  types none of which declares a necessary, beside one `(defnSufficient pdc_s (pdc_k
+  ?x))` below `pdc_c0` and one `defnNecessary` off the chain.  The fast-fail reads the
+  necessaries of the chain's types; reading each type of the chain reads here as growth."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        c  #(symbol (str "pdc_c" %))]
+    (v/with-deferred-settle kb
+      (dotimes [i n] (v/assert kb (list 'genl (c i) (c (inc i))) 'CxPerf M))
+      (v/assert kb (list 'genl 'pdc_s (c 0)) 'CxPerf M)
+      (v/assert kb '(defnSufficient pdc_s (pdc_k ?x)) 'CxPerf M)
+      (v/assert kb '(defnNecessary pdc_other (pdc_k ?x)) 'CxPerf M))
+    (doall (for [j (range 60)]
+             (nanos (doall (v/ask kb (list (c 0) (symbol (str "PDC" j))) 'CxPerf)))))))
+
 (defn- cover-beside-kept-denials
   "A `covering` declaration over fresh types asserted and retracted, beside n kept terms
   each holding a membership and a denial of types the declaration does not reach.
@@ -7012,6 +7265,28 @@
     (doall (for [_ (range retract-victims)]
              (nanos (let [d (v/assert kb '(covering pkd_w_t pkd_p_t pkd_q_t) 'CxPerf M)]
                       (v/retract! kb d)))))))
+
+(defn- cover-subsumed-by-a-separation
+  "A third membership of a term beside a partition of n parts, each of which the term's
+  two other types deny through one `disjoint` above the whole: `pcs_s_t` under
+  `pcs_whole_t` under `pcs_top_t`, `pcs_d1_t` and `pcs_d2_t` under `pcs_other_t`, and
+  `(disjoint pcs_top_t pcs_other_t)`, all :monotonic in CxUniverse.  The cover nogood over
+  `(pcs_s_t PCS_i)`, `(pcs_d1_t PCS_i)` and the timed `(pcs_d2_t PCS_i)` has 2^n routes,
+  and the `disjoint` nogood of `pcs_s_t` and either denier is placed wherever each would
+  be (`chain/membership-routes`), so the cover places none."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        U  'CxUniverse
+        x  #(symbol (str "PCS" %))]
+    (doseq [[a b] '[[pcs_s_t pcs_whole_t] [pcs_whole_t pcs_top_t]
+                    [pcs_d1_t pcs_other_t] [pcs_d2_t pcs_other_t]]]
+      (v/assert kb (list 'genl a b) U M))
+    (v/assert kb '(disjoint pcs_top_t pcs_other_t) U M)
+    (v/assert kb (list* 'partition 'pcs_whole_t (for [i (range n)] (symbol (str "pcs_p" i "_t")))) U M)
+    (v/bulk-assert-facts! kb (for [i (range retract-victims), t '[pcs_s_t pcs_d1_t]] (list t (x i))) U)
+    (doall (for [i (range retract-victims)]
+             (nanos (v/assert kb (list 'pcs_d2_t (x i)) U))))))
 
 (defn- read-below-vantage
   "A premise with no nogood in its support read at a context below the vantage, beside n
@@ -8024,6 +8299,27 @@
     :sizes     [1000 32000]
     :max-ratio 2.0
     :run       overlay-selectivity}
+
+   {:name      :fork-follow-arrivals
+    :group     :index
+    :claim     "a durable fork's reopen over a grown base costs, per record the base gained, what it costs for sixteen times fewer (a fork of 100 records)"
+    :sizes     [4 64]
+    :max-ratio 2.0
+    :run       #(fork-follow 1000 100 %)}
+
+   {:name      :fork-follow-arrivals-large-fork
+    :group     :index
+    :claim     "a durable fork's reopen over a grown base costs, per record the base gained, what it costs for sixteen times fewer (a fork of 1,600 records)"
+    :sizes     [4 64]
+    :max-ratio 2.0
+    :run       #(fork-follow 1000 1600 %)}
+
+   {:name      :fork-follow-base-size
+    :group     :index
+    :claim     "a durable fork's reopen over a base that gained 16 records costs, per record, what it costs over a base sixteen times smaller"
+    :sizes     [1000 16000]
+    :max-ratio 2.5
+    :run       #(fork-follow % 100 16)}
 
    {:name      :intersect-selectivity
     :group     :index
@@ -9366,6 +9662,20 @@
     :max-ratio 12.0
     :run       context-nat-instant-order-append}
 
+   {:name      :context-nat-calendar-link-append
+    :group     :solvers
+    :claim     "16x the day slices costs under 2x per link from a slice's end to the calendar"
+    :sizes     [50 800]
+    :max-ratio 2.0
+    :run       context-nat-calendar-link-append}
+
+   {:name      :context-nat-calendar-link-beside-timestamps
+    :group     :solvers
+    :claim     "16x the timestamped facts in the slices' month costs under 1.5x per link from a slice's end to the calendar"
+    :sizes     [2000 32000]
+    :max-ratio 1.5
+    :run       context-nat-calendar-link-beside-timestamps}
+
    ;; Not flat: a rebuild reads every sign fact, so the reading grows with the chain.
    ;; Healthy 23.94x, 37.75x, 40.74x and 49.98x for 32x the links.  A round-robin fixpoint
    ;; with a copied support set reads 331.39x (0.25 ms against 83.12).  100x is twice the
@@ -9526,6 +9836,20 @@
     :max-ratio 2.0
     :run       except-beside-unrelated-firings}
 
+   {:name      :except-beside-facts-under-an-edge
+    :group     :exceptions
+    :claim     "16x the facts under an edge the target's firing rests on costs under 2x per except asserted and retracted"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       except-beside-facts-under-an-edge}
+
+   {:name      :route-gain-beside-unrelated-excepts
+    :group     :exceptions
+    :claim     "16x the excepts of unrelated facts costs under 2x per second route asserted and retracted"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       route-gain-beside-unrelated-excepts}
+
    ;; Both ends measured under `--only`, 2026-10-07, load 25-75: with every except the
    ;; upper end sees re-checked and each rule on a target re-joined over its extent, 11.36x
    ;; (93.2 ms/op against 1059.0); re-checking only what the lower end did not see, 0.93x
@@ -9572,6 +9896,20 @@
     :max-ratio 6.0
     :run       deferred-facts-after-a-context-edge}
 
+   {:name      :genl-edge-beside-guarded-firings
+    :group     :chaining
+    :claim     "a genl edge between two fresh types beside 16x the firings of a rule guarded by an unknown genl literal costs under 2x"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       genl-edge-beside-guarded-firings}
+
+   {:name      :genl-edge-beside-a-closure-antecedent-extent
+    :group     :chaining
+    :claim     "a genl edge whose upper end does not reach a rule's genl antecedent, beside 16x that rule's extent, costs under 2x"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       genl-edge-beside-a-closure-antecedent-extent}
+
    ;; Both ends measured under `--only`, 2026-10-06: 1.653 -> 1.746 ms/op (1.06x), against
    ;; 16.359 -> 178.728 (10.93x) with the swept firing unrecorded and the rule re-chained
    ;; over its extent.
@@ -9617,6 +9955,20 @@
     :sizes     [64 1024]
     :max-ratio 2.0
     :run       computed-reader-load}
+
+   {:name      :preserved-reader-load
+    :group     :chaining
+    :claim     "16x the claims and genl edges under them, loaded in one settle beside a rule on a predicate preserved along genl, cost under 2x per pair"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       preserved-reader-load}
+
+   {:name      :genl-edge-beside-transitive-claims
+    :group     :chaining
+    :claim     "a genl edge between two fresh types beside 16x the claims of a transitive predicate preserved along genl, with a rule on it, costs under 2x"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       genl-edge-beside-transitive-claims}
 
    {:name      :lazy-reader-rejoin-outside-a-batch
     :group     :chaining
@@ -9982,12 +10334,33 @@
     :max-ratio 2.0
     :run       cover-beside-kept-denials}
 
+   {:name      :cover-subsumed-by-a-separation
+    :group     :membership
+    :claim     "4x the parts of a cover a separation above its whole denies costs under 2x per third membership of a term: the cover places none of its 2^n routes"
+    :sizes     [2 8]
+    :max-ratio 2.0
+    :run       cover-subsumed-by-a-separation}
+
    {:name      :separation-beside-kept-terms
     :group     :membership
     :claim     "16x the kept terms holding no type under either side costs under 2x per separation declaration asserted and retracted"
     :sizes     [512 8192]
     :max-ratio 2.0
     :run       separation-beside-kept-terms}
+
+   {:name      :membership-ask-above-shared-sufficient-conditions
+    :group     :membership
+    :claim     "16x the sufficient definitions conditioned on one type costs under 24x per membership ask above that type: a walk asks the shared conjunct once"
+    :sizes     [8 128]
+    :max-ratio 24.0
+    :run       membership-ask-above-shared-sufficient-conditions}
+
+   {:name      :membership-ask-below-a-chain-declaring-no-necessary
+    :group     :membership
+    :claim     "16x the types above a membership's type, none declaring a necessary, costs under 2x per ask: the fast-fail reads the declaring types"
+    :sizes     [32 512]
+    :max-ratio 2.0
+    :run       membership-ask-below-a-chain-declaring-no-necessary}
 
    ;; Measured 1.77x and 1.48x (1.59 ms against 2.35): the cost per nogood is small beside
    ;; the edge's own cost at these sizes.

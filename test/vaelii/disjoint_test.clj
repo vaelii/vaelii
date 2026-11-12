@@ -199,7 +199,7 @@
                   Delhi Cairo Rome]
     (v/assert kb (list 'genl a_place 'thing) 'CxUniverse)
     (v/assert kb (list 'genl an_agent 'thing) 'CxUniverse)
-    (v/assert kb (list 'genl a_city a_place) 'CxUniverse)
+    (v/assert kb (list 'genl a_city a_place) 'CxUniverse {:strength :monotonic})
 
     ;; two contexts that cannot see each other
     (v/assert kb (list 'genlCx CxPhysicalGeography 'CxUniverse) 'CxUniverse)

@@ -38,7 +38,11 @@ any depth, with `:not-well-formed`, at `assert`, `check`, `try-assert` and impor
 The closed-world spelling is `(unknown (forall …))` or `(unknown (thereExists …))`, and
 `(not (unknown S))` is `S`. `ask` refuses no such goal, and answers it false.
 The same check covers every `:query-only` term ([predicates.md](predicates.md)):
-`different`, `minCommonGenl`, the aggregates, `bravely` and `cautiously`.
+`different`, `minCommonGenl`, the aggregates, `bravely` and `cautiously`. The KB marks each
+of them `(not_assertible P)`, and `special/wff-problems` refuses a literal or a denial of
+any predicate a believed `not_assertible` marks, `genlMonad` included. A mark arriving after
+facts of `P` are stored holds those facts in the `:out` forced set, so they are believed in
+neither arrival order, and retracting the mark releases them.
 
 ## Fully bound to evaluate
 
@@ -161,7 +165,12 @@ none.
 
 The conjuncts are run in a **planned** order (`planned-conjuncts`): generators first,
 and each computed conjunct (a nested `unknown`, an evaluable, an aggregate, a
-closed-extent negative) once the variables it reads are bound. Canonical order sorts a
+closed-extent negative) once the variables it reads are bound. A conjunct the registry
+estimates at `provers/deferred-est` waits the same way for the variables its prover reads
+(`provers/input-vars`), because the prover answers it completely only with those bound, as
+the calendar clock and the point prover answer an `instantBefore`. A result-binding
+evaluatable reads every argument but its result slot, and `argN` reads its formula, so a
+conjunct reading the variable one of them binds runs after it. Canonical order sorts a
 query's conjuncts blind to variable names, so the written order cannot be relied on; the
 plan is recomputed at evaluation, as `plan/order` plans a rule body.
 

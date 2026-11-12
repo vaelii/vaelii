@@ -49,16 +49,12 @@
 
 ;; ---- directories -----------------------------------------------------------
 
-(def ^:private scratch-dir
-  "`VAELII_TEST_TMPDIR`, or the platform temp directory when it is unset.  A probe's
-  cost is the fsyncs of an open, a restore and a close, so a tmpfs shortens the sweep."
-  (some-> (System/getenv "VAELII_TEST_TMPDIR") str/trim not-empty))
-
-(defn- tmpdir ^String []
-  (let [attrs (into-array FileAttribute [])]
-    (str (if scratch-dir
-           (Files/createTempDirectory (.toPath (File. ^String scratch-dir)) "vaelii-opfuzz-" attrs)
-           (Files/createTempDirectory "vaelii-opfuzz-" attrs)))))
+(defn- tmpdir
+  "A new directory under `java.io.tmpdir`, which the `:test` profile sets from
+  `VAELII_TEST_TMPDIR`.  A probe's cost is the fsyncs of an open, a restore and a close,
+  so a tmpfs there shortens the sweep."
+  ^String []
+  (str (Files/createTempDirectory "vaelii-opfuzz-" (into-array FileAttribute []))))
 
 (defn- rm-rf! [^String dir]
   (doseq [f (reverse (file-seq (io/file dir)))] (.delete ^File f)))

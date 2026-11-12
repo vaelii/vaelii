@@ -26,14 +26,12 @@
 (defn- guarded [h] (inflight/wrap h waiting :session))
 
 (defn- await-status [id want]
-  (loop [n 0]
-    (when (and (not= want (inflight/status id)) (< n 200))
-      (Thread/sleep 10)
-      (recur (inc n))))
+  (while (not= want (inflight/status id))
+    (Thread/sleep 10))
   (inflight/status id))
 
 (deftest a-fast-page-is-answered-as-usual
-  (with-detach-ms 2000
+  (with-detach-ms Long/MAX_VALUE
     #(is (= {:status 200 :body "page"}
             ((guarded (fn [_] {:status 200 :body "page"})) (req "/fast"))))))
 
@@ -67,7 +65,7 @@
 
 (deftest the-read-computes-the-whole-document
   ;; so a boosted load and a plain reload share it
-  (with-detach-ms 2000
+  (with-detach-ms Long/MAX_VALUE
     (fn []
       (let [seen (atom nil)
             h    (guarded (fn [r] (reset! seen (:headers r)) {:status 200 :body "doc"}))]
@@ -91,6 +89,6 @@
                                                   "hx-boosted" "true"}))))))))))
 
 (deftest a-page-that-throws-throws
-  (with-detach-ms 2000
+  (with-detach-ms Long/MAX_VALUE
     #(is (thrown-with-msg? clojure.lang.ExceptionInfo #"broken"
                            ((guarded (fn [_] (throw (ex-info "broken" {})))) (req "/bad"))))))

@@ -123,6 +123,14 @@
   (a-premise-id [store]
     "Some handle marked a premise, or nil."))
 
+(defprotocol HandleReserving
+  "**Optional**: a record store whose `next-id` can skip handle ranges that durable forks
+  of it hold, so a base rebuilt in a later process issues none of them
+  (`open-kb`'s `:fork-dirs`, docs/overlay.md).  A store without it refuses that option."
+  (reserve-handles! [store ranges]
+    "Add `ranges`, a seq of `[lo hi)` handle pairs, to the handles `next-id` skips from now
+     on.  Returns nil.  A handle written with an explicit `:id` is unaffected."))
+
 (defprotocol ImageFingerprinting
   "**Optional**: a record store that fingerprints its records for an index image or a
   reasoning image.  Each image is written with the fingerprint its records answered at the
@@ -208,6 +216,18 @@
   (put-provenance-batch [store entries]
     "Persist every `[id prov]` pair in `entries`, overwriting, in as few writes as this
      store can manage.  Returns nil."))
+
+(defprotocol BulkDeleting
+  "**Optional**, beside `BulkAnnotating`: the deletes a record surgery makes in a loop over
+  handles it already holds (`record-edit/apply!`).  On a store where a write is a round
+  trip that loop costs one a record, and a surgery removes records by the million.
+
+  Neither op changes what the per-handle version does — same guard, same end state."
+  (delete-sentex-batch [store ids]
+    "Remove every sentex record in `ids`, in as few writes as this store can manage.
+     Returns nil.")
+  (delete-justification-batch [store ids]
+    "Remove every justification record in `ids`, likewise.  Returns nil."))
 
 (def var-consequent-key
   "The `rules/index-rule` consequent slot's catch-all for a rule whose consequent functor

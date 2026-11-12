@@ -16,7 +16,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.test-util :as tu]))
 
-(defn- starter-kb [] (doto (tu/fresh) (tu/load-starter!)))
+(defn- starter-kb [] (doto (tu/empty-kb) (tu/load-starter!)))
 
 (defn- scanned-terms
   "The oracle: every symbol term reachable by walking the records — what a client with
@@ -41,8 +41,17 @@
 
 ;; ---- enumeration --------------------------------------------------------
 
-(deftest an-empty-kb-has-an-empty-vocabulary
+(deftest case-only-term-names-are-distinct
   (tu/with-cleared-kb [kb tu/fresh]
+    (let [h (v/assert kb '(foo Foo) 'CxUniverse {:chain? false})]
+      (is (= '(foo Foo) (:sentence (v/sentex kb h))))
+      (is (= ['Foo 'foo] (v/find-terms kb "foo")))
+      (is (= ['foo] (v/find-terms kb "foo" {:case-sensitive? true})))
+      (is (= ['Foo] (v/find-terms kb "Foo" {:case-sensitive? true})))
+      (is (not= 'foo 'Foo)))))
+
+(deftest an-empty-kb-has-an-empty-vocabulary
+  (tu/with-cleared-kb [kb tu/empty-kb]
     (is (= [] (v/terms kb)))
     (is (zero? (v/term-count kb)))
     (is (= [] (v/find-terms kb "anything")))))

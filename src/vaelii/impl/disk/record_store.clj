@@ -96,6 +96,7 @@
   kind, under the lock it already holds."
   (:require [taoensso.trove :as trove]
             [vaelii.impl.caches :as caches]
+            [vaelii.impl.capabilities :as cap]
             [vaelii.impl.config :as config]
             [vaelii.impl.disk.codec :as codec]
             [vaelii.impl.disk.files :as f]
@@ -485,9 +486,13 @@
 ;; `epoch` is nil for a store no `clear-records!` has emptied, else the random long the latest
 ;; wipe minted.  The counters blob carries it and both slot fingerprints fold it in
 ;; (`slot-fingerprint`, `reasoning-fingerprint`).
-(defrecord DiskRecordStore [dir kinds counter synced-seq premises dict counters-lock epoch fault]
+(defrecord DiskRecordStore [dir kinds counter synced-seq premises dict counters-lock epoch fault
+                            reserved]
   p/RecordStore
-  (next-id [_] (long (dec (swap! counter inc))))
+  (next-id [_]
+    (if-let [r @reserved]
+      (long (dec (swap! counter #(inc (cap/skip-reserved r (long %))))))
+      (long (dec (swap! counter inc)))))
 
   (put-sentex [this sentex]
     (let [id  (clear-counter! counter (or (:id sentex) (p/next-id this)))
@@ -661,6 +666,9 @@
     (f/check-fault! fault)
     (with-write (:lock (:sentexes kinds))
       (hs/live-least premises)))
+
+  p/HandleReserving
+  (reserve-handles! [_ ranges] (swap! reserved cap/reserve-ranges ranges) nil)
 
   ;; A record at a time here is two syscalls on an unbuffered `RandomAccessFile` — the log
   ;; append and the 24-byte slot write — plus a lock, and a bulk load pays both per record
@@ -984,7 +992,7 @@
                prem     (rebuild-premises! (:sentexes kinds) root dict marked unsaid dirty?)]
            (f/create-dirty-marker! root)
            (->DiskRecordStore root kinds counter (atom nil) prem dict (Object.)
-                              (atom (:epoch counters)) fault))
+                              (atom (:epoch counters)) fault (atom nil)))
          (catch Throwable t
            (doseq [c closers] (close-quietly! "a half-opened record store" c))
            (throw t)))))))

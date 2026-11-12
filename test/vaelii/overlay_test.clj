@@ -319,6 +319,19 @@
     (is (= before (base-snapshot base)))
     (v/clear! base)))
 
+(deftest a-base-write-after-a-mount-takes-a-handle-no-fork-record-holds
+  (let [base (fresh-base 26)
+        f    (v/fork base)
+        hf   (v/assert f '(cat Tom) 'CxOverlay {:strength :monotonic})
+        hb   (v/assert base '(bear Bruno) 'CxOverlay {:strength :monotonic})]
+    (is (not= hf hb))
+    (is (= '(bear Bruno) (:sentence (p/get-sentex (:records f) hb)))
+        "the fork reads the base's record at the base's handle")
+    (is (not-any? #(= 'Tom (get % '?x)) (v/ask f '(bear ?x) 'CxOverlay))
+        "no answer joins the base's posting to the fork's record")
+    (v/close! f)
+    (v/clear! base)))
+
 (deftest a-fork-can-be-cleared-back-to-empty-without-emptying-the-base
   (let [base   (fresh-base 5)
         before (base-snapshot base)
@@ -581,52 +594,63 @@
         (v/clear! grown)
         (v/clear! base)))))
 
-(deftest a-fork-that-only-removed-is-refused-over-a-grown-base
-  ;; A fork that retracts an inherited premise mints no handle, so nothing it holds can
-  ;; share one with the base.  But retracting the only `ownerOf` empties that key, and the
-  ;; deletion is sticky: over a base that has since added `(ownerOf Bob Fido)`, the fork
-  ;; would not match it.  So any growth refuses a fork that has written anything.
+(defn- grown-base
+  "The populated base again on its own space, opened with `:fork-dirs` `dirs`, plus `ss`."
+  [n tag dirs ss]
+  (let [kb (populate! (doto (v/open-kb {:backend :memory :space [tag n] :recover? false
+                                        :fork-dirs dirs})
+                        (v/clear!)))]
+    (doseq [s ss] (v/assert kb s 'CxOverlay {:strength :monotonic}))
+    kb))
+
+(defn- index-against-reindex
+  "The keys at which the fork `f`'s merged index differs from the one `reindex` rebuilds from
+  the same records, outside the re-check index, which a write may leave a superset of.
+  Reindexes `f`."
+  [f]
+  (let [entries #(into {} (remove (fn [[k _]] (= :exception-index (first k))))
+                       (p/kv-entries (mount/kv-backend-of (:index f))))
+        before  (entries)
+        after   (do (v/reindex f) (entries))]
+    (filterv #(not= (before %) (after %)) (into (set (keys before)) (keys after)))))
+
+(deftest a-key-a-fork-emptied-takes-the-members-a-grown-base-adds
+  ;; Retracting the only `ownerOf` empties that key in the fork, and the base then gains
+  ;; `(ownerOf Bob Fido)`.  The fork minted nothing, so the base needs no `:fork-dirs`.
   (let [n     (gensym)
         base  (fresh-base n)
-        grown (populate! (doto (v/open-kb {:backend :memory :space [::grown n] :recover? false})
-                           (v/clear!)))
+        grown (grown-base n ::grown [] '[(ownerOf Bob Fido)])
         dir   (tu/tmpdir "vaelii-overlay-")]
     (try
       (let [f (v/fork base {:backend :disk-log :dir dir})]
         (v/retract! f (v/handle-of f '(ownerOf Ann Muffet) 'CxOverlay))
         (v/close! f))
-      (v/assert grown '(ownerOf Bob Fido) 'CxOverlay {:strength :monotonic})
-      (let [e (try (v/fork grown {:backend :disk-log :dir dir}) nil
-                   (catch clojure.lang.ExceptionInfo e e))]
-        (is (= :fork-base-overlap (:type (ex-data e))))
-        (is (= [] (:handles (ex-data e))) "no handle is shared; the base grew under a removal"))
-      (testing "over the base it was taken against, the removal stands"
-        (let [f2 (v/fork base {:backend :disk-log :dir dir})]
-          (is (empty? (v/sentexes-matching f2 '(ownerOf ?x ?y) 'CxOverlay)))
-          (v/close! f2)))
+      (let [f (v/fork grown {:backend :disk-log :dir dir})]
+        (is (= '#{(ownerOf Bob Fido)} (sentences (v/sentexes-matching f '(ownerOf ?x ?y) 'CxOverlay))))
+        (is (= [] (index-against-reindex f)))
+        (v/close! f))
       (finally
         (disk/close-dir! dir)
         (tu/rm-rf! dir)
         (v/clear! grown)
         (v/clear! base)))))
 
-(deftest a-reindexed-fork-is-refused-over-a-grown-base
-  ;; `reindex` clears the fork's index and rebuilds it from the merged records, so the
-  ;; index is wholly the fork's own afterwards and holds nothing the base adds later —
-  ;; state the fork wrote against its base, with no record, tombstone or mark to show it.
+(deftest a-reindexed-fork-takes-in-a-grown-bases-records
+  ;; `reindex` leaves the fork's index wholly its own, hiding the base's index, so the
+  ;; records the base gains enter that index at the reopen.
   (let [n     (gensym)
         base  (fresh-base n)
-        grown (populate! (doto (v/open-kb {:backend :memory :space [::grown n] :recover? false})
-                           (v/clear!)))
+        grown (grown-base n ::grown [] '[(dog Ace)])
         dir   (tu/tmpdir "vaelii-overlay-")]
     (try
       (let [f (v/fork base {:backend :disk-log :dir dir})]
         (v/reindex f)
         (v/close! f))
-      (v/assert grown '(dog Ace) 'CxOverlay {:strength :monotonic})
-      (is (= :fork-base-overlap
-             (:type (ex-data (try (v/fork grown {:backend :disk-log :dir dir}) nil
-                                  (catch clojure.lang.ExceptionInfo e e))))))
+      (let [f (v/fork grown {:backend :disk-log :dir dir})]
+        (is (= '#{(mammal Muffet) (mammal Ace)}
+               (sentences (v/sentexes-matching f '(mammal ?x) 'CxOverlay))))
+        (is (= [] (index-against-reindex f)))
+        (v/close! f))
       (finally
         (disk/close-dir! dir)
         (tu/rm-rf! dir)
@@ -706,6 +730,228 @@
                    (catch clojure.lang.ExceptionInfo e e))]
         (is (= :fork-base-overlap (:type (ex-data e))))
         (is (= [h] (:handles (ex-data e))))))))
+
+(deftest a-reserving-record-store-issues-no-handle-in-a-reserved-range
+  (doseq [backend [:memory :disk-log]]
+    (let [dir (tu/tmpdir "vaelii-reserve-")
+          kb  (doto (v/open-kb (merge {:backend backend :recover? false}
+                                      (if (= :disk-log backend) {:dir dir} {:space [::reserving (gensym)]})))
+                (v/clear!))]
+      (try
+        (p/reserve-handles! (:records kb) [[3 8] [8 10] [20 22]])
+        (let [hs (vec (repeatedly 15 #(p/next-id (:records kb))))]
+          (is (= [1 2 10 11 12 13 14 15 16 17 18 19 22 23 24] hs) (str backend)))
+        (finally (v/clear! kb) (v/close! kb) (tu/rm-rf! dir))))))
+
+(deftest a-base-opened-with-its-forks-directories-issues-none-of-their-handles
+  (let [n       (gensym)
+        dirs    [(tu/tmpdir "vaelii-overlay-") (tu/tmpdir "vaelii-overlay-")]
+        rebuilt (fn [i opts]
+                  (let [kb (populate! (doto (v/open-kb (merge {:backend :memory :space [::reserved n i]
+                                                               :recover? false}
+                                                              opts))
+                                        (v/clear!)))]
+                    [kb (set (for [s '[(dog Ace) (dog Bo) (dog Cy)]]
+                               (v/assert kb s 'CxOverlay {:strength :monotonic})))]))
+        held    (fn [f] (let [r (:overlay (:records f))]
+                          (into (set (p/sentex-ids r)) (p/justification-ids r))))]
+    (try
+      (let [base  (fresh-base n)
+            [a b] (map #(v/fork base {:backend :disk-log :dir %}) dirs)]
+        (doseq [[i f] (map vector (range 6) (cycle [a b]))]
+          (v/assert f (list 'dog (symbol (str "Pup" i))) 'CxOverlay {:strength :monotonic}))
+        (let [fork-held (into (held a) (held b))]
+          (run! v/close! [a b])
+          (v/clear! base)
+          (let [[with-dirs grown] (rebuilt 1 {:fork-dirs dirs})]
+            (is (seq fork-held))
+            (is (empty? (filter fork-held grown)) "the grown base's new handles are none of the forks'")
+            (v/clear! with-dirs))
+          (run! disk/close-dir! dirs)
+          (let [[without grown] (rebuilt 2 {})]
+            (is (seq (filter fork-held grown)) "without the directories the base issues the forks' handles")
+            (v/clear! without))))
+      (finally
+        (run! disk/close-dir! dirs)
+        (run! tu/rm-rf! dirs)))))
+
+(deftest a-durable-fork-records-its-bases-content-end-and-block-digests
+  (let [base (fresh-base (gensym))
+        dir  (tu/tmpdir "vaelii-overlay-")
+        recs (:records base)
+        expect (fn []
+                 (let [ds (concat (for [h (p/sentex-ids recs)] [h (fp/record-hash h (p/get-sentex recs h))])
+                                  (for [h (p/justification-ids recs)]
+                                    [h (fp/justification-hash h (p/get-justification recs h))]))
+                       end (inc (long (apply max (map first ds))))]
+                   [end (reduce (fn [v [h d]] (update v (quot h 1024) #(unchecked-add (long %) (long d))))
+                                (vec (repeat (quot (+ end 1023) 1024) 0)) ds)]))
+        summary (fn [f] (let [m (:meta-kv (:records f))]
+                          [(p/kv-get m ::ostore/base-end) (p/kv-get m ::ostore/base-blocks)]))]
+    (try
+      (let [f (v/fork base)]
+        (is (= [nil nil] (summary f)) "an ephemeral fork records none")
+        (v/close! f))
+      (let [f (v/fork base {:backend :disk-log :dir dir})]
+        (is (= (expect) (summary f)))
+        (v/close! f))
+      (v/assert base '(dog Ace) 'CxOverlay {:strength :monotonic})
+      (let [f (v/fork base {:backend :disk-log :dir dir})]
+        (is (= (expect) (summary f)) "a remount over a grown base records it again")
+        (v/close! f))
+      (finally (disk/close-dir! dir) (tu/rm-rf! dir) (v/clear! base)))))
+
+(deftest fork-dirs-is-refused-where-no-store-can-skip-handles
+  (let [base (fresh-base (gensym))
+        dir  (tu/tmpdir "vaelii-overlay-")]
+    (try
+      (is (= :unknown-option
+             (:type (ex-data (try (v/open-kb {:space [::bad-fork-dirs] :fork-dirs dir}) nil
+                                  (catch clojure.lang.ExceptionInfo e e)))))
+          "a single directory rather than a sequence")
+      (is (= :unknown-option
+             (:type (ex-data (try (kb/open-kb {:records :overlay :index :overlay
+                                               :base-stores {:records (:records base)
+                                                             :index (:index base)}
+                                               :overlay {:backend :memory :space [::fork-of (gensym)]}
+                                               :fork-dirs [dir] :recover? false}
+                                              v/recover v/reindex)
+                                  nil
+                                  (catch clojure.lang.ExceptionInfo e e)))))
+          "on a fork's own KB")
+      (finally (tu/rm-rf! dir) (v/clear! base)))))
+
+;; A durable fork reopened over a base grown since; `index-against-reindex` closes each case.
+
+(deftest a-durable-fork-reopens-over-a-base-grown-by-appending
+  (let [n     (gensym)
+        base  (fresh-base n)
+        dir   (tu/tmpdir "vaelii-overlay-")
+        asked '[(dog Muffet) (ownerOf Ann Muffet) (mammal Rex)]
+        answers (fn [f] (mapv #(boolean (seq (v/sentexes-matching f % 'CxOverlay))) asked))
+        [held before] (let [f (v/fork base {:backend :disk-log :dir dir})]
+                        (v/assert f '(dog Rex) 'CxOverlay {:strength :monotonic})
+                        (v/retract! f (v/handle-of f '(ownerOf Ann Muffet) 'CxOverlay))
+                        (v/assert f (list 'except (list 'sentexHandle (v/handle-of f '(dog Muffet) 'CxOverlay)))
+                                  'CxOverlay)
+                        (let [r (:overlay (:records f))
+                              held (into {} (map (juxt identity #(p/get-sentex r %))) (p/sentex-ids r))]
+                          (v/close! f)
+                          [held (answers (v/fork base {:backend :disk-log :dir dir}))]))
+        _     (disk/close-dir! dir)
+        grown (grown-base n ::grown [dir] '[(dog Ace) (ownerOf Bob Rex)])]
+    (try
+      (let [f (v/fork grown {:backend :disk-log :dir dir})]
+        (is (= held (into {} (map (juxt key #(p/get-sentex (:records f) (key %)))) held))
+            "every handle the fork minted holds the record it held")
+        (is (= before (answers f)) "the fork's removal, except and firing apply as they did")
+        (is (every? #(seq (v/sentexes-matching f % 'CxOverlay)) '[(mammal Ace) (ownerOf Bob Rex)])
+            "the fork answers the grown base's sentences")
+        (is (= [] (index-against-reindex f)))
+        (v/close! f))
+      (finally
+        (disk/close-dir! dir)
+        (tu/rm-rf! dir)
+        (v/clear! grown)
+        (v/clear! base)))))
+
+(deftest sibling-forks-reopened-over-one-rebuilt-base-mint-distinct-handles
+  (let [n     (gensym)
+        base  (fresh-base n)
+        dirs  [(tu/tmpdir "vaelii-overlay-") (tu/tmpdir "vaelii-overlay-")]]
+    (try
+      (doseq [[d s] (map vector dirs '[(dog Pip) (dog Pop)])]
+        (let [f (v/fork base {:backend :disk-log :dir d})]
+          (v/assert f s 'CxOverlay {:strength :monotonic})
+          (v/close! f)))
+      (let [grown (grown-base n ::grown dirs '[(dog Ace)])
+            [a b] (mapv #(v/fork grown {:backend :disk-log :dir %}) dirs)
+            new   (mapv #(v/assert %1 %2 'CxOverlay {:strength :monotonic}) [a b] '[(dog Ann) (dog Bea)])]
+        (try
+          (is (apply not= new))
+          (is (not-any? #(p/get-sentex (:records grown) %) new) "neither is a base handle")
+          (is (every? #(seq (v/sentexes-matching % '(mammal Ace) 'CxOverlay)) [a b]))
+          (finally (run! v/close! [a b]) (v/clear! grown))))
+      (finally
+        (run! disk/close-dir! dirs)
+        (run! tu/rm-rf! dirs)
+        (v/clear! base)))))
+
+(deftest a-reopen-fires-rules-between-the-fork-and-the-records-the-base-gained
+  (let [n     (gensym)
+        base  (fresh-base n)
+        dir   (tu/tmpdir "vaelii-overlay-")]
+    (try
+      (let [f (v/fork base {:backend :disk-log :dir dir})]
+        (v/assert-rule f '[(cat ?x)] '(pet ?x) 'CxOverlay {:direction :forward})
+        (v/assert f '(bird Tweety) 'CxOverlay {:strength :monotonic})
+        (v/assert f '(exceptWhen (flightless ?x) (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (flies ?x)))))
+                  'CxOverlay)
+        (v/assert f '(penguin Tweety) 'CxOverlay {:strength :monotonic})
+        (is (seq (v/sentexes-matching f '(flies Tweety) 'CxOverlay)))
+        (v/close! f))
+      (let [grown (grown-base n ::grown [dir] '[(cat Tom) (genl penguin flightless)])
+            _     (v/assert-rule grown '[(bird ?x)] '(feathered ?x) 'CxOverlay {:direction :forward})
+            f     (v/fork grown {:backend :disk-log :dir dir})]
+        (try
+          (is (seq (v/sentexes-matching f '(pet Tom) 'CxOverlay)) "a fork rule fires over a base arrival")
+          (is (seq (v/sentexes-matching f '(feathered Tweety) 'CxOverlay)) "an arriving rule fires over a fork fact")
+          (is (empty? (v/sentexes-matching f '(flies Tweety) 'CxOverlay))
+              "an arriving genl edge re-checks the fork's firings")
+          (is (nil? (rebase/firings-owed f)) "and the firings are not owed again")
+          (finally (v/close! f) (v/clear! grown))))
+      (finally
+        (disk/close-dir! dir)
+        (tu/rm-rf! dir)
+        (v/clear! base)))))
+
+(deftest a-reopen-over-a-base-changed-below-its-content-end-is-refused
+  (let [n     (gensym)
+        base  (fresh-base n)
+        dir   (tu/tmpdir "vaelii-overlay-")]
+    (try
+      (let [f (v/fork base {:backend :disk-log :dir dir})]
+        (v/assert f '(dog Rex) 'CxOverlay {:strength :monotonic})
+        (v/close! f))
+      (let [grown (grown-base n ::grown [dir] [])]
+        (v/retract! grown (v/handle-of grown '(ownerOf Ann Muffet) 'CxOverlay))
+        (v/assert grown '(dog Ace) 'CxOverlay {:strength :monotonic})
+        (let [e (try (v/fork grown {:backend :disk-log :dir dir}) nil
+                     (catch clojure.lang.ExceptionInfo e e))]
+          (is (= :fork-base-overlap (:type (ex-data e))))
+          (is (re-find #"at handles 0 to \d+ are not the ones" (ex-message e))))
+        (v/clear! grown))
+      (finally
+        (disk/close-dir! dir)
+        (tu/rm-rf! dir)
+        (v/clear! base)))))
+
+(deftest a-reopen-a-crash-cut-finishes-at-the-next-one
+  ;; The catch-up's ops are recorded before they are applied, and a reopen that finds them
+  ;; recorded applies them again before it reads the fork's index.
+  (let [n     (gensym)
+        base  (fresh-base n)
+        dir   (tu/tmpdir "vaelii-overlay-")]
+    (try
+      (let [f (v/fork base {:backend :disk-log :dir dir})]
+        (v/assert f '(dog Rex) 'CxOverlay {:strength :monotonic})
+        (v/retract! f (v/handle-of f '(ownerOf Ann Muffet) 'CxOverlay))
+        (v/close! f))
+      (let [grown (grown-base n ::grown [dir] '[(dog Ace) (ownerOf Bob Rex)])]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"cut"
+                              (with-redefs [ostore/end-follow! (fn [_] (throw (ex-info "cut" {})))]
+                                (v/fork grown {:backend :disk-log :dir dir}))))
+        (disk/close-dir! dir)
+        (let [f (v/fork grown {:backend :disk-log :dir dir})]
+          (is (= '#{(ownerOf Bob Rex)} (sentences (v/sentexes-matching f '(ownerOf ?x ?y) 'CxOverlay))))
+          (is (seq (v/sentexes-matching f '(mammal Ace) 'CxOverlay)))
+          (is (= [] (index-against-reindex f)))
+          (v/close! f))
+        (v/clear! grown))
+      (finally
+        (disk/close-dir! dir)
+        (tu/rm-rf! dir)
+        (v/clear! base)))))
 
 (deftest close-releases-a-durable-forks-own-directory-and-never-the-bases
   ;; `v/close!` on the fork, not `disk/close-dir!` on the path — the fork's writable half

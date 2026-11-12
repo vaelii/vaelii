@@ -15,7 +15,9 @@
             [vaelii.impl.budget :as budget]
             [vaelii.impl.caches :as caches]
             [vaelii.impl.capabilities :as cap]
+            [vaelii.impl.clashes :as clashes]
             [vaelii.impl.config :as config]
+            [vaelii.impl.datetime :as datetime]
             [vaelii.impl.decide :as decide]
             [vaelii.impl.decide.argument :as argument :refer [*assertive-arg-types?*]]
             [vaelii.impl.decide.arity :as arity :refer [mintable-type?]]
@@ -65,7 +67,7 @@
   excluded because a type membership cannot be asserted of one (a NAT reifies to its
   constant first, so a reified term is checked under that constant)."
   [x]
-  (and (symbol? x) (not (sx/variable? x))))
+  (sx/plain-symbol? x))
 
 (def ^:private syntactic-roots
   "The syntactic types a value is classified into — the roots of the kind lattice
@@ -88,7 +90,7 @@
   classification."
   [x]
   (or (provers/literal-value-kind x)
-      (when (and (symbol? x) (not (sx/variable? x))) 'symbol)))
+      (when (sx/plain-symbol? x) 'symbol)))
 
 (defn- value-kinds
   "The most specific built-in types known from a value: its EDN kind, and for an integer the
@@ -178,11 +180,11 @@
 
 (def ^:private sugar-spellings
   "The argument-constraint spellings the entry point never queries, each with the
-  declaration its core.txt forward rule stores in its place: `(args P T)` stores
+  declaration its shared interface rule stores in its place: `(args P T)` stores
   `(argAndRest P 1 T)`, and every instance-level read here is of `arg` and `argAndRest`.
   The stored twin carries its own handle, justified by the sugar, so a refusal or an
   entailment names the twin and retracting the sugar takes both with it.  A KB that does
-  not load core.txt has no such rule, and its sugar types nothing at the entry point."
+  not load interface-rules.txt has no such rule, and its sugar types nothing at the entry point."
   '{args argAndRest})
 
 (def constraint-declaration-functors
@@ -424,16 +426,28 @@
           (sort-by (juxt #(nm/name-key (nm/functor (:sentence %))) #(nm/name-key (:context %)))
                    (res/type-memberships kb x context)))))
 
+(defn- held-separation
+  "The content-least of the types `ts` that `dj?`, `tax/separation-test` of `t` at
+  `context`, separates from `t` over a route whose climbs `context` sees over `:monotonic`
+  edges (`clashes/strict-separating-keys`), or nil.  A climb over a `:default` edge is an
+  edge reading the membership `(t x)` undercuts, so its route places no nogood
+  (docs/inference.md, \"An edge's reading\")."
+  [kb tax dj? ts t context]
+  (when-let [cs (seq (filterv dj? ts))]
+    (let [ok? (clashes/monotonic-climb-test tax (res/holding-class kb) context)]
+      (nm/min-by-content-key identity
+                             (filterv #(seq (clashes/strict-separating-keys tax % t context ok?)) cs)))))
+
 (defn- separated-type
   "The content-least type the symbol `x` believes, visible from `context`, that the
-  taxonomy separates from `t`, or nil.  The test is `tax/separation-test`, the one
-  `disjoint-problems` asks of a membership, so an argument conflict is the clash the
-  membership `(t x)` would form.  A type the taxonomy does not separate from `t` leaves
-  `x` possibly a `t`, so an argument whose types miss `t` and are not separated from it
-  convicts nothing."
-  [tax types x t context]
+  taxonomy separates from `t` (`held-separation`), or nil.  The test is
+  `tax/separation-test`, the one `disjoint-problems` asks of a membership, so an argument
+  conflict is the clash the membership `(t x)` would form.  A type the taxonomy does not
+  separate from `t` leaves `x` possibly a `t`, so an argument whose types miss `t` and are
+  not separated from it convicts nothing."
+  [kb tax types x t context]
   (when-let [dj? (and (symbol? t) (tax/separation-test tax t context))]
-    (nm/min-by-content-key identity (filterv dj? (:types (types x))))))
+    (held-separation kb tax dj? (:types (types x)) t context)))
 
 (defn- outside-declared-type?
   "Does `arg` fail the `(arg P n t)` demand, as seen from `context`?  The separated type
@@ -448,7 +462,7 @@
   function and `nested-input-problem` reads its inputs."
   [kb tax types arg t context]
   (if (checkable-term? arg)
-    (when (convicts-symbols?) (separated-type tax types arg t context))
+    (when (convicts-symbols?) (separated-type kb tax types arg t context))
     (let [ks (value-kinds arg)]
       (when (seq ks)
         (and (symbol? t)
@@ -637,7 +651,7 @@
                                        (symbol? t) (symbol? u)
                                        ;; the antecedent, established rather than merely unrefuted
                                        (kb/isa-among? (types trigger) t))
-                              (separated-type tax types target u context))]
+                              (separated-type kb tax types target u context))]
              :when sep]
          (cond-> {:type :inter-arg-type :sentence sentence :arg target :expected u :position m
                   :trigger trigger :trigger-type t :trigger-position n :disjoint-with sep
@@ -902,7 +916,7 @@
                                     (kb/isa-among? (types x) t))))
             fails  (fn [t p] (let [x (arg-at as p)]
                                (when (checkable-term? x)
-                                 (separated-type tax types x t context))))]
+                                 (separated-type kb tax types x t context))))]
         (first
          (for [[start t via] (homogeneity-declarations decls)
                :when (symbol? t)
@@ -1063,8 +1077,9 @@
 
 (defn- nested-input-problem
   "The first violation of a function's own argument declarations by an input written
-  inside one of `sentence`'s used arguments, at any depth, or nil.  The violation is the
-  arm's own, so its `:sentence` is the innermost application whose input failed.
+  inside `sentence`'s head application or used arguments, at any depth, or nil.  The
+  violation is the arm's own, so its `:sentence` is the innermost application whose input
+  failed.
 
   No membership is derived from a nested input: no index finds the applications of a
   function inside stored facts, so a derivation would depend on arrival order.  Under the
@@ -1074,18 +1089,19 @@
   predicate's argument (`res/nat-quoting-predicates`) and a quoting function's argument
   (`sx/quoting-functors`) are mentions and are not descended into, though a quoting
   function's own declarations are still read over its application.  A sentence with no
-  compound argument reads nothing."
+  compound argument or head reads nothing."
   [kb sentence context types decls]
   (let [pred (nm/functor sentence)
-        as   (nm/args sentence)]
-    (when (and (symbol? pred)
+        as   (nm/args sentence)
+        hd   (when (application-term? pred) [[0 pred]])]
+    (when (and (or hd (symbol? pred))
                (not (contains? provers/formula-heads pred))
-               (some application-term? as)
+               (or hd (some application-term? as))
                (not (contains? res/nat-quoting-predicates pred))
                (not (sx/quoting-functor? pred)))
       (let [mentioned? (mentioned-position decls)]
         (first-refusing
-         (for [[n x] (map-indexed (fn [i a] [(inc i) a]) as)
+         (for [[n x] (concat hd (map-indexed (fn [i a] [(inc i) a]) as))
                :when (and (application-term? x)
                           (not (contains? provers/formula-heads (first x)))
                           (not (mentioned? n)))
@@ -1358,7 +1374,7 @@
         said   (keep #(when (= target (:sentence %)) [(:id %) nil %]))
         ;; the exact memberships by their own path, then by the postings when none
         ;; survives, which is when the postings are read anyway
-        by-path (when (and (symbol? x) (not (sx/variable? x)))
+        by-path (when (sx/plain-symbol? x)
                   (kept (sequence (comp (distinct) (keep cand) said)
                                   (reads/as-stored-at-path (:index kb)
                                                            (sx/path (sx/sentex target '?c))))))
@@ -1553,14 +1569,6 @@
   [kb sentence context types]
   (first (disjoint-problems kb sentence context types)))
 
-(defn mergeable-values?
-  "Could a functional clash between `x` and `y` be resolved by merging them?  Only when
-  both are non-variable symbols, since the equality partition holds symbols; any other
-  clash is a nogood the settle decides (docs/equality.md, \"`functional` infers equality
-  instead of throwing\")."
-  [x y]
-  (and (symbol? x) (symbol? y) (not (sx/variable? x)) (not (sx/variable? y))))
-
 (defn- first-per-slot
   "`[handle value via …]` rows with the content-first `via` kept per key, `[handle value]`
   by default.  A super's probe fans down over its specs, so one stored filler comes back
@@ -1570,18 +1578,10 @@
   ([triples] (first-per-slot triples (fn [t] [(nth t 0) (nth t 1)])))
   ([triples key-fn] (nm/distinct-by key-fn triples)))
 
-(defn functional-clashes
-  "The believed `[handle value via n]` rows that fill a functional slot of `sentence` with
-  a value other than its own argument `n` (docs/equality.md, \"`functional` infers
-  equality instead of throwing\").  `via` is the marked predicate, the sentence's own or a
-  super-predicate the mark descends from (`tax/props-over`), and the slot is probed at
-  `via`, so a filler written at either spelling is found.  `(functional P)` constrains
-  position 2 of an arity-2 sentence and `(functionalInArg P n)` position `n`; both are
-  read and their clashes unioned and deduped (`first-per-slot`).  Empty, on one map read,
-  when nothing above the predicate is marked."
-  [kb sentence context]
+(defn- functional-clashes-marked
+  "`functional-clashes` in a KB where some predicate is marked."
+  [kb tax sentence context]
   (let [pred (nm/functor sentence)
-        tax  (reasoning/taxonomy kb)
         args (vec (nm/args sentence))
         k    (count args)
         ;; `(q a1 … ?fv … ak)` — the sentence's own arguments with position `n` opened
@@ -1609,6 +1609,21 @@
          [h v q n])
        (fn [t] [(nth t 0) (nth t 1) (nth t 3)])))))
 
+(defn functional-clashes
+  "The believed `[handle value via n]` rows that fill a functional slot of `sentence` with
+  a value other than its own argument `n` (docs/equality.md, \"`functional` infers
+  equality instead of throwing\").  `via` is the marked predicate, the sentence's own or a
+  super-predicate the mark descends from (`tax/props-over`), and the slot is probed at
+  `via`, so a filler written at either spelling is found.  `(functional P)` constrains
+  position 2 of an arity-2 sentence and `(functionalInArg P n)` position `n`; both are
+  read and their clashes unioned and deduped (`first-per-slot`).  Empty, on two map reads,
+  when nothing in the KB is marked, and on one more when nothing above the predicate is."
+  [kb sentence context]
+  (let [tax (reasoning/taxonomy kb)
+        t   @tax]
+    (when (or (seq (get-in t [:props :functional])) (seq (:functional-in-arg t)))
+      (functional-clashes-marked kb tax sentence context))))
+
 (defn functional-filler
   "The incoming filler a clash row is about: argument `n` of `sentence`."
   [sentence [_ _ _ n]]
@@ -1632,7 +1647,7 @@
   [kb sentence context]
   (for [[h v via n :as clash] (functional-clashes kb sentence context)
         :let [b (functional-filler sentence clash)]
-        :when (not (or (mergeable-values? v b) (provers/measures-agree? kb v b context)))]
+        :when (not (or (tuple/mergeable-values? v b) (provers/measures-agree? kb v b context)))]
     {:type :functional :sentence sentence :existing v :new b :opposing-handle h
      :pred via :position n
      :message (if (= 2 n)
@@ -1939,15 +1954,17 @@
 (defn- argument-problem
   "The first argument conviction of `chk` in `context` that `keep?` accepts, or nil: the
   arms of the declarations that type an argument (`arg`, `interArg`, the homogeneity
-  forms, `genlArg` and the covering forms), in `constraint-problem`'s order."
+  forms, `genlArg` and the covering forms), in `constraint-problem`'s order.  Nil, reading
+  nothing, when no predicate carries an argument declaration (`argument/declares-any?`)."
   [kb chk context types decls keep?]
-  (some (fn [arm] (let [p (arm)] (when (and p (keep? p)) p)))
-        [#(args-problem kb chk context types decls)
-         #(inter-args-problem kb chk context types decls)
-         #(inter-args-homogeneity-problem kb chk context types decls)
-         #(genls-problem kb chk context decls)
-         #(covering-args-problem kb chk context types decls)
-         #(covering-genls-problem kb chk context decls)]))
+  (when (argument/declares-any? (reasoning/taxonomy kb))
+    (some (fn [arm] (let [p (arm)] (when (and p (keep? p)) p)))
+          [#(args-problem kb chk context types decls)
+           #(inter-args-problem kb chk context types decls)
+           #(inter-args-homogeneity-problem kb chk context types decls)
+           #(genls-problem kb chk context decls)
+           #(covering-args-problem kb chk context types decls)
+           #(covering-genls-problem kb chk context decls)])))
 
 (defn- constraint-problem
   "The first definitional violation for `chk` in `context` that `keep?` accepts, as a
@@ -2200,31 +2217,33 @@
   ([kb sentence context types decls]
    (when *assertive-arg-types?*
      (let [sentence (stored-spelling kb sentence context)]
-       (vec (concat (arg-entailments kb sentence context decls 'arg
-                                     checkable-term?
-                                     (fn [arg t] (list t arg)))
-                    ;; `argArg` is `arg` with the type read off this sentence, so its
-                    ;; rows go through `arg`'s arm under their own kind
-                    (arg-entailments kb sentence context
-                                     (let [as (vec (nm/args sentence))]
-                                       (fn ([k] (if (= k 'argArg) (vec (arg-arg-rows decls as)) []))
-                                         ([op functor] (decls op functor))))
-                                     'argArg checkable-term?
-                                     (fn [arg t] (list t arg)))
-                    ;; `interArgEqual` is `arg` on the sentences its value triggers
-                    (arg-entailments kb sentence context
-                                     (let [as (vec (nm/args sentence))]
-                                       (fn ([k] (if (= k 'interArgEqual) (vec (inter-arg-equal-rows decls as)) []))
-                                         ([op functor] (decls op functor))))
-                                     'interArgEqual checkable-term?
-                                     (fn [arg t] (list t arg)))
-                    (result-arg-entailments kb sentence context decls)
-                    (arg-entailments kb sentence context decls 'genlArg
-                                     #(and (checkable-term? %) (not (nm/individual? %)))
-                                     (fn [arg t] (list 'genl arg t)))
-                    (inter-arg-entailments kb sentence context types decls)
-                    (covering-entailments kb sentence context decls)
-                    (homogeneity-entailments kb sentence context types decls)))))))
+       (if-not (argument/declares-any? (reasoning/taxonomy kb))
+         (vec (result-arg-entailments kb sentence context decls))
+         (vec (concat (arg-entailments kb sentence context decls 'arg
+                                       checkable-term?
+                                       (fn [arg t] (list t arg)))
+                      ;; `argArg` is `arg` with the type read off this sentence, so its
+                      ;; rows go through `arg`'s arm under their own kind
+                      (arg-entailments kb sentence context
+                                       (let [as (vec (nm/args sentence))]
+                                         (fn ([k] (if (= k 'argArg) (vec (arg-arg-rows decls as)) []))
+                                           ([op functor] (decls op functor))))
+                                       'argArg checkable-term?
+                                       (fn [arg t] (list t arg)))
+                      ;; `interArgEqual` is `arg` on the sentences its value triggers
+                      (arg-entailments kb sentence context
+                                       (let [as (vec (nm/args sentence))]
+                                         (fn ([k] (if (= k 'interArgEqual) (vec (inter-arg-equal-rows decls as)) []))
+                                           ([op functor] (decls op functor))))
+                                       'interArgEqual checkable-term?
+                                       (fn [arg t] (list t arg)))
+                      (result-arg-entailments kb sentence context decls)
+                      (arg-entailments kb sentence context decls 'genlArg
+                                       #(and (checkable-term? %) (not (nm/individual? %)))
+                                       (fn [arg t] (list 'genl arg t)))
+                      (inter-arg-entailments kb sentence context types decls)
+                      (covering-entailments kb sentence context decls)
+                      (homogeneity-entailments kb sentence context types decls))))))))
 
 (defn declaration-entailments
   "`constraint-entailments` narrowed to the declaration stored at `dh`: the entries whose
@@ -2868,7 +2887,7 @@
   [kb {:keys [kind type]} tax types x context]
   (case kind
     :arg-type       (outside-declared-type? kb tax types x type context)
-    :inter-arg-type (and (checkable-term? x) (separated-type tax types x type context))
+    :inter-arg-type (and (checkable-term? x) (separated-type kb tax types x type context))
     :arg-genl       (and (checkable-term? x)
                          (if (tax/genl? tax x 'thing context)
                            ((tax/disjointness-test tax type context) x)
@@ -3091,12 +3110,12 @@
                          (nm/print-key (:sentence (first hits))) ", believed :monotonic")})))))
 
 (defn- length-conflict
-  "The `:arity` violation for the positive tuple `chk` (`arity/fact-shape`) whose length
+  "The `:arity` violation for the positive tuple `chk` (`sx/fact-shape`) whose length
   breaks its functor's (`arity/broken-binding`), naming the bindings that state the length
   in `:opposing-handles`, or nil.  `assert` stores such a tuple in the `:out` forced set."
   [kb chk _context _strength]
   (when (sequential? chk)
-    (when-let [[q n] (arity/fact-shape {:sentence (seq chk)})]
+    (when-let [[q n] (sx/fact-shape {:sentence (seq chk)})]
       (when-let [{:keys [length via route grounds] floor :min} (arity/broken-binding kb q n)]
         (cond-> {:type :arity :sentence chk :arguments n :via via :route route
                  :clashes-with [] :opposing-handles grounds
@@ -3443,25 +3462,28 @@
   "Throw the first violation of a function's argument declarations inside `sentence` in
   `context` — `application-input-problem`, asked of a fact **before** the reify pass.
 
-  `assert` mints every ground reifiable application into its constant before
-  `constraint-checks` runs, and the constant carries the function's result types, not
-  what the application was given: the inputs are gone by the time the arm that reads
-  them could look.  So the assert path asks this first, over the sentence as written,
-  from the writer's vantage — the same reading `constraint-checks` gives an unreifiable
-  application after the pass, and the one `check` gives both, since `check` does not
-  mint.  Asked before the mint, a refused sentence leaves no constant behind.
-
-  Nil for a sentence with no compound argument, before any reader is built."
+  The constant `assert` mints carries the function's result types and not the inputs, so
+  the assert path asks this over the sentence as written, from the writer's vantage, and a
+  refused sentence leaves no constant behind.  `check`, which does not mint, asks it too.
+  A head application's inputs are read as an argument application's are, and the
+  arguments meet the declarations of the term the head reifies to
+  (`nat/heads-for-check`).  Nil for a sentence with no compound argument or head, before
+  any reader is built."
   [kb sentence context]
   ;; the raw sentence's arguments first: a fact with no compound argument has none under
   ;; any `not` either, and asking this before `checked-sentence` keeps the common fact
   ;; off the canonicalization that reads through its negations
-  (when (and (sequential? sentence) (some application-term? (rest sentence)))
-    (let [chk (checked-sentence kb sentence)]
-      (when (and (symbol? (nm/functor chk)) (some application-term? (nm/args chk)))
+  (when (and (sequential? sentence)
+             (or (application-term? (first sentence)) (some application-term? (rest sentence))))
+    (let [chk (checked-sentence kb sentence)
+          f   (nm/functor chk)
+          hd? (application-term? f)]
+      (when (or hd? (and (symbol? f) (some application-term? (nm/args chk))))
         (let [p (application-input-problem kb chk context
                                            (kb/membership-reader kb context)
-                                           (declaration-reader kb (nm/functor chk) context))]
+                                           (declaration-reader
+                                            kb (if hd? (nm/functor (nat/heads-for-check kb chk context)) f)
+                                            context))]
           (when (entry-refuses? p)
             (throw (refusal kb context p))))))))
 
@@ -3696,11 +3718,18 @@
 
 (defn forced-out?
   "Is the stored sentex `sx` held in the `:out` forced set: a fact or a rule the argument
-  family holds (`argument/held?`, `argument-conviction`), or a tuple whose length breaks
-  its functor's (`arity/inert-tuple?`, docs/taxonomy.md, \"Arity\")?"
+  family holds (`argument/held?`, `argument-conviction`), a tuple whose length breaks
+  its functor's (`arity/inert-tuple?`, docs/taxonomy.md, \"Arity\"), or a literal or denial
+  of a predicate a believed `(not_assertible P)` marks?  The mark is read KB-wide: it is
+  forced decontextualized and forced monotonic, so no reader sees it otherwise."
   [kb sx]
   (boolean (or (argument/held? kb (:id sx))
-               (and (not (rules/rule? sx)) (arity/inert-tuple? kb sx)))))
+               (and (not (rules/rule? sx))
+                    (or (arity/inert-tuple? kb sx)
+                        (let [s (:sentence sx)
+                              f (nm/functor (if (sx/negation? s) (second s) s))]
+                          (and (symbol? f)
+                               (tax/has-prop? (reasoning/taxonomy kb) :not-assertible f))))))))
 
 (defn force-sentex!
   "Write the `:mono`, `:out` and `:held` memberships of the stored sentex `sx` into the
@@ -3880,17 +3909,18 @@
      (into [] (comp (filter rules/rule?) (map :id)) sxs))))
 
 (defn force-stored!
-  "Write every forced membership the stored content takes under the forced-monotonic set:
-  `recover`'s pass, run once the taxonomy replay has rebuilt the forced-monotonic
-  properties.  A stored denial of a forced-monotonic literal with no premise mark and no
-  support is the record an
-  older store kept inert, and it takes the `:default` premise mark it was written with
+  "Write every forced membership the stored content takes under the forced-monotonic set
+  and the KB-wide `not_assertible` marks: `recover`'s pass, run once the taxonomy replay
+  has rebuilt the properties.  A stored denial of a forced-monotonic literal with no premise
+  mark and no support is the record an older store kept inert, and it takes the
+  `:default` premise mark it was written with
   (docs/nmtms.md, \"The forced-monotonic set\").  A stored rule `nat/held-application?`
   holds is forced `:held` again (docs/nat.md, \"The corresponding predicate\")."
   [kb]
   (let [tax  (reasoning/taxonomy kb)
         tms  (reasoning/tms kb)
-        preds (sort (into #{} (mapcat #(decide/forced-predicates tax %)) decide/forced-kinds))
+        preds (sort (into (set (tax/props tax :not-assertible))
+                          (mapcat #(decide/forced-predicates tax %)) decide/forced-kinds))
         by-h (with-open [r (progress/start ::force-read "recover: read the forced predicates' sentexes"
                                            nil)]
                ;; `kb/find-sentexes` of each atom, the records hinted a chunk ahead
@@ -4076,7 +4106,7 @@
                       (fn [c] (or (get @m c)
                                   (let [f (tax/disjointness-test tax type c)] (vswap! m assoc c f) f))))
         ;; `separated-type`'s test, true of a symbol believing a type separated from `type`
-        separated?  (fn [types x c] (boolean (some (sep-in c) (:types (types x)))))
+        separated?  (fn [types x c] (some? (held-separation kb tax (sep-in c) (:types (types x)) type c)))
         ;; the individual floor: a symbol with no `genl` edge in any context is outside the
         ;; hierarchy, and only one with an edge pays the walk
         floor?      (fn [x] (cached [::floor x]
@@ -4601,19 +4631,25 @@
   "The `:uncleared-forcing` refusal of retracting the sentex at `handle`, as a value, or
   nil: the handle states a forced-monotonic declaration whose predicate has no established unforced
   semantics (`uncleared-forcing`).  The test reads the declaration properties' supporters,
-  which are what the sentence alone puts there, and fetches no record.  `where` names the
-  entry point."
+  which are what the sentence alone puts there, and fetches no record; a KB storing no
+  `declaration-kind` functor answers nil off one count read per functor.  `where` names
+  the entry point."
   [kb handle where]
-  (let [tax (reasoning/taxonomy kb)]
-    (some (fn [[[functor pred :as decl] missing]]
-            (let [kind (declaration-kind functor)]
-              (when (contains? (tax/prop-supporter-contexts tax kind pred) handle)
-                {:type :uncleared-forcing :handle handle :predicate pred :missing missing
-                 :operation where
-                 :message (str (pr-str (apply list decl)) " is not retracted: " pred
-                               " has no unforced semantics yet (" (name missing)
-                               "), so its declaration stays")})))
-          uncleared-forcing)))
+  (let [ix     (:index kb)
+        stated (into #{} (filter #(pos? (long (reads/stored-count-with-functor ix %))))
+                     (keys declaration-kind))]
+    (when (seq stated)
+      (let [tax (reasoning/taxonomy kb)]
+        (some (fn [[[functor pred :as decl] missing]]
+                (when (and (contains? stated functor)
+                           (contains? (tax/prop-supporter-contexts tax (declaration-kind functor) pred)
+                                      handle))
+                  {:type :uncleared-forcing :handle handle :predicate pred :missing missing
+                   :operation where
+                   :message (str (pr-str (apply list decl)) " is not retracted: " pred
+                                 " has no unforced semantics yet (" (name missing)
+                                 "), so its declaration stays")}))
+              uncleared-forcing)))))
 
 ;; ---- storable values ----------------------------------------------------
 ;; A sentence's leaves must survive the durable log.  Symbols and keywords (the
@@ -4702,24 +4738,148 @@
                            " log (nippy) — a sentence's values must be serializable"))
                     {:type :not-encodable :sentence sentence :value v}))))
 
-(defn quantity-shape-problem
-  "The `:not-well-formed` problem a non-finite measure magnitude is refused with, or
-  nil.  `##Inf` and `##NaN` are `number?`s, and a stored `(QuantityIntervalFn 0 ##Inf
-  Second)` makes every duration and metric goal in its context throw a
-  NumberFormatException out of the magnitude arithmetic, with no `:type`.  A variable
-  magnitude stays legal, since a rule antecedent binds it.  `assert`, `check` and an
-  import read it."
+(defn- clashing-keys?
+  "Does map term `form` name one key with two values: two ground `(EntryFn k v)` entries,
+  identical keys, different values?"
+  [form]
+  (let [kvs (keep (fn [e] (when (and (seq? e) (= 'EntryFn (first e)) (= 3 (count e))
+                                     (sx/ground-term? e))
+                            (rest e)))
+                  (rest form))]
+    (some (fn [[_ vs]] (< 1 (count (distinct (map second vs))))) (group-by first kvs))))
+
+(defn term-shape-problem
+  "The `:not-well-formed` problem a structural term with malformed content is refused
+  with, or nil: a non-finite measure magnitude, or a `MapFn` term giving one key two values.
+  `##Inf` and `##NaN` are `number?`s, and a stored `(QuantityIntervalFn 0 ##Inf Second)`
+  makes every duration and metric goal in its context throw a NumberFormatException out
+  of the magnitude arithmetic, with no `:type`.  A variable magnitude or entry stays
+  legal, since a rule antecedent binds it.  `assert`, `check` and an import read it."
   [sentence]
   (when (sequential? sentence)
     (let [bad (fn [x] (and (number? x) (not (Double/isFinite (double x)))))
           q?  #{'QuantityFn 'QuantityIntervalFn}]
-      (when-some [t (sx/some-form (fn [form]
-                                    (and (sequential? form) (seq form)
-                                         (q? (first form)) (some bad (rest form))))
-                                  sentence)]
+      (if-some [t (sx/some-form (fn [form]
+                                  (and (sequential? form) (seq form)
+                                       (q? (first form)) (some bad (rest form))))
+                                sentence)]
         {:type :not-well-formed :sentence sentence
          :message (str "not well-formed: a measure magnitude must be finite, got "
-                       (pr-str t))}))))
+                       (pr-str t))}
+        (when-some [m (sx/some-form (fn [form]
+                                      (and (seq? form) (= 'MapFn (first form))
+                                           (clashing-keys? form)))
+                                    sentence)]
+          {:type :not-well-formed :sentence sentence
+           :message (str "not well-formed: a map gives each key one value, and "
+                         (pr-str m) " gives one key two")})))))
+
+(defn empty-meet-problem
+  "The `:not-well-formed` problem a meet over a time order whose arguments share no time is
+  refused with, or nil: an application of a function `(meetFunctionOf F R)` declares, `R`
+  an order with a calendar comparator (`res/meet-order`), two of whose arguments, nested
+  applications of `F` flattened, are `datetime/disjoint?`.  Read in `sentence` and in the
+  context slot as it folds (`nat/context-form`).  `assert`, `assert-inert` and `check`
+  read it."
+  [kb sentence context]
+  (let [timed? (res/meet-order (reasoning/taxonomy kb))
+        args   (fn args [f t] (mapcat #(if (and (seq? %) (= f (first %))) (args f %) [%]) (rest t)))
+        no-time? (fn [t]
+                   (and (seq? t) (symbol? (first t)) (timed? (first t))
+                        (let [as (vec (args (first t) t))]
+                          (some (fn [i] (some #(datetime/disjoint? (as i) %) (subvec as (inc i))))
+                                (range (count as))))))]
+    (when-some [t (or (sx/some-form no-time? sentence)
+                      (sx/some-form no-time? (nat/context-form kb context)))]
+      {:type :not-well-formed :sentence sentence :context context
+       :message (str "not well-formed: " (pr-str t) " is the meet of times that share no time,"
+                     " and it denotes no time")})))
+
+(defn- present-slice
+  "The context the real world's present from the instant `t` on is stored in: the `cx/`
+  constant of `(CxTimeFn CxRealWorld (IntervalAfterFn t))`, minted or not."
+  [kb t]
+  (nat/context-for-check kb (list 'CxTimeFn 'CxRealWorld (list 'IntervalAfterFn t))))
+
+(defn- present-start
+  "The instant `t` when the context `k` is `(present-slice kb t)` and minted, else nil."
+  [kb k]
+  (when (nat-read/reified-context-symbol? k)
+    (get (res/unify '(CxTimeFn CxRealWorld (IntervalAfterFn ?t)) (nat/nat-expression kb k) {})
+         '?t)))
+
+(defn- no-end?
+  "Is the time `x` one with no end, read from `context`: `Forever`, an `IntervalAfterFn`
+  application, or a term a believed `(intervalAfterOf t x)` visible from `context` names?"
+  [kb x context]
+  (or (= 'Forever x)
+      (and (seq? x) (= 'IntervalAfterFn (first x)))
+      (boolean (seq (res/matches-visible kb (list 'intervalAfterOf '?t x) context)))))
+
+(defn- fixed-starts
+  "The instants a fact in `context` states exactly or dates: each argument of an
+  `(instantEqual a b)` over two terms, and the instant of an `(includesInstant x w)` whose
+  `x` has an end (`no-end?`)."
+  [kb sentence context]
+  (when (and (seq? sentence) (= 3 (count sentence)))
+    (let [[f a b] sentence]
+      (case f
+        instantEqual    (when (not= a b) [a b])
+        includesInstant (when-not (no-end? kb a context) [b])
+        nil))))
+
+(defn- exposed-start
+  "For a `(genlCx sub super)` write, `[sentex present]`: the content-least stored fact in a
+  context at or below `sub` that states exactly or dates the start of a present that
+  `super` sees and neither `sub` nor the fact's context sees, or nil."
+  [kb tax sub super]
+  (let [starts #(into #{} (keep (partial present-start kb)) (tax/context-up tax %))
+        new    (remove (starts sub) (starts super))]
+    (when (seq new)
+      (let [down (set (tax/context-down tax sub))]
+        (nm/min-by-content-key
+         (fn [[s _]] (list (:sentence s) (:context s)))
+         (for [t     new
+               :let  [k (present-slice kb t)]
+               [pred pos] [['instantEqual 1] ['instantEqual 2] ['includesInstant 2]]
+               h     (reads/as-stored-with-args-in (:index kb) pred {pos t} down)
+               :let  [s (p/get-sentex (:records kb) h)]
+               :when (and s (some #{t} (fixed-starts kb (:sentence s) (:context s)))
+                          (not (tax/sees? tax (:context s) k)))]
+           [s k]))))))
+
+(defn check-exact-present
+  "Throw `:exact-present` when a write states exactly or dates the start `t` of the real
+  world's present, `(CxTimeFn CxRealWorld (IntervalAfterFn t))`, at or below the present: a
+  fact `fixed-starts` names `t` of in a context that sees the present, or a `genlCx` edge
+  that places a context holding such a fact under it.  Any other functor returns nil
+  unread.  `:fact` names the fact and its context, `:present` the slice.  `assert` and
+  `check` read it.  See docs/time.md, \"The real world's present\"."
+  [kb sentence context]
+  (when (seq? sentence)
+    (let [[fact present]
+          (case (first sentence)
+            (instantEqual includesInstant)
+            (some (fn [t]
+                    (let [k (present-slice kb t)]
+                      (when (tax/sees? (reasoning/taxonomy kb) context k)
+                        [{:sentence sentence :context context} k])))
+                  (fixed-starts kb sentence context))
+            genlCx
+            (when (and (= 3 (count sentence))
+                       (some #(pos? (reads/stored-count-with-functor (:index kb) %))
+                             '[instantEqual includesInstant]))
+              (when-let [[s k] (exposed-start kb (reasoning/taxonomy kb)
+                                              (second sentence) (nth sentence 2))]
+                [{:sentence (:sentence s) :context (:context s)} k]))
+            nil)]
+      (when present
+        (throw (ex-info (str "the start of the real world's present " present " is read from"
+                             " clock readings, and " (pr-str (:sentence fact)) " in "
+                             (:context fact) " states it exactly or dates it: state a clock"
+                             " reading as (instantNotBefore <start> <time>)")
+                        {:type :exact-present :sentence sentence :context context
+                         :present present :fact fact}))))))
 
 ;; ---- stratification -----------------------------------------------------
 ;; The rule-set half of well-formedness: a rule whose `exceptWhen` exception closes
@@ -4853,23 +5013,25 @@
   not a rule, which the rule index should never hand back but which a stale posting
   could.  Puts each exceptWhen meta-sentex naming the rule into `believed`, a map, with
   whether it is believed."
-  [kb handle ^java.util.Map believed]
-  (when-let [rsx (p/get-sentex (:records kb) handle)]
-    (when (rules/rule? rsx)
-      (let [tms   (reasoning/tms kb)
-            metas (provers/stored-exception-metas kb handle)]
-        (doseq [m metas] (.put believed (:id m) (jtms/in? tms (:id m))))
-        (rule-graph-node kb handle rsx
-                         (into [] (comp (filter #(jtms/in? tms (:id %)))
-                                        (map #(sx/exception-query-conjuncts (:sentence %))))
-                               metas))))))
+  ([kb handle believed]
+   (stored-rule-node kb handle believed #(p/get-sentex (:records kb) %)))
+  ([kb handle ^java.util.Map believed record-of]
+   (when-let [rsx (record-of handle)]
+     (when (rules/rule? rsx)
+       (let [tms   (reasoning/tms kb)
+             metas (provers/stored-exception-metas kb handle)]
+         (doseq [m metas] (.put believed (:id m) (jtms/in? tms (:id m))))
+         (rule-graph-node kb handle rsx
+                          (into [] (comp (filter #(jtms/in? tms (:id %)))
+                                         (map #(sx/exception-query-conjuncts (:sentence %))))
+                                metas)))))))
 
 (defn- stored-stratification-graph
   "The stored rules' half of `stratification-readers`: `{:readers f :starts s …}`, where
   `f` maps a predicate to the stored rule nodes reading it in content order, and with no
   argument answers every stored rule node, and `s` maps an upward closure to the starts of
   a `genl` edge's walk (`wff/negation-starts`).  Each is memoized: the node per rule
-  handle, the readers per predicate, the starts per closure.  The rest of the map is what
+  handle and shared rule shape, readers per predicate, starts per closure. The rest is what
   `stratification-graph-current?` compares: the index and taxonomy it read, the two
   closed-extent mark sets, and `:believed`, each exceptWhen meta-sentex a node read with
   whether it was believed.  It reads every context and the marks unscoped: the graph is a
@@ -4878,11 +5040,17 @@
   (let [index    (:index kb)
         tx       (reasoning/taxonomy kb)
         believed (java.util.HashMap.)
+        records  (java.util.HashMap.)
+        record-of (fn [h]
+                    (if (.containsKey records h)
+                      (.get records h)
+                      (let [r (some-> (p/get-sentex (:records kb) h) (assoc :strength nil))]
+                        (.put records h r) r)))
         nodes    (java.util.HashMap.)
         node     (fn [h]
                    (if (.containsKey nodes h)
                      (.get nodes h)
-                     (let [n (stored-rule-node kb h believed)] (.put nodes h n) n)))
+                     (let [n (stored-rule-node kb h believed record-of)] (.put nodes h n) n)))
         ;; content order, since `wff/negation-walk` returns the first cycle it closes, and a
         ;; set of handles iterates in an order the handles decide
         ordered  (fn [handles keep?]
@@ -4911,6 +5079,8 @@
                         found))))
         starts   (java.util.HashMap.)]
     {:index      index
+     :records    (:records kb)
+     :record-of  record-of
      :taxonomy   tx
      :closed     (tax/props tx :closed-extent)
      :closed-arg (tax/props tx :closed-extent-arg)
@@ -4922,14 +5092,15 @@
 
 (defn- stratification-graph-current?
   "Does the stored graph `g` still answer for `kb`?  A rule or a re-check posting written
-  since, or a rule's engines moving, empties the memo it sits in
+  since, or a rule's slots moving, empties the memo it sits in
   (`rules/*stratification-memo*`); what else a node or a reader read is compared here:
-  the index and the taxonomy, the closed-extent mark sets by identity, unscoped as the
+  the stores and the taxonomy, the closed-extent mark sets by identity, unscoped as the
   graph reads them, and the belief of each exceptWhen meta-sentex a node read."
   [kb g]
   (let [tx  (reasoning/taxonomy kb)
         tms (reasoning/tms kb)]
     (and (identical? (:index kb) (:index g))
+         (identical? (:records kb) (:records g))
          (identical? tx (:taxonomy g))
          (identical? (tax/props tx :closed-extent) (:closed g))
          (identical? (tax/props tx :closed-extent-arg) (:closed-arg g))
@@ -4946,6 +5117,15 @@
       (let [g (stored-stratification-graph kb)]
         (when memo (vreset! memo g))
         g))))
+
+(defn rule-shape-reader
+  "A rule-shape reader for one read-only call, sharing the write's stratification graph.
+  Acquire again after writes: rule-index and rule-slot changes retire that graph. Premise
+  strength is nil, not a shape field. Without a bound memo, each read goes to the store."
+  [kb]
+  (if rules/*stratification-memo*
+    (:record-of (stratification-graph kb))
+    #(some-> (p/get-sentex (:records kb) %) (assoc :strength nil))))
 
 (defn- stratification-readers
   "Predicate -> the rule nodes reading it, positively or negatively, in content order;

@@ -96,7 +96,8 @@
   kb-quality "[[conn] [conn opts]]",
   last-program "[[conn]]",
   levels "[[conn]]",
-  lookup "[[conn level goal] [conn level goal context]]",
+  lookup
+  "[[conn level goal] [conn level goal context] [conn level goal context opts]]",
   max-common-specs "[[conn types] [conn types context]]",
   max-context-children "[[conn c]]",
   max-specs "[[conn t] [conn t context]]",
@@ -186,7 +187,14 @@
   arg-types-owed "[[kb]]",
   argue "[[kb asent context] [kb asent context opts]]",
   argue-opt-keys
-  [:auto? :content? :max-depth :portfolio? :proof? :racers :strategy],
+  [:auto?
+   :content?
+   :max-depth
+   :max-ms
+   :portfolio?
+   :proof?
+   :racers
+   :strategy],
   ask "[[kb goal] [kb goal context] [kb goal context opts]]",
   ask-opt-keys [:max-ms],
   ask-within "[[kb goal budget] [kb goal context budget]]",
@@ -310,7 +318,9 @@
   load-foreign! "[[kb kind path opts]]",
   load-text! "[[kb source] [kb source opts]]",
   log-level "[[]]",
-  lookup "[[kb level goal] [kb level goal context]]",
+  lookup
+  "[[kb level goal] [kb level goal context] [kb level goal context opts]]",
+  lookup-opt-keys [:max-ms],
   mark-inert! "[[kb opts]]",
   max-common-specs "[[kb types] [kb types context]]",
   max-context-children "[[kb c]]",
@@ -329,7 +339,7 @@
   props "[[kb kind]]",
   provable? "[[kb goal] [kb goal context] [kb goal context opts]]",
   prove "[[kb goal] [kb goal context] [kb goal context opts]]",
-  prove-opt-keys [:max-depth :max-ms],
+  prove-opt-keys [:max-depth :max-ms :refuse-depth-cut?],
   prove-within "[[kb goal budget] [kb goal context budget]]",
   provenance "[[kb handle]]",
   prover "[[spec]]",
@@ -340,7 +350,7 @@
   query "[[kb goal] [kb goal context] [kb goal context opts]]",
   query-contexts :var,
   query-opt-keys
-  [:auto? :max-depth :portfolio? :proof? :racers :strategy],
+  [:auto? :max-depth :max-ms :portfolio? :proof? :racers :strategy],
   query-plan "[[kb goal] [kb goal context]]",
   query-status "[[kb goal context] [kb goal context opts]]",
   query? "[[kb goal] [kb goal context] [kb goal context opts]]",

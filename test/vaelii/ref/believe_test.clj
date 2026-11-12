@@ -108,6 +108,21 @@
            [(alive? :default :default) (alive? :default :monotonic) (alive? :default :derived)
             (alive? :monotonic :monotonic)]))))
 
+(deftest a-separated-membership-or-a-cover-s-deniers-undercut-a-subtype-match-through-a-default-edge-only
+  (let [alive? (fn [edge convict]
+                 (contains? (:believed (b/view (apply world ['(dog Fido) 'CxA :monotonic]
+                                                      ['(genl dog animal) 'CxA edge]
+                                                      ['(set/forwardRule (implies (animal ?x) (alive ?x))) 'CxA :monotonic]
+                                                      convict)
+                                               'CxA []))
+                            '(alive Fido)))
+        sep    [['(disjoint animal plant) 'CxA :monotonic] ['(plant Fido) 'CxA :default]]
+        cover  [['(covering animal fish bird) 'CxA :monotonic]
+                ['(not (fish Fido)) 'CxA :monotonic] ['(not (bird Fido)) 'CxA :default]]]
+    (is (= [false true false true true]
+           [(alive? :default sep) (alive? :monotonic sep) (alive? :default cover)
+            (alive? :monotonic cover) (alive? :default (butlast cover))]))))
+
 (deftest a-denial-pattern-is-met-by-the-denial-of-a-supertype-and-not-of-a-subtype
   ;; CxA: (genl dog animal) (not (animal Tom)) (not (dog Rex)) all :monotonic,
   ;;      a forward rule ¬dog ⇒ notDog; a forward rule ¬animal ⇒ notAnimal
@@ -425,14 +440,14 @@
 ;; ---- the rounds (D2) -------------------------------------------------------
 
 (deftest a-guarded-conclusion-a-defeat-releases-undercuts-a-reading-through-a-default-edge
-  ;; D2 and D14. CxA: (genl chi dog) (chi Kit) :default; (disjoint dog cat) (cat Kit)
+  ;; D2 and D14. CxA: (genl chi dog) (chi Kit) :default; (disjoint chi cat) (cat Kit)
   ;; (pp Kit) (transitiveInArgInverse pP 1 genl) (pP dog Bone) :monotonic; a forward rule
   ;; pp ∧ unknown(chi) ⇒ ¬(pP chi Bone). Round 1 takes (chi Kit) OUT and the rule fires.
   ;; The reading of (pP chi Bone) rests on the :default edge, so the conclusion undercuts
   ;; it and round 2 forms no inherited nogood (docs/reference.md, item 6).
   (let [v (b/view (world ['(genl chi dog) 'CxA :default]
                          ['(chi Kit) 'CxA :default]
-                         ['(disjoint dog cat) 'CxA :monotonic]
+                         ['(disjoint chi cat) 'CxA :monotonic]
                          ['(cat Kit) 'CxA :monotonic]
                          ['(pp Kit) 'CxA :monotonic]
                          ['(transitiveInArgInverse pP 1 genl) 'CxA :monotonic]
@@ -674,7 +689,7 @@
 ;; ---- extraction from a KB ---------------------------------------------------
 
 (deftest world-of-reads-the-premises-and-no-derivation
-  (tu/with-neutral-kb [kb #(tu/fresh)]
+  (tu/with-neutral-kb [kb tu/empty-kb]
     (tu/with-terms [dog barks sick Fido CxA CxB]
       (let [rule (list 'set/forwardRule (list 'implies (list dog '?x) (list barks '?x)))]
         (v/assert kb (list 'genlCx CxB CxA) CxB {:strength :monotonic})
@@ -694,7 +709,7 @@
           (is (= #{CxA CxB} (set (:contexts wd)))))))))
 
 (deftest world-of-refuses-a-kb-holding-content-outside-v1
-  (tu/with-neutral-kb [kb #(tu/fresh)]
+  (tu/with-neutral-kb [kb tu/empty-kb]
     (tu/with-terms [marriedTo CxA]
       (v/assert kb (list 'symmetric marriedTo) CxA)
       (is (unsupported? #(w/world-of kb))))))

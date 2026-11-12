@@ -70,7 +70,10 @@
             [vaelii.impl.assert-entry :as entry]
             [vaelii.impl.caches :as caches]
             [vaelii.impl.config :as config]
+            [vaelii.impl.context-nat :as context-nat]
+            [vaelii.impl.kb :as kb]
             [vaelii.impl.naming :as nm]
+            [vaelii.impl.nat :as nat]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rules :as rules]
@@ -132,64 +135,86 @@
   "Which of the two ceilings apply to which op, and under which key the op reads it.  A read
   that expands rules runs on the daemon's **single write monitor**, so every other request
   queues behind it.  The clock ceiling, `:max-ms` (`config/max-query-ms`), bounds every
-  entry point that takes a clock.  `:query`, `:query?`, `:query-status` and `:argue` take
-  no clock (`query-opt-keys` has no `:max-ms`), so the depth ceiling, `:max-depth`
-  (`config/max-query-depth`), bounds them.  An anytime budget map is `:max-ms` and takes
-  no default of its own.
+  entry point that takes a clock.  The depth ceiling, `:max-depth`
+  (`config/max-query-depth`), also bounds `:query`, `:query?`, `:query-status`, `:argue`,
+  `:prove`, `:provable?` and `:prove-within`, which read both keys (`depth-fill`).
 
   **The table holds the search bounds of reads, and no write's bound.**  A read with no dial
-  of its own (`:sentexes-matching`) is not on it; the four backward-search entry points
-  (`core/ask-opt-keys`, `core/prove-opt-keys`) are held to the clock ceiling.  **Eight writes
-  name a bound this table does not hold**: `:assert`, `:try-assert`, `:assert-many`,
-  `:assert-rule` and `:forward-chain` read `:max-depth`, `:max-term-depth` and
-  `:max-derivations`, and `:edit`, `:edit-with-consequences` and `:preview` read them off
-  each batch entry's opts.  All three bound the chaining fixpoint
+  of its own (`:sentexes-matching`) is not on it, and every read whose `core/<op>-opt-keys`
+  names `:max-ms` is.  **Eight writes name a bound this table does not hold**: `:assert`,
+  `:try-assert`, `:assert-many`, `:assert-rule` and `:forward-chain` read `:max-depth`,
+  `:max-term-depth` and `:max-derivations`, and `:edit`, `:edit-with-consequences` and
+  `:preview` read them off each batch entry's opts.  All three bound the chaining fixpoint
   (`chain/default-chain-opts`) on the same monitor.  `write-bounds` holds `:max-ms` to the
   write ceiling for all but `:forward-chain` and `:preview` (no clock).  docs/operations.md."
-  {:query              #{:max-depth}
-   :query?             #{:max-depth}
-   :query-status       #{:max-depth}
-   :argue              #{:max-depth}
+  {:query              #{:max-depth :max-ms}
+   :query?             #{:max-depth :max-ms}
+   :query-status       #{:max-depth :max-ms}
+   :argue              #{:max-depth :max-ms}
    :why-not            #{:max-ms}
    :search-tree        #{:max-ms}
    :compare-tacticians #{:max-ms}
    :ask                #{:max-ms}
    :ask?               #{:max-ms}
-   :prove              #{:max-ms}
-   :provable?          #{:max-ms}
+   :prove              #{:max-depth :max-ms}
+   :provable?          #{:max-depth :max-ms}
    :ask-within         #{:max-ms}
-   :prove-within       #{:max-ms}
+   :prove-within       #{:max-depth :max-ms}
+   :escalate           #{:max-ms}
+   :lookup             #{:max-ms}
    :kb-integrity       #{:max-ms :max-work :max-results}})
 
 (def ^:private clock-fill
   "The ops whose ceiling has to reach a caller who sent **no option map at all**, and the
-  arguments to fill in between what they sent and the map.  An absent `:max-depth` is a
-  *smaller* question than the ceiling (no rule expansion), so it needs nothing here.  An
-  absent `:max-ms` is **no clock**, so a short call is padded to the arity that has a map,
-  with `vaelii.core`'s default for each argument in between, and `under-ceiling` fills the
-  clock in.  The four search entry points fill their one intervening context argument with
-  `?ctx`; `kb-integrity` has none.  `:option-arity` distinguishes an omitted options map
-  from an explicit nil.  An entry point added here owes the same reading of its arglists."
-  {:ask         {:fill ['?ctx] :option-arity 3}
-   :ask?        {:fill ['?ctx] :option-arity 3}
-   :prove       {:fill ['?ctx] :option-arity 3}
-   :provable?   {:fill ['?ctx] :option-arity 3}
-   :kb-integrity {:fill [] :option-arity 3}})
+  arguments to fill in between what they sent and the map.  An absent `:max-ms` is **no
+  clock**, and at a prover an absent `:max-depth` is no depth, so a short call is padded to
+  the arity that has a map, with `vaelii.core`'s default for each argument in between, and
+  `under-ceiling` fills the bounds in.  A context is filled with `?ctx` and `escalate`'s
+  floor with nil (`levels/query-floor`).  A budget op's map is mandatory, so it has no
+  `:fill`, and `:map-arities` names the arities that end in it."
+  {:query              {:fill ['?ctx] :option-arity 3}
+   :query?             {:fill ['?ctx] :option-arity 3}
+   :query-status       {:fill [] :option-arity 3}
+   :argue              {:fill [] :option-arity 3}
+   :ask                {:fill ['?ctx] :option-arity 3}
+   :ask?               {:fill ['?ctx] :option-arity 3}
+   :prove              {:fill ['?ctx] :option-arity 3}
+   :provable?          {:fill ['?ctx] :option-arity 3}
+   :search-tree        {:fill ['?ctx] :option-arity 3}
+   :compare-tacticians {:fill ['?ctx] :option-arity 3}
+   :why-not            {:fill [] :option-arity 3}
+   :escalate           {:fill ['?ctx nil] :option-arity 4}
+   :lookup             {:fill ['?ctx] :option-arity 4}
+   :kb-integrity       {:fill [] :option-arity 3}
+   :ask-within         {:option-arity 3 :map-arities #{2 3}}
+   :prove-within       {:option-arity 3 :map-arities #{2 3}}})
+
+(def ^:private depth-fill
+  "The ops where an absent `:max-depth` is **no depth**, mapped to what `under-ceiling`
+  merges in beside the ceiling it fills.  At `query`'s entry points an absent depth is the
+  no-rule-expansion answer, a smaller question, and is left alone.  A `:prove` or
+  `:provable?` the filled depth cut short is refused (`:refuse-depth-cut?`), since the
+  caller asked for the whole answer set; `:prove-within` reports the cut as `:truncated?`."
+  {:prove        {:refuse-depth-cut? true}
+   :provable?    {:refuse-depth-cut? true}
+   :prove-within {}})
 
 (defn- with-opts-map
   "`args` padded out to the arity whose last argument is the option map: nothing to do
   when the caller already sent one, or when the call is short of an argument `fill` has
   no default for (an arity refusal the op itself owes), else the tail of `fill` the call
-  is short by, and then an empty map for `under-ceiling` to write the clock into."
-  [args {:keys [fill option-arity]}]
-  (let [first-fill (- option-arity 1 (count fill))]
+  is short by, and then an empty map for `under-ceiling` to write the clock into.  A nil
+  in the map's place, at an arity `:map-arities` (default `option-arity`) names, is that
+  empty map; an op with no `:fill` is never padded."
+  [args {:keys [fill option-arity map-arities]}]
+  (let [n          (count args)
+        first-fill (- option-arity 1 (count fill))]
     (cond
-      (< (count args) first-fill) args
-      (map? (peek args)) args
-      (and (= option-arity (count args)) (nil? (peek args)))
-      (assoc args (dec option-arity) {})
+      (and (contains? (or map-arities #{option-arity}) n) (nil? (peek args)))
+      (assoc args (dec n) {})
+      (or (nil? fill) (< n first-fill) (map? (peek args))) args
       :else
-      (conj (into args (subvec fill (min (count fill) (- (count args) first-fill)))) {}))))
+      (conj (into args (subvec fill (min (count fill) (- n first-fill)))) {}))))
 
 (defn- ceiling-for
   "The ceiling on `k`, or nil when the operator lifted it (`0`)."
@@ -206,8 +231,7 @@
   or a refusal.  A value **over** the ceiling is refused by name (`:over-ceiling`), since a
   quietly lowered bound would return a partial result labelled as the one asked for.  A
   `:max-ms` the caller left **absent** is filled in with the ceiling, since absent means *no
-  clock*.  An absent `:max-depth` is left alone: it is the no-rule-expansion answer at
-  `query`'s entry point, a smaller question than the ceiling."
+  clock*, and so is an absent `:max-depth` at a `depth-fill` op, with that op's row."
   [op ks opts]
   (reduce
    (fn [m k]
@@ -224,6 +248,8 @@
                           :ceiling ceiling}))
          (and (#{:max-ms :max-work :max-results} k) (nil? v))
          (assoc m k ceiling)
+         (and (= :max-depth k) (nil? v) (contains? depth-fill op))
+         (merge (assoc m k ceiling) (depth-fill op))
          :else                              m)))
    opts
    ks))
@@ -745,7 +771,7 @@
     :definitional-clash
     :unknown-option :bad-handle
     :unknown-handle :bad-level :exception-not-closed :not-stratified :naf-not-closed
-    :quantifier-not-local
+    :quantifier-not-local :exact-present
     :not-watchable :not-checkable :not-assertible
     :bad-table-entry
     ;; a map handed to `:quality-report` that is not one of `:kb-quality`'s answers —
@@ -847,6 +873,56 @@
   `forced_decontextualized_predicate` moves each there and `decontextualized_predicate`
   copies each there (docs/contexts.md)."
   '#{forced_decontextualized_predicate decontextualized_predicate})
+
+(def ^:private eternal-why
+  "Why a sentence changing whether a predicate is eternal is written and removed under an
+  admin grant only."
+  "whether P is eternal decides whether every (P …) a time slice holds is copied into the context the slice slices")
+
+(defn- eternal-change?
+  "Does storing or removing `sentence` change whether a predicate is eternal: a sentence
+  making one eternal (`special/eternal-declaration?`), its denial, or a `defeat` of a
+  stored sentex that is either?"
+  [kb sentence]
+  (boolean
+   (or (special/eternal-declaration? kb sentence)
+       (and (sx/negation? sentence) (special/eternal-declaration? kb (second sentence)))
+       (when-let [s (some->> (kb/defeat-target sentence) (v/sentex kb))]
+         (eternal-change? kb (sx/sentence-of s))))))
+
+(defn- admin-only
+  "The `[::admin-only why what]` triple for the literal `lit` when no grant's contexts bound
+  what storing or removing it writes, else nil.  Three kinds qualify: a variable or a
+  literal with a variable functor, which may conclude any predicate; a placement
+  declaration; and a sentence `eternal-change?` answers."
+  [kb lit]
+  (let [f (when (sequential? lit) (first lit))]
+    (cond
+      (or (sx/variable? lit) (sx/variable? f))
+      [::admin-only "it may conclude any predicate" "a literal with a variable functor"]
+      (placement-declarations f)
+      [::admin-only "it places every (P …) the KB holds, in any context, in CxUniverse"
+       (str "a " f " declaration")]
+      (eternal-change? kb lit)
+      [::admin-only eternal-why (str "a (" f " …) changing whether a predicate is eternal")])))
+
+(defn- nat-formula-reach
+  "The `[context why]` pairs storing `(natFormula k e)` in CxUniverse writes beside it.  The
+  structural producer places `k` under each context `context-nat/arg-supers` names, so `k`
+  is one.  The store copies every eternal predicate's literal `k` holds into each context
+  other than `k` that `special/sliced-contexts` reads off `e`, so each of those is one too.
+  Neither reads what `k`
+  holds, so the verdict is the same whichever of the map and a fact in `k` is written
+  first."
+  [kb [_ k e]]
+  (when (and (symbol? k) (not (sx/variable? k)) (sequential? e))
+    (cond-> []
+      (seq (context-nat/arg-supers kb k e))
+      (conj [k "a natFormula places its constant under its function's argument, which widens the constant's ancestor set"])
+      :always
+      (into (comp (remove #{k})
+                  (map (fn [m] [m "the store copies each eternal predicate's literal the slice a natFormula names holds into the context the slice slices"])))
+            (special/sliced-contexts kb e)))))
 
 (defn- apart
   "`lit` with every variable renamed to a primed spelling, which no stored rule's
@@ -1024,30 +1100,32 @@
 
 (defn- literal-reach
   "The `[context why what]` triples storing literal `lit` in `context` writes: the context
-  `assert` stores it in (`entry/storage-context`), CxUniverse beside it for a literal the
-  store also lifts there (`special/lifts-to-universe?`), for a `genlCx` edge its lower
-  context, whose ancestor set the edge widens, and the `rule-placements` of every rule
-  storing it makes the engine write, in the context it is placed in (`generated-rules`,
-  `edge-generated-rules`).  `::admin-only` for a
-  literal no grant's contexts bound, `what` naming it: a placement declaration, a variable
-  functor and a variable in place of a literal."
+  `assert` stores it in (`entry/storage-context`), CxUniverse or the contexts a slice slices
+  beside it for a literal the store also lifts there (`special/lifts-to-universe?`,
+  `special/slice-lift-targets`), for a `genlCx` edge its lower context, whose ancestor set the
+  edge widens, for a `natFormula` in CxUniverse its `nat-formula-reach`, and the
+  `rule-placements` of every rule storing it makes the engine write, in the context it is
+  placed in (`generated-rules`, `edge-generated-rules`).  The `admin-only` triple alone for
+  a literal no grant's contexts bound."
   [kb lit context seen]
-  (let [f (when (sequential? lit) (first lit))]
+  (let [f (when (sequential? lit) (first lit))
+        t (admin-only kb lit)]
     (cond
-      (or (sx/variable? lit) (sx/variable? f))
-      [[::admin-only "it may conclude any predicate" "a literal with a variable functor"]]
-      (placement-declarations f)
-      [[::admin-only "it places every (P …) the KB holds, in any context, in CxUniverse"
-        (str "a " f " declaration")]]
+      t [t]
       (nil? f)
       []
       :else
       (let [c (entry/storage-context kb f context)]
         (cond-> [[c nil]]
-          (special/lifts-to-universe? kb f)
+          (special/lifts-to-universe? kb lit)
           (conj [sx/root-context (str "the store also deduces a (" f " …) into CxUniverse")])
+          :always
+          (into (map (fn [m] [m (str "the store also deduces a (" f " …) into the context its slice slices")]))
+                (special/slice-lift-targets kb lit (nat/context-form kb c)))
           (and (= 'genlCx f) (= 3 (count lit)))
           (conj [(second lit) "a genlCx edge widens its lower context's ancestor set"])
+          (and (= 'natFormula f) (= 3 (count lit)) (= sx/root-context c))
+          (into (nat-formula-reach kb lit))
           :always
           (into (mapcat (fn [[g r c']]
                           (rule-placements kb (sx/rule-consequent (rules/inner-rule r)) c'
@@ -1113,21 +1191,25 @@
 
 (defn- stored-placements
   "The `[context why what]` triples the stored sentex `s` writes, read as `literal-reach`
-  reads a literal: its context, CxUniverse beside it for a sentence the store also lifts
-  there, `Sub` for a `(genlCx Sub Super)` edge, and `::admin-only` for a placement
-  declaration."
+  reads a literal: its context, CxUniverse or the contexts its slice slices beside it for
+  a sentence the store also lifts there, `Sub` for a `(genlCx Sub Super)` edge, the
+  `nat-formula-reach` of a `natFormula` in CxUniverse, and its `admin-only` triple."
   [kb s]
   (let [sentence (sx/sentence-of s)
         f        (when (sequential? sentence) (first sentence))
-        why      (str "a rule the write fires concludes " (pr-str sentence))]
+        why      (str "a rule the write fires concludes " (pr-str sentence))
+        t        (admin-only kb sentence)]
     (cond-> [[(:context s) (str why " there")]]
-      (special/lifts-to-universe? kb f)
+      (special/lifts-to-universe? kb sentence)
       (conj [sx/root-context (str why ", which the store also deduces into CxUniverse")])
+      :always
+      (into (map (fn [m] [m (str why ", which the store also deduces into the context its slice slices")]))
+            (special/slice-lift-targets kb sentence (:context s)))
       (and (= 'genlCx f) (= 3 (count sentence)))
       (conj [(second sentence) (str why ", which widens its lower context's ancestor set")])
-      (placement-declarations f)
-      (conj [::admin-only "it places every (P …) the KB holds, in any context, in CxUniverse"
-             (str "a " f " declaration")]))))
+      (and (= 'natFormula f) (= 3 (count sentence)) (= sx/root-context (:context s)))
+      (into (map (fn [[c w]] [c (str why ", and " w)])) (nat-formula-reach kb sentence))
+      t (conj t))))
 
 (defn- write-check
   "The `entry/*write-check*` a write op runs under for `grant`, nil for no grant and for an
@@ -1152,22 +1234,57 @@
   [kb op grant sentence context]
   (run! #(check-context! op grant %) (placements kb sentence context)))
 
+(defn- removal-admin-only
+  "The `admin-only` triple removing the stored sentex `s` reads, or nil: its sentence's, or
+  for a rule the first one a literal its consequent concludes has (`conclusions`).  Removing
+  `s` withdraws what storing it wrote."
+  [kb s]
+  (let [sentence (sx/sentence-of s)
+        rule     (try (rules/inner-rule sentence) (catch Exception _ sentence))]
+    (if (sx/implies? rule)
+      (some (fn [[lit _]] (admin-only kb lit)) (conclusions (sx/rule-consequent rule) (:context s)))
+      (admin-only kb sentence))))
+
+(defn- removal-refused!
+  "Throw `:forbidden-context` for removing the sentex at `handle`, whose
+  `removal-admin-only` triple is `[_ why what]`."
+  [op principal handle [_ why what]]
+  (forbidden-context! op principal nil (str "handle " (pr-str handle) ", " what)
+                      (str why ", and only an admin grant removes it")))
+
 (defn- check-removal!
-  "Throw unless `grant` may remove or annotate the sentex at `handle`.  A handle naming no
-  stored sentex is nothing to remove, and for `:add-provenance` (`absent-ok?` false) it is
-  refused: provenance written ahead of a sentex would be read as that sentex's own."
-  [kb op {:keys [principal writes admin?]} handle absent-ok?]
-  (let [sx (v/sentex kb handle)]
+  "Throw unless `grant` may remove (`removal?`) or annotate the sentex at `handle`: its
+  stored context is in `:writes`, and a sentex with a `removal-admin-only` triple is
+  removed under an admin grant alone.  A handle naming no stored sentex is nothing to
+  remove, and for `:add-provenance` it is refused: provenance written ahead of a sentex
+  would be read as that sentex's own."
+  [kb op {:keys [principal writes admin?]} handle removal?]
+  (let [s (v/sentex kb handle)]
     (cond
       admin? nil
-      (nil? sx) (when-not absent-ok?
-                  (forbidden-context! op principal nil
-                                      (str "provenance on handle " (pr-str handle))
-                                      "the handle names no stored sentex"))
-      (not (contains? writes (:context sx)))
-      (forbidden-context! op principal (:context sx) (pr-str (:context sx))
+      (nil? s) (when-not removal?
+                 (forbidden-context! op principal nil
+                                     (str "provenance on handle " (pr-str handle))
+                                     "the handle names no stored sentex"))
+      (not (contains? writes (:context s)))
+      (forbidden-context! op principal (:context s) (pr-str (:context s))
                           (str "handle " (pr-str handle) " is stored there, and the token's"
-                               " grant does not name it")))))
+                               " grant does not name it"))
+      removal?
+      (some->> (removal-admin-only kb s) (removal-refused! op principal handle)))))
+
+(defn- check-replaced!
+  "Throw unless `grant` may run `replace-facts` over `context`: a replaceable premise stored
+  there (`kb/replaceable-premise?`) with a `removal-admin-only` triple is replaced under an
+  admin grant alone.  Every such premise is read, whether `replace-facts` retracts it or a
+  fact names it, since the fact naming it is refused by its own placement check."
+  [kb op {:keys [principal admin?]} context]
+  (when-not admin?
+    (some (fn [h]
+            (let [s (v/sentex kb h)]
+              (when (kb/replaceable-premise? kb h s)
+                (some->> (removal-admin-only kb s) (removal-refused! op principal h)))))
+          (reads/as-stored-in-context (:index kb) context))))
 
 (defn- bounded-batch
   "An `edit` batch held to `grant`: every `:add` entry's placement checked and its opts
@@ -1238,6 +1355,7 @@
       (if (<= 2 n 3)
         (do (when grant
               (check-context! op grant [(nth args 0) "it retracts the facts stored there"])
+              (check-replaced! kb op grant (nth args 0))
               (when (coll? (nth args 1))
                 (doseq [s (nth args 1)] (put s (nth args 0)))))
             (if (or grant (= n 3))
@@ -1514,6 +1632,7 @@
   [kb {:keys [host] :or {host loopback} :as opts} {:keys [monitor registry open?]}]
   (let [token   (if (contains? opts :token) (:token opts) (guard/api-token))
         table   (opts-table opts)
+        _       (when-not table (guard/require-token! "daemon" host token))
         allowed (guard/allowed-hosts host)
         admit   (fn [] (when-not @open?
                          {:ok false :status 503 :type :stopping
@@ -1551,13 +1670,13 @@
 
   `:host` names the interface this handler is served on, which fixes the `Host` values it
   answers to (`guard/allowed-hosts`).  `:token` is the shared bearer token every request
-  must present; omitted, it is `VAELII_API_TOKEN` (`guard/api-token`), and an explicit nil
-  serves **open**.  `:token-table` is the per-principal token table, a map or the path of
-  an EDN file (`guard/check-token-table`); omitted with `:token` omitted too, it is
-  `VAELII_TOKEN_TABLE`'s (`guard/token-table`); omitted beside a `:token`, or an explicit
-  nil, it is none.  Set, it replaces `:token`: a write op lands only in the contexts that
-  token's grant names (`bound-write`).  A table that does not check is refused
-  (`:bad-token-table`)."
+  must present; omitted, it is `VAELII_API_TOKEN` (`guard/api-token`), and nil serves
+  **open** on loopback and is refused at an address (`guard/require-token!`).
+  `:token-table` is the per-principal token table, a map or the path of an EDN file
+  (`guard/check-token-table`); omitted with `:token` omitted too, it is
+  `VAELII_TOKEN_TABLE`'s (`guard/token-table`); omitted beside a `:token`, or nil, it is
+  none.  Set, it replaces `:token`: a write op lands only in the contexts its grant names
+  (`bound-write`).  A table that does not check is refused (`:bad-token-table`)."
   ([kb] (app kb {}))
   ([kb opts] (handler kb opts (daemon-state))))
 
@@ -1571,18 +1690,16 @@
   `.stop` runs `stop-ops`: an op not yet in the monitor answers 503 `:stopping`, and the
   stop returns once the op in it finishes and the daemon's feed listeners are off `kb`."
   ^Server [kb {:keys [port host] :or {port 4200 host loopback} :as opts}]
-  (let [table (opts-table opts)]
-    (when-not table
-      (guard/require-token! "daemon" host (if (contains? opts :token) (:token opts) (guard/api-token))))
-    (let [state  (daemon-state)
-          h      (handler kb (assoc (select-keys opts [:token]) :host host :token-table table)
-                          state)
-          server (jetty/run-jetty h
-                                  {:port port :host host :join? false :max-threads http-threads})]
-      (.addEventListener ^Server server
-                         (reify LifeCycle$Listener
-                           (lifeCycleStopping [_ _] (stop-ops state))))
-      server)))
+  (let [state  (daemon-state)
+        h      (handler kb (assoc (select-keys opts [:token]) :host host
+                                  :token-table (opts-table opts))
+                        state)
+        server (jetty/run-jetty h
+                                {:port port :host host :join? false :max-threads http-threads})]
+    (.addEventListener ^Server server
+                       (reify LifeCycle$Listener
+                         (lifeCycleStopping [_ _] (stop-ops state))))
+    server))
 
 (defn port
   "The actual TCP port a started `Server` is listening on — the ephemeral one when it

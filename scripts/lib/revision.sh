@@ -10,9 +10,11 @@
 # establish that it was not.  The same applies to a `lein gate` run whose log is read an
 # hour later, and to a number quoted into a report.
 #
-# `src/` and `test/` only: a dirty `docs/` or `CHANGELOG.md` cannot move a count,
-# and reporting it would say DIRTY on every run of a repo where somebody is
-# always writing.
+# `REVISION_PATHS` are the paths a run compiles or loads: `src/`, `test/`,
+# `resources/` (the shipped KB every open loads), `bench/` (the perf claims) and
+# the two project files (dependency versions, the test heap).  A dirty `docs/` or
+# `CHANGELOG.md` cannot move a count, and reporting it would say DIRTY on every
+# run of a repo where somebody is always writing.
 #
 # Sourced, never executed:
 #   . scripts/lib/revision.sh
@@ -27,9 +29,12 @@ revision_hash() {
   git rev-parse --short HEAD 2>/dev/null || echo "no-git"
 }
 
-# How many files under src/ or test/ the run was taken over rather than at.
+REVISION_PATHS=(src test resources bench project.clj project-env.clj)
+REVISION_SCOPE="src/, test/, resources/, bench/ and the project files"
+
+# How many files under REVISION_PATHS the run was taken over rather than at.
 revision_dirty() {
-  git status --porcelain -- src test 2>/dev/null | wc -l | tr -d ' '
+  git status --porcelain -- "${REVISION_PATHS[@]}" 2>/dev/null | wc -l | tr -d ' '
 }
 
 # `<hash> — <state>`, and nothing else: no colour, no newline, no label.  The
@@ -40,9 +45,9 @@ revision_line() {
   rev=$(revision_hash)
   dirty=$(revision_dirty)
   if [ "${dirty:-0}" -gt 0 ]; then
-    printf '%s — tree DIRTY: %s uncommitted file(s) under src/ or test/' "$rev" "$dirty"
+    printf '%s — tree DIRTY: %s uncommitted file(s) under %s' "$rev" "$dirty" "$REVISION_SCOPE"
   else
-    printf '%s — src/ and test/ clean' "$rev"
+    printf '%s — %s clean' "$rev" "$REVISION_SCOPE"
   fi
 }
 

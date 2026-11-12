@@ -2,11 +2,11 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.arg-constraints-test
   "The argument-constraint chokepoint (`res/arg-constraints`, `res/arg-constraints-at`) over
-  the core vocabulary, whose forward rules store the declaration each sugar spelling
-  stands for: `(args P T)` stores `(argAndRest P 1 T)`, so the chokepoint looks up `arg`
-  and `argAndRest` alone at the instance level and still answers for `args`."
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+  the upper ontology, whose forward rules store the declaration each sugar spelling stands
+  for: the `args`→`argAndRest` twin rule in `kb/upper/interface-rules.txt` stores
+  `(argAndRest P 1 T)` for `(args P T)`, so the chokepoint looks up `arg` and `argAndRest`
+  alone at the instance level and still answers for `args`."
+  (:require [clojure.string :as str]
             [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.kb :as kb]
@@ -102,11 +102,6 @@
       [(vec (or (seq (v/check kb sentence 'CxUniverse))
                 (some-> (tu/write-conviction kb sentence 'CxUniverse) vector)))
        (into #{} (filter instance-spellings) @seen)])))
-
-(tu/deftest-kb the-args-sugar-rule-is-the-one-core-txt-states
-  ;; tests on a KB without core.txt assert `tu/args-sugar-rule` to read the `args`
-  ;; spelling, so it has to be the rule core.txt ships
-  (is (str/includes? (slurp (io/resource "kb/upper/core.txt")) (pr-str tu/args-sugar-rule))))
 
 (tu/deftest-kb the-entry-point-reads-an-args-declaration-through-its-twin
   ;; the assert-time checks look up `arg` and `argAndRest` alone, as the chokepoint does:

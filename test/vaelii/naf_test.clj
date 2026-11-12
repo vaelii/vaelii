@@ -5,6 +5,7 @@
   docs/naf.md."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.profile :as prof]
             [vaelii.impl.sentex :as sx]
             [vaelii.order-independence-test :as oi]
             [vaelii.test-util :as tu]))
@@ -412,6 +413,33 @@
                                          (list maybe_cat '?x))
                                 'CxWell {:direction :forward})))
       (is (not (v/ask? kb (list maybe_cat Rex) 'CxWell)) (pr-str order)))))
+
+(tu/deftest-kb a-genl-guard-stays-blocked-when-a-chain-goes-beside-a-standing-route
+  ;; one premise supports both chain edges, so its retraction removes them in one settle,
+  ;; and neither edge's own reach relates the guarded pair afterwards; `aalt_t` and
+  ;; `zalt_t` sort the standing route before and after the chain
+  (doseq [alt-base ['aalt_t 'zalt_t] order (oi/permutations [:chain :alt :rule])]
+    (tu/with-terms [low_t mid_t top_t gm_t go_t sw_t On]
+      (let [alt_t   (tu/tmp-type alt-base)
+            held?   #(boolean (some->> (v/handle-of kb (list go_t low_t) 'CxWell) (v/in? kb)))
+            why     (pr-str alt-base order)
+            premise (atom nil)]
+        (v/assert kb (list gm_t low_t) 'CxWell)
+        (doseq [[a b] [[low_t mid_t] [mid_t top_t]]]
+          (v/assert kb (list 'implies (list sw_t '?z) (list 'genl a b)) 'CxWell
+                    {:direction :forward}))
+        (doseq [step order]
+          (case step
+            :chain (reset! premise (v/assert kb (list sw_t On) 'CxWell))
+            :alt   (doseq [[a b] [[low_t alt_t] [alt_t top_t]]]
+                     (v/assert kb (list 'genl a b) 'CxWell))
+            :rule  (v/assert kb (list 'implies (list 'and (list gm_t '?x)
+                                                     (list 'unknown (list 'genl '?x top_t)))
+                                      (list go_t '?x))
+                             'CxWell {:direction :forward})))
+        (is (not (held?)) why)
+        (v/retract! kb @premise)
+        (is (not (held?)) why)))))
 
 (tu/deftest-kb an-aggregate-conjunct-is-watched-by-its-census-body
   (tu/with-terms [person kidOf adult gg Moe K1 K2]
@@ -1538,6 +1566,33 @@
     (let [h (v/handle-of kb (list rr Aa) CxA)]
       (is (= [true false] [(v/believed? kb h CxA) (v/believed? kb h CxJ)])))))
 
+(tu/deftest-kb a-second-parent-wired-last-withdraws-the-firing-below-both
+  ;; CxJ stores nothing, and the edge to CxC is still re-checked: CxJ also sees CxA
+  (tu/with-terms [pp qq rr Aa CxA CxC CxJ]
+    (v/assert kb (list 'implies (list 'and (list pp '?x) (list 'unknown (list qq '?x)))
+                       (list rr '?x))
+              CxA {:direction :forward})
+    (v/assert kb (list pp Aa) CxA)
+    (v/assert kb (list qq Aa) CxC)
+    (doseq [[lo hi] [[CxJ CxA] [CxJ CxC]]]
+      (v/assert kb (list 'genlCx lo hi) 'CxUniverse {:strength :monotonic}))
+    (let [h (v/handle-of kb (list rr Aa) CxA)]
+      (is (= [true false] [(v/believed? kb h CxA) (v/believed? kb h CxJ)])))))
+
+(tu/deftest-kb an-edge-from-a-context-storing-nothing-asks-no-guard
+  (tu/with-terms [pp qq rr Aa CxA CxN]
+    (v/assert kb (list 'implies (list 'and (list pp '?x) (list 'unknown (list qq '?x)))
+                       (list rr '?x))
+              CxA {:direction :forward})
+    (v/assert kb (list pp Aa) CxA)
+    (prof/start)
+    (let [goals (try (v/assert kb (list 'genlCx CxN CxA) 'CxUniverse {:strength :monotonic})
+                     (:goals (prof/snapshot))
+                     (finally (prof/stop)))]
+      (is (not-any? #(= qq (first %)) (keys goals))
+          "CxN sees what CxA sees and nothing more, so the guard reads as it does at CxA"))
+    (is (v/believed? kb (v/handle-of kb (list rr Aa) CxA) CxN))))
+
 (tu/deftest-kb an-except-and-an-unknown-withdraw-one-firing-at-one-reader-independently
   (tu/with-terms [pp qq rr Aa CxA CxB]
     (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse {:strength :monotonic})
@@ -1683,6 +1738,37 @@
                           (doseq [h (rseq hs)] (when (v/sentex kb h) (v/retract! kb h)))
                           r))))
                (oi/permutations [:rule :fb :fc])))))
+
+(tu/deftest-kb two-firings-that-swap-their-bindings-over-one-antecedent-set-each-take-a-guard-defeat
+  ;; (kind Xa) and (sort Xb) reach inspace and intime through one mid, so the firing with
+  ;; ?x = Xa and the one with ?x = Xb name the same four edges and two facts and differ in
+  ;; their bindings and subsumptions.  A guard defeat covers only the firing whose bindings
+  ;; it carries, so each firing needs its own.
+  (is (= #{false}
+         (into #{}
+               (map (fn [tail]
+                      (tu/with-terms [kind sort mid inspace intime noted blk Xa Xb Kennel CxA]
+                        (let [as (fn [s & [o]] (v/assert kb s CxA o))
+                              hs (mapv (fn [op]
+                                         (case op
+                                           :blk  (as (list blk Kennel))
+                                           :fa   (as (list kind Xa))
+                                           :fb   (as (list sort Xb))
+                                           :rule (as (list 'implies
+                                                           (list 'and (list inspace '?x) (list intime '?y)
+                                                                 (list 'different '?x '?y)
+                                                                 (list 'unknown (list blk Kennel)))
+                                                           (list noted Kennel))
+                                                     {:direction :forward})
+                                           (as op {:strength :monotonic})))
+                                       (into [(list 'genl kind mid) (list 'genl sort mid)
+                                              (list 'genl mid inspace) (list 'genl mid intime)]
+                                             tail))
+                              f  (v/handle-of kb (list noted Kennel) CxA)
+                              r  (v/believed? kb f CxA)]
+                          (doseq [h (rseq hs)] (when (v/sentex kb h) (v/retract! kb h)))
+                          r))))
+               (oi/permutations [:rule :blk :fa :fb])))))
 
 (tu/deftest-kb retracting-the-blocker-takes-the-guard-defeat-out
   (doseq [kind [:except :unknown]]
@@ -1993,3 +2079,31 @@
       (let [r (v/ask-within kb g 'CxWell {:max-cost :lookup})]
         (is (seq (:results r)) "the lookup budget keeps UnknownProver, not an inverted empty")
         (is (= :complete (:status r)))))))
+
+(tu/deftest-kb an-unknown-over-a-measure-comparison-is-re-decided-when-a-unit-row-arrives-or-leaves
+  ;; QuantityProver answers sameQuantity from the unit table, so a conversionFactor row
+  ;; moves the guard's answer with no fact on sameQuantity arriving or leaving
+  (is (= #{[false true]}
+         (into #{}
+               (map (fn [order]
+                      (tu/with-terms [stated measured differs Muffet Pound CxA]
+                        (let [as (fn [s & [o]] (v/assert kb s CxA o))
+                              hs (mapv (fn [op]
+                                         (case op
+                                           :rule   (as (list 'implies
+                                                             (list 'and (list stated '?o '?a) (list measured '?o '?b)
+                                                                   (list 'unknown (list 'sameQuantity '?a '?b)))
+                                                             (list differs '?o))
+                                                       {:direction :forward})
+                                           :kg     (as (list stated Muffet '(QuantityFn 1 Kilogram)))
+                                           :lb     (as (list measured Muffet (list 'QuantityFn 2 Pound)))
+                                           :dim    (as (list 'dimensionOf Pound 'Mass))
+                                           :factor (as (list 'conversionFactor Pound 'Kilogram 0.5))))
+                                       order)
+                              held?   #(v/ask? kb (list differs Muffet) CxA)
+                              with    (held?)
+                              _       (v/retract! kb (hs (.indexOf ^java.util.List order :factor)))
+                              without (held?)]
+                          (doseq [h (rseq hs)] (when (v/sentex kb h) (v/retract! kb h)))
+                          [with without]))))
+               (oi/permutations [:rule :kg :lb :dim :factor])))))

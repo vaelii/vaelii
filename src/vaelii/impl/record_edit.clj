@@ -226,9 +226,7 @@
     (checks/check-sentex-ground built s ctx)
     (nm/check! (:naming kb) s ctx)
     (checks/check-length-binding (:naming kb) s ctx)
-    (when-let [ps (seq (special/wff-problems nil s ctx))]
-      (throw (ex-info (str "not well-formed: " (str/join "; " ps))
-                      {:type :not-well-formed :sentence s})))
+    (special/check-wff nil s ctx)
     (throw-problem! (add-problem idx s ctx))
     (when-let [h (first (reads/as-stored-leaf idx (sx/path built)))]
       (when (and (p/get-sentex (:records kb) h) (recovery/inert-marked? kb h))
@@ -304,7 +302,8 @@
         ;; no stored record and counts under `:absent`
         stored     (into {} (keep #(when-let [sx (and (integer? %) (p/get-sentex records %))]
                                      [% (assoc sx :id %)]))
-                         (concat removes (keys directions)))
+                         (cap/hinting (when-let [pf (cap/prefetcher records)] #(pf (filterv integer? %)))
+                                      cap/recovery-hint-chunk (concat removes (keys directions))))
         removals   (into #{} (filter stored) removes)]
     ;; every refusal before the first write
     (when (and (seq adds) (:no-index (kb/write-hazards kb)))
@@ -364,10 +363,11 @@
           (p/put-sentex records new)
           (p/index-sentex index new h))
         (run! #(p/unmark-premise! records %) keep)
-        (doseq [h (sort delete)]
-          (reindex/unindex-one! index (stored h) h)
-          (p/delete-sentex! records h))
-        (run! #(p/delete-justification! records %) (sort (remove left (keys dead))))
+        (doseq [hs (partition-all cap/recovery-hint-chunk (sort delete))]
+          (run! #(reindex/unindex-one! index (stored %) %) hs)
+          (cap/delete-sentexes records hs))
+        (run! #(cap/delete-justifications records %)
+              (partition-all cap/recovery-hint-chunk (sort (remove left (keys dead)))))
         (kb/refresh-index-image! kb)
         {:added                  (tally #{:added})
          :present                (tally #{:present :marked})
@@ -376,7 +376,8 @@
          :absent                 (- (count removes) (count removals))
          :redirected             (count engines)
          :justifications-removed (- (count dead) (count left))
-         :seeds                  (into [] (filter #(p/get-sentex records %)) seeds)}))))
+         :seeds                  (into [] (filter #(p/get-sentex records %))
+                                       (cap/hinting (cap/prefetcher records) cap/recovery-hint-chunk seeds))}))))
 
 ;; ---- the sweep after the rebuild ----------------------------------------------------
 
@@ -499,7 +500,7 @@
          ;; the rules a batch put on `:forward`, joined over the facts as `assert` joins a
          ;; rule that newly runs forward
          rules   (into [] (filter #(some-> (p/get-sentex records %) rules/forward-sentex?))
-                       (sort seeds))]
+                       (cap/hinting (cap/prefetcher records) cap/recovery-hint-chunk (sort seeds)))]
      (step! :chain {:rules (count rules)})
      (when (seq rules)
        (chain/chain-all kb rules (if report
@@ -513,8 +514,8 @@
      (when (or (seq rules) (seq refire))
        (step! :settle-chain)
        (settle/settle kb))
-     (let [arrivals (into [] (filter #(when-let [sx (p/get-sentex records %)]
-                                        (and (sx/positive-fact? sx) (jtms/premise? tms %))))
+     (let [arrivals (into [] (filter #(and (jtms/premise? tms %)
+                                           (some-> (p/get-sentex records %) sx/positive-fact?)))
                           (sort seeds))]
        (step! :arrive {:facts (count arrivals)})
        (when (seq arrivals)

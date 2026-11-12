@@ -21,7 +21,7 @@
 (use-fixtures :once
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (tu/load-starter! (tu/fresh))]
+    (let [kb (tu/load-starter! (tu/empty-kb))]
       (catalog/register! "base" "Base KB" kb {:source (catalog/source "starter")})
       (binding [tu/*kb* kb, *app* (web/app (catalog/holder kb))]
         (try (f)

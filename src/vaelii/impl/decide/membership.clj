@@ -34,8 +34,7 @@
 ;; (`sync-memberships`), which reads no membership.  A term holding a separated pair, or a
 ;; membership beside a denial its nogoods convict, is live under `::live-mem`, and its
 ;; memberships and denials there are the family's candidates under `:membership`.
-;; `::moved` holds the terms whose nogoods the settle places again, and `::moved-supertype` the
-;; members of their `:supertype` nogoods (`take-moved!`).  Recover keeps the terms of two unary
+;; `::moved` and `::left` hold the terms whose nogoods the settle places again (`take-moved!`).  Recover keeps the terms of two unary
 ;; predicates (`reads/as-stored-unary-multi-terms`) and of a unary body stored in both polarities
 ;; that hold two memberships or a membership and a denial, read off their unary predicate sets (`recovered-terms`).
 
@@ -248,8 +247,7 @@
   in `:membership`.  A term with no separated pair (`::sep`) and no denial has none, and
   is read no further.  A term whose nogoods moved, or every term
   holding one when `force?`, is queued under `::moved` with the members of its nogoods
-  before and after, and under `::moved-supertype` with those of its `:supertype` ones,
-  for the settle to place (`take-moved!`), or under `::edge-moved` when
+  before and after, for the settle to place (`take-moved!`), or under `::edge-moved` when
   `force?` is `:edge` and alone queues it (`take-edge-moved!`)."
   [w c x force?]
   (let [tax (:tax w)
@@ -258,14 +256,12 @@
         ngs (when (or (seq (get-in c [::sep x])) (denied? c x) (cover-candidate? tax c x))
               (not-empty (vec (term-nogoods tax w c x))))
         new (not-empty (into #{} (mapcat :members) ngs))
-        sup (into #{} (comp (filter #(= :supertype (:kind %))) (mapcat :members)) (concat was ngs))
         moved? (not= (set was) (set ngs))]
     (as-> c c
       (cond
         (not (or was ngs))           c
         (and (not moved?) (= :edge force?)) (update c ::edge-moved (fnil conj #{}) x)
-        (or force? moved?)           (cond-> (update-in c [::moved x] (fnil into #{}) (concat old new))
-                                       (seq sup) (update-in [::moved-supertype x] (fnil into #{}) sup))
+        (or force? moved?)           (update-in c [::moved x] (fnil into #{}) (concat old new))
         :else                        c)
       (if (seq ngs) (assoc-in c [::ngs x] ngs) (update c ::ngs #(some-> % (dissoc x))))
       (if (= old new)
@@ -450,9 +446,9 @@
             (swap! cands update ::no-pos (fnil conj #{}) x)))))))
 
 (defn- note-placement-left!
-  "Queue the term of the membership nogood a `(contradicts …)` sentex `sx` leaving the
-  store placed, with its members, so the settle places the nogood where it stands
-  (`take-moved!`): a `genlCx` edge under the placement can have left with it."
+  "Queue under `::left` the term of the membership nogood a `(contradicts …)` sentex `sx`
+  leaving the store placed, with its members, so the settle places the nogood where it
+  stands (`take-moved!`).  A `genlCx` edge under the placement can have left with it."
   [kb sx]
   (let [s (:sentence sx)]
     (when (and (seq? s) (= 'contradicts (first s)))
@@ -462,21 +458,23 @@
                                   (map first))
                         hs)]
         (when (and (= 1 (count xs)) (contains? (::mem @cands) (first xs)))
-          (swap! cands update-in [::moved (first xs)] (fnil into #{}) hs))))))
+          (swap! cands update-in [::left (first xs)] (fnil into #{}) hs))))))
 
 (defn moved?
-  "Has the index queued a term whose nogoods the settle places again (`take-moved!`,
-  `take-edge-moved!`)?"
+  "Has the index queued a term whose nogoods the settle places again, or the lower end of a
+  `genl` edge they are read against (`take-moved!`, `take-edge-moved!`)?"
   [c]
-  (boolean (or (seq (::moved c)) (seq (::edge-moved c)))))
+  (boolean (or (seq (::moved c)) (seq (::left c)) (seq (::edge-moved c)) (seq (::edge-lows c)))))
 
 (defn take-moved!
-  "`{:terms {x #{h}} :supertype {x #{h}}}`, the terms whose nogoods moved since the last
-  call, each with the members of its nogoods before and after the move, and of its
-  `:supertype` nogoods, with both queues emptied (`place-term`)."
+  "The queues since the last call, emptied, as `{:terms {x #{h}} :members {x #{h}}}`.
+  `:members` holds each term whose nogoods moved, with the members of its nogoods before
+  and after the move (`place-term`).  `:terms` adds each term of a placement that left,
+  with the placement's members (`note-placement-left!`)."
   [kb]
-  (let [[old _] (swap-vals! (reasoning/nogood-candidates kb) dissoc ::moved ::moved-supertype)]
-    {:terms (::moved old {}) :supertype (::moved-supertype old {})}))
+  (let [[old _] (swap-vals! (reasoning/nogood-candidates kb) dissoc ::moved ::left)
+        moved   (::moved old {})]
+    {:terms (merge-with into moved (::left old {})) :members moved}))
 
 (defn take-edge-moved!
   "`{:terms #{x} :lows #{t}}`, the terms queued since the last call because a `genl` edge
@@ -589,6 +587,30 @@
                        pos)))
     true))
 
+(defn- climbing-links
+  "The links of the separation route `r` (`tax/separation-routes` of `a` and `b`) that
+  climb from `a` to the pair's first type or from `b` to its second, a reflexive one
+  being absent from `:links`."
+  [a b {[x y] :pair links :links}]
+  (filterv #(#{[a x] [b y]} %) links))
+
+(defn- kept-combinations
+  "`combinations` of the option lists `per`, less each product holding a `:subsumed?`
+  option and no `:live?` one.  A prefix holding a subsumed option and no live one is
+  dropped as soon as no later list holds a live option, so the product is not built."
+  [per]
+  (let [live (vec (reverse (reductions #(or %1 (boolean (some :live? %2))) false (reverse per))))]
+    (map first
+         (reduce (fn [acc [i opts]]
+                   (for [[xs sub? live?] acc
+                         o opts
+                         :let [sub?  (or sub? (boolean (:subsumed? o)))
+                               live? (or live? (boolean (:live? o)))]
+                         :when (or live? (not sub?) (live (inc i)))]
+                     [(conj xs o) sub? live?]))
+                 [[[] false false]]
+                 (map-indexed vector per)))))
+
 (defn- cover-routes
   "The routes of a cover nogood over the held types `pos` and the denied types `neg`
   (`routes`), read off every stored cover: for each held type `s` and each cover over a
@@ -598,68 +620,82 @@
   docs/inference.md), and each route a declaration separates another held type from it
   through (`tax/separation-routes`): the route's keys and links join the cover's, its
   links are `:strict-links`, its `[:member m y]` keys are `:strict-keys`, and a mark
-  route's separated pair is in `:pairs`.  The placement reads the soundness rule of a
-  separation's denial off those three (`chain/route-placements`).  A route is a superset
-  over every reader, and the placement decides which contexts see it."
+  route's separated pair is in `:pairs`, which `chain/route-placements` reads.  The climbs
+  from `s` to the whole and from a separated held type to its side of the pair are
+  `:climbs` (`routes`).  A route is left out when a denier reads a type `y` at or above the
+  whole that `w`'s `(route-covered? s whole y)` accepts and `:held-climb?` holds every
+  climb of each denier reading no such `y`."
   [w pos neg]
-  (let [tax (:tax w)]
+  (let [tax   (:tax w)
+        cov?  (:route-covered? w)
+        held? (or (:held-climb? w) (constantly false))]
     (distinct
      (for [s         pos
            [whole parts] (distinct ((:covers-over-global w) s))
            [ps kind] (tax/covers-of tax whole)
            :when (= ps parts)
-           :let [per (for [p parts
-                           :let [qs (filter #(contains? ((:genls-global w) p) %) neg)]]
-                       (if (some #{p} qs)
-                         [{:links [[p p]]}]
-                         ;; a denial above the part reads the edge's contrapositive
-                         (concat
-                          (for [q qs] {:links [[p q]] :strict-links [[p q]]})
-                          (for [d pos
-                                :when (not= d s)
-                                r (tax/separation-routes-held tax d p)]
-                            {:keys   (:keys r) :links (:links r)
-                             :strict (filterv #(= :member (first %)) (:keys r))
-                             :pair   (when (:mark? r) (:pair r))}))))]
+           :let [over (when cov? ((:genls-global w) whole))
+                 cov  (fn [y] (boolean (and over (contains? over y) (cov? s whole y))))
+                 per  (for [p parts
+                            :let [qs (filter #(contains? ((:genls-global w) p) %) neg)]]
+                        (if (some #{p} qs)
+                          [{:links [[p p]]}]
+                          ;; a denial above the part reads the edge's contrapositive
+                          (concat
+                           (for [q qs]
+                             (cond-> {:links [[p q]] :strict-links [[p q]]}
+                               (and (not= q s) (cov q)) (assoc :subsumed? true)))
+                           (for [d pos
+                                 :when (not= d s)
+                                 r (tax/separation-routes-held tax d p)
+                                 :let [cl     (climbing-links d nil r)
+                                       above? (cov (second (:pair r)))]]
+                             (cond-> {:keys   (:keys r) :links (:links r)
+                                      :climbs cl
+                                      :strict (filterv #(= :member (first %)) (:keys r))
+                                      :pair   (when (:mark? r) (:pair r))}
+                               above?                                    (assoc :subsumed? true)
+                               (and (not above?) (not-every? held? cl)) (assoc :live? true))))))]
            :when (every? seq per)
-           combo (combinations per)]
-       (let [strict (into [] (mapcat #(or (:strict-links %) (when (:keys %) (:links %)))) combo)]
+           combo (kept-combinations per)]
+       (let [up     (when-not (= s whole) [[s whole]])
+             strict (into (vec up) (mapcat #(or (:strict-links %) (when (:keys %) (:links %)))) combo)
+             cl     (into (vec up) (mapcat :climbs) combo)]
          (cond-> {:keys  (into #{[:cover [whole parts] kind]} (mapcat :keys) combo)
                   :links (into [] (remove (fn [[a b]] (= a b)))
                                (cons [s whole] (mapcat :links combo)))}
            (seq strict)                  (assoc :strict-links strict)
+           (seq cl)                      (assoc :climbs cl)
            (some (comp seq :strict) combo) (assoc :strict-keys (into #{} (mapcat :strict) combo))
            (some :pair combo)            (assoc :pairs (into [] (keep :pair) combo))))))))
 
 (defn routes
-  "Each way the declarations convict the membership nogood `ng` over the unscoped
-  taxonomy, as `tax/separation-routes` answers for a `:disjoint` one: `{:keys #{k} :links
-  [[sub super]] :pair [x y]}`, the flat-cache keys read, the `genl` subsumptions climbed
-  and the separated pair.  For a `:cover` one, a cover over a whole above the held type
-  with a member denial at or above each part: the cover's key, the subsumption from the
-  held type to the whole and from each part to a denial's type, that subsumption a
-  `:strict-links` too when the denial is above the part, and no pair, and for a part a
-  held type's separation denies, the separation's keys and links with the soundness
-  rule's `:strict-links`, `:strict-keys` and `:pairs` (`cover-routes`).
-  A `:disjoint` one takes each cover route of its two memberships besides, since
-  `term-nogoods` keeps a cover refuted by the same two memberships as the one nogood.
-  For a `:supertype` one, the subsumption from the held type to the denied type with no
-  key, as a `:strict-links` too, since the nogood reads the edge's contrapositive and a
-  `:default` edge does not contrapose (docs/inference.md), and each cover route besides.  Empty when the members are not one term's.
-  Read over the unscoped closures `w` (`decide/unscoped-closures`): a route is a superset over every
-  reader, and the placement decides which contexts see it."
+  "Each way the declarations convict the membership nogood `ng`, over the unscoped closures
+  `w` (`decide/unscoped-closures`): `{:keys #{k} :links [[sub super]] :pair [x y]}`, the
+  flat-cache keys read, the `genl` subsumptions climbed and the separated pair, as
+  `tax/separation-routes` answers for a `:disjoint` one.  A `:cover` one takes
+  `cover-routes`, and so does a `:disjoint` one's pair of memberships, since `term-nogoods`
+  keeps a cover they refute as the one nogood.  A `:supertype` one takes the subsumption
+  from the held type to the denied type with no key, a `:strict-links` too, since a
+  `:default` edge does not contrapose, and each cover route.  A link that climbs from a
+  held type to the type the nogood reads it in is a `:climbs`, and a `:strict-links`, of
+  its route (docs/inference.md, \"An edge's reading\").  Empty when the members are not one term's.  A route is a superset over
+  every reader, and the placement decides which contexts see it."
   [w recs {:keys [members kind]}]
   (when-let [[_ pos neg] (member-types recs members)]
     (case kind
       :disjoint
       (when (= 2 (count pos))
         (let [[a b] (seq pos)]
-          (concat (tax/separation-routes (:tax w) a b) (cover-routes w pos neg))))
+          (concat (for [r (tax/separation-routes (:tax w) a b)
+                        :let [cl (climbing-links a b r)]]
+                    (cond-> r (seq cl) (assoc :climbs cl :strict-links cl)))
+                  (cover-routes w pos neg))))
       :supertype
       (when (= 1 (count pos) (count neg))
         (let [s (first pos) q (first neg)]
           (cond->> (cover-routes w pos neg)
-            ((:genl?-global w) s q) (cons {:keys #{} :links [[s q]] :strict-links [[s q]]}))))
+            ((:genl?-global w) s q) (cons {:keys #{} :links [[s q]] :strict-links [[s q]] :climbs [[s q]]}))))
       :cover
       (when (seq pos)
         (cover-routes w pos neg))
@@ -744,7 +780,7 @@
        [:nogood-candidates ::live-mem] [:nogood-candidates ::denials]
        [:nogood-candidates ::ngs] [:nogood-candidates ::types]
        [:nogood-candidates ::genl-seen] [:nogood-candidates ::no-pos]
-       [:nogood-candidates ::moved] [:nogood-candidates ::moved-supertype]
+       [:nogood-candidates ::moved] [:nogood-candidates ::left]
        [:nogood-candidates ::edge-moved]
        [:nogood-candidates ::edge-lows]]
   :bound "the stored memberships and denials of each term holding two memberships, or a membership and a denial"

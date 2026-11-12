@@ -10,7 +10,7 @@
 - **Assumes:** [ch. 17](17-predicate-hierarchy.md), [ch. 18](18-argument-types.md),
   [ch. 19](19-relation-properties.md).
 
-`(largerThan dog cat)` is a claim about two kinds. Whether the claim also holds of a kind
+`(typeLargerThan dog cat)` is a claim about two kinds. Whether the claim also holds of a kind
 of dog and a kind of cat is not decidable from the sentence. The claim distributes for
 some relations and not for others: a chihuahua is a kind of dog, a maine coon a kind of
 cat, and the maine coon is bigger. The KB therefore states the distribution per relation
@@ -24,14 +24,14 @@ direction that holds with `transitiveInArgInverse` (down `genl`, to subkinds) or
 `transitiveInArg` (up `genl`, to supertypes).
 
 **Example.** `abstract.txt` declares downward preservation on both positions of
-`largerThan` at `:monotonic`:
+`typeLargerThan` at `:monotonic`:
 
 ```clojure
-(set/monotonic (type_relation_predicate largerThan))
-(set/monotonic (transitive largerThan))
-(set/monotonic (asymmetric largerThan))
-(set/monotonic (transitiveInArgInverse largerThan 1 genl))
-(set/monotonic (transitiveInArgInverse largerThan 2 genl))
+(set/monotonic (type_relation_predicate typeLargerThan))
+(set/monotonic (transitive typeLargerThan))
+(set/monotonic (asymmetric typeLargerThan))
+(set/monotonic (transitiveInArgInverse typeLargerThan 1 genl))
+(set/monotonic (transitiveInArgInverse typeLargerThan 2 genl))
 ```
 
 `life.txt` declares the two positions of `capabilityType` in opposite directions:

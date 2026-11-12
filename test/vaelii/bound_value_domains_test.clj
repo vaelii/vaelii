@@ -39,9 +39,9 @@
       (v/assert-rule kb [(list parentOf '?x '?z)] (list anc '?x '?z) CxBVD
                      {:direction :backward})
       (let [g (list anc Ann '?z)]
-        (testing "prove / provable? refuse a bad :max-ms and a bad :max-depth"
+        (testing "prove / provable? refuse a bad :max-ms, :max-depth and :refuse-depth-cut?"
           (doseq [opts [{:max-ms "x"} {:max-ms :soon} {:max-depth -1} {:max-depth "x"}
-                        {:max-depth 1.5}]]
+                        {:max-depth 1.5} {:max-depth 2 :refuse-depth-cut? "yes"}]]
             (is (bad-value? (tu/refusal-data #(v/prove kb g CxBVD opts))) (pr-str opts))
             (is (bad-value? (tu/refusal-data #(v/provable? kb g CxBVD opts))) (pr-str opts))))
         (testing "ask / ask? refuse a bad :max-ms (their one bound)"

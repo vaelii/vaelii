@@ -4,9 +4,11 @@
   "Replacing a fork's base with an export dump while the fork keeps what it wrote: the
   fork's own premises and its removals of base premises are read by content, its own half
   is emptied, the dump is imported into the base's stores, belief is rebuilt over the
-  merged contents, and the premises are asserted again.  A namespace of its own because it
-  sits above both the dump importer and the overlay stores, which `vaelii.impl.kb`
-  requires.  See docs/overlay.md, \"Replacing the base\"."
+  merged contents, and the premises are asserted again.  And a durable fork's reopen over
+  a base that grew: its index takes in the base's new records (`follow-base!`) and its rules
+  fire over them (`fire-arrivals!`).  A namespace of its own because it sits above the dump
+  importer, the index writers and the overlay stores, which `vaelii.impl.kb` requires.  See
+  docs/overlay.md, \"Replacing the base\" and \"A base that grew between mounts\"."
   (:require [clojure.java.io :as io]
             [clojure.set :as set]
             [taoensso.trove :as trove]
@@ -18,13 +20,22 @@
             [vaelii.impl.io.text :as text]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
+            [vaelii.impl.kv :as kv]
+            [vaelii.impl.memory :as mem]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
+            [vaelii.impl.overlay.frozen :as frozen]
+            [vaelii.impl.overlay.kv :as okv]
             [vaelii.impl.overlay.mount :as mount]
             [vaelii.impl.overlay.store :as ostore]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.recovery :as recovery]
+            [vaelii.impl.reindex :as reindex]
+            [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.settle :as settle]
+            [vaelii.impl.special :as special]
+            [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
 
 (defn fork?
@@ -366,3 +377,79 @@
                                        (long (:retracted landed)) ms)
                         :data  result})
            (assoc summary :rebase result)))))))
+
+(defn- mint-concluded
+  "The handles the justifications among `arrivals` conclude under a mint rule
+  (`kb/records-mint-kind`), read off `records`."
+  [records arrivals]
+  (let [kind (memoize #(kb/records-mint-kind records %))]
+    (into #{} (keep #(when-let [j (p/get-justification records %)]
+                       (when (kind (:informant j)) (:consequence j))))
+          arrivals)))
+
+(defn- follow-ops
+  "The `kv-batch` ops that take the fork `kb`'s index from the base it describes to that
+  base plus `arrivals`, the handles the base gained.  One scratch layer takes the arrivals'
+  sentexes out of the base's index, which then holds what it held before them; the fork's
+  own index half goes over that; a second scratch layer indexes the arrivals over the
+  result.  The ops are the difference between that and the fork's index at each key a
+  scratch layer wrote (`okv/align-ops`).  The re-check index keeps the base's postings."
+  [kb arrivals]
+  (let [fork   (mount/kv-backend-of (:index kb))
+        brs    (:base (:records kb))
+        s1     (mem/->MemoryKvBackend (atom {}))
+        s2     (mem/->MemoryKvBackend (atom {}))
+        before (okv/overlay-kv s1 (:base fork))
+        after  (okv/overlay-kv s2 (frozen/frozen-kv (okv/overlay-kv (:overlay fork)
+                                                                    (frozen/frozen-kv before))))
+        [i1 i2 bidx] (map kv/->KvIndexStore [before after (:base fork)])
+        sxs    (into [] (keep #(when-let [sx (p/get-sentex brs %)] [% sx])) arrivals)
+        minted (mint-concluded brs arrivals)]
+    (doseq [[h sx] (rseq sxs)]
+      (p/unindex-sentex! i1 sx h)
+      (when (rules/rule? sx)
+        (rules/unindex-rule! i1 h (rules/antecedent-keys (:antecedent sx))
+                             (rules/consequent-index-pred sx) (:context sx)))
+      (special/unpost-mint! i1 (sx/sentence-of sx) (:context sx) h)
+      (tax/retire-stored-supporter! i1 h))
+    (doseq [[h sx] sxs]
+      (reindex/index-one! i2 sx h)
+      (when (contains? minted h) (special/post-mint! i2 (sx/sentence-of sx) (:context sx) h))
+      (tax/copy-stored-supporter! bidx i2 h (:context sx)))
+    (okv/align-ops fork after [s1 s2])))
+
+(defn follow-base!
+  "Bring the index of `kb`, a durable fork, to the base its mount accepted: apply the ops
+  a catch-up left pending (`ostore/pending-follow`), then record and apply the ops for the
+  records the base gained (`ostore/follow-owed`, `follow-ops`), and record the base's
+  summary after each.  `kb/open-kb` calls it before anything reads the fork's index."
+  [kb]
+  (let [rs   (:records kb)
+        fork (mount/kv-backend-of (:index kb))]
+    (when (and (ostore/overlay-record-store? rs) (okv/overlay-kv? fork))
+      (let [apply! #(do (p/kv-batch fork (:ops (ostore/pending-follow rs)))
+                        (ostore/end-follow! rs))]
+        (when (ostore/pending-follow rs) (apply!))
+        (when-let [{:keys [arrivals]} (ostore/follow-owed rs)]
+          (ostore/begin-follow! rs (follow-ops kb arrivals))
+          (apply!))))))
+
+(defn firings-owed
+  "The base handles whose rule firings the fork `kb` owes (`fire-arrivals!`), or nil."
+  [kb]
+  (when (fork? kb) (seq (ostore/firings-owed (:records kb)))))
+
+(defn fire-arrivals!
+  "Run in the fork `kb` what an assert of each base record `hs` names would run past its
+  store and index: a rule's and an `exceptWhen`'s re-check postings, each sentence's
+  re-check triggers, then a chaining run from the believed ones and a settle.  Drops the
+  owed firings."
+  [kb hs]
+  (let [rs (:records kb)]
+    (doseq [h hs :let [sx (p/get-sentex rs h)] :when sx]
+      (cond (rules/rule? sx)                     (special/index-rule-sentex kb h sx)
+            (sx/exceptWhen-meta? (:sentence sx)) (special/index-exceptWhen-meta kb sx))
+      (special/recheck-on-sentence kb (sx/sentence-of sx)))
+    (settle/rechain-seeds kb hs)
+    (settle/settle kb)
+    (ostore/firings-done! rs)))

@@ -154,11 +154,13 @@
    write-position! "[[store position]]"}},
  :refusal-types
  [:arbiter-is-party
+  :koinii/admin-off-registry
   :koinii/bad-attest-key
   :koinii/catchup-thrashing
   :koinii/compression-fixed
   :koinii/creator-mismatch
   :koinii/feed-error
+  :koinii/foreign-context
   :koinii/identity-unverified
   :koinii/missing-seed
   :koinii/needs-kb

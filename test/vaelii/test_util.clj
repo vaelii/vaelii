@@ -21,7 +21,7 @@
     (use-fixtures :once (tu/loaded tu/load-starter!))
     (use-fixtures :each (tu/neutral))
 
-    ;; a fresh KB rebuilt per test (empty or upper-loaded), neutral per test
+    ;; a fresh KB rebuilt per test (interface-only or upper-loaded), neutral per test
     (use-fixtures :each (tu/neutral-fresh tu/fresh))
 
     ;; an inline KB inside one deftest (varied baselines in one file)
@@ -120,6 +120,13 @@
    'vaelii.impl.resolution/*lead-side*
    'vaelii.impl.sentex/*min-indexed-depth*])
 
+(def check-vars
+  "The switches that check the engine rather than replace a reader.  The suite turns each
+  on (`install-sweeps!`), and a counted test binds it back off, since a check runs work
+  the shipped engine skips: `settle/*check-skip?*` runs the pass a skipped settle left
+  out, and its region reads would count."
+  ['vaelii.impl.settle/*check-skip?*])
+
 (defn- naming-var
   "The var, other than the switch `vr`, whose root is the function `f`, or nil.  First the
   var `f`'s class names (`vaelii.impl.resolution$match_pattern` names
@@ -137,7 +144,7 @@
                x)))))
 
 (def shipped-defaults
-  "`{var -> default}` for every var the two lists name, read before the switches below
+  "`{var -> default}` for every var the three lists name, read before the switches below
   install themselves — so this is what the engine ships and not a transcription of it.
 
   A default that is a function another var defines is held as that var: `*matcher*`'s is
@@ -148,7 +155,7 @@
   `shipped-value` reads a default back."
   (into {} (map (fn [sym] (let [vr (requiring-resolve sym) root (var-get vr)]
                             [vr (or (when (fn? root) (naming-var vr root)) root)])))
-        (concat (mapcat :vars sweeps) read-path-vars)))
+        (concat (mapcat :vars sweeps) read-path-vars check-vars)))
 
 (defn shipped-value
   "The shipped default of the listed switch `vr` as it stands now: the root read at load,
@@ -198,7 +205,7 @@
   (doseq [vr vars]
     (when-not (contains? shipped-defaults vr)
       (throw (ex-info (str vr " is not a switch `shipped-defaults` holds — name it in "
-                           "`sweeps` or `read-path-vars` before forcing it")
+                           "`sweeps`, `read-path-vars` or `check-vars` before forcing it")
                       {:type :unknown-shipped-switch :var vr}))))
   ;; the bindings are read per call, so a function-valued default follows a reload
   (fn [f] (with-bindings* (shipped-bindings vars) f)))
@@ -445,29 +452,34 @@
 ;; put to the whole suite: ranking is a cost decision and must never change the answer
 ;; *set* (`vaelii.impl.plan/*enabled*`).  `plan_test` makes that claim over every
 ;; permutation of one conjunction; this makes it over every conjunction the suite runs,
-;; the same shape `VAELII_HIER` takes for retrieval.
-;;
-;; **The claim does not hold unqualified, and the sweep is what established that.**  One
-;; test forces the ranking back on rather than stand aside, because the ranking supplies its
-;; answer: where the event calculus stops (`calendar_test`).  docs/inference.md, "Where
-;; the ranking is required", carries it with its witness.
+;; the same shape `VAELII_HIER` takes for retrieval.  docs/inference.md, "Tests that force
+;; the ranking", names the tests that force it back on.
 ;;
 ;; Spelled positively for `VAELII_HIER`'s reason — the value says what it selects.
 (defn- install-plan! []
   (when-not (config/prop-bool "VAELII_PLAN" true)
     (alter-var-root (requiring-resolve 'vaelii.impl.plan/*enabled*) (constantly false))))
 
+(defn- install-skip-check!
+  "Check every settle that skips its pass: the pass runs anyway, and a pass that owed
+  anything throws (`vaelii.impl.settle/*check-skip?*`).  Not a sweep: no variable selects
+  it, and the claim it holds is the skip's condition, under every sweep."
+  []
+  (alter-var-root (requiring-resolve 'vaelii.impl.settle/*check-skip?*) (constantly true)))
+
 (defn install-sweeps!
-  "Install the implementation each variable of `sweeps` names over its var's root: at this
-  namespace's load, and after an engine reload, which evaluates every `def` again and so
-  resets those roots (`reload-test`).  A reload with no second call leaves each later test
-  in the JVM on the shipped implementation, reporting a pass for the sweep."
+  "Install the implementation each variable of `sweeps` names over its var's root, and the
+  settle's skip check (`install-skip-check!`): at this namespace's load, and after an
+  engine reload, which evaluates every `def` again and so resets those roots
+  (`reload-test`).  A reload with no second call leaves each later test in the JVM on the
+  shipped implementation, reporting a pass for the sweep."
   []
   (install-rete!)
   (install-query-engine!)
   (install-query-strategy!)
   (install-hier!)
-  (install-plan!))
+  (install-plan!)
+  (install-skip-check!))
 
 (install-sweeps!)
 
@@ -535,11 +547,14 @@
 ;; have left populated, and `fresh` clears right after construction, so the
 ;; unrecovered-store warning would be noise on nearly every build.
 
-(def overlay-base-space
-  "The base every KB of the overlay arm is a fork over: an in-RAM space beside the suite's
+(defn- overlay-base-space
+  "The base the overlay arm's fork on slot `s` mounts: an in-RAM space beside the suite's
   block that the suite never writes, so a fork over it answers what a plain backend
-  answers."
-  {:backend :memory :space [::base block-top]})
+  answers.  Each slot mounts its own base, as each slot opens its own store on a plain
+  backend.  A fork mints its handles from its base's counter (docs/overlay.md), so two
+  slots over one base give the same writes different handles."
+  [s]
+  {:backend :memory :space [::base s]})
 
 (def ^:private fork-spaces
   "`{slot own-space}`: under the overlay arm, the `:space` of the fork each slot's store is
@@ -567,8 +582,8 @@
 
 (defn- slot-opts
   "The KB opts for the store slot `s` holds now.  Under the overlay arm that store is a
-  fork over `overlay-base-space` whose own half is the slot's current fork space, taken on
-  the first call; on every other storage it is space `s`."
+  fork over the slot's `overlay-base-space` whose own half is the slot's current fork
+  space, taken on the first call; on every other storage it is space `s`."
   [s]
   ;; `:reasoners :stored`: a test that registered a reasoner left it recorded in the slot's
   ;; store, and `fresh` forgets it after the open (`forget-reasoners!`)
@@ -577,7 +592,7 @@
       (let [own (or (@fork-spaces s)
                     ((swap! fork-spaces update s #(or % (fork-space))) s))]
         (merge common {:backend :overlay
-                       :base    overlay-base-space
+                       :base    (overlay-base-space s)
                        :overlay {:backend :memory :space own}}))
       (merge {:space s} common *storage*))))
 
@@ -628,7 +643,7 @@
   [s opts]
   (if (overlay?)
     (let [old  (get @fork-spaces s)
-          base (mem/memory-record-store overlay-base-space)]
+          base (mem/memory-record-store (overlay-base-space s))]
       ;; Mounting a fork allocates one handle from its base (docs/overlay.md), so each
       ;; fork would mint from one higher than the fork before it, and two KBs built by the
       ;; same writes would hold different handles.  Clearing an empty base restarts its
@@ -758,11 +773,29 @@
         (catch Throwable e
           (spit out (str (pr-str {:test test :audit-error (str e)}) "\n") :append true))))))
 
-(defn fresh
-  "An empty KB on the shared scratch space, with `opts` (`:naming`, `:tms`, …)
-  merged into its opts."
-  ([] (fresh {}))
+(defn empty-kb
+  "A cleared KB with no interface rules or ontology, for storage and synthetic-rule tests."
+  ([] (empty-kb {}))
   ([opts] (fresh-slot block-top opts)))
+
+(def ^:private interface-rules
+  (seed/read-sentences "interface-rules" "upper"))
+
+(defn load-interface!
+  "Load the shared interface rules into `kb`, without the upper ontology.  Recovers first
+  when `kb` carries `:no-belief`: an overlay-arm `fresh-slot` opens its fork over a
+  populated base with `:recover? false` and no `clear-kb!`, so the write would be refused
+  and the base unbelieved (`the-overlay-arms-fresh-kb-reads-through-its-base`)."
+  [kb]
+  (when (:no-belief (v/write-hazards kb))
+    (v/recover kb))
+  (seed/load-sentences kb interface-rules sx/root-context))
+
+(defn fresh
+  "A fresh KB holding the shared interface rules, with `opts` (`:naming`, `:tms`, …)
+  merged into its opts. Use `empty-kb` when the absence of all rules is the subject."
+  ([] (fresh {}))
+  ([opts] (load-interface! (empty-kb opts))))
 
 ;; ---- the starter ontology, built once and copied ------------------------
 
@@ -929,13 +962,6 @@
   [kb]
   (restore! kb (starter-dump)))
 
-(def args-sugar-rule
-  "core.txt's forward rule storing the `(argAndRest P 1 T)` an `(args P T)` stands for.
-  The engine reads `args` only through that twin, so a test about the `args` spelling on
-  a KB that does not load core.txt asserts this first; a test that only needs a tail typed
-  from 1 states `argAndRest` instead."
-  '(set/forwardRule (implies (args ?relation ?type) (argAndRest ?relation 1 ?type))))
-
 ;; ---- the upper ontology, built once and copied --------------------------
 
 (def core-build-space
@@ -984,7 +1010,7 @@
   ontology.
 
     (defn- channel-kb []
-      (tu/load-dumped! (tu/fresh) ::channel-kb
+      (tu/load-dumped! (tu/empty-kb) ::channel-kb
                        #(doto % (core-context/load-into) (sa/load-speech-acts))))
 
   `key` names what `build` makes, so two fixtures building different KBs must pass two
@@ -1006,7 +1032,7 @@
   `theories`.
 
     (use-fixtures :each (tu/neutral-fresh
-                         #(doto (tu/fresh)
+                         #(doto (tu/empty-kb)
                             (tu/load-core-with! '[[CxChange \"middle\"]])
                             (v/add-prover (point/point-prover)))))
 
@@ -1021,7 +1047,8 @@
                     (doseq [[context dir] theories] (seed/load-context kb context dir))))))
 
 (defn isolated-fresh
-  "`fresh` on the isolated space.  See `isolated-test-kb`."
+  "`empty-kb` on the isolated space: no interface rules, no ontology.  See
+  `isolated-test-kb`."
   ([] (isolated-fresh {}))
   ([opts] (fresh-slot (dec block-top) opts)))
 
@@ -1497,7 +1524,7 @@
   namespace, and clear at the end.  Pair with `neutral`."
   [load-fn]
   (fn [f]
-    (let [kb (fresh)]
+    (let [kb (empty-kb)]
       (load-fn kb)
       ;; `finally`, like every sibling fixture: an Error escaping the namespace's
       ;; tests would otherwise leave the shared scratch space populated for whatever
@@ -1553,9 +1580,9 @@
 
 (defn neutral-fresh
   "An `:each` fixture that builds a KB with `build-fn` (e.g. `tu/fresh`, or
-  `#(doto (tu/fresh) (tu/load-core!))` for one needing the upper ontology), binds it, and
+  `#(doto (tu/empty-kb) (tu/load-core!))` for one needing the upper ontology), binds it, and
   guards net-neutrality per test.  A test *about* the upper load path builds with
-  `#(doto (tu/fresh) (core-context/load-into))` instead, paying the load rather than
+  `#(doto (tu/empty-kb) (core-context/load-into))` instead, paying the load rather than
   restoring the dump."
   [build-fn]
   (fn [f]

@@ -2,7 +2,8 @@
 
 - **Covers:** what a fork is — a private, writable KB layered over a frozen, read-only base
   — how reads, writes, counts and tombstones route between the two, how a newer dump
-  replaces a fork's base while the fork keeps its writes, how a fork's writes travel
+  replaces a fork's base while the fork keeps its writes, how a durable fork reopens over a
+  base that grew, how a fork's writes travel
   to another KB as a delta, and what two seats' explanations share.
 - **Not here:** the record/index store protocols and the single-writer lock a base is opened
   through → [storage.md](storage.md); the dense backend internals (postings, the columnar
@@ -176,8 +177,9 @@ deliberately, because that is what the caller asked for.
 
 `OverlayRecordStore` is a composite `RecordStore` `{overlay base}`.
 
-- **The id boundary.** The fork's handle counter is seeded above every handle the base holds,
-  so a minted handle can never collide with a base one. A record written at a handle the
+- **The id boundary.** The fork mints each handle from its base's counter, so a minted
+  handle collides with no base one, including a handle the base mints after the mount, and
+  two forks over one base mint distinct handles. A record written at a handle the
   base *already* uses is therefore an **override** — same handle, different record — and
   the overlay's copy wins every read. That is how a base record is edited without editing
   the base: `mark-premise` materializes an override before it writes, since the assumption
@@ -185,12 +187,14 @@ deliberately, because that is what the caller asked for.
 - **A base that changed between mounts.** The boundary holds over the base the handles
   were minted against, and so do the fork's removals and copy-on-write counters: a key
   the fork emptied stays deleted, so it would hide what a grown base has since added under
-  it. Each mount records the base's `next-id` in the bookkeeping, and the next mount
-  looks for a base record at or above it. A base that holds one has grown, and a fork
-  that has written anything (a record, a tombstone, a released mark, a `reindex`) is
-  refused (`:type :fork-base-overlap`, `:handles` naming the fork's own handles the base
-  now also holds) rather than served over it, and the refused mount releases the fork's
-  directory lock. A fork that has written nothing mounts.
+  it. A durable fork reopened over a base that gained records takes them in, below. Each
+  mount also records the base's `next-id` in the bookkeeping, and an ephemeral fork, or a
+  durable one whose bookkeeping holds no base summary, looks for a base record at or
+  above it. A base that holds one has grown, and such a fork that has written anything
+  (a record, a tombstone, a released mark, a `reindex`) is refused (`:type
+  :fork-base-overlap`, `:handles` naming the fork's own handles the base now also holds)
+  rather than served over it, and the refused mount releases the fork's directory lock
+  unless the directory was open before. A fork that has written nothing mounts.
   A base rebuilt in another order grows nothing, so before the fork writes a tombstone,
   an override or a released mark at a base handle it **records the base digest** there —
   the content digest of the base record, in the bookkeeping — and a mount over a base
@@ -204,6 +208,24 @@ deliberately, because that is what the caller asked for.
   against and import the grown base's dump with `:rebase? true` (below), which
   re-asserts the fork's premises by content and re-points each `except` at the new
   handle of its target.
+- **Reserved handles.** A fork records in its bookkeeping the `[lo hi)` ranges it mints
+  handles in. A range reaches 1,024 handles past the fork's last mint, so the bookkeeping
+  takes one write per 1,024 mints, and the write precedes the handle's use. A base
+  opened with `open-kb`'s `:fork-dirs` naming the forks' directories skips every
+  recorded range (`HandleReserving`, [storage.md](storage.md)), so a base rebuilt in a
+  later process gives each record it gained a handle no fork holds, and forks over it
+  mint past each other's handles. `:fork-dirs` opens each fork's bookkeeping, which takes
+  the directory's lock, and the fork's mount reuses the open store. A fork mounted before
+  it recorded ranges records the range above its watermark at its next mount, and a base
+  opened before that skips nothing for it. Each mount also extends the last range to the
+  fork's own next handle, so a mint whose bookkeeping write was lost is covered from then on.
+- **The base summary.** A durable fork's mount records the base's content end, one above
+  the highest handle the base holds, and the sum of each base record's content digest per
+  1,024 handles below it. The pass reads every base record once, at the fork's first mount
+  and at a mount over a base holding a record at or above the recorded end. The end is not
+  the watermark: under reserved ranges a fork's watermark can lie above handles no record
+  holds, which a grown base fills later. The summary is what a reopen over a grown base
+  compares, below.
 - **Tombstones.** Deleting an inherited record cannot touch the base, so it is recorded
   and the read path filters it. They are sticky: an inherited record cannot come back
   through fall-through, only by being written into the overlay again (a revival, at the
@@ -244,6 +266,53 @@ is read off the *index*, where the merge is the trie's copy-on-write counters an
 merged root sets. So a fork's counts are exact by construction rather than by a second,
 parallel accounting that could drift from the records.
 
+## A base that grew between mounts
+
+A durable fork that has written anything, reopened over a base holding a record at or above
+the end its summary records, keeps every handle it minted and takes the base's new records
+in. Three steps run at the reopen, in `core/fork` and `open-kb`, before anything reads the
+fork.
+
+1. **Acceptance.** The mount sums the base's content digests per 1,024 handles below the
+   recorded end, in the pass that records the summary. A block whose sum differs refuses
+   the reopen (`:fork-base-overlap`), naming the block's handles: a base that lost a record
+   below the end, holds another one there, or was loaded in another order is refused. A new
+   base record at a handle inside a range the fork minted refuses the reopen too, naming the
+   handles in `:handles`. A base opened with `:fork-dirs` naming the fork's directory gives
+   no new record such a handle.
+2. **The index catch-up** (`rebase/follow-base!`). The fork's own index half holds its
+   writes as differences from the base index it was written over, and the base's index now
+   also holds the new records' postings. Several families decide an entry from other keys'
+   contents (the opposed family, the kept and denied unary sets, the length bindings, a
+   node's children and its root set), so the postings a new record made in the base are
+   not the ones it makes in the fork. A scratch layer takes each new sentex back out of the
+   base's index, which then holds what it held before them. The fork's own index half
+   goes over that layer, and a second scratch layer indexes the new sentexes over the result
+   through `reindex/index-one!`, the mint family and a copy of their taxonomy supporter
+   postings. At each key a scratch layer wrote, the fork's index half takes the difference
+   between that result and its own merged contents (`okv/align-ops`). The ops are recorded
+   in the bookkeeping before they are applied, and the summary after, so a reopen that
+   finds ops recorded applies them again before it reads the index.
+3. **The firings** (`rebase/fire-arrivals!`). `recover` builds belief from the stored
+   justifications and fires no rule. After it, the reopen runs what an assert of each new
+   record runs past its store and index: a rule's and an `exceptWhen`'s re-check postings,
+   each sentence's re-check triggers, then a chaining run from the believed new records
+   and a settle. A fork rule fires over a new fact, a new rule fires over a fork fact, and
+   a new `genl` edge re-checks the fork's firings. The bookkeeping holds the owed firings
+   until the run ends, and a KB that refuses writes leaves them owed to its next open.
+
+The acceptance pass reads every base record. The catch-up costs the new records times the
+index keys each one writes. The firings cost what asserting the new records costs.
+`overlay_test` checks each accepted case against a `reindex` of the same fork.
+
+- **A base changed below the end is refused**, never followed: a fork reference to a base
+  handle below the end names the record it named only while that content is unchanged.
+- **The re-check index keeps the base's postings** for the new rules beside the ones the
+  fork's taxonomy adds, so it can hold more keys than a `reindex` posts. An extra key costs
+  a re-check and moves no belief.
+- **A new record whose sentence and context a fork record also holds** leaves both stored.
+  Belief over the two is the belief over either one.
+
 ## The frozen mount
 
 A base is any `RecordStore` + `KvBackend` wrapped by `vaelii.impl.overlay.frozen`, which
@@ -254,18 +323,17 @@ about how the underlying store was opened — which is what makes the compositio
 whatever the base is.
 
 One call is deliberately not a refusal: `next-id` on the frozen record store. It hands out
-a handle nobody holds and touches no stored record, and it is what the fork's id watermark
-is seeded from; the alternative is a `max` over the base's whole live-id set at every
-mount.
+a handle nobody holds and touches no stored record. The mount seeds the fork's id
+watermark from it, and the fork mints every handle from it, so the base and each fork over
+it draw from one sequence.
 
-**It is the one thing a mount changes about the base**, and over a durable base the change
+**It is the one thing a fork changes about the base**, and over a durable base the change
 outlives the process. `next-id` advances the base store's monotonic counter, and the disk
-record store persists that counter to `counters.nippy` on its next flush — so mounting a
-fork over a `:disk` base bumps the base's stored sequence by one, permanently. The bump
-allocates: it can only skip a handle, never reuse one, and recovery takes
+record store persists that counter to `counters.nippy` on its next flush — so a mount and
+each handle a fork mints advance a `:disk` base's stored sequence, permanently. The
+advance allocates: it can only skip a handle, never reuse one, and recovery takes
 `max(the counters blob, 1 + the highest slot id)`, so a skipped number adds no work and
-loses nothing. There is no read-only way to seed a watermark, and no arrangement under
-which the counter both seeds a fork and stays where it was.
+loses nothing.
 
 ## Replacing the base
 
@@ -417,10 +485,11 @@ Two seats that believe the same knowledge, loaded in any order, answer `=` repli
 
 The replies differ where the seats believe or derive differently, and five causes do that:
 
-- **A deadline.** `why`, `argue` and a plain `why-not` read no clock. Two clocks make
-  replies differ by the machine's speed and load: `why-not`'s `{:nearest n}` search stops
-  at its `:max-ms` with the near misses it reached, and a chaining write the daemon's
-  write ceiling ends is rolled back, so the slower seat stores less
+- **A deadline.** `why`, a plain `why-not` and `argue` naming no `:max-ms` read no clock.
+  A clock makes replies differ by the machine's speed and load: `why-not`'s
+  `{:nearest n}` search stops at its `:max-ms` with the near misses it reached, a read
+  named a `:max-ms` refuses `:budget-exhausted` on the slower seat, and a chaining write
+  the daemon's write ceiling ends is rolled back, so the slower seat stores less
   ([inference.md](inference.md#stopping-a-run)).
 - **The heap mark.** A seat on a smaller heap rolls back a chaining write that a larger
   heap stores ([operations.md](operations.md#a-seat-on-a-small-host)).
@@ -437,9 +506,9 @@ The replies differ where the seats believe or derive differently, and five cause
 1. **Base immutability.** No overlay operation writes the base. `overlay_test` compares
    the base's records, premise marks and whole index before and after a fork asserts,
    derives, retracts and clears — byte-identical, including handles. The **id counter**
-   is outside that comparison and is the one exception, above: mounting advances it by
-   one, and on a durable base that lands in `counters.nippy`. No record, key, mark or
-   handle assignment moves.
+   is outside that comparison and is the one exception, above: a mount and each handle a
+   fork mints advance it, and on a durable base that lands in `counters.nippy`. No
+   record, key, mark or handle assignment moves.
 2. **A fork of nothing is the thing it forked.** The overlay `KvBackend` passes
    `kv_backend_test`'s adapter contract over an empty base, and
    `VAELII_TEST_BACKEND=overlay` runs the *whole suite* that way

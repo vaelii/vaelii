@@ -286,8 +286,9 @@
                                 (set (map #(:sentence (v/sentex kb (v/handle-id (get b %))))
                                           '[?x ?y])))))]
         (v/assert kb (list 'genlCx ce 'CxUniverse) 'CxUniverse)
-        (doseq [[s t] [[parenta 'thing] [suba uppera] [subb upperb]]]
-          (v/assert kb (list 'genl s t) 'CxUniverse))
+        (v/assert kb (list 'genl parenta 'thing) 'CxUniverse)
+        (doseq [[s t] [[suba uppera] [subb upperb]]]
+          (v/assert kb (list 'genl s t) 'CxUniverse {:strength :monotonic}))
         (when exemption-first? (v/assert kb exc ce))
         (v/assert kb (list 'partition parenta uppera upperb) 'CxUniverse)
         (v/assert kb orth 'CxUniverse)

@@ -54,7 +54,15 @@
                       '(genl tree plant)}}]
          (ng/disjoint (view-of '[(disjoint animal plant) (genl dog mammal)
                                  (genl mammal animal) (genl cat mammal) (genl tree plant)
-                                 (dog Fido) (tree Fido)])))))
+                                 (dog Fido) (tree Fido)]
+                               '{(genl dog mammal) :monotonic (genl mammal animal) :monotonic
+                                 (genl tree plant) :monotonic})))))
+
+(deftest a-climb-over-a-default-edge-convicts-no-membership
+  ;; the climb gives an edge reading, which the other membership undercuts
+  (is (= [] (ng/disjoint (view-of '[(disjoint animal plant) (genl dog mammal)
+                                    (genl mammal animal) (genl tree plant) (dog Fido) (tree Fido)]
+                                  '{(genl dog mammal) :monotonic (genl tree plant) :monotonic})))))
 
 (deftest a-declaration-stated-both-ways-is-one-nogood-with-both-in-its-ground
   (is (= [{:kind    :disjoint
@@ -109,10 +117,10 @@
 ;; ---- asymmetric --------------------------------------------------------------
 
 (deftest an-asymmetric-mark-convicts-a-tuple-and-its-converse
-  (is (= [{:kind :asymmetric :members #{'(largerThan Rex Tom) '(largerThan Tom Rex)}
-           :ground #{'(asymmetric largerThan)}}]
-         (ng/asymmetric (view-of '[(asymmetric largerThan) (largerThan Rex Tom)
-                                   (largerThan Tom Rex) (largerThan Rex Rex)])))))
+  (is (= [{:kind :asymmetric :members #{'(typeLargerThan Rex Tom) '(typeLargerThan Tom Rex)}
+           :ground #{'(asymmetric typeLargerThan)}}]
+         (ng/asymmetric (view-of '[(asymmetric typeLargerThan) (typeLargerThan Rex Tom)
+                                   (typeLargerThan Tom Rex) (typeLargerThan Rex Rex)])))))
 
 (deftest an-asymmetric-mark-convicts-a-converse-written-at-a-sub-predicate
   (is (= [{:kind :asymmetric :members #{'(fatherOf Tom Bob) '(parentOf Bob Tom)}
@@ -121,7 +129,7 @@
                                    (fatherOf Tom Bob) (parentOf Bob Tom)])))))
 
 (deftest an-asymmetric-self-tuple-convicts-nothing
-  (is (= [] (ng/asymmetric (view-of '[(asymmetric largerThan) (largerThan Rex Rex)])))))
+  (is (= [] (ng/asymmetric (view-of '[(asymmetric typeLargerThan) (typeLargerThan Rex Rex)])))))
 
 ;; ---- anti_transitive ---------------------------------------------------------
 
@@ -182,7 +190,13 @@
            :members #{'(s X) '(not (p1 X)) '(not (p2 X))}
            :ground  #{'(covering w p1 p2) '(genl s w)}}]
          (ng/covering (view-of '[(covering w p1 p2) (genl s w) (s X)
-                                 (not (p1 X)) (not (p2 X))])))))
+                                 (not (p1 X)) (not (p2 X))]
+                               '{(genl s w) :monotonic})))))
+
+(deftest a-membership-of-a-subtype-of-the-whole-over-a-default-edge-refutes-no-cover
+  ;; the climb gives an edge reading of (w X), which the deniers undercut
+  (is (= [] (ng/covering (view-of '[(covering w p1 p2) (genl s w) (s X)
+                                    (not (p1 X)) (not (p2 X))])))))
 
 (deftest a-cover-with-a-part-left-undenied-convicts-nothing
   (is (= [] (ng/covering (view-of '[(covering w p1 p2) (w X) (not (p1 X)) (p2 X)])))))
@@ -337,27 +351,27 @@
 ;; ---- irreflexive -------------------------------------------------------------
 
 (deftest an-irreflexive-mark-convicts-a-default-self-tuple-as-a-one-member-nogood
-  (let [v (view-of '[(irreflexive largerThan) (largerThan Rex Rex) (largerThan Tom Rex)])]
-    (is (= [{:kind :irreflexive :members #{'(largerThan Rex Rex)}
-             :ground #{'(irreflexive largerThan)}}]
+  (let [v (view-of '[(irreflexive typeLargerThan) (typeLargerThan Rex Rex) (typeLargerThan Tom Rex)])]
+    (is (= [{:kind :irreflexive :members #{'(typeLargerThan Rex Rex)}
+             :ground #{'(irreflexive typeLargerThan)}}]
            (ng/irreflexive v)))
     (testing "the one-member nogood reaches the decision through families"
-      (is (some #{#{'(largerThan Rex Rex)}} (map :members (mapcat #(% v) ng/families)))))))
+      (is (some #{#{'(typeLargerThan Rex Rex)}} (map :members (mapcat #(% v) ng/families)))))))
 
 (deftest an-irreflexive-mark-reaches-a-sub-predicate-over-a-believed-edge-of-either-class
-  (let [content '[(irreflexive largerThan) (genl muchLargerThan largerThan)
+  (let [content '[(irreflexive typeLargerThan) (genl muchLargerThan typeLargerThan)
                   (muchLargerThan Rex Rex)]
-        edge    '(genl muchLargerThan largerThan)
+        edge    '(genl muchLargerThan typeLargerThan)
         nogood  {:kind :irreflexive :members #{'(muchLargerThan Rex Rex)}
-                 :ground #{'(irreflexive largerThan) edge}}]
+                 :ground #{'(irreflexive typeLargerThan) edge}}]
     (is (= [[nogood] [nogood] []]
            [(ng/irreflexive (view-of content {edge :default}))
             (ng/irreflexive (view-of content {edge :monotonic}))
             (ng/irreflexive (view-of (remove #{edge} content)))]))))
 
 (deftest an-irreflexive-mark-without-a-self-tuple-convicts-nothing
-  (is (= [] (ng/irreflexive (view-of '[(irreflexive largerThan) (largerThan Rex Tom)
-                                       (largerThan Tom Rex) (smallerThan Rex Rex)])))))
+  (is (= [] (ng/irreflexive (view-of '[(irreflexive typeLargerThan) (typeLargerThan Rex Tom)
+                                       (typeLargerThan Tom Rex) (smallerThan Rex Rex)])))))
 
 ;; ---- anti_symmetric ----------------------------------------------------------
 
@@ -400,7 +414,7 @@
   (let [content (concat two-claims-world
                         '[(disjoint animal plant) (tree Bone1) (animal Bone1)
                           (functional ageOf) (ageOf Bob 5) (ageOf Bob 6)
-                          (asymmetric largerThan) (largerThan Rex Tom) (largerThan Tom Rex)
+                          (asymmetric typeLargerThan) (typeLargerThan Rex Tom) (typeLargerThan Tom Rex)
                           (irreflexive fondOf) (fondOf Rex Rex)
                           (anti_symmetric atOrAbove) (atOrAbove Ann Bob) (atOrAbove Bob Ann)
                           (anti_transitive parentOf) (parentOf Ann Bob) (parentOf Bob Cy)
@@ -410,7 +424,7 @@
                           (negates admires scorns) (admires Eve Fay) (scorns Eve Fay)])
         classes (merge known-reasons
                        '{(carriesLoad vehicle Bone1) :monotonic (carriesLoad hauler Bone1) :monotonic
-                         (genl dog mammal) :monotonic})
+                         (genl dog mammal) :monotonic (genl tree plant) :monotonic})
         answer  (fn [sentences]
                   (let [v (view-of sentences classes)]
                     (mapv #(% v) ng/families)))

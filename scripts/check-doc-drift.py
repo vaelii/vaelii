@@ -56,7 +56,8 @@ and those files describe the project around it.
       keyword->var registry) and the optional dependencies E8_OK_TARGETS names are
       exempt.
   E9  Futurology: prose naming work as forthcoming ("on the roadmap", "is the
-      next step", "left for a future pass", a `## TODO` section).  E7's mirror
+      next step", "left for a future pass", a `## TODO` section, an `@todo`), in the
+      repository text and the shipped ontology's `resources/kb/` files.  E7's mirror
       image and the same argument — the present is the only tense a doc has.
       Stating an ABSENCE is not futurology and is wanted ("there is no beta
       network", "## What is not built"): an absence is a fact about the engine.
@@ -99,7 +100,7 @@ and those files describe the project around it.
       is SSPL-1.0 and the adapter siblings are Apache-2.0, so a file carrying the
       sibling's identifier is a licensing defect a presence check waves through.
   E15 A **Breaking** changelog entry in the unreleased section with no `*Breaks:*`
-      line.  `scripts/check-breaking-siblings.sh` greps the siblings for that
+      line; and, in every section, a `*Breaks:*` token split across two lines.  `scripts/check-breaking-siblings.sh` greps the siblings for that
       line's tokens, so an entry without one is swept and reports nothing —
       indistinguishable from a sibling that is fine.  The unreleased section only:
       the convention is newer than the released sections, and rewriting those to
@@ -115,8 +116,9 @@ and those files describe the project around it.
       `family-*` reads and the trie's `count-at` / `leaf-at` are narrower still:
       only `reads`, `kv` and `columnar` call them.  A `reads/…-global` entry point
       (one that passes `p/every-context`) is called only from a `(file, top-level
-      def)` pair on `E16_GLOBAL_ALLOW`, and a `reads` def passing the sentinel is
-      named `…-global`.
+      def)` pair on `E16_GLOBAL_ALLOW`, an allowlist entry whose definition calls no
+      such entry point fails, and a `reads` def passing the sentinel is named
+      `…-global`.
   E17 A `tax/…-global` taxonomy read, or a flat-cache read (`has-prop?`, `inverse-of`,
       `disjoint?`, …) called with no context, from a `(file, top-level def)` pair not in
       `E17_ALLOW`; and an allowlist entry whose definition makes no such read.  A read
@@ -175,6 +177,9 @@ and those files describe the project around it.
       failed: cite the var name instead, line numbers always rot.
   W2  Backticked `alias/name` for an UNKNOWN alias whose name is defined
       nowhere under src/ or test/ — a likely renamed alias.
+  W3  A bare backticked name ending in `!` or `?`, or of three or more kebab segments,
+      that no symbol or keyword under src/, test/ or bench/ spells.  E2 reads only a
+      name with a namespace part, so a bare one a rename left behind passes it.
   W6  Backticked KB symbols (`set/forwardRule`, `do/label` — namespaced KB
       performatives/markers, NOT Clojure vars) absent from the KB corpus.
   W7  The ambiguous half of E7 — see above.
@@ -477,6 +482,21 @@ if os.path.isdir(TEST_SRC):
                 for m in re.finditer(DEF_RE + r"([\w*+!?<>=.'-]+)", t):
                     all_def_names.add(m.group(1))
 
+# W3's vocabulary: every symbol and keyword name the code under src/, test/ and bench/
+# spells, docstrings and comments included, so a parameter or a local named in prose
+# passes and a name that occurs nowhere does not.
+W3_SYM = re.compile(r"(?<![\w:./*+!?<>='-])([a-z][\w*+!?<>='-]*)")
+W3_KW = re.compile(r":([a-z][\w-]*[\w?!])")
+W3_BARE = re.compile(r"`([a-z][a-z0-9]*(?:-[a-z0-9]+)*[!?]|[a-z][a-z0-9]*(?:-[a-z0-9]+){2,})`")
+code_names = set()
+for sub in ("src", "test", "bench"):
+    for dirpath, _, names in pwalk(pjoin(ROOT, sub)):
+        for n in names:
+            if n.endswith(".clj"):
+                t = open(pjoin(dirpath, n), errors="replace").read()
+                code_names.update(m.group(1) for m in W3_SYM.finditer(t))
+                code_names.update(m.group(1) for m in W3_KW.finditer(t))
+
 # KB corpus for W6: every .clj/.txt/.edn under src + resources. Built lazily —
 # only docs that mention KB symbols pay.
 _kb_corpus = None
@@ -604,6 +624,14 @@ for doc in md_files():
                 flag("W2", doc, token,
                      f"`{token}` — `{name}` not found as a definition anywhere "
                      f"under src/ or test/ (unknown alias `{nsish}`; rename?)")
+
+    # W3: a bare backticked name no code spells.
+    for m in W3_BARE.finditer(whole):
+        n = m.group(1)
+        if n not in code_names and not n.endswith("-test"):
+            flag("W3", doc, n,
+                 f"`{n}` — a bare name that no symbol or keyword under src/, test/ or "
+                 f"bench/ spells (renamed or removed?)")
 
     # E3: env vars.
     for var in set(re.findall(r"\bVAELII_[A-Z0-9_]+\b", whole)):
@@ -982,18 +1010,30 @@ FUTUROLOGY = re.compile(
     r"|\bcoming soon\b|\bfor now, until\b"
     r"|\bthe remaining (step|work|win)\b"
     r"|\bis a follow-on\b|\bseparate follow-ons?\b"
-    r"|\bwould replace it (later|eventually)\b",
+    r"|\bwould replace it (later|eventually)\b"
+    r"|@todo\b",
     re.I | re.M)
 
-for path in repo_text_files():
+
+def shipped_kb_files():
+    """The shipped ontology's text files, `resources/kb/**/*.txt`: authored here and
+    shipped in the jar, so their comments are held to the same rule as the docs."""
+    for dirpath, _, names in pwalk(pjoin(ROOT, "resources", "kb")):
+        for n in sorted(names):
+            if n.endswith(".txt"):
+                yield pjoin(dirpath, n)
+
+
+for path in itertools.chain(repo_text_files(), shipped_kb_files()):
     if pabs(path) == SELF or not os.path.exists(path):
         continue
     rel = prel(path, ROOT)
     # docs/design/ briefs unbuilt work by definition — that whole tree is the
-    # place plans are allowed to live, and it does not ship. resources/ is
+    # place plans are allowed to live, and it does not ship. resources/ outside kb/ is
     # third-party. CONTRIBUTING.md states this rule, so it quotes the
     # phrasings in order to ban them.
-    if (rel.startswith(("docs/design/", "resources/"))
+    if (rel.startswith("docs/design/")
+            or (rel.startswith("resources/") and not rel.startswith("resources/kb/"))
             or rel == "CONTRIBUTING.md"):
         continue
     for i, line in enumerate(open(path, errors="replace"), 1):
@@ -1456,6 +1496,22 @@ if os.path.exists(changelog):
                      f" from a sibling that is fine. One line under the entry, holding"
                      f" each name a caller would have written (CONTRIBUTING §3.8)")
 
+# Every section, released ones included: a *Breaks:* token split across two lines is one
+# no line-wise grep finds. The sibling sweep reads each line on its own, and the preamble
+# promises a released section's tokens to a reader's grep.
+if os.path.exists(changelog):
+    text = open(changelog, errors="replace").read()
+    BREAKS_PARA = re.compile(r"^[ \t]*\*Breaks:\*.*?(?=\n[ \t]*\n|\n[ \t]*\*[A-Z]|\n[ \t]*- |\n#|\Z)",
+                             re.M | re.S)
+    for m in BREAKS_PARA.finditer(text):
+        for t in re.finditer(r"`([^`]*)`", m.group(0)):
+            if "\n" in t.group(1):
+                line = text.count("\n", 0, m.start() + t.start()) + 1
+                tok = re.sub(r"\s+", " ", t.group(1))
+                flag("E15", changelog, f"CHANGELOG.md:{line}",
+                     f"CHANGELOG.md:{line} the *Breaks:* token `{tok}` is split across two"
+                     f" lines, so a grep for it misses it: rewrap so the token sits on one")
+
 # ── E22: a release's renames are data that holds ──────────────────────────
 # `vaelii.host.sync/rename!` composes every file under resources/renames/, since
 # no store records the release that wrote it. That reading is sound only while a
@@ -1706,13 +1762,10 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/except.clj", "named-entries"),
     ("src/vaelii/impl/kb.clj", "supporter-reaches?"),
     ("src/vaelii/impl/except.clj", "genlCx-excepts"),
-    # A defeat naming a declaration in any context retires a pass's reader frames.
-    ("src/vaelii/impl/except.clj", "frame-watch"),
     # The declared forced-monotonic set: a reader's rules reading a predicate it misses, kept by its
     # ancestor set, and a declaration's switch over every reader's network state.
     ("src/vaelii/impl/except.clj", "forced-state"),
     ("src/vaelii/impl/except.clj", "forced-reads?"),
-    ("src/vaelii/impl/except.clj", "denial-stored?"),
     ("src/vaelii/impl/checks.clj", "force-reach!"),
     # A declaration's reach: the contexts stating its predicate, each kept when a context
     # at or below the declaration's sees it, over the unscoped closures a placement reads.
@@ -1728,11 +1781,9 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/checks.clj", "edge-negation-cycle"),
     ("src/vaelii/impl/checks.clj", "declared-firings"),
     ("src/vaelii/impl/chain.clj", "rule-firing-report"),
-    ("src/vaelii/impl/integrity.clj", "rule-macro-findings"),
     ("src/vaelii/impl/nat.clj", "corresponded-rules"),
     ("src/vaelii/impl/nat.clj", "held-application-rules"),
     ("src/vaelii/impl/nat.clj", "formula-position-rules"),
-    ("src/vaelii/impl/integrity.clj", "rule-clash-findings"),
     # The planner's lead choice under a variable context, which has no ancestor set yet:
     # the argument's census over every context bounds what the lead can cost.
     ("src/vaelii/impl/resolution.clj", "arg-lead"),
@@ -1741,14 +1792,17 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/special.clj", "withdrawal-candidates"),
     ("src/vaelii/impl/special.clj", "edge-route-candidates"),
     ("src/vaelii/impl/special.clj", "subsumed-mint-blocks"),
-    ("src/vaelii/impl/special.clj", "withheld-releases"),
     ("src/vaelii/impl/special.clj", "departed-context-edge-mints"),
+    # The settle's up-front question asks the mint withdrawal's presence check for it.
+    ("src/vaelii/impl/settle.clj", "idle-conditions"),
     # A body's both polarities in every context, a superset the negation placement scopes.
     ("src/vaelii/impl/decide/negation.clj", "polarity-handles"),
+    # The calendar side of a point-order link's candidate pairs: a superset of the pairs
+    # `reconcile-pairs` then decides under each pair's own scoped order.
+    ("src/vaelii/impl/context_nat.clj", "calendar-handles"),
     # A relation's length is read the same at every context, so a tuple breaking it is
     # inert in every context and the refresh reads the shape's tuples in all of them.
     ("src/vaelii/impl/decide/arity.clj", "refresh-shapes!"),
-    ("src/vaelii/impl/decide/arity.clj", "pair-sets"),
     # A relation's length is read the same at every context, off its bindings in every
     # context.
     ("src/vaelii/impl/decide/arity.clj", "held-bindings"),
@@ -1757,7 +1811,6 @@ E16_GLOBAL_ALLOW = {
     # again from its own context (`checks/argument-conviction`).
     ("src/vaelii/impl/checks.clj", "declaration-candidates"),
     ("src/vaelii/impl/checks.clj", "declarations-naming"),
-    ("src/vaelii/impl/checks.clj", "lattice-candidates"),
     ("src/vaelii/impl/checks.clj", "rules-on"),
     # A metatype route's class membership is stored in CxUniverse, so the memberships a
     # write moves are read from every context.
@@ -1836,6 +1889,7 @@ E16_GLOBAL_ALLOW = {
 E16_GLOBAL_CALL = re.compile(r"\breads/([\w?!*-]+-global)(?![\w?-])")
 E16_EVERY = re.compile(r"\bp/every-context\b")
 E16_DEF = re.compile(r"\(def[\w-]*\s+(?:\^[^\s]+\s+)*([^\s\)]+)")
+E16_SEEN = set()
 
 for path in clj_files():
     rel = prel(path, ROOT)
@@ -1852,6 +1906,8 @@ for path in clj_files():
                  f"The family methods serve every family, so the `reads` entry point names the "
                  f"family and tallies it: call `reads/…` instead")
         m = E16_GLOBAL_CALL.search(code)
+        if m and (rel, enclosing) in E16_GLOBAL_ALLOW:
+            E16_SEEN.add((rel, enclosing))
         if m and rel != "src/vaelii/impl/reads.clj" and (rel, enclosing) not in E16_GLOBAL_ALLOW:
             flag("E16", path, f"reads/{m.group(1)}",
                  f"{rel}:{i} `{enclosing}` calls `reads/{m.group(1)}` — a read over every "
@@ -1864,6 +1920,11 @@ for path in clj_files():
             flag("E16", path, "p/every-context",
                  f"{rel}:{i} `{enclosing}` passes `p/every-context` — an entry point reading "
                  f"every context is named `…-global`, so E16_GLOBAL_ALLOW sees its callers")
+
+for rel, enclosing in sorted(E16_GLOBAL_ALLOW - E16_SEEN):
+    flag("E16", pjoin(ROOT, rel), f"{rel}:{enclosing}",
+         f"E16_GLOBAL_ALLOW names `{enclosing}` in {rel}, which calls no `reads/…-global` "
+         f"entry point: drop the entry, so the allowlist names only the callers with a reason")
 
 # ── E17: an unscoped taxonomy read is allowlisted, never reached for ───────
 # Context scoping is the third invariant: a read sees what its context sees, up the
@@ -1959,6 +2020,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/chain.clj", "transitive-source-preds"),
     ("src/vaelii/impl/chain.clj", "walks-its-own-conclusion?"),
     ("src/vaelii/impl/chain.clj", "solve-closure"),
+    ("src/vaelii/impl/chain.clj", "closure-rejoins"),
     ("src/vaelii/impl/chain.clj", "solve-separation"),
     ("src/vaelii/impl/chain.clj", "separated-from"),
     ("src/vaelii/impl/special.clj", "separation-moved-types"),
@@ -1967,6 +2029,9 @@ E17_ALLOW = {
     # A candidate filter for the mints a cycle-closing `genl` edge releases; each released
     # mint is asked again from its own placement.
     ("src/vaelii/impl/special.clj", "closes-genl-cycle?"),
+    # A candidate filter for the guarded firings a `genl` edge re-checks; each kept
+    # firing is asked again from its own placement.
+    ("src/vaelii/impl/recheck.clj", "genl-pair-test"),
     # The structural genlCx producer's candidate reads: a superset of the pairs its oracle
     # then decides under the scoped closure (`r-evidence`).
     ("src/vaelii/impl/context_nat.clj", "comparable-terms"),
@@ -1980,7 +2045,6 @@ E17_ALLOW = {
     ("src/vaelii/impl/inherit.clj", "crossings"),
     ("src/vaelii/impl/inherit.clj", "crossing-hits"),
     ("src/vaelii/impl/inherit.clj", "self-positions"),
-    ("src/vaelii/impl/inherit.clj", "joint-genl"),
     # The backward claim search weighs its two seeds by the unscoped reach, an upper
     # bound on the scoped one; the search itself reads the scoped `genl?`.
     ("src/vaelii/impl/inherit.clj", "stated-reached?"),
@@ -2086,6 +2150,9 @@ E17_ALLOW = {
     ("src/vaelii/impl/decide/arity.clj", "reaches-class?"),
     ("src/vaelii/impl/decide/arity.clj", "class-paths"),
     ("src/vaelii/impl/chain.clj", "arity-class-ends-moved!"),
+    # A membership nogood's routes read every active edge, and a climb they drop holds at
+    # every reader.
+    ("src/vaelii/impl/chain.clj", "membership-routes"),
     ("src/vaelii/impl/chain.clj", "resync-arity-classes!"),
     # The functors whose length a moved edge or binding can have moved, and the arity
     # pairs stored in CxUniverse, are read over every edge, as a relation's length is.
@@ -2101,6 +2168,13 @@ E17_ALLOW = {
     # the class membership it derives is (`class-paths`).
     ("src/vaelii/impl/decide/arity.clj", "route-types"),
     ("src/vaelii/impl/discovery.clj", "preserving-moves"),
+    # A `not_assertible` mark is forced decontextualized and forced monotonic: it is
+    # stored in CxUniverse and no defeat moves it, so the KB-wide mark is every reader's.
+    ("src/vaelii/impl/checks.clj", "forced-out?"),
+    ("src/vaelii/impl/checks.clj", "force-stored!"),
+    ("src/vaelii/impl/special.clj", "wff-problems"),
+    ("src/vaelii/impl/decide/arity.clj", "refresh-shapes!"),
+    ("src/vaelii/impl/nat_read.clj", "correspondence-value"),
     # The visibility filter cannot be scoped by the filter it derives — asking
     # `context-up` here would make except evaluation recursive on itself.
     ("src/vaelii/impl/except.clj", "visible-exception-index"),
@@ -2167,6 +2241,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/resolution.clj", "opaque-fn"),
     ("src/vaelii/impl/resolution.clj", "mention-declarations"),
     ("src/vaelii/impl/resolution.clj", "store-marks"),
+    ("src/vaelii/impl/resolution.clj", "meet-order"),
     ("src/vaelii/impl/nat_read.clj", "sorted-expression"),
     ("src/vaelii/impl/nat_read.clj", "permuting-marks"),
     ("src/vaelii/impl/nat.clj", "permuted-reifiable?"),
@@ -2184,9 +2259,11 @@ E17_ALLOW = {
     ("src/vaelii/impl/special.clj", "lifts-to-universe?"),
     # A candidate superset a later step narrows: a candidate filter in front of a scoped read, a
     # trigger or seed whose re-join reads the rule's own context, a nogood candidate row
-    # kept where no reader exists and placed after (`decide/unscoped-closures`), and a claim
-    # or reifiable function a per-reader test admits.
+    # kept where no reader exists and placed after (`decide/unscoped-closures`), a claim
+    # or reifiable function a per-reader test admits, and the eternal types a slice's
+    # scoped read of `eternal_predicate` narrows.
     ("src/vaelii/impl/chain.clj", "reified-fns"),
+    ("src/vaelii/impl/special.clj", "eternal-types"),
     ("src/vaelii/impl/nat.clj", "queue-split-uses!"),
     ("src/vaelii/impl/resolution.clj", "declares-mention?"),
     ("src/vaelii/impl/resolution.clj", "fan-mention-probes"),
@@ -2251,6 +2328,8 @@ E17_ALLOW = {
     ("src/vaelii/impl/inherit.clj", "licensing-sets"),
     ("src/vaelii/impl/integrate.clj", "mark-witness"),
     ("src/vaelii/impl/nat_read.clj", "withheld-at"),
+    ("src/vaelii/impl/nat_read.clj", "sorted-by-at"),
+    ("src/vaelii/impl/special.clj", "reifiable-moves"),
     ("src/vaelii/impl/resolution.clj", "reified-reading"),
     ("src/vaelii/impl/resolution.clj", "constraining-predicates"),
     ("src/vaelii/impl/special.clj", "declaring-predicates"),

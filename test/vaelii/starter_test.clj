@@ -102,6 +102,12 @@
   (concat (for [f (core-context/upper-files)    s (seed/read-sentences f "upper")]  ['CxUniverse s])
           (for [c (seed/layer-contexts "middle") s (seed/read-sentences c "middle")] [c s])))
 
+(tu/deftest-kb starter-loading-preserves-contextual-type-defining-homes
+  (doseq [t '[digital_artifact image video]]
+    (is (v/ask? kb (list 'unary_predicate t) 'CxTra))
+    (is (= #{'CxTra} (v/defining-contexts kb t))
+        (str t " remains defined in its own theory"))))
+
 (tu/deftest-kb every-sentence-the-starter-ships-is-well-formed-once-it-is-all-loaded
   ;; **Loading is not checking**, and the gap between the two is where the shipped
   ;; ontology can go wrong quietly.  `seed/load-sentences` asserts in file order and
@@ -207,6 +213,18 @@
         (str "two middle contexts define or extend these, and CxUniverse does not define"
              " the term: move it to an upper file: " (pr-str (sort shared))))))
 
+(tu/deftest-kb a-unary-mark-is-a-premise-of-the-context-whose-edges-reach-the-type
+  (is (empty? (for [s (v/sentexes-matching kb '(unary_predicate ?t) 'CxUniverse)
+                    :when (and (= 'CxUniverse (:context s)) (v/premise? kb (:id s)))
+                    :let [t (second (:sentence s))]
+                    :when (not (contains? (v/specs kb 'thing 'CxUniverse) t))]
+                t))
+      "CxUniverse states no mark for a type only a middle context's edges reach")
+  (let [h (v/handle-of kb '(unary_predicate command_line_tool) 'CxTra)]
+    (is (and h (v/premise? kb h)) "CxTra states the mark of its own type")
+    (is (v/ask? kb '(unary_predicate command_line_tool) 'CxUniverse)
+        "and the decontextualized lift answers it at every context")))
+
 (tu/deftest-kb the-starter-stores-nothing-in-a-context-the-upper-layer-does-not-have
   ;; The upper files load into CxUniverse, so no sentex sits in a per-file context and no
   ;; `genlCx` edge names one.
@@ -222,7 +240,9 @@
   (tu/with-terms [old_kind unused_kind Fido CxStore]
     (v/assert kb (list old_kind Fido) CxStore)
     (let [logged (atom [])]
-      (with-redefs [seed/release-renames (constantly {:retired #{old_kind unused_kind}})]
+      (with-redefs [seed/release-renames   (constantly {:retired #{old_kind unused_kind}})
+                    core-context/load-into identity
+                    seed/load-context      (fn [& _])]
         (binding [trove/*log-fn* (fn [_ns _coords level id payload]
                                    (when (= ::starter/retired-symbol id)
                                      (swap! logged conj [level (:data (force payload))])))]

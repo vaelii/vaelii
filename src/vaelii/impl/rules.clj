@@ -1585,7 +1585,7 @@
   "nil, or a volatile an `assert` or a `settle` binds, holding the stored half of the
   stratification graph that `checks/stratification-readers` builds once and reuses across
   the write's or the pass's checks.  Every write to the rule indexes below empties it, as
-  does a rule's engines moving (`forget-stratification`)."
+  does a rule's engines or defeasibility moving (`forget-stratification`)."
   nil)
 
 (def ^:dynamic *negated-keys-memo*

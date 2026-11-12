@@ -26,7 +26,7 @@
            [java.nio.file.attribute FileAttribute]
            [vaelii.impl.observe HeldAtom]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 (def ^:private U 'CxUniverse)
 (def ^:private mono {:strength :monotonic})
@@ -449,12 +449,13 @@
 (defn- locations [at] (mapv #(str/join " " (map pr-str %)) at))
 
 (defn- git-revision
-  "`{:revision short-hash :dirty n}`: n counts the files under src/ and test/ that differ
-  from that revision."
+  "`{:revision short-hash :dirty n}`: n counts the files under `REVISION_PATHS`
+  (`scripts/lib/revision.sh`) that differ from that revision."
   []
   (let [git #(str/trim (:out (apply shell/sh "git" %&)))]
     {:revision (let [h (git "rev-parse" "--short" "HEAD")] (if (str/blank? h) "no-git" h))
-     :dirty    (->> (git "status" "--porcelain" "--" "src" "test")
+     :dirty    (->> ["src" "test" "resources" "bench" "project.clj" "project-env.clj"]
+                    (apply git "status" "--porcelain" "--")
                     str/split-lines (remove str/blank?) count)}))
 
 (defn export

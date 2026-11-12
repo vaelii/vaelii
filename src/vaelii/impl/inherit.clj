@@ -1694,9 +1694,9 @@
   list `tuple` rests on, each a vector of handles, or nil when `tuple` is the stored
   argument list or no believed mark licenses the rearrangement (docs/inference.md,
   \"A fact read in another argument order names the mark that licenses the order\").
-
   One alternative per minimal set of statements licensing the rearrangement, read off the
-  marks on the fact's own functor and on each compound `tuple` holds in another order, with
+  marks on the fact's own functor and on each compound `tuple` holds in another order than
+  the stored compound of its canonical form or, at a NAT payload, the stored payload, with
   no index read but a `quotedArg` functor's declarations (`firing_cost_test`).  Each
   statement is named by the believed sentexes stating it that `context` sees and no other
   covers, the CxUniverse copy where believed.  The groups are read unscoped, a superset."
@@ -1706,14 +1706,24 @@
       (licensing-sets kb (nm/functor sentence) s tuple context)
       (let [marks    (res/store-marks kb)
             mention? (:mention-at? marks)
+            payload  (fn [f s tuple]
+                       (let [t (get tuple 1) e (get s 1)]
+                         (when (and (contains? res/nat-quoting-predicates f) (seq? t) (seq? e)
+                                    (= (first t) (first e)) (= (count t) (count e)))
+                           [(or (licensing-sets kb (first t) (vec (rest e)) (vec (rest t)) context) [[]])])))
             walk     (fn walk [f s tuple]
-                       (let [ct   (into [] (map-indexed #(if (and (seq? %2) (not (mention? f (inc %1))))
-                                                           (sx/canonical-subterm %2 marks) %2))
-                                        tuple)
-                             own  (or (licensing-sets kb f s ct context) [[]])
-                             kids (for [[t c] (map vector tuple ct)
-                                        :when (and (seq? t) (not= t c) (= (count t) (count c)))]
-                                    (walk (first t) (vec (rest c)) (vec (rest t))))]
+                       (let [canon #(into [] (map-indexed (fn [i a] (if (and (seq? a) (not (mention? f (inc i))))
+                                                                      (sx/canonical-subterm a marks) a)))
+                                          %)
+                             ct    (canon tuple)
+                             cs    (canon s)
+                             own   (or (licensing-sets kb f cs ct context) [[]])
+                             kids  (concat
+                                    (for [[t c] (map vector tuple ct)
+                                          :let  [st (or (some (fn [[x cx]] (when (= c cx) x)) (map vector s cs)) c)]
+                                          :when (and (seq? t) (seq? st) (not= t st) (= (count t) (count st)))]
+                                      (walk (first t) (vec (rest st)) (vec (rest t))))
+                                    (payload f s tuple))]
                          (reduce (fn [alts ks] (for [a alts, k ks] (into a k))) own kids)))
             alts     (walk (nm/functor sentence) s (vec tuple))]
         (when-not (= [[]] alts) (into [] (distinct) alts))))))
@@ -1984,17 +1994,6 @@
     (filter #(contains? in %) xs)
     (filter #(contains? xs %) (if (map? in) (keys in) in))))
 
-(defn- joint-genl
-  "The predicates of `ps`, each preserved along `genl`, whose reach can run through a
-  `genl` edge from a term outside the edge's closures (`crossing-claim?`): those in
-  `joint` (`decl-index`'s, preserved along a second relation) or declared `(transitive
-  P)`, since a joint reach (`reach`) leaves the `genl` closure and comes back; `crossings`
-  answers the predicates preserved along `genl` in both directions.  Read off the stored
-  declarations and marks, globally, a superset for `moved-predicates`' reason.  Each
-  intersection walks its smaller side (`among`), so the cost does not grow with `ps`."
-  [kb joint ps]
-  (concat (among ps joint) (among ps (tax/props (reasoning/taxonomy kb) :transitive))))
-
 (defn- moved-in
   "`moved-predicates` over the declarations indexed as `decl-index` indexes them, as
   `[claimed other]`: the predicates moved through the claim channel, and those moved
@@ -2032,7 +2031,7 @@
                                    (if-some [crosses (when (and (= 'genl f) (= 'genl r)
                                                                 (some wanted ps))
                                                        (crossing-claim? kb body))]
-                                     (into (set (among ps crosses)) (joint-genl kb joint ps))
+                                     (into (set (among ps crosses)) (among ps joint))
                                      ps))))
                        (among preds by-r))])))))
 
@@ -2315,7 +2314,7 @@
 (defn rejoin-rules
   "The forward rules to re-join in full because `sen` moved what a preserved predicate
   licenses (every rule with an antecedent on a `moved-predicates` member), or nil.  Keyed
-  on the antecedent index, since `(genl chihuahua dog)` moves a `largerThan` antecedent
+  on the antecedent index, since `(genl chihuahua dog)` moves a `typeLargerThan` antecedent
   whose predicate no walk from `genl` reaches."
   [kb sen]
   (let [idx      (:index kb)

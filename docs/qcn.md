@@ -483,7 +483,9 @@ resident network's key, so a read under a rebound var reads that binding's netwo
 Two calculi carry one. The interval algebra reads the metric temporal layer
 ([stp.md](stp.md)) — an interval is bounded by two instants, so a numeric bound on the gap
 between two intervals' endpoints rules out Allen relations no stored fact mentions — and
-the point network, where instant facts over two things' start and end points do the same.
+the point network, where instant facts over two things' start and end points do the same,
+and relates its calendar-term nodes by their fields ([time.md](time.md), "A calendar term
+is a node").
 The metric reading snaps magnitudes to `provers/*quantity-tolerance*`, which is its one
 binding.
 The point algebra reads its own node terms: a thing's start before its end, and calendar
@@ -738,7 +740,10 @@ stored facts before the first answer, a closure rather than a search. `completen
 alone and a raw fact match would add nothing it does not already entail. `est-bindings`
 is bounded by the node count, itself bounded by the number of stored facts on that
 prover's own predicates — a sum of O(1) predicate-extent reads, because an estimate must not
-cost what it estimates.
+cost what it estimates. A prover built with an open estimate (`qcn-kb/prover`'s `open-est`)
+reports it for a goal with a variable argument instead. The point and interval provers'
+is `provers/deferred-est`, because their node-set narrowing orders a goal's term that no
+node is ([time.md](time.md#the-points-of-a-temporal-thing)).
 
 A believed `(inverse P Q)` between two predicates of one registered calculus leaves the
 prover answering alone when the algebra's converse of `Q`'s base relations lies inside

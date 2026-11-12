@@ -21,7 +21,7 @@
             [vaelii.impl.rules :as vr]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 (defn- handles [entries] (set (map :handle entries)))
 
@@ -857,6 +857,7 @@
       (v/assert kb (list 'genl oneish 'thing) 'CxUniverse)
       (v/assert kb (list 'genl twoish 'thing) 'CxUniverse)
       (v/assert kb (list 'disjoint oneish twoish) 'CxUniverse)
+      (v/assert kb '(functionalInArg arity 2) 'CxUniverse)
       (v/assert-rule kb ['(arity ?p 1)] (list oneish '?p) 'CxUniverse {:direction :forward})
       (v/assert-rule kb ['(arity ?p 1)] (list twoish '?p) 'CxUniverse {:direction :forward})
       (is (= 1 (:pair-count (clashes kb)))
@@ -882,7 +883,7 @@
 
 (tu/deftest-kb an-arity-floor-above-an-exact-arity-is-no-clash-in-waiting
   ;; A floor rule reads `(arity ?p ?n)` or `(arityMin ?p ?n)` with `?n` above a bound.  The
-  ;; arity table is functional, so beside a claim of exactly n places `?n` is n, and a bound
+  ;; arity table is functional by the KB's own mark, so beside a claim of exactly n places `?n` is n, and a bound
   ;; of n or more admits no ?p.  An arityMin above the exact arity admits none either.
   (doseq [[floor-functor bound exact reachable?] '[[arity 2 2 false]
                                                    [arity 1 2 true]
@@ -891,6 +892,7 @@
       (v/assert kb (list 'genl lowish 'thing) 'CxUniverse)
       (v/assert kb (list 'genl highish 'thing) 'CxUniverse)
       (v/assert kb (list 'disjoint lowish highish) 'CxUniverse)
+      (v/assert kb '(functionalInArg arity 2) 'CxUniverse)
       (let [before (:pair-count (clashes kb))]
         (v/assert-rule kb [(list 'arity '?p exact)] (list lowish '?p) 'CxUniverse
                        {:direction :forward})
@@ -899,6 +901,69 @@
         (is (= (if reachable? (inc before) before) (:pair-count (clashes kb)))
             (str "(" floor-functor " ?p ?n) above " bound " beside exactly " exact
                  (if reachable? " can both hold" " admits no ?p")))))))
+
+(tu/deftest-kb a-floor-class-disjoint-from-the-exact-class-is-no-clash-in-waiting
+  (let [U       'CxUniverse
+        pair-of (fn [kb lo-body hi-body]
+                  (tu/with-terms [lowish highish]
+                    (v/assert kb (list 'genl lowish 'thing) U)
+                    (v/assert kb (list 'genl highish 'thing) U)
+                    (v/assert kb (list 'disjoint lowish highish) U)
+                    (let [before (:pair-count (clashes kb))]
+                      (v/assert-rule kb lo-body (list lowish '?p) U {:direction :forward})
+                      (v/assert-rule kb hi-body (list highish '?p) U {:direction :forward})
+                      (- (:pair-count (clashes kb)) before))))]
+    (tu/with-terms [floorish]
+      (v/assert kb (list 'genl floorish 'thing) U)
+      (testing "a floor nothing separates from unary leaves the pair a candidate"
+        (is (= 1 (pair-of kb ['(arity ?p 1)] [(list floorish '?p)]))))
+      (v/assert kb (list 'disjoint floorish 'unary) U)
+      (testing "a floor disjoint from unary admits no ?p of exactly one place"
+        (is (zero? (pair-of kb ['(arity ?p 1)] [(list floorish '?p)]))))
+      (testing "a length the floor admits leaves the pair a candidate"
+        (is (= 1 (pair-of kb ['(arity ?p 2)] [(list floorish '?p)])))))))
+
+(tu/deftest-kb a-functional-slot-filled-two-incompatible-ways-is-no-clash-in-waiting
+  (let [U       'CxUniverse
+        pair-of (fn [kb lo-body hi-body]
+                  (tu/with-terms [lowish highish]
+                    (v/assert kb (list 'genl lowish 'thing) U)
+                    (v/assert kb (list 'genl highish 'thing) U)
+                    (v/assert kb (list 'disjoint lowish highish) U)
+                    (let [before (:pair-count (clashes kb))]
+                      (v/assert-rule kb lo-body (list lowish '?p) U {:direction :forward})
+                      (v/assert-rule kb hi-body (list highish '?p) U {:direction :forward})
+                      (- (:pair-count (clashes kb)) before))))]
+    (tu/with-terms [sizeOf]
+      (v/assert kb (list 'binary_predicate sizeOf) U)
+      (testing "unmarked, two numbers in one slot are two facts that can both hold"
+        (is (= 1 (pair-of kb [(list sizeOf '?p 1)] [(list sizeOf '?p 2)]))))
+      (v/assert kb (list 'functionalInArg sizeOf 2) U)
+      (testing "marked, two distinct numbers in the slot admit no ?p"
+        (is (zero? (pair-of kb [(list sizeOf '?p 1)] [(list sizeOf '?p 2)]))))
+      (testing "nor does a number at or below the other's lower bound"
+        (is (zero? (pair-of kb [(list sizeOf '?p 1)]
+                            [(list sizeOf '?p '?n) (list 'lessThan 1 '?n)])))
+        (is (zero? (pair-of kb [(list sizeOf '?p 1)]
+                            [(list sizeOf '?p '?n) (list 'greaterThan '?n 3)]))))
+      (testing "nor a number at or above the other's upper bound"
+        (is (zero? (pair-of kb [(list sizeOf '?p 2)]
+                            [(list sizeOf '?p '?n) (list 'lessThan '?n 2)])))
+        (is (zero? (pair-of kb [(list sizeOf '?p 5)]
+                            [(list sizeOf '?p '?n) (list 'greaterThan 4 '?n)]))))
+      (testing "a number the bound admits overlaps, so the pair is still a clash in waiting"
+        (is (= 1 (pair-of kb [(list sizeOf '?p 2)]
+                          [(list sizeOf '?p '?n) (list 'lessThan 1 '?n)])))))
+    (testing "the arity table is functional by its own declaration, not by its name"
+      (is (= 1 (pair-of kb ['(arity ?p 1)] ['(arity ?p 2)]))
+          "a KB that does not declare arity functional leaves the two arities a pair")
+      (is (= 1 (pair-of kb ['(arity ?p 1)] ['(arity ?p ?n) '(lessThan 1 ?n)])))
+      (let [h (v/assert kb '(functionalInArg arity 2) U)]
+        (is (zero? (pair-of kb ['(arity ?p 1)] ['(arity ?p 2)])))
+        (is (zero? (pair-of kb ['(arity ?p 1)] ['(arity ?p ?n) '(lessThan 1 ?n)])))
+        (is (= 1 (pair-of kb ['(arity ?p 2)] ['(arity ?p ?n) '(lessThan 1 ?n)]))
+            "arity 2 is above 1, so both rules can fire for one binary ?p")
+        (v/retract! kb h)))))
 
 (tu/deftest-kb an-arg-type-disjoint-from-the-other-conclusion-is-not-a-clash-in-waiting
   ;; The fourth half of the satisfiability test, the one `separated-antecedents?` cannot
@@ -951,10 +1016,8 @@
         (is (zero? (:pair-count (clashes kb)))
             "a gauge is not a record, read off argAndRest as off arg")
         (v/retract! kb h)))
-    (testing "and so does args, through the argAndRest from position 1 core.txt's forward
-              rule stores, restated here since this KB loads no core.txt"
-      (v/assert-rule kb ['(args ?relation ?type)] '(argAndRest ?relation 1 ?type) 'CxUniverse
-                     {:direction :forward})
+    (testing "and so does args, through the twin the shared interface rule stores"
+      (tu/load-interface! kb)
       (v/assert kb (list 'args measures gauge) 'CxUniverse)
       (is (zero? (:pair-count (clashes kb)))
           "a gauge is not a record, read off args as off arg"))))

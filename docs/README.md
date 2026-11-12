@@ -66,7 +66,7 @@ page costs a sentence rather than a section.
 
 ## Arriving from another system
 
-[arriving.md](arriving.md) routes; these four are the mappings, each one-way orientation
+[arriving.md](arriving.md) routes; these five are the mappings, each one-way orientation
 rather than a compatibility claim.
 
 - [from-cyc.md](from-cyc.md) — the OpenCyc and ResearchCyc vocabulary: `Mt` to context, collections as unary predicates, the four privileged contexts you already have names for, and the argument-type check that refuses on the way in.
@@ -78,7 +78,7 @@ rather than a compatibility claim.
 ## Core model & storage
 
 - [namespaces.md](namespaces.md) — the file map: what lives in each namespace under `src/`.
-- [predicates.md](predicates.md) — the engine's own grammar as one declaration per term: the eleven fields and five closed vocabularies an interpreted predicate is written from, the contract each facet commits it to, the arms it is joined to, the tables that derive from it rather than repeat it, the twenty refusals that fire at namespace load, the sequence for adding one and what adding one comes to, and the three things the declaration deliberately leaves outside itself — the prover registry, the structural connectives, and the two joins stated by hand.
+- [predicates.md](predicates.md) — the engine's own grammar as one declaration per term: the eleven fields and five closed vocabularies an interpreted predicate is written from, the contract each facet commits it to, the arms it is joined to, the tables that derive from it rather than repeat it, the fifteen refusals that fire at namespace load, the sequence for adding one and what adding one comes to, and the three things the declaration deliberately leaves outside itself — the prover registry, the structural connectives, and the two joins stated by hand.
 - [canonicalization.md](canonicalization.md) — the canonical form: how sentences and rules identical up to variable names, literal order, symmetric arguments or comparison direction dedup to one handle, and how a conjunctive consequent or a disjunctive antecedent unfolds into several.
 - [naming.md](naming.md) — the KB naming invariants (predicates, individuals, types, contexts).
 - [storage.md](storage.md) — record + index stores, the protocols, nippy serialization, the single-writer contract.
@@ -142,7 +142,7 @@ rather than a compatibility claim.
 - [web.md](web.md) — the reitit-ring browser for terms, sentexes, and justifications;
   a term page opens with its shape drawn, server-side and inside a read budget.
 - [catalog.md](catalog.md) — the KB catalog: what a process can load (shipped, generated, corpus, dump, on-disk store), loading one in the background with progress and cancellation, and switching which one every page reads.
-- [caches.md](caches.md) — the cache register: the derived, droppable structures a process holds beside the stores, each self-declared with its scope, unit and bound; the wholesale-clear policy; `caches` / `clear-caches`; and a snapshot list of all eighteen with their sizes.
+- [caches.md](caches.md) — the cache register: the derived, droppable structures a process holds beside the stores, each self-declared with its scope, unit and bound; the two bound policies, wholesale clear and cold-end eviction; and `caches` / `clear-caches`.
 - [foreign.md](foreign.md) — the formats we read and do not write: no reader ships here, and a bridge is a plugin that declares itself in one edn resource on the classpath.
 
 ## Generated

@@ -1,35 +1,10 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.impl.tactics
-  "The node engine's search **policy** — one additive estimate whose terms carry signs the
-  caller picks, so `vaelii.impl.inference` searches breadth-first, depth-first or best-first
-  without a second driver.  The frontier is a priority queue precisely so that changing a
-  number is enough; this namespace is that number.
-
-      estimate(node) = Σ literal-cost(Lᵢ)                     what the conjunction costs
-                     + size-penalty × |literals|              shorter conjunctions first
-                     + depth-sign × depth-weight × Σ dᵢ       rewriting allowance left
-                     + tree-sign  × tree-weight  × tree-depth search-tree level
-
-  The base term is `plan/explain`'s per-literal estimate summed, the numbers
-  `core/query-plan` prints for the same conjunction.
-
-  **The signs are the whole personality of the search.**  Σ dᵢ is what a node is still
-  *permitted* to rewrite, so a negative depth sign prefers the node with the most room
-  left and a positive one the node closest to spending it — a node nearly out of
-  allowance is a node nearly ground, hence nearly answerable by facts alone.  The tree
-  term is the analogous choice over the search tree rather than the rewriting budget:
-  positive is level order, negative is a dive.
-
-  **Ordering is a cost decision and never a semantic one.**  Every tactician here
-  returns the same answer set; what differs is when.  `inference_tactics_test`'s
-  completeness sweep is the regression test that keeps it that way, and the one mode that
-  deliberately returns fewer answers (`:first-result?`) says so in its own docstring and
-  is excluded from that sweep by name.  The join *inside* a node is ordered by
-  `plan/order` alone and never by the strategy, for the same reason: a complete search
-  has to visit the same literals whatever order the nodes pop in.
-
-  See docs/inference.md."
+  "The node engine's search policy: one additive estimate whose terms carry signs a
+  tactician picks, so `vaelii.impl.inference` searches breadth-first, depth-first or
+  best-first with one driver.  Every complete tactician returns the same answer set.  See
+  docs/inference.md."
   (:require [vaelii.impl.plan :as plan]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]

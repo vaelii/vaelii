@@ -320,27 +320,35 @@
 ;; ---- the write boundary --------------------------------------------------
 
 (defn- write-boundary-problem
-  "The write-auth violation `principal` would commit writing `target-ctx`, or nil.
-  Two rules, one boundary:
+  "The write-auth violation `principal` would commit writing `target-ctx`, or nil, with the
+  `:message` `check-write-boundary!` throws.  Two rules, one boundary:
   - `CxRegistry` is admin-only — a principal that is not an admin `authenticate` minted is
     refused (`:koinii/registry-forbidden`, with `:minted? false` for a map that claims
     `:admin?` without a valid grant): the governed may not write the authority.
   - every other context: an agent writes ONLY its own `(context-for :id)` — a write
     aimed elsewhere is refused (`:koinii/foreign-context`)."
   [principal target-ctx]
-  (cond
-    (= target-ctx registry-context)
-    (when-not (admin? principal)
-      (cond-> {:type :koinii/registry-forbidden :principal (:id principal)
-               :context target-ctx}
-        (:admin? principal) (assoc :minted? false)))
+  (let [id  (:id principal)
+        own (if (admin? principal) registry-context (context-for id))
+        why (fn [type] (str "koinii: write refused — " (name type) ": " (pr-str id)
+                            " writes " own ", not " target-ctx))]
+    (cond
+      (= target-ctx registry-context)
+      (when-not (admin? principal)
+        (cond-> {:type :koinii/registry-forbidden :principal id :context target-ctx
+                 :message (why :koinii/registry-forbidden)}
+          (:admin? principal)
+          (-> (assoc :minted? false)
+              (update :message str ".  Its :admin? carries no grant `authenticate` sealed,"
+                      " so it is not an admin"))))
 
-    (admin? principal)
-    {:type :koinii/admin-off-registry :principal (:id principal) :context target-ctx}
+      (admin? principal)
+      {:type :koinii/admin-off-registry :principal id :context target-ctx
+       :message (why :koinii/admin-off-registry)}
 
-    (not= target-ctx (context-for (:id principal)))
-    {:type :koinii/foreign-context :principal (:id principal)
-     :context target-ctx :own (context-for (:id principal))}))
+      (not= target-ctx own)
+      {:type :koinii/foreign-context :principal id :context target-ctx :own own
+       :message (why :koinii/foreign-context)})))
 
 (defn check-write-boundary!
   "Throw if `principal` may not write `target-ctx`; else return nil.  The single
@@ -348,13 +356,7 @@
   call site can route a write into a context it does not own."
   [principal target-ctx]
   (when-let [prob (write-boundary-problem principal target-ctx)]
-    (let [own (if (admin? principal) registry-context (context-for (:id principal)))]
-      (throw (ex-info (str "koinii: write refused — " (name (:type prob)) ": "
-                           (pr-str (:id principal)) " writes " own ", not " target-ctx
-                           (when (false? (:minted? prob))
-                             (str ".  Its :admin? carries no grant `authenticate` sealed,"
-                                  " so it is not an admin")))
-                      prob)))))
+    (throw (ex-info (:message prob) (dissoc prob :message)))))
 
 (defn check-registry-write!
   "Throw if `target-ctx` is the admin registry; else return nil.  The **one** boundary

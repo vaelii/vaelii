@@ -37,7 +37,8 @@
   `<dir>/overlay-meta`, so remounting that directory over the same base serves the merged
   contents it was left in.  The index half needs none: its bookkeeping lives in the overlay
   index itself, under reserved keys, and so is exactly as durable as the fork is."
-  (:require [vaelii.impl.disk.backend :as disk]
+  (:require [clojure.java.io :as io]
+            [vaelii.impl.disk.backend :as disk]
             [vaelii.impl.kv :as kv]
             [vaelii.impl.memory :as mem]
             [vaelii.impl.overlay.frozen :as frozen]
@@ -103,6 +104,16 @@
                     {:type :unknown-backend :mismatch :illegal-position
                      :axis :records :kind kind :records kind}))))
 
+(defn fork-dir-ranges
+  "The handle ranges the durable forks at `dirs` have minted (`ostore/minted-ranges`), for
+  a base opened with them under `:fork-dirs`.  A directory holding no fork bookkeeping
+  contributes none.  The bookkeeping opens through the per-directory registry, which takes
+  the directory's single-writer lock; the fork's mount later reuses the open store."
+  [dirs]
+  (into [] (mapcat #(when (.exists (io/file (str %) "overlay-meta"))
+                      (ostore/minted-ranges (meta-kv :disk {:dir %}))))
+        dirs))
+
 (defn forked?
   "Is either half of this `{:records :index}` store pair already a **fork's own**?
 
@@ -121,11 +132,12 @@
   "An `OverlayRecordStore`: `overlay` (writable) over `base` (frozen), with `meta` holding
   the record-level bookkeeping.  `own-index` is the fork's own index half, read for
   whether the fork has rebuilt its index (`okv/index-cleared?`), or nil when the fork's
-  index is not an overlay.  `base-opts` are the opts `base` was opened from, or nil."
-  [overlay base meta own-index base-opts]
+  index is not an overlay.  `base-opts` are the opts `base` was opened from, or nil.
+  `durable?` says `meta` outlives the process."
+  [overlay base meta own-index base-opts durable?]
   (ostore/overlay-record-store overlay (frozen/frozen-records base) meta
                                (boolean (some-> own-index kv-backend-of okv/index-cleared?))
-                               base-opts))
+                               base-opts durable?))
 
 (defn mount-index
   "A `KvIndexStore` over an `OverlayKv`: `overlay`'s backend (writable) over `base`'s

@@ -101,6 +101,7 @@ NOT_DERIVED: dict[tuple[str, str], str] = {
     ("logging.clj", "dial"): "configuration: the log level",
     ("memory.clj", "record-spaces"): "storage: the in-memory record spaces",
     ("memory.clj", "record-counters"): "storage: the in-memory handle counters",
+    ("memory.clj", "record-reserved"): "storage: the handle ranges each in-memory space skips for its forks",
     ("memory.clj", "space-reasoners"): "storage: the reasoner set each in-memory record space records",
     ("memory.clj", "index-spaces"): "storage: the in-memory index spaces",
     ("memory.clj", "engine-space-seq"): "a private space id counter",

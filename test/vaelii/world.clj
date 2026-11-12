@@ -6,9 +6,8 @@
   relations, and the theory rules — so the reasoning it demonstrates needs data to
   run on.  That data lives here, in the tests, below CxWell.
 
-  Topology — the data contexts hang off CxWell, which sees every middle context,
-  so each sees the whole ontology (every middle theory and CxUniverse) but not its
-  siblings:
+  Topology — the data contexts sit below CxWell, which sees the seven theories, so
+  each sees those seven and CxUniverse but not its siblings:
 
       CxWell
         CxNaturalWorld   the cast's type memberships + natural-world facts

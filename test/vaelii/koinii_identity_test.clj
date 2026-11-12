@@ -80,8 +80,8 @@
   (id/agent-context kb 'CxDeploy 'AgentBoreas)
   (let [boreas (id/authenticate {:claimed-id 'AgentBoreas} {:policy :cooperative})]
     (testing "the write boundary refuses Boreas targeting CxAtlas (enforced)"
-      (is (thrown-with-msg? ExceptionInfo #"foreign-context"
-                            (id/ingest-into kb boreas 'CxAtlas (list 'ran 'ProdCluster)))))
+      (is (= :koinii/foreign-context
+             (:type (tu/refusal-data #(id/ingest-into kb boreas 'CxAtlas (list 'ran 'ProdCluster)))))))
     (testing "and ingest auto-routes to Boreas's OWN context — no call site can name another"
       (let [h (id/ingest kb boreas (list 'ran 'ProdCluster))]
         (is (= h (v/handle-of kb (list 'ran 'ProdCluster) 'CxBoreas)))
@@ -181,9 +181,9 @@
 (tu/deftest-kb admin-writes-only-the-registry
   (testing "an admin aimed at a non-registry context is refused — it curates the authority,
             it is not a general writer over every agent's context"
-    (is (thrown-with-msg? ExceptionInfo #"admin-off-registry"
-                          (id/ingest-into kb (admin) 'CxAtlas
-                                          (list 'ran 'ProdCluster))))))
+    (is (= :koinii/admin-off-registry
+           (:type (tu/refusal-data #(id/ingest-into kb (admin) 'CxAtlas
+                                                    (list 'ran 'ProdCluster))))))))
 
 ;; ---- authenticate refuses a policy it does not know -----------------------
 

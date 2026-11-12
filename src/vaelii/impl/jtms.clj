@@ -284,12 +284,8 @@
 
 (defn- affected-region
   "Every node whose label could change when `seeds` change: the forward closure over
-  consequence justifications, seeds included.
-
-  This is the claim locality rests on — a node's label is a function of its
-  justifications' antecedents, so a node whose label can move is, by construction,
-  reachable from whatever moved.  Everything outside the region is boundary: fixed,
-  and never even looked at."
+  consequence justifications, seeds included.  Everything outside it is boundary, held
+  fixed and not read (docs/nmtms.md, \"Locality\")."
   [state seeds]
   (loop [seen #{}, stack (vec seeds)]
     (if (empty? stack)
@@ -306,8 +302,7 @@
   "Least fixpoint of IN over `region`, with `base` (the boundary's believed nodes) held fixed.
   Blocking invalidates a justification and is read through `valid?`, so the retraction sweep
   collects an excepted conclusion (docs/exceptions.md, \"Garbage collection, not defeat\").
-  Starting from nothing believed inside the region keeps support well-founded, and a least
-  fixpoint is unique, so going local costs no order independence."
+  See docs/nmtms.md, \"Locality\"."
   [state region cands base]
   (let [blocked (:blocked state #{})
         void    (forced-set state :void)
@@ -334,11 +329,9 @@
             (recur in stack)))))))
 
 (defn- region-classes
-  "Defeat-classes for `region` under the IN set `in`, as a least fixpoint.  A node's class
-  depends on its antecedents', so a single pass would depend on traversal order.  Every
-  in-region IN node starts at `:default` and the monotone operator (`strength/max`,
-  `strength/min`) is iterated to stability.  Nodes outside the region are boundary: a boundary
-  node whose class could move would have an antecedent in the region and so be in it."
+  "Defeat-classes for `region` under the IN set `in`, as a least fixpoint: every in-region IN
+  node starts at `:default` and the monotone operator (`strength/max`, `strength/min`) is
+  iterated to stability.  Nodes outside the region are boundary."
   [state region in]
   (let [nodes   (:nodes state)
         justs   (:justs state)
@@ -1046,12 +1039,12 @@
 
 (def ^:dynamic *dedup-cache*
   "`{:tms tms :m HashMap-of-consequence->HashSet-of-just-keys}`, or nil (default): then
-  `has-justification?` scans `-supports`.  A run-scoped index bound by `chain/chain`; the first
-  ask per conclusion builds its key set and later asks are one hash probe.  The binding carries
-  its TMS and `dedup-cache-for` hands the map only to that TMS, since a nested run over a
-  second KB has overlapping handle spaces.  Existence is structural, so only a removal
-  (`retract!`, `sweep!`) invalidates, and both clear the cache; `add-justification` extends the
-  entry.  See docs/inference.md, Justification dedup."
+  `has-justification?` scans `-supports`.  A run-scoped index bound by `chain/chain` and
+  `chain/place-nogoods!`; the first ask per conclusion builds its key set, later asks probe
+  it.  The binding carries its TMS and `dedup-cache-for` hands the map only to that TMS,
+  since a nested run over a second KB has overlapping handle spaces.  Existence is
+  structural, so only a removal (`retract!`, `sweep!`) invalidates, and both clear the
+  cache; `add-justification` extends the entry.  See docs/inference.md, Justification dedup."
   nil)
 
 (defn- dedup-cache-for
@@ -1167,10 +1160,20 @@
     (moving (-ensure-node tms datum depth)))
   datum)
 
+(defn- note-route-gain
+  "Hand `datum` to the bound `observe/*route-gain-sink*` when the sink mirrors `tms` and
+  `datum` is believed and not a premise.  An `except` hides a premise only by naming it, so
+  a route a premise gains shows it to no further reader."
+  [tms datum]
+  (when-let [{mirrors? :mirrors? note :note} observe/*route-gain-sink*]
+    (when (and (mirrors? tms) (not (-premise? tms datum)) (in? tms datum))
+      (note datum))))
+
 (defn add-premise
   "Add `datum` as a premise at `strength` (default :default)."
   ([tms datum] (add-premise tms datum :default))
   ([tms datum strength-kw]
+   (note-route-gain tms datum)
    (moving (-add-premise tms datum (or strength-kw :default)))
    (note-moved! tms [datum])
    datum))
@@ -1187,6 +1190,7 @@
   for the `has-justification?` that guarded the add."
   ([tms just] (add-justification tms just nil))
   ([tms just k]
+   (note-route-gain tms (:consequence just))
    (moving (-add-justification tms just))
    (note-moved! tms [(:consequence just)])
    (when-let [^java.util.Set s observe/*fired-sink*]

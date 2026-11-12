@@ -25,6 +25,7 @@
   contract\"), so a store's state is one atom mutated by `swap!`; reads deref a snapshot
   and are lock-free.  Interleaved *writers* would not be serializable."
   (:require [clojure.set :as set]
+            [vaelii.impl.capabilities :as cap]
             [vaelii.impl.kv :as kv]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.profile :as prof]
@@ -36,6 +37,7 @@
 
 (defonce ^:private record-spaces   (atom {}))
 (defonce ^:private record-counters (atom {}))
+(defonce ^:private record-reserved (atom {}))
 (defonce ^:private index-spaces    (atom {}))
 (defonce ^:private space-reasoners (atom {}))
 
@@ -86,9 +88,12 @@
   (when (> (long id) (long @counter)) (swap! counter max (long id)))
   id)
 
-(defrecord MemoryRecordStore [state counter]
+(defrecord MemoryRecordStore [state counter reserved]
   p/RecordStore
-  (next-id [_] (long (swap! counter inc)))
+  (next-id [_]
+    (if-let [r @reserved]
+      (long (swap! counter #(cap/skip-reserved r (inc (long %)))))
+      (long (swap! counter inc))))
   (put-sentex [this sentex]
     (let [id (or (:id sentex) (p/next-id this))]
       (observe/keep-before! this [:sentex id] #(get (:sentexes @state) id))
@@ -165,7 +170,10 @@
   (justification-tally [_] (count (:justifications @state)))
   (a-sentex-id         [_] (first (keys (:sentexes @state))))
   (a-justification-id  [_] (first (keys (:justifications @state))))
-  (a-premise-id        [_] (first (:premises @state))))
+  (a-premise-id        [_] (first (:premises @state)))
+
+  p/HandleReserving
+  (reserve-handles! [_ ranges] (swap! reserved cap/reserve-ranges ranges) nil))
 
 (defn memory-record-store
   "An in-memory `RecordStore`.  Only `:space` in `opts` matters: it selects the shared
@@ -174,7 +182,8 @@
   written."
   [{:keys [space] :or {space 0}}]
   (->MemoryRecordStore (space-atom record-spaces space empty-record-state)
-                       (space-atom record-counters space 0)))
+                       (space-atom record-counters space 0)
+                       (space-atom record-reserved space nil)))
 
 (defn drop-record-space!
   "Forget the records and the handle counter held under `space`, so a process that opens
@@ -185,6 +194,7 @@
   (let [had? (contains? @record-spaces space)]
     (swap! record-spaces dissoc space)
     (swap! record-counters dissoc space)
+    (swap! record-reserved dissoc space)
     (swap! space-reasoners dissoc space)
     had?))
 

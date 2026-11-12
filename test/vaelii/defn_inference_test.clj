@@ -171,6 +171,18 @@
       (is (<= @(:midb c) 1)    "dmid_b's necessary at most once")
       (is (<= @(:bottomn c) 1) "dbottom's necessary at most once"))))
 
+(tu/deftest-kb a-conjunct-shared-by-sufficient-conditions-is-evaluated-once-per-walk
+  (tu/with-terms [dtop dspa dspb dspc sharedCond condA condB condC]
+    (let [n (atom 0)]
+      (counted! kb sharedCond n false)
+      (doseq [[t c] [[dspa condA] [dspb condB] [dspc condC]]]
+        (v/add-evaluatable kb c (constantly true))
+        (v/assert kb (list 'genl t dtop) 'CxUniverse)
+        (v/assert kb (list 'defnSufficient t (list 'and (list sharedCond '?x) (list c '?x)))
+                  'CxUniverse))
+      (is (not (v/ask? kb (list dtop 42) 'CxUniverse)))
+      (is (= 1 @n) "sharedCond fails for 42, so each of the three conditions reaches it"))))
+
 (tu/deftest-kb diamond-a-failing-topmost-necessary-short-circuits-the-optimization
   ;; The optimization: querying (dbottom 42) where 42 genuinely is NOT a dbottom
   ;; (sufficient false — consistent KB) and the topmost necessary (dtop) fails. The

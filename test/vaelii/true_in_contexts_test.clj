@@ -30,9 +30,9 @@
   The conventions are temporal_capability_test.clj's: the same fixture, the same
   helpers, the shipped vocabulary, and `^:red` on a test that ought to pass and does not
   yet.  Each test that slices restates the `CxTimeFn` declarations time.txt ships, as
-  that namespace does.  `genlMonad` is issue #181's name; time.txt declares it and
-  orders two slices that differ only in the monad by it, but nothing orders two monad
-  contexts by it, so the tests here that state it are `^:red`."
+  that namespace does.  `genlMonad` is issue #181's name.  time.txt marks it
+  `not_assertible`, a prover answers it from the `genlCx` closure between two monads, and
+  the tests here order two monads by `genlCx`."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.test-util :as tu]))
@@ -42,7 +42,7 @@
 ;; The KB is built per test because a test registers reasoners, which a KB shared
 ;; across tests would keep.
 (use-fixtures :each (tu/neutral-fresh
-                     #(doto (tu/fresh)
+                     #(doto (tu/empty-kb)
                         (tu/load-core-with! '[[CxChange "middle"] [CxRealWorld "middle"]]))))
 
 (def ^:private U 'CxUniverse)
@@ -54,8 +54,8 @@
   ([time] (slice 'CxMonad time))
   ([monad time] (list 'CxTimeFn monad time)))
 
-(defn- year  [y] (list 'DatetimeFn (str y)))
-(defn- month [s] (list 'DatetimeFn s))
+(defn- year  [y] (list 'YearFn y))
+(defn- month [s] (apply list 'MonthFn (map parse-long (.split ^String s "-"))))
 
 (defn- declare-cxtimefn!
   "What docs/context-nat.md declares for `CxTimeFn`, as temporal_capability_test.clj
@@ -121,12 +121,12 @@
 ;; ---- redundancy between bindings ---------------------------------------------
 
 (defn- year-span
-  "The years `[from to]` a slice's time spans, for a `DatetimeFn` year or a
+  "The years `[from to]` a slice's time spans, for a `YearFn` year or a
   `DatetimeRangeFn` over two years; nil for any other time."
   [time]
   (when (seq? time)
     (case (first time)
-      DatetimeFn      [(parse-long (second time)) (parse-long (second time))]
+      YearFn          [(second time) (second time)]
       DatetimeRangeFn [(parse-long (second time)) (parse-long (nth time 2))]
       nil)))
 
@@ -187,13 +187,11 @@
         (is (true-here? kb s CxSub))
         (is (not (true-here? kb s CxOther)))))))
 
-(tu/deftest-kb ^:red along-the-monad-only-a-fact-in-a-monad-and-its-genlmonad-sub-monad-is-true-in-the-monad
+(tu/deftest-kb along-the-monad-only-a-fact-in-a-monad-and-its-genlmonad-sub-monad-is-true-in-the-monad
   ;; The genlMonad twin of along-the-monad-only-a-fact-in-a-monad-and-its-sub-monad-is-true-in-the-monad.
-  ;; genlMonad is issue #181's name.  time.txt orders slices by it, but nothing orders
-  ;; two monad contexts by it, so the inverse names both today.
   (tu/with-terms [p CxSuper CxSub CxOther]
     (monads! kb CxSuper CxSub CxOther)
-    (v/assert kb (list 'genlMonad CxSub CxSuper) U)
+    (v/assert kb (list 'genlCx CxSub CxSuper) U)
     (let [s (list p)]
       (v/assert kb s CxSuper)
       (v/assert kb s CxSub)
@@ -294,8 +292,8 @@
 ;; =========================================================================
 ;; Cases asserted in two contexts
 ;; =========================================================================
-;; Each case is asserted in two contexts and read both ways.  Times are DatetimeFn
-;; strings, so a merged answer is a DatetimeRangeFn over two of them.
+;; Each case is asserted in two contexts and read both ways.  Times are calendar
+;; terms, so a merged answer is a DatetimeRangeFn over two of them.
 
 (tu/deftest-kb asserted-in-2000-and-in-january-2000-is-true-in-2000
   ;; January is inside 2000, so its slice sees 2000's and adds no claim.
@@ -347,12 +345,9 @@
         (is (agrees? kb s))
         (is (not (true-here? kb s (slice (year 2002)))))))))
 
-(tu/deftest-kb ^:red asserted-in-2000-and-at-an-instant-somewhere-in-2000-is-true-in-2000
-  ;; An instant known only to lie in 2000.  Its slice ought to sit under 2000's
-  ;; (homogeneity downward), so it adds no claim.  Today nothing orders an instant slice
-  ;; under the interval that includes it
-  ;; (a-fact-in-a-named-year-slice-holds-in-a-slice-keyed-by-a-named-moment-inside-it), so
-  ;; the inverse names both.
+(tu/deftest-kb asserted-in-2000-and-at-an-instant-somewhere-in-2000-is-true-in-2000
+  ;; An instant known only to lie in 2000.  Its slice sits under 2000's (homogeneity
+  ;; downward), so it adds no claim.
   (declare-cxtimefn! kb)
   (tu/with-terms [p Sometime]
     (v/assert kb (list 'time_point Sometime) U)
@@ -467,7 +462,7 @@
   (v/add-reasoner kb :calendar)
   (tu/with-terms [p CxSuper CxSub]
     (monads! kb CxSuper CxSub)
-    (v/assert kb (list 'genlMonad CxSub CxSuper) U)
+    (v/assert kb (list 'genlCx CxSub CxSuper) U)
     (let [s     (list p)
           below {CxSub #{CxSuper}}
           super (slice CxSuper '(DatetimeRangeFn "2000" "2001"))]

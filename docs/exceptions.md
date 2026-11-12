@@ -284,7 +284,9 @@ therefore carries the **triggering sentences** beside each rule handle, and
 subterm, a predicate whose truth a level-6 prover can derive from *different* arguments
 (the `genl`/`genlCx` closures, disjointness, anything declared transitive or
 reflexive or holding an inverse, anything with a **preserved argument position**, the
-evaluables) — each of those skips the filter and keeps every candidate.
+evaluables) — each of those skips the filter and keeps every candidate. A positive
+`genl` literal under a `genl` edge between symbols is narrowed instead ("Taxonomy changes
+are keyed on what the closure moved").
 
 Preservation is the one of those the code cannot list, because it is a property of the
 content: `(transitiveInArgInverse bigger n genl)` makes a stored `(bigger dog cat)` answer
@@ -294,7 +296,8 @@ its own read, once per pass rather than once per firing, since a substitution ne
 a functor.
 
 **Several paths have no sentence that could narrow the firings**, and each queues `:all`
-rather than a set of sentences: a `genl`/`genlCx` edge change (the next section), the two
+rather than a set of sentences: a `genlCx` edge change, a `genl` edge change outside the
+rules on `genl` ("Taxonomy changes are keyed on what the closure moved"), the two
 argument-side channels — preservation and `arg`-inference — a **declaration** whose
 subject is the exception's predicate, an **equality** moving the closure (all four under
 "Five channels" below), and a rule that has just been indexed. In each the sentence that
@@ -419,7 +422,7 @@ withdraws the defeat when the blocker goes OUT.
 | a `disjoint` antecedent the placement context does not read separated | yes | likewise, and the same evaluator |
 | a post-join literal had no answer | no | an aggregate is a *value* that moved, and a queued aggregate rule is re-joined whatever the blocked set did (`settle/rejoin-on-arrival-rules`) |
 | the settle blocks a placed firing, and the sweep deletes it | yes, by `chain/record-swept-firing!`, for a forward rule | the conclusion is gone from the store, so the record is what a trigger lifting the block re-derives it from, as for a firing refused at its placement. A release re-derives no firing of a rule that does not forward-chain (`chain/refusal-state`), so that firing has no entry |
-| a visibility `except` hides an antecedent | no | an `except` arriving or leaving, or a `genlCx` edge moving which contexts see it, re-joins from its target's consequence closure and the antecedents of the justifications resting on it, and re-joins each rule of that closure over its extent (`special/drain-except-moves!`), and the refusal is re-derived there. An entry would be one nothing reads |
+| a visibility `except` hides an antecedent | no | an `except` arriving or leaving, a `genlCx` edge moving which contexts see it, or a hidden datum gaining a route the `except` does not hide (`special/recheck-route-gains!`), re-joins from its target's consequence closure and the antecedents of the justifications resting on it, and re-joins each rule of that closure over its extent (`special/drain-except-moves!`), and the refusal is re-derived there. An entry would be one nothing reads |
 
 A firing whose conclusion an argument conviction convicts is not a refusal and has no
 entry: the conclusion is stored with its justification and held OUT by the argument hold,
@@ -448,9 +451,10 @@ the shape an answer has:
 
 - **It never decides belief.** It says which firings to re-ask, never what the answer
   is. Every entry is re-decided from scratch when it is read (`chain/refusal-state`),
-  by the same judgement a blocked justification is re-decided by
-  (`chain/rule-firing-blocked?`), so blocking cannot drift from belief and the two
-  paths cannot drift from each other.
+  by the judgement a blocked justification is re-decided by
+  (`chain/justification-excepted?`): the visibility `except` check,
+  `chain/lazy-firing-blocked?` and `chain/rule-firing-blocked?`. So blocking cannot drift
+  from belief, and the two paths cannot drift from each other.
 - **Nothing in it is a nogood**, and nothing in it reaches `contradictions`. Nothing was
   believed and nothing conflicts; the rule simply did not fire.
 - **It is keyed on content.** Two refusals of the same rule at the same bindings from
@@ -519,8 +523,22 @@ an answer differently.
   (`special/answered-predicates`, below) are the set queued on, plus the two functors a
   `genl` edge can flip without either endpoint appearing near the registered predicate —
   `genl` itself, whose conjunct the transitivity prover answers from the very closure
-  that moved, and `disjoint`, which is closed under `genl` on both sides. Both are answered *across arguments*, so neither
-  can be keyed on a predicate and both take `:all`.
+  that moved, and `disjoint`, which is closed under `genl` on both sides. Both are
+  answered *across arguments*, so neither can be keyed on a predicate. `disjoint` takes
+  `:all`.
+
+  The rules on `genl` take the edge itself as their trigger when both ends are symbols
+  and `genl` is not among the answered predicates. A pair `(genl lower upper)` moves only
+  along a route through the edge, so `recheck/genl-pair-test` keeps a firing whose block
+  literal is a positive `genl` pair only when `lower` lies at or below a trigger edge's
+  lower end and `upper` at or above its upper end. The walk adds the trigger edges to the
+  global closure: one settle can remove several edges of one route, and then no single
+  edge's reach relates the pair. A reflexive pair is kept when its term lies in either
+  reach. A positive `genl` pair with a constant side in neither reach moves under no
+  binding of its other side. When every block literal of a rule is such a pair,
+  `recheck/firing-test` returns nil, and the rule's firings are not read. `lein perf`'s
+  `genl-edge-beside-guarded-firings` holds the cost of an edge flat in the guarded firings
+  it does not reach.
 
   A **negated** conjunct is the third case, and it is keyed at the edge's other end. It
   registers under the functor `not` — that is what `(exceptWhen (not (has_wings ?x)) …)`
@@ -542,6 +560,13 @@ an answer differently.
   are checked for one, a context lookup apiece and no query, and the same test is asked
   of the rule's **recorded refusals**, whose entries name the placement context the
   refused conclusion would have had.
+
+  A firing placed in a context some context under `sub` sees through the edge is re-checked
+  as well, since a guard defeat of it can move there ([naf.md](naf.md)). The re-check of
+  those firings is skipped when no context in `context-move`'s `:below` stores a sentex
+  (the contexts under `sub` and the other parents they reach). Every context under `sub`
+  then sees `super`'s content and nothing more, so each guard reads there as it reads at
+  `super`, and no defeat is stored there to withdraw.
 
   **A rule an arrival can release is waved through that narrowing**
   (`special/arrival-releasable-rule?`). An aggregate binds a **value**, so a census that
@@ -572,7 +597,7 @@ another.
 
 - **Argument preservation, from the relation's side.** `TransitiveInArgProver` answers by
   walking the arguments' reach, so `(genl chihuahua dog)` flips an exception on
-  `largerThan`. `special/recheck-preserving-along` and
+  `typeLargerThan`. `special/recheck-preserving-along` and
   `special/recheck-separated-exceptions` queue the rules it reaches
   ([inherit.md](inherit.md#four-things-that-follow-from-reading-claims-out-of-belief)).
   From `P`'s own side the index already keys the fact, and the argument-agreement filter
@@ -661,11 +686,17 @@ another.
   membership that moves which arguments a typed calculus predicate admits queues the
   rules whose exception mentions the predicate `:all`
   (`special/recheck-typed-admission`, [qcn.md](qcn.md#what-every-algebra-does-with-it)).
+  A registered `SupportingProver` reads one predicate to answer another in the same way:
+  `QuantityProver` answers `(sameQuantity (QuantityFn 2 Pound) (QuantityFn 1 Kilogram))`
+  from a `conversionFactor` row that names neither quantity. A datum on a predicate the
+  prover reads (`provers/support-answers-reading`) queues every rule with a re-check
+  literal on a predicate the prover answers from it, `:all`
+  (`special/supported-exception-rules`).
 
 A KB not using a channel pays for it a cardinality check on the declaration extents, a
 map lookup on the functor, and the `[:exception-index :rules]` emptiness check; the
 composition channel tests the registered calculi against the arriving predicate's
-supertypes. All five are read **globally** rather than per context, because a declaration
+supertypes, and the arriving predicate against the supporting provers' sources. All five are read **globally** rather than per context, because a declaration
 one context cannot see still qualifies a rule in one that can.
 
 A firing's **stored bindings** are the part of the equality channel a trigger cannot fix.
@@ -816,7 +847,8 @@ starts are memoized per upward closure. An `assert` and a `settle` bind
 `rules/*stratification-memo*`, so every check of the write or the pass reads one stored
 graph: a pass minting many `genl` edges reads each rule's node once, not once per mint
 (`lein perf`'s `edge-stratification-mints-in-one-pass`). A write to the rule index or the
-re-check index empties the memo, as does a rule's engines moving, and a check compares the rest of what the graph read
+re-check index empties the memo, as does a rule's engines or defeasibility moving. The
+same memo shares raw rule records with the lazy-guard reader; a check compares the rest of what the graph read
 before it reuses it: the closed-extent marks by identity, and the belief of each
 exceptWhen meta-sentex a node read. Without the binding, each check builds its own graph
 and drops it when it returns. The walk expands

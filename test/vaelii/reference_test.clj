@@ -103,9 +103,9 @@
   `[world wiring content]`:
 
     CxUniverse  (genl chi thing) (genl dog thing) (genl cat thing)
-                (disjoint dog cat) monotonic
-      ├─ CxA    (genl chi dog) default
-      └─ CxD    (not (genl chi dog)) monotonic
+                (genl chi dog) monotonic
+      ├─ CxA    (disjoint dog cat) default
+      └─ CxD    (not (disjoint dog cat)) monotonic
     CxB sees CxA and CxD: (chi Kit) default, (cat Kit) monotonic
 
   CxB reads no separation between chi and cat, so both memberships are believed there."
@@ -114,9 +114,9 @@
                  (w (list 'genl cat 'thing) U)
                  (w (list 'genlCx CxA U) U) (w (list 'genlCx CxB CxA) U)
                  (w (list 'genlCx CxD U) U) (w (list 'genlCx CxB CxD) U)
-                 (w (list 'disjoint dog cat) U :monotonic)
-                 (w (list 'genl chi dog) CxA)]
-        content [(w (list 'not (list 'genl chi dog)) CxD :monotonic)
+                 (w (list 'genl chi dog) U :monotonic)
+                 (w (list 'disjoint dog cat) CxA)]
+        content [(w (list 'not (list 'disjoint dog cat)) CxD :monotonic)
                  (w (list chi Kit) CxB)
                  (w (list cat Kit) CxB :monotonic)]]
     [{:contexts #{U CxA CxB CxD} :writes (into wiring content)} wiring content]))

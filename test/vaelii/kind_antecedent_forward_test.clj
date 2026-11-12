@@ -38,10 +38,13 @@
    ['formula (list Quote (list 'not (list 'dog 'Muffet)))]])
 
 (defn- setup!
-  "State what a `sentence` value needs: `Quote` as a function and `dog` as a predicate."
+  "State what a `sentence` value needs: `Quote` as a function and `dog` as a predicate.
+  `(unary_predicate dog)` is asserted only where the KB does not already believe it: an
+  assert of a derived sentence marks a baseline sentex a premise, which teardown keeps."
   [kb]
   (v/assert kb (list 'unreifiable_function Quote) 'CxUniverse)
-  (v/assert kb (list 'unary_predicate 'dog) 'CxUniverse))
+  (when-not (some #(v/in? kb (:id %)) (v/sentexes-matching kb '(unary_predicate dog) 'CxUniverse))
+    (v/assert kb (list 'unary_predicate 'dog) 'CxUniverse)))
 
 (defn- fired?
   "Assert `(implies (and (valueOf ?a ?x) (kind ?x)) (kinded ?a))` and `(valueOf Ann
@@ -102,7 +105,8 @@
         (v/assert kb (list 'implies (list 'sentence q) (list kinded Ann))
                   'CxUniverse {:direction :forward})
         (v/assert kb (list valueOf Ann q) 'CxUniverse)
-        (is (empty? (v/sentexes-matching kb (list kinded '?y) 'CxUniverse)))))))
+        (is (empty? (v/sentexes-matching kb (list kinded q) 'CxUniverse)))
+        (is (empty? (v/sentexes-matching kb (list kinded Ann) 'CxUniverse)))))))
 
 (tu/deftest-kb a-firing-on-a-kind-antecedent-is-withdrawn-with-the-fact-that-bound-it
   (setup! kb)

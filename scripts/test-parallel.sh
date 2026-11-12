@@ -77,6 +77,15 @@ done
 durable=0
 case "${VAELII_TEST_BACKEND:-memory}" in disk-*) durable=1 ;; esac
 
+# A sharded suite holds one of the box's gate slots while its shards run (scripts/lib/slots.sh).
+# Under `lein gate`, gate.sh holds it and exports GATE_SLOT; any other run takes its own here,
+# before the shard count below reads the box.
+if [[ -z "${GATE_SLOT:-}" ]]; then
+  slot_cmd=(lein test-parallel "$selector"); [[ -n "$jobs" ]] && slot_cmd+=(--jobs "$jobs")
+  gate_slot_take "${slot_cmd[@]}" || exit $?
+  trap gate_slot_release EXIT
+fi
+
 # P-2 minus running vaelii JVMs (scripts/lib/slots.sh), floored at TEST_MIN_JOBS: an idle
 # REPL or server counts as a running JVM, and one shard takes the suite past 50 minutes.
 if [[ -z "$jobs" ]]; then

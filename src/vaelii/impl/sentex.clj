@@ -663,6 +663,50 @@
   'CxUniverse)
 (def dot-marker   '.)
 
+(defn rest-marker?
+  "Does `xs`, a list or a suffix of one, open a dotted rest: the dot marker, then one
+  variable, then nothing?  A `.` in any other place is refused (`dot-problem`)."
+  [xs]
+  (and (sequential? xs) (= dot-marker (first xs)) (variable? (second xs)) (nil? (nnext xs))))
+
+(defn dotted?
+  "Is `form` a dotted rest pattern, `(?pred . ?args)` or `(rel A . ?rest)`: a list that
+  ends in the dot marker and one variable?"
+  [form]
+  (and (sequential? form)
+       (loop [s (seq form)]
+         (cond (nil? s)                  false
+               (not= dot-marker (first s)) (recur (next s))
+               (rest-marker? s)          true
+               :else                     (recur (next s))))))
+
+(defn positional
+  "The elements of `form` before its rest marker, or all of them when it is not dotted."
+  [form]
+  (if (dotted? form) (drop-last 2 form) form))
+
+(defn misplaced-dot
+  "The first list in `form`, depth-first, that holds a `.` other than its rest marker,
+  or nil when every `.` in it opens a rest (`rest-marker?`)."
+  [form]
+  (when (sequential? form)
+    (loop [s (seq form)]
+      (cond (nil? s)                    (some misplaced-dot form)
+            (not= dot-marker (first s)) (recur (next s))
+            (rest-marker? s)            (some misplaced-dot form)
+            :else                       form))))
+
+(defn dot-problem
+  "The `:shape` problem a sentence or goal holding a misplaced `.` is refused with, under
+  key `k` (`:sentence` or `:goal`), or nil.  `.` is the rest marker's syntax and names no
+  term, so the write, import and read entry points refuse it whatever `:naming` says."
+  [k form]
+  (when-let [m (misplaced-dot form)]
+    {:type :shape k form :misplaced-dot m
+     :message (str "'.' in " (pr-str m) " is not a rest marker: a '.' is legal only"
+                   " before a list's last element, and only when that element is a"
+                   " variable, as in (?pred . ?args)")}))
+
 ;; ---- sentex handles: a stored sentex as a term --------------------------
 ;; A handle is `(sentexHandle <id>)` — the term form of a stored sentex's integer
 ;; handle, so a *meta-sentex* (`exceptWhen`, `except`) can name another sentex as an
@@ -817,6 +861,16 @@
   "The memberships that release a relation from one exact length."
   '#{variable_arity variable_arity_predicate variable_arity_function})
 
+(defn fact-shape
+  "`[f n]` for a record `sx` holding a positive fact of `n` arguments with a plain symbol
+  functor, else nil.  A sentence about to be written is asked as `{:sentence s}`."
+  [sx]
+  (let [s (:sentence sx)]
+    (when (and (nil? (:antecedent sx)) (seq? s) (<= 2 (count s)))
+      (let [f (first s)]
+        (when (and (plain-symbol? f) (not= not-functor f))
+          [f (dec (count s))])))))
+
 (def arity-binding-functors
   "The functors of the facts `arity-binding` answers a length binding for."
   (into '#{arity arityMin} cat [(keys exact-arity-classes) variable-arity-classes]))
@@ -836,6 +890,12 @@
           (and (= 3 n) (= 'arityMin f) (integer? v) (pos? v)) [p :min v]
           (and (= 2 n) (exact-arity-classes f))               [p :exact (exact-arity-classes f)]
           (and (= 2 n) (variable-arity-classes f))            [p :var nil])))))
+
+(defn fact-arity-binding
+  "`arity-binding` of the sentence of a record `sx` holding a fact, else nil."
+  [sx]
+  (when (nil? (:antecedent sx))
+    (arity-binding (:sentence sx))))
 
 (defn implies?
   "Is `form` a rule form `(implies <ante> <conseq>)`?  Arity checked: an `implies` at
@@ -969,6 +1029,29 @@
   `(lessThan ?a ?b)` + `(lessThan ?b ?c)` ⇒ `(lessThan ?a ?b ?c)`."
   '#{lessThan})
 
+(def structure-constructors
+  "The data-structure constructors and the kind of structure each builds."
+  '{ListFn :list MultisetFn :multiset SetFn :set MapFn :map})
+
+(def structure-relations
+  "The relations over a structure term, the structure last and the outputs first:
+  `(elementOf ?x ?s)`, `(cardinalityOf ?n ?s)`, `(multiplicityOf ?n ?x ?s)` and
+  `(valueAt ?v ?k ?s)`, with the number of leading outputs each.  `provers/StructureProver`
+  computes them and the corresponding predicates, so both are deferred."
+  '{elementOf 1 cardinalityOf 1 multiplicityOf 2 valueAt 2})
+
+(def structure-predicates
+  "Each constructor's corresponding predicate, the structure first: `(setOf ?set .
+  ?elements)` holds when `?set` is `(SetFn . ?elements)`, and `(entryOf ?entry ?key
+  ?value)` when `?entry` is `(EntryFn ?key ?value)`."
+  '{listOf ListFn multisetOf MultisetFn setOf SetFn mapOf MapFn entryOf EntryFn})
+
+(def structure-functions
+  "The functions whose open application a rule or a goal reads through its corresponding
+  predicate rather than matches as written (docs/nat.md, \"A data structure is a
+  structural term\")."
+  (set (vals structure-predicates)))
+
 (def deferred-predicates
   "Predicates that *consume* bindings rather than produce them: evaluable tests and
   computations.  Antecedent order is operational for these, so canonical ordering keeps them
@@ -988,11 +1071,13 @@
   - `matchesPattern` and the value kinds (`integer`, `string`, `number`, `boolean`,
     `keyword`, `character`) are computed by `EvaluableProver` from ground arguments.  A value
     kind of a constant or a compound is read from the store (`provers/term-value-kind-goal?`)."
-  (into '#{evaluate lessThan greaterThan different unknown matchesPattern
-           integer string number boolean keyword character
-           sameQuantity quantityLessThan quantityGreaterThan
-           quantityLessThanOrEqual quantityGreaterThanOrEqual}
-        (keys aggregate-functors)))
+  (-> '#{evaluate lessThan greaterThan different unknown matchesPattern
+         integer string number boolean keyword character
+         sameQuantity quantityLessThan quantityGreaterThan
+         quantityLessThanOrEqual quantityGreaterThanOrEqual}
+      (into (keys aggregate-functors))
+      (into (keys structure-relations))
+      (into (keys structure-predicates))))
 
 (defn deferred-literal?
   "Is this literal one of the deferred (evaluable) ones?  Public because the storage
@@ -1118,25 +1203,43 @@
   "How many *leading* arguments of a deferred literal the computation writes rather
   than reads.  `(evaluate ?sum (+ 1 2))` fills in its first argument from the rest, and
   an aggregate fills in its `?n`; every other deferred predicate is a pure test, so it
-  reads all of them."
-  (into '{evaluate 1} (map (fn [f] [f 1])) (keys aggregate-functors)))
+  reads all of them.  A structure relation writes its leading outputs, and a corresponding
+  predicate writes the structure it builds from the elements."
+  (-> '{evaluate 1}
+      (into (map (fn [f] [f 1])) (keys aggregate-functors))
+      (into structure-relations)
+      (into (map (fn [f] [f 1])) (keys structure-predicates))))
+
+(defn- reads-structure?
+  "Does corresponding-predicate literal `g` run the other way under the variables `bound`:
+  its structure's variables all bound and its elements' not, so it reads the elements?"
+  [g bound]
+  (and (contains? structure-predicates (first g))
+       (every? bound (form-vars (second g)))
+       (not (every? bound (mapcat form-vars (nnext g))))))
 
 (defn deferred-output-vars
   "The variables a deferred literal **binds** — `evaluate`'s first argument, an
-  aggregate's `?n`, and nothing at all for a pure test like `lessThan` or `different`."
-  [g]
-  (if (sequential? g)
-    (into #{} (mapcat form-vars) (take (get deferred-output-arity (first g) 0) (rest g)))
-    #{}))
+  aggregate's `?n`, and nothing at all for a pure test like `lessThan` or `different`.
+  Under `bound`, a corresponding predicate whose structure is bound binds its elements."
+  ([g] (deferred-output-vars g #{}))
+  ([g bound]
+   (cond
+     (not (sequential? g))      #{}
+     (reads-structure? g bound) (into #{} (mapcat form-vars) (nnext g))
+     :else (into #{} (mapcat form-vars) (take (get deferred-output-arity (first g) 0) (rest g))))))
 
 (defn deferred-input-vars
   "The variables a deferred literal must have bound before it can run: `free-vars` for
-  `unknown` and the aggregates, and every argument it does not write for the rest."
-  [g]
-  (cond
-    (not (sequential? g))            #{}
-    (or (unknown? g) (aggregate? g)) (free-vars g)
-    :else (into #{} (mapcat form-vars) (drop (get deferred-output-arity (first g) 0) (rest g)))))
+  `unknown` and the aggregates, and every argument it does not write for the rest.  Under
+  `bound`, a corresponding predicate whose structure is bound reads only the structure."
+  ([g] (deferred-input-vars g #{}))
+  ([g bound]
+   (cond
+     (not (sequential? g))            #{}
+     (or (unknown? g) (aggregate? g)) (free-vars g)
+     (reads-structure? g bound)       (set (form-vars (second g)))
+     :else (into #{} (mapcat form-vars) (drop (get deferred-output-arity (first g) 0) (rest g))))))
 
 (defn census-bound-vars
   "The variables an aggregate's census `body` binds **for itself**: what its generator
@@ -1395,12 +1498,12 @@
                     (do (closed-check a
                                       (if (aggregate? a)
                                         (aggregate-inputs a)
-                                        (deferred-input-vars a))
+                                        (deferred-input-vars a bound))
                                       bound
                                       (cond (unknown? a)   :unknown
                                             (aggregate? a) :aggregate
                                             :else          :deferred))
-                        (into bound (deferred-output-vars a)))
+                        (into bound (deferred-output-vars a bound)))
                     bound))
                 matched
                 antes)))
@@ -1412,7 +1515,7 @@
   arguments are a splice, not a positional list."
   [form]
   (if-let [sib (and (sequential? form) (seq form)
-                    (not-any? #(= dot-marker %) form)
+                    (not (dotted? form))
                     (comparison-siblings (first form)))]
     (apply list sib (reverse (rest form)))
     form))
@@ -1590,7 +1693,7 @@
   "A binary literal whose predicate is declared symmetric (and not a dotted form)."
   [form symmetric?]
   (boolean (and (sequential? form) (= 3 (count form)) (symbol? (first form))
-                (not-any? #(= dot-marker %) form)
+                (not (dotted? form))
                 (symmetric? (first form)))))
 
 (defn- sort-symmetric-args
@@ -1678,7 +1781,7 @@
     (let [args  (vec (rest form))
           comps (commuting-components (groups-of (first form) (count args)) (count args))]
       (if-not (and comps
-                   (not-any? #(= dot-marker %) form)
+                   (not (dotted? form))
                    (every? sortable-term? args))
         form
         (let [args' (reduce (fn [acc positions]
@@ -1740,7 +1843,7 @@
   [form comps]
   (if-not (and (sequential? form) (symbol? (first form)) (next form)
                comps
-               (not-any? #(= dot-marker %) form))
+               (not (dotted? form)))
     [form]
     (let [args     (vec (rest form))
           comps    (filterv #(every? (fn [p] (<= p (count args))) %) comps)
@@ -1863,31 +1966,36 @@
 
 (defn- canonical-term
   "A compound below the literal in canonical form: `permute-args`' order, and for a ground
-  application of a function the term marks name, three arms more.  An `associative?`
+  application of a function the term marks name, four arms more.  An `associative?`
   functor's arguments that apply it are spliced in, before the sort.  An `idempotent?`
   one drops an argument equal to its neighbour after the sort when it is associative too,
   and otherwise only collapses an application whose arguments are all equal.  A functor
   for which `meet-order` gives a comparator drops an argument another lies below
-  (`absorb-args`).  An idempotent or meet application left with one argument is that
-  argument."
-  [form {:keys [associative? idempotent? meet-order] :as marks}]
+  (`absorb-args`).  One `distinct-from` gives `n` drops a repeat from position `n` on and
+  keeps its functor; an idempotent or meet one left with one argument is that argument."
+  [form {:keys [associative? idempotent? meet-order distinct-from] :as marks}]
   (let [f      (first form)
         a?     (boolean (and associative? (associative? f)))
         i?     (boolean (and idempotent? (idempotent? f)))
-        below? (when meet-order (meet-order f))]
-    (if-not (and (or a? i? below?) (symbol? f) (next form)
-                 (not-any? #(= dot-marker %) form)
+        below? (when meet-order (meet-order f))
+        from   (when distinct-from (distinct-from f))]
+    (if-not (and (or a? i? below? from) (symbol? f) (next form)
+                 (not (dotted? form))
                  (every? ground-term? (rest form)))
       (permute-args form marks)
-      (let [spliced (if a?
-                      (mapcat #(if (and (seq? %) (= f (first %))) (rest %) [%]) (rest form))
-                      (rest form))
-            sorted  (rest (permute-args (apply list f spliced) marks))
-            deduped (cond (not i?)              sorted
-                          a?                    (dedupe sorted)
-                          (apply = sorted)      [(first sorted)]
-                          :else                 sorted)
-            args    (if below? (absorb-args deduped below?) deduped)]
+      (let [spliced  (if a?
+                       (mapcat #(if (and (seq? %) (= f (first %))) (rest %) [%]) (rest form))
+                       (rest form))
+            sorted   (rest (permute-args (apply list f spliced) marks))
+            deduped  (cond (not i?)              sorted
+                           a?                    (dedupe sorted)
+                           (apply = sorted)      [(first sorted)]
+                           :else                 sorted)
+            absorbed (if below? (absorb-args deduped below?) deduped)
+            args     (if from
+                       (let [k (dec (long from))]
+                         (concat (take k absorbed) (distinct (drop k absorbed))))
+                       absorbed)]
         (cond
           (and (= 1 (count args)) (or i? below?)) (first args)
           (= args (rest form))                    form
@@ -2020,6 +2128,34 @@
       (mapv #(list not-functor %) (walk (second form)))
       (walk form))))
 
+(defn reader-arrangements
+  "Every spelling of literal `form` with each compound below the literal that applies a
+  functor in the set `fs`, ground or open, in every argument order its marks allow
+  (`every-order`), innermost first: the spellings a reader that does not believe those
+  marks may hold a fact in.  The literal's own arguments keep their order, and the walk
+  descends where `canonical-args` does.  `form` first, and `[form]` when no compound
+  below it applies one."
+  [form {:keys [opaque?] :as marks} fs]
+  (letfn [(compound? [t] (and (seq? t) (seq t) (not (held-as-written? t opaque?))))
+          (args-of [t]
+            (let [alts (into [] (map-indexed
+                                 (fn [i a] (if (and (compound? a) (not ((mention-at-fn marks) (first t) (inc i))))
+                                             (walk a)
+                                             [a])))
+                             (rest t))]
+              (if (every? #(= 1 (count %)) alts)
+                [t]
+                (mapv #(apply list (first t) %) (cartesian alts)))))
+          (walk [t]
+            (if (contains? fs (first t))
+              (into [] (comp (mapcat #(every-order % marks)) (distinct)) (args-of t))
+              (args-of t)))]
+    (cond
+      (and (seq? form) (= not-functor (first form)) (= 2 (count form)) (compound? (second form)))
+      (mapv #(list not-functor %) (into [] (distinct) (args-of (second form))))
+      (compound? form) (into [] (distinct) (args-of form))
+      :else [form])))
+
 (defn sort-compounds
   "`form` with every compound below it in the argument order the store gives a ground
   one (`canonical-args`), and its own arguments as written.  A pattern's ground subterms
@@ -2046,9 +2182,9 @@
   groups it declares at a given arity, `:opaque?`, whether an application of a functor
   keeps its arguments as written, `:mention-at?`, whether a functor's argument position is
   kept as written, and the term marks `canonical-term` reads below the literal
-  (`:associative?`, `:idempotent?`, `:meet-order`).  Each defaults to answering
-  nothing, so a KB-free construction reorders no arguments.  The compounds below the
-  literal are put in canonical form first (`canonical-args`), then the literal's own
+  (`:associative?`, `:idempotent?`, `:meet-order`, `:distinct-from`).  Each defaults to
+  answering nothing, so a KB-free construction reorders no arguments.  The compounds below
+  the literal are put in canonical form first (`canonical-args`), then the literal's own
   arguments in order."
   [form marks]
   (-> form elim-double-not fold-comparison sort-naf-conjuncts
@@ -2063,7 +2199,7 @@
   a branch (a<b, a<c) is left alone."
   [lits]
   (let [chain? #(and (sequential? %) (contains? chained-comparisons (first %))
-                     (>= (count %) 3) (not-any? (fn [t] (= dot-marker t)) %))
+                     (>= (count %) 3) (not (dotted? %)))
         chains (filterv chain? lits)
         others (filterv (complement chain?) lits)]
     (if (< (count chains) 2)
@@ -2547,17 +2683,17 @@
 
   `opts` may carry the canonicalization reads (`normalize-literal`): `:symmetric?`,
   `:groups-of`, `:opaque?`, `:mention-at?`, `(fn [functor position])`, and the term marks
-  `:associative?`, `:idempotent?` and `:meet-order`.  The sorts apply to the literal and
-  every compound below it, the term marks to the compounds below it (`canonical-term`).
-  Without them no predicate commutes anything."
+  `:associative?`, `:idempotent?`, `:meet-order` and `:distinct-from`.  The sorts apply to
+  the literal and every compound below it, the term marks to the compounds below it
+  (`canonical-term`).  Without them no predicate commutes anything."
   ([sentence] (sentex sentence 'default))
   ([sentence context] (sentex sentence context nil))
   ([sentence context {:keys [symmetric? groups-of opaque? mention-at? associative? idempotent?
-                             meet-order]
-                      :or   {symmetric?   (constantly false) groups-of   (constantly nil)
-                             opaque?      (constantly false) mention-at? (constantly false)
-                             associative? (constantly false) idempotent? (constantly false)
-                             meet-order   (constantly nil)}
+                             meet-order distinct-from]
+                      :or   {symmetric?    (constantly false) groups-of   (constantly nil)
+                             opaque?       (constantly false) mention-at? (constantly false)
+                             associative?  (constantly false) idempotent? (constantly false)
+                             meet-order    (constantly nil)   distinct-from (constantly nil)}
                       :as   _opts}]
    ;; A `(exceptWhen <query> (sentexHandle H))` meta-sentex is stored **verbatim** as a
    ;; Literal — `peel-rule-wrapper` would otherwise strip the exceptWhen and drop the
@@ -2570,7 +2706,7 @@
      (constructed-sentex sentence context
                          {:symmetric? symmetric? :groups-of groups-of :opaque? opaque?
                           :mention-at? mention-at? :associative? associative? :idempotent? idempotent?
-                          :meet-order meet-order}))))
+                          :meet-order meet-order :distinct-from distinct-from}))))
 
 (defn body
   "The positive atomic form a sentex asserts (a fact's sentence without its `not`);
@@ -2989,6 +3125,13 @@
       [form])
     [form]))
 
+(defn- term-children
+  "The subterms of the compound `form` the term index descends into: all of them, less
+  the head of a compound `not` / `and` / `implies` heads, as in a rule quoted in an
+  argument (a generator's consequent)."
+  [form]
+  (cond-> form (contains? '#{not and implies} (first form)) rest))
+
 (defn content-forms
   "The connective-free literals a sentex is indexed and searchable by: a rule's
   antecedents and consequent, or a fact's positive body — each with its structural
@@ -3062,35 +3205,40 @@
 
 (defn- keyed-subterms
   "The subterms of one content literal that earn their own term-index key: every atom, at
-  every depth, and each compound sitting at `floor` or deeper (`d` is `form`'s own depth,
-  0 for the literal).  A compound shallower than the floor is still *descended into* — the
-  floor drops its key, never its contents — so the atoms are the same set at every setting."
+  every depth (`term-children`), and each compound sitting at `floor` or deeper (`d` is
+  `form`'s own depth, 0 for the literal).  A compound shallower than the floor is still
+  *descended into* — the floor drops its key, never its contents — so the atoms are the
+  same set at every setting."
   [form ^long d ^long floor]
   (if (sequential? form)
-    (let [inner (mapcat #(keyed-subterms % (inc d) floor) form)]
+    (let [inner (mapcat #(keyed-subterms % (inc d) floor) (term-children form))]
       (if (>= d floor) (cons form inner) inner))
     (list form)))
 
 (defn index-terms
   "The distinct terms that make a sentex findable: the atoms of its connective-free
   content at every depth, plus each ground compound between `*min-indexed-depth*` and
-  `max-indexed-compound`.  The sentex's context is added separately by the index."
+  `max-indexed-compound`.  The dot marker of a rest pattern is syntax and names no term.
+  The sentex's context is added separately by the index."
   [sentex]
   (let [floor (long *min-indexed-depth*)]
     (into #{} (comp (mapcat #(keyed-subterms % 0 floor))
                     (filter indexable-term?)
+                    (remove #{dot-marker})
                     (remove oversized-compound?))
           (content-forms sentex))))
 
 (defn probe-atoms
-  "The keys a **compound** probe narrows by: the indexable atoms it contains.  Every
-  sentex holding the compound holds all of them — atoms are keyed at every depth under
-  every bound — so their intersection is a superset of the answer, whatever key the
-  compound itself does or does not earn.  A compound holding no indexable atom — no symbol
-  anywhere in it — has nothing to narrow by and probes by its own key: at the default floor
-  it can only occur nested, which is where it has one."
+  "The keys a **compound** probe narrows by: the indexable atoms it contains, read as
+  `keyed-subterms` reads them (`term-children`).  Every sentex holding the compound holds
+  all of them — atoms are keyed at every depth under every bound — so their intersection
+  is a superset of the answer, whatever key the compound itself does or does not earn.  A
+  compound holding no indexable atom — no symbol anywhere in it — has nothing to narrow by
+  and probes by its own key: at the default floor it can only occur nested, which is where
+  it has one."
   [term]
-  (let [as (into [] (comp (remove sequential?) (filter indexable-term?)) (subterms term))]
+  (let [atoms (fn atoms [t] (if (sequential? t) (mapcat atoms (term-children t)) [t]))
+        as    (into [] (filter indexable-term?) (atoms term))]
     (if (seq as) as [term])))
 
 (defn mentions?

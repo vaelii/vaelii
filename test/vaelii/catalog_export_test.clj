@@ -318,7 +318,7 @@
               (is (= :still-loading (:type (ex-data e)))))
             (finally
               (deliver latch true)
-              (jobs/wait job 30000)))))
+              (jobs/wait job)))))
       (is (false? (cat/write-blocked? kb)) "the writer let go, so the refusal was its doing")
       (is (nil? (jobs/latest :export)) "and none of the three started a walk"))
     (cat/unload! "mine")
@@ -351,7 +351,7 @@
       (cat/register! "mine" "My KB" kb {:source (cat/source "starter")})
       (let [job (cat/sync-loaded!)]
         (is (some? job))
-        (jobs/wait job (tu/load-budget-ms))
+        (jobs/wait job)
         (is (= {:added 0 :removed 1 :refused []} (:sync (cat/entry "mine"))))
         (is (nil? (v/handle-of kb retired-note 'CxUniverse))))
       (cat/unload! "mine")
@@ -381,13 +381,13 @@
         (swap! @#'cat/state assoc-in [:entries "mine" :params] {:sync? true})
         (let [job (cat/sync-loaded!)]
           (is (some? job))
-          (jobs/wait job (tu/load-budget-ms)))
+          (jobs/wait job))
         (is (= {:added 0 :removed 1 :refused []} (:sync (cat/entry "mine"))))
         (is (not (retired))))
       (testing "sync-entry! brings it current on purpose, whatever its load asked"
         (swap! @#'cat/state assoc-in [:entries "mine" :params] {})
         (v/assert kb retired-note 'CxUniverse)
-        (jobs/wait (cat/sync-entry! "mine") (tu/load-budget-ms))
+        (jobs/wait (cat/sync-entry! "mine"))
         (is (= {:added 0 :removed 1 :forwarded 0 :refused []} (:sync (cat/entry "mine"))))
         (is (not (retired))))
       (is (= :unknown-source (:type (ex-data (try (cat/sync-entry! "nobody")

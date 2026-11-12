@@ -62,7 +62,7 @@
         (is (v/ask? kb (list grounded Opus) CxNeg))))))
 
 (deftest reindex-rebuilds-the-negated-antecedent-key
-  (tu/with-cleared-kb [kb tu/fresh]
+  (tu/with-cleared-kb [kb tu/isolated-fresh]
     (tu/with-terms [bird flies grounded Tweety]
       (let [rh (v/assert-rule kb [(list bird '?x) (list 'not (list flies '?x))]
                               (list grounded '?x) 'CxUniverse {:direction :forward})]

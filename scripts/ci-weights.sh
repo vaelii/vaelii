@@ -4,6 +4,10 @@
 #   scripts/ci-weights.sh <run-id> [--repo owner/name]      # both legs, from a run's logs
 #   scripts/ci-weights.sh --from DIR --leg disk|memory --out FILE [--prev FILE]
 #                                                           # one leg, from timing rows
+#   scripts/ci-weights.sh --from DIR --leg disk|memory --check BASELINE
+#                                                           # one leg, judged against BASELINE
+#   scripts/ci-weights.sh --from DIR --leg disk|memory --list BASELINE
+#                                                           # the namespaces --check would name
 #
 # scripts/ci-shard.sh packs the shards of .github/workflows/test.yml by measured
 # namespace time, one weights file per leg: scripts/ci-test-weights-disk.tsv and
@@ -29,6 +33,27 @@
 # namespace whose every test is `^:slow` is weighted at what it costs the
 # `:default` selector instead of at the mean.  A namespace added to the tree since
 # the run gets no line at all, and scripts/ci-shard.sh gives it the mean.
+#
+# THE --check FORM judges a leg's timings against BASELINE, the weights develop's
+# newest push wrote, and prints a Markdown report.  A runner VM runs every namespace it holds
+# at one speed, which ranged 0.6x to 1.4x of the median over the green runs in
+# 42343717621..42631334242.  A shard's speed is therefore the median, over its
+# namespaces weighted SPEED_FLOOR s or more, of measured / baseline, and the leg's
+# speed is the median of its shards' speeds.  The check exits 1 on a namespace
+# finding and 3 on a leg finding alone:
+#   - a namespace weighted NS_FLOOR s or more took NS_SLOWER times its shard's speed
+#     and NS_EXCESS s more than that speed predicts, so that namespace slowed;
+#   - the leg's speed is LEG_SLOWER or more, so every namespace slowed together.
+# Over 16 of those runs the leg's speed ranged 0.69 to 1.06 and no namespace
+# crossed both namespace limits.  Over the 8 runs of two branches whose suite cost
+# 2x to 3x develop's, every run on each leg crossed at least one limit.  A
+# namespace BASELINE does not name is not judged.
+#
+# THE --list FORM prints the namespaces the --check form's namespace finding names,
+# one per line, over whichever shard files DIR holds: a namespace is judged at its
+# own shard's speed, so one shard's file is enough.  A shard of
+# .github/workflows/test.yml runs those namespaces again (scripts/lib/ns-timings.sh,
+# `ns_timings_rerun`) before it uploads its timings.
 { # one brace group, read whole before it runs: scripts/lint-shellcheck.sh says why
 set -uo pipefail
 
@@ -36,10 +61,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 
 REPO="vaelii/vaelii"
-RUN=""; FROM=""; LEG=""; OUT=""; PREV=""
+RUN=""; FROM=""; LEG=""; OUT=""; PREV=""; CHECK=""; LIST=""
+SPEED_FLOOR=2 LEG_SLOWER=1.25 NS_FLOOR=5 NS_SLOWER=2 NS_EXCESS=60
 
 usage() {
-  sed -n '4,6p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '4,10p' "$0" | sed 's/^# \{0,1\}//' >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -49,6 +75,8 @@ while [[ $# -gt 0 ]]; do
     --leg)  LEG="${2:?--leg needs disk or memory}"; shift 2 ;;
     --out)  OUT="${2:?--out needs a file}"; shift 2 ;;
     --prev) PREV="${2:?--prev needs a file}"; shift 2 ;;
+    --check) CHECK="${2:?--check needs a file}"; shift 2 ;;
+    --list) LIST="${2:?--list needs a file}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "ci-weights: unknown option $1" >&2; usage; exit 2 ;;
     *)  RUN="$1"; shift ;;
@@ -90,9 +118,74 @@ HDR
   echo "ci-weights: $out — $count namespaces, ${total}s, from $source" >&2
 }
 
+# check_leg <leg> <dir> <baseline> [list]: the --check form's report on stdout, its
+# exit 1 on a namespace finding and 3 on a leg finding alone; with `list`, the
+# namespace finding's names and exit 0.  The insertion sort keeps to POSIX awk, which
+# has no asort.
+check_leg() {
+  awk -F'\t' -v leg="$1" -v baseline="$3" -v list="${4:-}" -v speed_floor="$SPEED_FLOOR" \
+      -v leg_slower="$LEG_SLOWER" -v ns_floor="$NS_FLOOR" -v ns_slower="$NS_SLOWER" \
+      -v ns_excess="$NS_EXCESS" '
+    function median(a, n,    i, j, x) {
+      for (i = 2; i <= n; i++) {
+        x = a[i]
+        for (j = i - 1; j >= 1 && a[j] > x; j--) a[j + 1] = a[j]
+        a[j + 1] = x
+      }
+      return (n % 2) ? a[(n + 1) / 2] : (a[n / 2] + a[n / 2 + 1]) / 2
+    }
+    FILENAME == baseline { if ($1 != "" && $1 !~ /^#/) w[$1] = $2 + 0; next }
+    $1 == "" { next }
+    { s = FILENAME; sub(/^.*\//, "", s); sub(/-of-.*$/, "", s)
+      if (!(s in rows)) shard[++shards] = s
+      n = ++rows[s]; ns[s, n] = $1; t[s, n] = $2 + 0 }
+    END {
+      for (i = 1; i <= shards; i++) {
+        s = shard[i]; k = 0
+        for (j = 1; j <= rows[s]; j++)
+          if ((ns[s, j] in w) && w[ns[s, j]] >= speed_floor) r[++k] = t[s, j] / w[ns[s, j]]
+        speed[s] = k ? median(r, k) : 1
+        all[i] = speed[s]
+      }
+      legspeed = median(all, shards)
+      if (!list) {
+        printf "### %s leg against %s\n\n", leg, baseline
+        printf "Leg speed %.2f; the check fails at %.2f.\n\n", legspeed, leg_slower
+      }
+      for (i = 1; i <= shards; i++) {
+        s = shard[i]
+        for (j = 1; j <= rows[s]; j++) {
+          if (!(ns[s, j] in w) || w[ns[s, j]] < ns_floor) continue
+          expect = w[ns[s, j]] * speed[s]
+          if (t[s, j] >= ns_slower * expect && t[s, j] - expect >= ns_excess) {
+            if (list) { print ns[s, j]; continue }
+            if (!found++)
+              print "| namespace | shard | shard speed | baseline s | expected s | measured s | ratio |\n|---|---|---|---|---|---|---|"
+            printf "| %s | %s | %.2f | %.0f | %.0f | %.0f | %.1fx |\n",
+                   ns[s, j], s, speed[s], w[ns[s, j]], expect, t[s, j], t[s, j] / expect
+          }
+        }
+      }
+      if (list) exit 0
+      if (found) printf "\n%d namespace(s) took %sx or more of the expected time, and %d s or more beyond it.\n",
+                        found, ns_slower, ns_excess
+      slow = legspeed >= leg_slower
+      printf "\nci-weights: %s check %s\n", leg, found ? "FAILED" : slow ? "found the leg slow" : "passed"
+      exit (found ? 1 : (slow ? 3 : 0))
+    }' "$3" "$2"/*-of-*.tsv
+}
+
 if [[ -n "$FROM" ]]; then
-  [[ -n "$LEG" && -n "$OUT" && -z "$RUN" ]] || { usage; exit 2; }
+  [[ -n "$LEG" && -z "$RUN" ]] || { usage; exit 2; }
+  [[ ( -n "$OUT" && -z "$CHECK$LIST" ) || ( -z "$OUT$PREV" && -n "$CHECK" && -z "$LIST" ) \
+     || ( -z "$OUT$PREV$CHECK" && -n "$LIST" ) ]] || { usage; exit 2; }
   case "$LEG" in disk|memory) ;; *) echo "ci-weights: --leg is disk or memory, not $LEG" >&2; exit 2 ;; esac
+  if [[ -n "$LIST" ]]; then
+    [[ -f "$LIST" ]] || { echo "ci-weights: --list $LIST is not a file" >&2; exit 1; }
+    compgen -G "$FROM/*-of-*.tsv" > /dev/null || { echo "ci-weights: no <shard>-of-<total>.tsv under $FROM" >&2; exit 1; }
+    check_leg "$LEG" "$FROM" "$LIST" list
+    exit
+  fi
   files=$(cd "$FROM" 2>/dev/null && ls -- *-of-*.tsv 2>/dev/null)
   of=$(sed -n 's/^[0-9]*-of-\([0-9]*\)\.tsv$/\1/p' <<< "$files" | sort -u)
   complete=0
@@ -103,6 +196,11 @@ if [[ -n "$FROM" ]]; then
   if [[ $complete -ne 1 ]]; then
     echo "ci-weights: $FROM does not hold one <shard>-of-<total>.tsv per shard: $(tr "\n" " " <<< "$files")" >&2
     exit 1
+  fi
+  if [[ -n "$CHECK" ]]; then
+    [[ -f "$CHECK" ]] || { echo "ci-weights: --check $CHECK is not a file" >&2; exit 1; }
+    check_leg "$LEG" "$FROM" "$CHECK"
+    exit
   fi
   mkdir -p "$(dirname "$OUT")" || exit 1
   # A namespace appears in one shard's rows only; the last row wins if one repeats.
@@ -126,7 +224,7 @@ if [[ -n "$FROM" ]]; then
   exit 0
 fi
 
-[[ -n "$RUN" && -z "$LEG$OUT$PREV" ]] || { usage; exit 2; }
+[[ -n "$RUN" && -z "$LEG$OUT$PREV$CHECK$LIST" ]] || { usage; exit 2; }
 command -v gh >/dev/null 2>&1 || { echo "ci-weights: gh not found on PATH" >&2; exit 127; }
 
 # One `gh` call resolves the job ids; the logs come one job at a time because a

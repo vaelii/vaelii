@@ -2,8 +2,8 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.seed-test
   "Ontology KB files: declarative KB content held as plain text under resources/kb/.
-  An upper file is named for its domain and loads into CxUniverse; a middle file is named
-  for its context.  Every file present is discovered and loaded on kb start
+  An upper file is named for its domain (but for the vocabulary and the interface rules)
+  and loads into CxUniverse; a middle file is named for its context.  Every file present is discovered and loaded on kb start
   (vaelii.host.starter)."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
@@ -11,7 +11,7 @@
             [vaelii.host.seed :as seed]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 (deftest the-kb-files-are-on-the-classpath
   (testing "the vocabulary file is read as a non-empty list of sentences"
@@ -26,9 +26,11 @@
 
 (deftest every-file-in-a-layer-is-discovered
   ;; the point of layer discovery: a KB is added by dropping a file, no code change
-  (testing "upper holds the domain files, sorted, and the loader reads core.txt first"
-    (is (= ["abstract.txt" "core.txt" "life.txt" "measure.txt" "organism.txt"
-            "reflection.txt" "society.txt" "space.txt" "time.txt"]
+  (testing "upper holds the vocabulary, the interface rules and the domain files, sorted;
+             the loader reads core.txt first"
+    (is (= ["abstract.txt" "core.txt" "interface-rules.txt" "life.txt" "measure.txt"
+            "organism.txt" "reflection.txt" "society.txt" "space.txt" "structure.txt"
+            "time.txt"]
            (seed/layer-files "upper")))
     (is (= "core.txt" (first (core-context/upper-files)))))
   (testing "middle holds the theory contexts"
@@ -48,8 +50,8 @@
 
 (tu/deftest-kb a-sentence-refused-for-what-has-not-arrived-yet-is-retried
   ;; The blocks of a KB file run in natural sort order, so it cannot also be
-  ;; dependency-ordered: `(transitiveInArgInverse largerThan 1 tangiblePartOf)` is filed under
-  ;; `largerThan` and `(transitive tangiblePartOf)` under `tangiblePartOf`, and `l` sorts before `t`.
+  ;; dependency-ordered: `(transitiveInArgInverse typeLargerThan 1 tangiblePartOf)` is filed under
+  ;; `typeLargerThan` and `(transitive tangiblePartOf)` under `tangiblePartOf`, and `l` sorts before `t`.
   ;; The preservation's transitivity check reads the store, so in file order it is
   ;; refused — for where its author filed a sentence, which is not a property of the
   ;; knowledge.

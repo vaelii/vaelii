@@ -247,17 +247,17 @@
 
 (tu/deftest-kb the-shipped-reasoners-are-nameable-and-registrable-from-core
   (testing "the list covers the six algebras, the three quantitative reasoners, the
-            calendar clock, the instant-inclusion reader and the brave/cautious dilemma
-            reader"
+            calendar clock, the instant-inclusion and start-bound readers and the
+            brave/cautious dilemma reader"
     (is (= [:allen :brave-cautious :calendar :cardinal :distance :duration :includes-instant
-            :metric-time :point :rcc8 :relative :sign]
+            :metric-time :point :rcc8 :relative :sign :tightest-start-bound]
            (v/reasoners)))
     (is (= (set (map :calculus (v/calculi)))
            (into #{} (remove #{:duration :metric-time :sign :calendar :includes-instant
-                               :brave-cautious})
+                               :tightest-start-bound :brave-cautious})
                  (v/reasoners)))
         "every calculus is registrable, and the list adds the quantitative three, the
-         calendar and the inclusion reader, which are not relation algebras"))
+         calendar and the inclusion and start-bound readers, which are not relation algebras"))
   (testing "each name resolves to a prover value"
     (doseq [nm (v/reasoners)]
       (is (some? (v/reasoner nm)) (str nm))))

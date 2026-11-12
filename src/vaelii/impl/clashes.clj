@@ -8,6 +8,7 @@
   (:require [clojure.set :as set]
             [clojure.walk :as walk]
             [vaelii.impl.caches :as caches]
+            [vaelii.impl.capabilities :as cap]
             [vaelii.impl.decide :as decide]
             [vaelii.impl.decide.arity :as arity]
             [vaelii.impl.decide.inherited :as inherited]
@@ -81,6 +82,26 @@
                        (and (= b b') (= a a') (= c c') (= ts (hash-set t1 t2 t3)))))
                    (for [x ts y ts z ts] [x y z])))))
 
+(defn monotonic-climb-test
+  "`(fn [[sub super]])`: does `v` see a path of `genl` edges from `sub` to `super` whose
+  supporters `cls` (`res/holding-class`) reads `:monotonic`?  The `climb-ok?` of
+  `strict-separating-keys` that a separation belief holds is read under."
+  [tax cls v]
+  (fn [[sub super]] (some? (tax/reach-support tax :genl sub super v cls [:monotonic]))))
+
+(defn strict-separating-keys
+  "`tax/separating-keys` of `a` and `b` at `v`, off the routes (`tax/separation-routes`)
+  whose climbs from `a` and `b` to the separated pair `climb-ok?` accepts (docs/nmtms.md,
+  \"The clash reports\")."
+  [tax a b v climb-ok?]
+  (let [ks (tax/separating-keys tax a b v)]
+    (into #{}
+          (comp (filter (fn [{[x y] :pair links :links}]
+                          (every? climb-ok? (filter #{[a x] [b y]} links))))
+                (mapcat :keys)
+                (filter ks))
+          (tax/separation-routes tax a b))))
+
 (defn- ground-keys
   "The flat-cache keys a definitional conviction of the member sentences `sens` reads at
   vantage `v`, found from the members' shape: the separations of two memberships of one
@@ -88,13 +109,13 @@
   position; the `asymmetric` and `anti_symmetric` marks over a converse pair, the
   `irreflexive` mark over a self tuple and the `anti_transitive` mark over a chain; the
   `negates` declarations over two tuples of one argument list, or over a lone tuple whose
-  functor is below both sides; the
-  covers whose every part a denial in `sens` rules out for the whole's member; and the
-  separations of the two types a lone `(orthogonal a b)` names, or a lone fact whose
-  functor is a `genl` of `orthogonal`.  A `genl` edge is no flat-cache entry, so an
-  `orthogonal` convicted through one alone reads nothing, as a `disjoint` over related
-  types does.  A shape no conviction has reads nothing."
-  [tax sens v]
+  functor is below both sides; the covers whose every part a denial in `sens` rules out
+  for the whole's member; and the separations of the two types a lone `(orthogonal a b)`
+  names, or a lone fact whose functor is a `genl` of `orthogonal`.  A `genl` edge is no
+  flat-cache entry, so an `orthogonal` convicted through one alone reads nothing, as a
+  `disjoint` over related types does.  A shape no conviction has reads nothing.
+  `climb-ok?` is as for `strict-separating-keys`."
+  [tax sens v climb-ok?]
   (let [pos    (filterv #(not (sx/negation? %)) sens)
         denied (mapv second (filter sx/negation? sens))
         args   #(vec (nm/args %))
@@ -109,7 +130,7 @@
                    n     (first diff)]
                (cond
                  (and (= 1 (nm/arity s)) (= (args s) (args t)) (not= (nm/functor s) (nm/functor t)))
-                 (tax/separating-keys tax (nm/functor s) (nm/functor t) v)
+                 (strict-separating-keys tax (nm/functor s) (nm/functor t) v climb-ok?)
 
                  (= 1 (count diff))
                  (concat (when (= 2 n (nm/arity s)) (marks [:functional]))
@@ -233,8 +254,11 @@
           tms  (reasoning/tms kb)
           recs (:records kb)
           sens (mapv :sentence (:sides r))
-          at   (fn [v] (mapcat #(tax/visible-supporters tax % v)
-                               (into (ground-keys tax sens v) (separated-cover-keys kb sens v))))]
+          cls  (delay (res/holding-class kb))
+          at   (fn [v]
+                 (mapcat #(tax/visible-supporters tax % v)
+                         (into (ground-keys tax sens v (monotonic-climb-test tax @cls v))
+                               (separated-cover-keys kb sens v))))]
       (->> (case (:kind r)
              :arity (mapcat #(:grounds (inert-binding kb (p/get-sentex recs %))) (:nogood r))
              (:negates-arity :negates-unary)
@@ -299,14 +323,16 @@
   discovery entry goes into `found-by` (`inherited/inherited-clashes`)."
   [kb found-by seen? hs]
   (let [tms  (reasoning/tms kb)
-        recs (:records kb)]
+        recs (:records kb)
+        live (filter #(and (jtms/in? tms %)
+                           (some (fn [j] (= exc/nogood-informant (:informant (jtms/justification tms j))))
+                                 (jtms/supports tms %)))
+                     hs)]
     (reduce (fn [acc h]
               (let [sx (p/get-sentex recs h)
                     s  (:sentence sx)
                     v  (:context sx)
-                    ms (when (and (seq? s) (= 'contradicts (first s)) (jtms/in? tms h)
-                                  (some #(= exc/nogood-informant (:informant (jtms/justification tms %)))
-                                        (jtms/supports tms h)))
+                    ms (when (and (seq? s) (= 'contradicts (first s)))
                          (into #{} (map sx/handle-id) (rest s)))
                     k  (when (and ms (not-any? #(jtms/superseded? tms %) ms))
                          (decide/placed-kind kb ms))]
@@ -316,7 +342,7 @@
                       (vswap! found-by assoc km (get (inherited/inherited-clashes kb) ms)))
                     (assoc-in acc [km v] (exc/verdict-at-reader kb ms v)))
                   acc)))
-            {} hs)))
+            {} (cap/hinting (cap/prefetcher recs) cap/recovery-hint-chunk live))))
 
 (defn- general
   "The members of the contexts `vs` that see no other member of `vs`."

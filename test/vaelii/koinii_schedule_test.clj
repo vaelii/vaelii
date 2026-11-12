@@ -41,7 +41,7 @@
             [vaelii.test-util :as tu]))
 
 (defn- schedule-kb []
-  (doto (tu/fresh) (tu/load-core!) (sa/load-speech-acts)
+  (doto (tu/empty-kb) (tu/load-core!) (sa/load-speech-acts)
         (v/assert '(unreifiable_function DatetimeFn) 'CxUniverse)))
 
 ;; Majority resolution requires the :proof-tier identity policy and counts only attested
@@ -76,63 +76,63 @@
 ;; ── the argument: a date proposed, an objection, a 1-1 split, a tiebreaker ──
 
 (deftest a-team-argues-over-a-date-and-a-majority-settles-it
-  (let [kb   (schedule-kb)
-        ada  (ch/join (ch/local kb) 'CxSchedule 'AgentAda)   ; proposes the 10th
-        bo   (ch/join (ch/local kb) 'CxSchedule 'AgentBo)    ; away the 10th
-        cyra (ch/join (ch/local kb) 'CxSchedule 'AgentCyra)  ; the tiebreaker
-        proposal (list 'meetsOn 'Review tue)
-        ph   (ch/assert ada proposal)]                      ; Ada: "let's meet Tuesday the 10th"
-    (ch/justify ada 'FallsInThisSprint ph)
+  (tu/with-cleared-kb [kb #(schedule-kb)]
+    (let [ada  (ch/join (ch/local kb) 'CxSchedule 'AgentAda)   ; proposes the 10th
+          bo   (ch/join (ch/local kb) 'CxSchedule 'AgentBo)    ; away the 10th
+          cyra (ch/join (ch/local kb) 'CxSchedule 'AgentCyra)  ; the tiebreaker
+          proposal (list 'meetsOn 'Review tue)
+          ph   (ch/assert ada proposal)]                      ; Ada: "let's meet Tuesday the 10th"
+      (ch/justify ada 'FallsInThisSprint ph)
 
-    (testing "the proposed date is a real calendar term, inside the sprint window"
-      (is (dt/datetime-term? tue))
-      (is (dt/subinterval? tue sprint) "Tuesday the 10th is in March 2026"))
+      (testing "the proposed date is a real calendar term, inside the sprint window"
+        (is (dt/datetime-term? tue))
+        (is (dt/subinterval? tue sprint) "Tuesday the 10th is in March 2026"))
 
-    ;; Bo states his own availability, then disputes the date
-    (ch/assert bo (list 'unavailableOn 'AgentBo tue))
-    (ch/dispute bo ph)                                       ; asserts ¬proposal + a disputes edge
-    (let [nope-h (v/handle-of kb (list 'not proposal) 'CxBo)] ; the rebuttal lives in Bo's context
-      (ch/justify bo 'AwayThatDay nope-h)                    ; his reason attaches to HIS side
-      (testing "Bo's objection makes the date a live dispute — nobody is wrong yet"
-        (is (d/disputed? kb proposal 'CxSchedule))
-        (is (= :contradiction (:verdict (v/argue kb proposal 'CxSchedule))))
-        (is (v/ask? kb proposal 'CxSchedule) "Ada's proposal still stands")
-        (is (v/ask? kb (list 'not proposal) 'CxSchedule) "and so does Bo's objection"))
+      ;; Bo states his own availability, then disputes the date
+      (ch/assert bo (list 'unavailableOn 'AgentBo tue))
+      (ch/dispute bo ph)                                       ; asserts ¬proposal + a disputes edge
+      (let [nope-h (v/handle-of kb (list 'not proposal) 'CxBo)] ; the rebuttal lives in Bo's context
+        (ch/justify bo 'AwayThatDay nope-h)                    ; his reason attaches to HIS side
+        (testing "Bo's objection makes the date a live dispute — nobody is wrong yet"
+          (is (d/disputed? kb proposal 'CxSchedule))
+          (is (= :contradiction (:verdict (v/argue kb proposal 'CxSchedule))))
+          (is (v/ask? kb proposal 'CxSchedule) "Ada's proposal still stands")
+          (is (v/ask? kb (list 'not proposal) 'CxSchedule) "and so does Bo's objection"))
 
-      ;; Cyra asks the group; Ada answers
-      (let [q (ch/pose-query cyra 'CanEveryoneMakeTheTenth)]
-        (ch/answer ada 'AdaAndCyraCan q)
-        (is (= 'AdaAndCyraCan (ch/answer-content (first (ch/answers-to cyra q))))))
+        ;; Cyra asks the group; Ada answers
+        (let [q (ch/pose-query cyra 'CanEveryoneMakeTheTenth)]
+          (ch/answer ada 'AdaAndCyraCan q)
+          (is (= 'AdaAndCyraCan (ch/answer-content (first (ch/answers-to cyra q))))))
 
-      (let [id (dispute-id kb)]
-        (vote! kb 'AgentAda :for ph)
-        (vote! kb 'AgentBo :against ph)
-        (testing "1-1 leaves the date undecided — the split house stays open"
-          (is (= :tie (:outcome (adj/resolve-by-majority kb id ph 'CxSchedule))))
-          (is (d/disputed? kb proposal 'CxSchedule)))
+        (let [id (dispute-id kb)]
+          (vote! kb 'AgentAda :for ph)
+          (vote! kb 'AgentBo :against ph)
+          (testing "1-1 leaves the date undecided — the split house stays open"
+            (is (= :tie (:outcome (adj/resolve-by-majority kb id ph 'CxSchedule))))
+            (is (d/disputed? kb proposal 'CxSchedule)))
 
-        (testing "Cyra breaks it 2-1 — the review is booked for the 10th, over Bo's objection"
-          (vote! kb 'AgentCyra :for ph)
-          (let [r (adj/resolve-by-majority kb id ph 'CxSchedule)]
-            (is (= {:for 2 :against 1} (select-keys r [:for :against])))
-            (is (= :for (:outcome r)))
-            (is (not (d/disputed? kb proposal 'CxSchedule)) "the date is settled")
-            (is (= :true (:verdict (v/argue kb proposal 'CxSchedule))))
-            (is (= 'AgentMajority (:arbiter (adj/who-ruled kb (:ruling r))))
-                "recorded as the house's call, not a chair's decree")
+          (testing "Cyra breaks it 2-1 — the review is booked for the 10th, over Bo's objection"
+            (vote! kb 'AgentCyra :for ph)
+            (let [r (adj/resolve-by-majority kb id ph 'CxSchedule)]
+              (is (= {:for 2 :against 1} (select-keys r [:for :against])))
+              (is (= :for (:outcome r)))
+              (is (not (d/disputed? kb proposal 'CxSchedule)) "the date is settled")
+              (is (= :true (:verdict (v/argue kb proposal 'CxSchedule))))
+              (is (= 'AgentMajority (:arbiter (adj/who-ruled kb (:ruling r))))
+                  "recorded as the house's call, not a chair's decree")
 
-            (testing "the whole discussion is recoverable — the date, the reasons, the objection"
-              (is (= tue (nth (:sentence (v/sentex kb ph)) 2)) "the booked date")
-              (is (dt/subinterval? tue sprint) "and it is inside the sprint")
-              (is (= 'AgentAda (:creator (v/provenance kb ph))) "Ada proposed it")
-              (is (= #{'FallsInThisSprint} (reasons-for kb ph)) "Ada's reason for the 10th")
-              (is (= #{'AwayThatDay} (reasons-for kb nope-h)) "and Bo's reason against")
-              (is (v/ask? kb (list 'unavailableOn 'AgentBo tue) 'CxBo)
-                  "Bo's conflict is still on record — outvoted, not erased"))
+              (testing "the whole discussion is recoverable — the date, the reasons, the objection"
+                (is (= tue (nth (:sentence (v/sentex kb ph)) 2)) "the booked date")
+                (is (dt/subinterval? tue sprint) "and it is inside the sprint")
+                (is (= 'AgentAda (:creator (v/provenance kb ph))) "Ada proposed it")
+                (is (= #{'FallsInThisSprint} (reasons-for kb ph)) "Ada's reason for the 10th")
+                (is (= #{'AwayThatDay} (reasons-for kb nope-h)) "and Bo's reason against")
+                (is (v/ask? kb (list 'unavailableOn 'AgentBo tue) 'CxBo)
+                    "Bo's conflict is still on record — outvoted, not erased"))
 
-            (testing "reversible: retract the ruling and the date is contested again"
-              (v/retract! kb (:ruling r))
-              (is (d/disputed? kb proposal 'CxSchedule)))))))))
+              (testing "reversible: retract the ruling and the date is contested again"
+                (v/retract! kb (:ruling r))
+                (is (d/disputed? kb proposal 'CxSchedule))))))))))
 
 ;; ── the solve: over-constrained by hand, the ASP solver finds the one date ──
 ;;
@@ -185,33 +185,33 @@
 
 (deftest the-solver-schedules-a-date-the-team-could-not-agree
   (when asp?
-    (let [kb   (schedule-kb)
-          ada  (ch/join (ch/local kb) 'CxSchedule 'AgentAda)
-          bo   (ch/join (ch/local kb) 'CxSchedule 'AgentBo)
-          cyra (ch/join (ch/local kb) 'CxSchedule 'AgentCyra)]
-      (install-scheduling-rules! kb 'CxSchedule)
-      ;; each teammate states their OWN unavailability (a claim in their own context, which
-      ;; the channel sees up the genlCx ancestor set) — and between them every day is blocked
-      (ch/assert ada  (list 'unavailableOn 'AgentAda tue))   ; Ada out Tuesday
-      (ch/assert bo   (list 'unavailableOn 'AgentBo  wed))   ; Bo out Wednesday
-      (let [cyra-h (ch/assert cyra (list 'unavailableOn 'AgentCyra mon))]  ; Cyra out Monday
+    (tu/with-cleared-kb [kb #(schedule-kb)]
+      (let [ada  (ch/join (ch/local kb) 'CxSchedule 'AgentAda)
+            bo   (ch/join (ch/local kb) 'CxSchedule 'AgentBo)
+            cyra (ch/join (ch/local kb) 'CxSchedule 'AgentCyra)]
+        (install-scheduling-rules! kb 'CxSchedule)
+        ;; each teammate states their OWN unavailability (a claim in their own context, which
+        ;; the channel sees up the genlCx ancestor set) — and between them every day is blocked
+        (ch/assert ada  (list 'unavailableOn 'AgentAda tue))   ; Ada out Tuesday
+        (ch/assert bo   (list 'unavailableOn 'AgentBo  wed))   ; Bo out Wednesday
+        (let [cyra-h (ch/assert cyra (list 'unavailableOn 'AgentCyra mon))]  ; Cyra out Monday
 
-        (testing "over-constrained: no candidate day works for everyone — zero schedules"
-          (let [{:keys [count date]} (solve-schedule kb 'CxSchedPlanA)]
-            (is (= 0 count) "the answer-set solver finds the calendar unsatisfiable")
-            (is (nil? date) "so no date is scheduled — the conflict, made precise")))
+          (testing "over-constrained: no candidate day works for everyone — zero schedules"
+            (let [{:keys [count date]} (solve-schedule kb 'CxSchedPlanA)]
+              (is (= 0 count) "the answer-set solver finds the calendar unsatisfiable")
+              (is (nil? date) "so no date is scheduled — the conflict, made precise")))
 
-        (testing "Cyra frees up Monday; now exactly one date works, and the solver names it"
-          (sa/retract-move kb cyra-h)                          ; the koinii 'retracts' move
-          (let [{:keys [count date]} (solve-schedule kb 'CxSchedPlanB)]
-            (is (= 1 count) "a unique feasible schedule")
-            (is (= mon date) "Monday the 9th — the only day no one is out")
-            (is (dt/subinterval? date sprint) "and it falls inside the sprint")))
+          (testing "Cyra frees up Monday; now exactly one date works, and the solver names it"
+            (sa/retract-move kb cyra-h)                          ; the koinii 'retracts' move
+            (let [{:keys [count date]} (solve-schedule kb 'CxSchedPlanB)]
+              (is (= 1 count) "a unique feasible schedule")
+              (is (= mon date) "Monday the 9th — the only day no one is out")
+              (is (dt/subinterval? date sprint) "and it falls inside the sprint")))
 
-        (testing "the agreed date is recorded back into the conversation as a claim"
-          (let [ph (ch/assert ada (list 'meetsOn 'Review mon))]
-            (is (v/ask? kb (list 'meetsOn 'Review mon) 'CxSchedule)
-                "the whole team can read the booked date off the channel")
-            (is (= 'AgentAda (:creator (v/provenance kb ph))))
-            (is (not (d/disputed? kb (list 'meetsOn 'Review mon) 'CxSchedule))
-                "and nobody disputes it — it satisfies everyone's availability")))))))
+          (testing "the agreed date is recorded back into the conversation as a claim"
+            (let [ph (ch/assert ada (list 'meetsOn 'Review mon))]
+              (is (v/ask? kb (list 'meetsOn 'Review mon) 'CxSchedule)
+                  "the whole team can read the booked date off the channel")
+              (is (= 'AgentAda (:creator (v/provenance kb ph))))
+              (is (not (d/disputed? kb (list 'meetsOn 'Review mon) 'CxSchedule))
+                  "and nobody disputes it — it satisfies everyone's availability"))))))))

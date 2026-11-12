@@ -55,18 +55,18 @@
         (into #{} (keep (fn [[j ms]] (when (exempt? ms) (:id j)))) (#'exc/member-sets st x l))))))
 
 (deftest a-handle-with-no-nogood-justification-reads-no-record
-  (let [kb  (exempting-kb)
-        tms (reasoning/tms kb)
-        hs  (sort (jtms/datums tms))]
-    (is (exc/exemption-reads? kb))
-    (is (some #(seq (#'exc/nogood-justifications tms %)) hs) "the KB holds placements")
-    (doseq [ctx '[CxPerf CxErSub]]
-      (let [st (#'exc/reader-state kb ctx)]
-        (is (:exempting? st))
-        (doseq [h hs]
-          (is (= (fetched-first st h) (#'exc/exempt-justifications st h)) (str ctx " " h))
-          (when (empty? (#'exc/nogood-justifications tms h))
-            (prof/start)
-            (#'exc/exempt-justifications st h)
-            (is (zero? (get-in (prof/stop) [:fetches :sentex] 0))
-                (str "no record read for " h " at " ctx))))))))
+  (tu/with-cleared-kb [kb #(exempting-kb)]
+    (let [tms (reasoning/tms kb)
+          hs  (sort (jtms/datums tms))]
+      (is (exc/exemption-reads? kb))
+      (is (some #(seq (#'exc/nogood-justifications tms %)) hs) "the KB holds placements")
+      (doseq [ctx '[CxPerf CxErSub]]
+        (let [st (#'exc/reader-state kb ctx)]
+          (is (:exempting? st))
+          (doseq [h hs]
+            (is (= (fetched-first st h) (#'exc/exempt-justifications st h)) (str ctx " " h))
+            (when (empty? (#'exc/nogood-justifications tms h))
+              (prof/start)
+              (#'exc/exempt-justifications st h)
+              (is (zero? (get-in (prof/stop) [:fetches :sentex] 0))
+                  (str "no record read for " h " at " ctx)))))))))

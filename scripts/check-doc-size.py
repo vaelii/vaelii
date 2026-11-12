@@ -45,9 +45,9 @@ def scan_files():
     return [p for p in out if p.endswith((".clj", ".cljc"))]
 
 
-def measure(text):
-    """(excess docstring lines, comment lines, code lines) of one source file."""
-    stack, excess = [], 0  # each frame: [head, element count, pending def-doc span, kind]
+def docstrings(text):
+    """Returns (offset, token) per `ns`, `def*` and protocol-method docstring, in order."""
+    stack, out = [], []  # each frame: [head, element count, pending def-doc, kind]
     meta_next = False
     for m in TOKEN.finditer(text):
         tok = m.group(0)
@@ -66,7 +66,7 @@ def measure(text):
             frame = stack.pop() if stack else None
             # `(def x "s")` is a string value; a def docstring needs a value after it
             if frame and frame[2] and not (frame[0] in ("def", "defonce") and frame[1] < 4):
-                excess += max(0, frame[2] - MAX_DOC)
+                out.append(frame[2])
             continue
         if meta_next or tok.startswith("^"):
             meta_next = False
@@ -78,12 +78,17 @@ def measure(text):
         if top[1] == 1 and top[3] == "(":
             top[0] = tok
         if tok.startswith('"'):
-            span = tok.count("\n") + 1
             if top[3] == "(" and top[0] in DEFS and top[1] == 3:
-                top[2] = span
+                top[2] = (m.start(), tok)
             elif (top[3] == "(" and len(stack) > 1 and stack[-2][0] in PROTOCOLS
                   and top[1] >= 3):
-                excess += max(0, span - MAX_DOC)
+                out.append((m.start(), tok))
+    return sorted(out)
+
+
+def measure(text):
+    """(excess docstring lines, comment lines, code lines) of one source file."""
+    excess = sum(max(0, tok.count("\n") + 1 - MAX_DOC) for _, tok in docstrings(text))
     lines = text.split("\n")
     comments = sum(1 for ln in lines if ln.lstrip().startswith(";"))
     code = sum(1 for ln in lines if ln.strip() and not ln.lstrip().startswith(";"))

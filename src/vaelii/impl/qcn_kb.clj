@@ -450,8 +450,8 @@
   through `tighten` first; an unsatisfiable one is answered as its satisfiable components
   (`split`), which a goal naming a blocked node does not extend.  The extended one goes
   through `pass`, which does not report.  A goal node cannot make a satisfiable network
-  unsatisfiable: a moment is inserted into a consistent calendar chain, and a point is
-  constrained only by its own thing's order."
+  unsatisfiable: a moment or a calendar term is placed by its fields among the others, and
+  a point is constrained only by its own thing's order."
   [kb calc context extra]
   (let [base    (network kb calc context)
         pc      (tighten kb calc context base extra)
@@ -731,21 +731,24 @@
     [goal]
     (map #(list % (nth goal 1) (nth goal 2)) (lifted-predicates calc kb goal context))))
 
-(defrecord CalculusProver [calculus]
+(defrecord CalculusProver [calculus open-est]
   prover-types/Prover
   ;; either polarity of a calculus predicate, and a positive goal on a super-predicate
   ;; of one (`lifted-predicates`)
   (applicable? [_ kb goal context]
     (or (some? (claimed-literal calculus goal))
         (some? (lifted-predicates calculus kb goal context))))
-  ;; an upper bound from O(1) predicate-extent counts, never a network read
+  ;; `open-est` for an open goal, else a bound from O(1) predicate-extent counts (`prover`)
   (est-bindings [_ kb goal _]
     (let [[_ a b] (or (claimed-literal calculus goal) goal)
-          n (max 1 (reduce + (map #(reads/stored-count-with-functor (:index kb) %)
-                                  (:predicates calculus))))]
-      (cond (and (pvar? a) (pvar? b)) (* n n)
-            (or (pvar? a) (pvar? b))  n
-            :else                     1)))
+          open?   (or (pvar? a) (pvar? b))]
+      (if (and open? open-est)
+        open-est
+        (let [n (max 1 (reduce + (map #(reads/stored-count-with-functor (:index kb) %)
+                                      (:predicates calculus))))]
+          (cond (and (pvar? a) (pvar? b)) (* n n)
+                open?                     n
+                :else                     1)))))
   (cost [_ _ _ _] :compute)
   ;; 100 for a claimed goal (docs/qcn.md, "Cost, completeness, registration"); a lifted
   ;; goal's super-predicate has stored tuples and other specs the network does not read
@@ -788,9 +791,13 @@
                   ans)))))
 
 (defn prover
-  "The entailment prover for `calc`, to register with `vaelii.core/add-prover`."
-  [calc]
-  (->CalculusProver calc))
+  "The entailment prover for `calc`, to register with `vaelii.core/add-prover`.  Its
+  `est-bindings` reads no network: a ground goal is 1 and an open one is bounded by the
+  stored facts on the calculus's predicates, or is `open-est` when given.  A calculus whose
+  open answers the nodes do not list passes `provers/deferred-est` (docs/qcn.md, \"Cost,
+  completeness, registration\")."
+  ([calc] (prover calc nil))
+  ([calc open-est] (->CalculusProver calc open-est)))
 
 (defn prover-for?
   "Is `pr` the prover of the calculus named `nm`?"

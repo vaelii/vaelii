@@ -1,55 +1,10 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.impl.budget
-  "Resource-bounded / anytime realization of an answer stream.
-
-  The engine's query paths are **lazy** — `ask`, `query`, and the level stack
-  all yield one solution at a time, paying per result consumed.  Resource-bounding
-  is therefore the *consumer-side* discipline of realizing that stream under a
-  bound and reporting whether it ran dry or was cut short — and resumption falls
-  out of laziness for free, because the unrealized tail **is** the continuation.
-
-  A **budget** is a map of optional bounds (any subset; nil / {} means unbounded):
-
-    :max-ms       wall-clock milliseconds — a soft deadline, checked *between*
-                  yielded results (between DFS steps and node expansions in
-                  `prove-within`), and inside one only by a walk that reads
-                  `*deadline*` (the argument-preservation prover's claim walk);
-                  every other single pull or step runs to its end
-    :max-results  stop after this many solutions
-    :max-cost     a qualitative prover-cost ceiling — a tier keyword (see
-                  `vaelii.impl.provers/cost-tiers`).  Honored by `ask-within`,
-                  which drops provers above the tier before the stream is built;
-                  ignored *here*, since it selects *which* work runs, not how much
-                  of a stream to realize.
-    :max-depth    transformation (rule-expansion) depth — honored by `prove-within`
-    :max-term-growth
-                  how many levels of compound nesting a subgoal may add over what its
-                  own derivation path has already met (`res/default-max-term-growth`,
-                  8) — the DFS prover's other termination guard, honored by
-                  `prove-within` through `prove-bounds`
-
-  A key outside those five is refused (`:unknown-option`, `check-budget!`): every
-  bound is optional, so a misspelt one is not missing — the run is simply unbounded,
-  in silence.
-
-  A **partial result** — the anytime contract returned by `collect` / `from-batch`
-  / `resume`:
-
-    :results      the solutions realized in *this* step (a vector)
-    :status       :complete  the source ran dry — the answer is exhaustive
-                  :timeout   :max-ms elapsed with work remaining
-                  :capped    :max-results reached with work remaining
-    :count        (count :results)
-    :elapsed-ms   wall-clock spent in this step
-    :resume       nil when :complete; otherwise a 1-arg fn (budget -> partial
-                  result) that continues exactly where this step stopped
-
-  `:results` are per-step, **not cumulative**: concatenate across steps for the
-  whole answer.  The resume continuation captures an in-memory lazy tail (or, for
-  `prove-within`, the DFS goal stack), so resumption is **in-process only** — it
-  does not survive a restart, and holding one retains its captured state in the heap
-  (see the single-writer contract in docs/storage.md)."
+  "Anytime realization of a lazy answer stream: `collect`, `from-batch` and `resume` realize
+  a stream under a budget (`budget-keys`; `check-budget!` refuses any other key) and return
+  a partial result whose `:resume` continues it in-process.  The budget keys and the
+  partial-result contract are docs/anytime.md."
   (:require [vaelii.impl.opts :as opts]))
 
 (def ask-budget-keys

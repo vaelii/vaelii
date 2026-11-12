@@ -37,21 +37,23 @@
 (defn- reasons
   "Every justification in `kb` as `[informant conclusion antecedents subsumptions]`, by
   content, with the number of justifications each names.  A rule informant reads as its
-  sentence."
-  [kb]
-  (frequencies
-   (for [h (v/handles kb), j (v/supporting-justifications kb h)]
-     (let [inf (:informant j)]
-       [(if (integer? inf) (first (content kb inf)) inf)
-        (content kb h)
-        (into #{} (map #(content kb %)) (:antecedents j))
-        (:subsumptions j)]))))
+  sentence.  `skip` is a set of justification ids left out."
+  ([kb] (reasons kb #{}))
+  ([kb skip]
+   (frequencies
+    (for [h (v/handles kb), j (v/supporting-justifications kb h)
+          :when (not (skip (:id j)))]
+      (let [inf (:informant j)]
+        [(if (integer? inf) (first (content kb inf)) inf)
+         (content kb h)
+         (into #{} (map #(content kb %)) (:antecedents j))
+         (:subsumptions j)])))))
 
 (defn- shapes
   "`[label base late goal]` over fresh terms: `late` is the shorter route."
   []
   (tu/with-terms [animal parentOf fatherOf midParent Ann Mary dog mammal noted Rex kindUnder Zoo
-                  chi mid cat largerThan pet]
+                  chi mid cat typeLargerThan pet]
     (let [chain [(list 'genl dog mammal) (list 'genl mammal animal) (list 'genl animal 'thing)
                  (list dog Rex)
                  (list 'set/forwardRule (list 'implies (list animal '?x) (list noted '?x)))]]
@@ -75,8 +77,8 @@
        [:minted chain [(list 'genlArg kindUnder 1 animal) (list kindUnder dog Zoo)] (list noted Rex)]
        [:preservation
         [(list 'genl chi mid) (list 'genl mid dog) (list 'genl dog 'thing)
-         (list largerThan dog cat) (list 'transitiveInArgInverse largerThan 1 'genl)
-         (list 'set/forwardRule (list 'implies (list largerThan '?x '?y) (list noted '?x '?y)))]
+         (list typeLargerThan dog cat) (list 'transitiveInArgInverse typeLargerThan 1 'genl)
+         (list 'set/forwardRule (list 'implies (list typeLargerThan '?x '?y) (list noted '?x '?y)))]
         [(list 'genl chi dog)]
         (list noted chi cat)]])))
 
@@ -205,17 +207,22 @@
             (is (nil? (late longer)))))))))
 
 (defn- round-trip
-  "The reasons `load!` leaves in a cleared KB, and those its own text export reloads."
+  "The unblocked reasons `load!` leaves in a cleared KB, and those its own text export
+  reloads.  `load-text!` asserts one form at a time, so an edge the export writes after a
+  lazy-forward rule blocks that rule's firing and leaves its justification stored.  The
+  authored batch stores no such justification.  A blocked justification is a stored
+  record and not a belief, so neither side compares one."
   [load!]
-  (let [dir (.toFile (Files/createTempDirectory "late-route" (make-array FileAttribute 0)))]
+  (let [dir       (.toFile (Files/createTempDirectory "late-route" (make-array FileAttribute 0)))
+        unblocked #(reasons % (set (v/blocked-justifications %)))]
     (try
       [(tu/with-cleared-kb [kb tu/isolated-fresh]
          (load! kb)
          (v/export-text! kb (.getPath dir))
-         (reasons kb))
+         (unblocked kb))
        (tu/with-cleared-kb [kb tu/isolated-fresh]
          (v/load-text! kb (.getPath dir))
-         (reasons kb))]
+         (unblocked kb))]
       (finally
         (run! #(io/delete-file % true) (reverse (file-seq dir)))))))
 

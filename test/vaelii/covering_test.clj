@@ -325,11 +325,12 @@
 
 (tu/deftest-kb a-cover-arriving-last-exposes-the-clash-its-edges-put-under-a-separation
   ;; the covering's part edge puts a stored member under a whole that a disjointness
-  ;; separates from its other type; the dilemma is the one the other order opens
+  ;; separates from its other type; the dilemma is the one the other order opens.  The
+  ;; covering is monotonic, so the part edges it installs are too.
   (doseq [cover-last? [true false]]
     (tu/with-kb [kb]
       (tu/with-terms [animal rock dog cat Rex]
-        (let [cover! #(v/assert kb (list 'covering animal dog cat) 'CxUniverse)]
+        (let [cover! #(v/assert kb (list 'covering animal dog cat) 'CxUniverse {:strength :monotonic})]
           (v/assert kb (list 'disjoint animal rock) 'CxUniverse)
           (when-not cover-last? (cover!))
           (let [d (v/assert kb (list dog Rex) 'CxUniverse)

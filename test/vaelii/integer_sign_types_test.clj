@@ -30,6 +30,7 @@
    ['interArg 2]
    ['interArg 4]
    ['contextArgSubrelation 2]
+   ['contextArgGenlCx 2]
    ['transitiveInArgInverse 2]
    ['transitiveInArg 2]])
 

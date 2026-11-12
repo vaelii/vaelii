@@ -5,6 +5,7 @@
   scratch stores (db 15 = records, 14 = index) and clear them around each test."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.datetime :as dt]
             [vaelii.impl.kb]
             [vaelii.impl.kv :as kv]
             [vaelii.impl.overlay.mount :as mount]
@@ -15,7 +16,7 @@
             [vaelii.impl.types.dense-roots]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh tu/fresh))
+(use-fixtures :each (tu/neutral-fresh tu/empty-kb))
 
 (tu/deftest-kb count-aware-trie
   (let [bornIn (tu/tmp-pred) tom (tu/tmp-ind) bob (tu/tmp-ind)
@@ -520,6 +521,74 @@
       (v/assert kb (list 'arg parentOf 1 animal) CxWorld)
       (is (contains? (trie) 'arg))
       (agrees? "asserted")
+      (v/reindex kb)
+      (agrees? "reindexed"))))
+
+(tu/deftest-kb the-calendar-family-agrees-with-a-scan-of-the-records
+  ;; The family's other path is `datetime/month-buckets` over every stored fact, keyed by
+  ;; its functor.  A range enters the month of each end, and a retraction takes a month no
+  ;; other fact of the functor names out of the functor's months.
+  (tu/with-terms [visited attended Ann CxWorld]
+    (let [ix      (:index kb)
+          facts   #(for [h (p/sentex-ids (:records kb))
+                         :let [sx (p/get-sentex (:records kb) h)]
+                         :when (nil? (:antecedent sx))]
+                     [h (sx/body sx)])
+          scan    #(apply merge-with into
+                          (for [[h b] (facts), [frame y m] (dt/month-buckets b)]
+                            {[(first b) frame y m] #{h}}))
+          family  #(into {} (for [f (distinct (map (comp first second) (facts)))
+                                  [frame y m :as b] (reads/as-stored-calendar-buckets ix f)]
+                              [[f frame y m] (set (reads/as-stored-calendar-at-global ix f b))]))
+          agrees? (fn [label] (is (= (scan) (family)) label))
+          range-h (v/assert kb (list visited Ann (list 'DatetimeRangeFn "1999-12" "2000-02")) CxWorld)]
+      (v/assert kb (list visited Ann '(InstantFn 2000 1 15 12 0 0)) CxWorld)
+      (v/assert kb (list attended Ann '(InstantFn 1999 12 24 12 0 0)) CxWorld)
+      (is (= #{[:local 1999 12] [:local 2000 3]}
+             (set (filter #(contains? (set (reads/as-stored-calendar-at-global ix visited %)) range-h)
+                          (reads/as-stored-calendar-buckets ix visited)))))
+      (agrees? "asserted")
+      (v/retract! kb range-h)
+      (is (= [false true] (map #(contains? (reads/as-stored-calendar-buckets ix %) [:local 1999 12])
+                               [visited attended])))
+      (agrees? "the range retracted")
+      (v/reindex kb)
+      (agrees? "reindexed"))))
+
+(tu/deftest-kb the-nat-argument-family-agrees-with-the-term-index
+  ;; The family's other path is the term index on each function, filtered by the record to
+  ;; that function's positive `natFormula` maps.  A number, a string and a negated map enter
+  ;; no node, so the probes of those nodes read nothing on both sides.
+  (tu/with-terms [Ann Bob CxMonad CxNamed CxOther CxStory PairFn]
+    (let [ix      (:index kb)
+          slice   (symbol (str (tu/tmp-ctx "Slice") "Fn"))
+          scan    #(apply merge-with into {}
+                          (for [f [slice PairFn], h (reads/as-stored-with-term ix f)
+                                :let [s (:sentence (p/get-sentex (:records kb) h)) e (nth s 2 nil)]
+                                :when (and (seq? s) (= 'natFormula (first s)) (sequential? e) (= f (first e)))
+                                [i a] (map-indexed vector (rest e))
+                                :when (sx/indexable-term? a)]
+                            {[f (inc i) a] #{h}}))
+          probes  (atom [[slice 1 Bob] [slice 2 '(DatetimeFn "2002")] [PairFn 2 3] [PairFn 3 "s"]])
+          stated  #{'CxUniverse CxStory}
+          family  #(into {} (for [[f i a :as node] @probes
+                                  :let [n (reads/stored-count-nat-formulas-at ix f i a stated)]
+                                  :when (pos? n)]
+                              [node [n (set (reads/as-stored-nat-formulas-at ix f i a stated))]]))
+          agrees? (fn [label]
+                    (let [want (update-vals (scan) #(vector (count %) %))]
+                      (swap! probes into (keys want))
+                      (is (= want (family)) label)))
+          named   (v/assert kb (list 'natFormula CxNamed (list slice CxMonad '(DatetimeFn "2000"))) 'CxUniverse)]
+      (v/assert kb (list 'natFormula CxOther (list slice CxMonad '(DatetimeFn "2001"))) CxStory)
+      (v/assert kb (list 'natFormula Ann (list PairFn Bob 3 "s")) 'CxUniverse)
+      (v/assert kb (list 'not (list 'natFormula Bob (list slice Bob '(DatetimeFn "2002")))) 'CxUniverse)
+      (is (= #{named} (set (reads/as-stored-nat-formulas-at ix slice 2 ['DatetimeFn "2000"] stated))))
+      (is (zero? (reads/stored-count-nat-formulas-at ix slice 2 '(DatetimeFn "2001") #{'CxUniverse})))
+      (agrees? "asserted")
+      (v/retract! kb named)
+      (is (zero? (reads/stored-count-nat-formulas-at ix slice 2 '(DatetimeFn "2000") stated)))
+      (agrees? "a map retracted")
       (v/reindex kb)
       (agrees? "reindexed"))))
 

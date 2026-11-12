@@ -245,6 +245,21 @@
         (cap/put-all-provenance rs [])
         (is (= #{a b} (set (p/premise-ids rs))))))))
 
+(deftest the-delete-helpers-fall-back-to-one-write-at-a-time
+  (let [rs (:records (fresh))]
+    (is (not (satisfies? p/BulkDeleting rs)) "the RAM record store deletes one at a time")
+    (let [[a b c] (mapv #(p/put-sentex rs {:sentence (list 'rel %) :context 'CxBulk}) '[A B C])
+          j       (p/put-justification rs {:informant :premise :consequence a :antecedents []})]
+      (cap/delete-sentexes rs [a b 99999])
+      (is (= [nil nil] [(p/get-sentex rs a) (p/get-sentex rs b)]))
+      (is (some? (p/get-sentex rs c)) "a handle not named stays")
+      (cap/delete-justifications rs [j])
+      (is (nil? (p/get-justification rs j)))
+      (testing "and an empty batch is a no-op rather than an error"
+        (cap/delete-sentexes rs [])
+        (cap/delete-justifications rs [])
+        (is (some? (p/get-sentex rs c)))))))
+
 (deftest a-store-without-the-capability-loads-through-the-loop
   ;; The default half of the protocol, and the one every backend the engine ships takes: no
   ;; `BulkLoading`, so `sentex-sink` answers `put-sentex` per record and the premise mark

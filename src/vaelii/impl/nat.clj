@@ -6,7 +6,8 @@
   the reads the rename, orphan and re-spelling maintenance runs on.  The read mode and the
   `E → K` lookups are `nat-read`'s.  Stores through `wiring/assert-sentence`.  See
   docs/nat.md."
-  (:require [vaelii.impl.jtms :as jtms]
+  (:require [vaelii.impl.datetime :as dt]
+            [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.nat-read :as nat-read]
@@ -108,11 +109,14 @@
   "The distinct arg2s of believed `(<pred> head ?t)` facts, read globally as the mint
   reads.  With `context`, through the declarations visible from it
   (`nat-read/visible-result-targets`), as a check reads (docs/nat.md, Typing an
-  application that is never minted)."
+  application that is never minted).  Globally, a KB storing no `pred` fact answers
+  empty off one functor count, as `any-result-declarations?` reads it, before the match:
+  every mint asks both `result` and `genlResult`."
   ([kb pred head]
-   (->> (kb/sentexes-matching kb (list pred head '?t) '?ctx)
-        (keep #(nth (:sentence %) 2))
-        distinct))
+   (when (pos? (reads/stored-count-with-functor (:index kb) pred))
+     (->> (kb/sentexes-matching kb (list pred head '?t) '?ctx)
+          (keep #(nth (:sentence %) 2))
+          distinct)))
   ([kb pred head context]
    (nat-read/visible-result-targets kb pred head context)))
 
@@ -237,20 +241,21 @@
           s))))
 
 (defn queue-split-uses!
-  "Queue `[:reifiable f]` on `:respell` for each function `f` a ground application in
-  `sentence` names whose mark some reader does not believe (`split-reifiable?`): the
-  write stores the use reified, and the settle's reconcile stores the spelling each
-  reader reads (`chain/reconcile-reified!`).  One walk and no index read on a KB whose
-  reifiable marks every reader believes."
+  "Queue `[:reifiable-use f]` on `:respell` for each function `f` a ground application in
+  `sentence` names whose `reifiable_function` mark, or a permuting mark of which, some
+  reader does not believe (`split-reifiable?`, `res/split-mark-entries`): the write
+  stores the use reified, and the settle's reconcile stores the spelling each reader
+  reads (`chain/reconcile-reified!` with `marks-moved?` false).  One walk and no index
+  read on a KB whose reifiable and permuting marks every reader believes."
   [kb sentence]
   (when (names-reifiable-nat? kb sentence)
     (let [fs (into #{} (comp (filter #(and (sequential? %) (seq %) (symbol? (first %))))
                              (map first)
                              (filter #(tax/has-prop? (reasoning/taxonomy kb) :reifiable %)))
                    (tree-seq sequential? seq sentence))
-          split (filter #(nat-read/split-reifiable? kb %) fs)]
+          split (filter #(or (nat-read/split-reifiable? kb %) (res/split-mark-entries kb %)) fs)]
       (when (seq split)
-        (swap! (reasoning/respell kb) into (map #(vector :reifiable %)) split)))))
+        (swap! (reasoning/respell kb) into (map #(vector :reifiable-use %)) split)))))
 
 ;; ---- rename / remove detection (docs/nat.md, Rename and remove) ----------
 
@@ -508,7 +513,7 @@
                                 (reify-or-mint-nat kb % nat-read/nat-namespace chain? context)
                                 %)
                              (rest form)))))]
-     (or (nat-read/existing-term kb E ns context) (mint-nat! kb E ns chain?)))))
+     (or (nat-read/existing-term kb E ns context true) (mint-nat! kb E ns chain?)))))
 
 (defn maybe-reify-nats
   "Replace every ground reifiable NAT subterm of `sentence`, written in `context`
@@ -533,27 +538,86 @@
   [kb form]
   (and (context-application? form) (context-function-believed? kb (first form))))
 
+(defn- fold-declarations
+  "`[position fold]` of each believed `(contextArgFold f position fold)`, in content order."
+  [kb f]
+  (when (pos? (reads/stored-count-with-functor (:index kb) 'contextArgFold))
+    (->> (kb/sentexes-matching kb (list 'contextArgFold f '?p '?g) '?ctx)
+         (map #(vec (drop 2 (:sentence %))))
+         distinct
+         (nm/sort-by-content-key identity))))
+
+(defn- spelling-positions
+  "The position of each believed `(contextArgCalendarSpelling f position)`, as a set."
+  [kb f]
+  (when (pos? (reads/stored-count-with-functor (:index kb) 'contextArgCalendarSpelling))
+    (into #{} (comp (map #(nth (:sentence %) 2)) (filter int?))
+          (kb/sentexes-matching kb (list 'contextArgCalendarSpelling f '?p) '?ctx))))
+
+(defn- inner-application
+  "The application of `f` the term `x` names: `x` itself, or the `natFormula` expression of
+  a `cx/` constant; else nil."
+  [kb f x]
+  (let [e (if (nat-read/reified-context-symbol? x) (nat-expression kb x) x)]
+    (when (and (seq? e) (= f (first e))) e)))
+
+(defn context-form
+  "The context application `form` in the spelling it reifies under: the argument at each
+  believed `(contextArgCalendarSpelling F p)` position in its `datetime/calendar-spelling`,
+  every argument in the store's canonical form (`sx/canonical-subterm` under
+  `res/store-marks`), and while argument `p` names an application of the same function,
+  for a believed `(contextArgFold F p G)`, the inner application's argument `p` with each
+  other argument the `G` application of the inner and the outer argument there.  Any
+  other term is itself (docs/context-nat.md)."
+  [kb form]
+  (if-not (context-application? form)
+    form
+    (let [f     (first form)
+          marks (res/store-marks kb)
+          spell (spelling-positions kb f)
+          canon #(sx/canonical-subterm
+                  (if (seq spell)
+                    (apply list (map-indexed (fn [i a] (if (spell i) (dt/calendar-spelling a) a)) %))
+                    %)
+                  marks)
+          decls (fold-declarations kb f)
+          fold  (fn [form]
+                  (some (fn [[p g]]
+                          (when-let [inner (and (int? p) (< 0 p (count form))
+                                                (inner-application kb f (nth form p)))]
+                            (when (= (count inner) (count form))
+                              (canon (apply list f (for [j (range 1 (count form))]
+                                                     (if (= j p)
+                                                       (nth inner j)
+                                                       (list g (nth inner j) (nth form j)))))))))
+                        decls))]
+      (loop [form (canon form) seen #{}]
+        (let [folded (when-not (contains? seen form) (fold form))]
+          (if folded (recur folded (conj seen form)) form))))))
+
 (defn maybe-reify-context
-  "Reify a context slot `(F …)` to its `cx/` constant (docs/context-nat.md).  With
-  `mint?` (the write path) any `context-application?` reifies, minting as needed.
-  Without it (a read) only a `readable-context-application?` does, resolving to an
-  existing term or `no-match`.  Any other slot passes through unchanged."
+  "Reify a context slot `(F …)` to its `cx/` constant, in its `context-form` spelling
+  (docs/context-nat.md).  With `mint?` (the write path) any `context-application?`
+  reifies, minting as needed.  Without it (a read) only a
+  `readable-context-application?` does, resolving to an existing term or `no-match`.  Any
+  other slot passes through unchanged."
   ([kb context] (maybe-reify-context kb context true))
   ([kb context mint?]
    (if (if mint? (context-application? context) (readable-context-application? kb context))
      (if mint?
-       (reify-or-mint-nat kb context nat-read/context-namespace false nil)
+       (reify-or-mint-nat kb (context-form kb context) nat-read/context-namespace false nil)
        ;; the read leaf, so a slot the write path stored under a `rewriteOf` target
        ;; resolves to it
-       (nat-read/reify-nat-for-read kb context nat-read/context-namespace nil))
+       (nat-read/reify-nat-for-read kb (context-form kb context) nat-read/context-namespace nil))
      context)))
 
 (defn existing-context
   "The `cx/` constant (or `rewriteOf` target) the context application `form` already
   resolves to, or nil when none was minted — the dedup half of `maybe-reify-context`'s
-  write path, read without any declaration."
+  write path, read in its `context-form` spelling and without the declaration a read
+  needs."
   [kb form]
-  (let [k (nat-read/reify-nat-for-read kb form nat-read/context-namespace nil)]
+  (let [k (nat-read/reify-nat-for-read kb (context-form kb form) nat-read/context-namespace nil)]
     (when-not (= nat-read/no-match k) k)))
 
 (defn context-for-check
@@ -564,8 +628,27 @@
   `maybe-reify-context` mints."
   [kb context]
   (if (context-application? context)
-    (or (existing-context kb context) (constant-for nat-read/context-namespace context))
+    (or (existing-context kb context)
+        (constant-for nat-read/context-namespace (context-form kb context)))
     context))
+
+(defn term-for-check
+  "The term `assert` reifies the ground reifiable application `form` written in `context`
+  to, minting nothing: its existing term, else the `nat/` constant `constant-for` names for
+  `form` as written, which no stored sentex names."
+  [kb form context]
+  (let [k (nat-read/reify-nat-for-read kb form nat-read/nat-namespace context true)]
+    (if (= nat-read/no-match k) (constant-for nat-read/nat-namespace form) k)))
+
+(defn heads-for-check
+  "`sentence` with each literal head that is a ground reifiable application read as
+  `term-for-check` reads it, and every argument as written.  `vaelii.core/check`,
+  `assert-inert` and the application-input check read a head through this, so they read
+  the predicate `maybe-reify-nats` gives the sentence."
+  [kb sentence context]
+  (if (nat-read/any-reifiable-functions? kb)
+    (nat-read/reify-in kb sentence (fn [_ form] form) #(term-for-check %1 %2 context))
+    sentence))
 
 (defn- merge-collisions!
   "Restore the 1:1 constant↔expression map in each context that reads a collision among

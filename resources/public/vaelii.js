@@ -186,18 +186,24 @@
     });
   }
 
-  // Escape closes the editor and a digit folds a region, wherever the focus is — except
-  // in a field, where both keys are the reader typing.  A reader who opened the editor
-  // from a row has not moved the page, so closing it must not either.
+  // Escape closes the editor; outside a field, slash focuses and selects the search
+  // and a digit folds a region.  A reader who opened the editor from a row has not
+  // moved the page, so closing it must not either.
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
       const ed = $("#editor");
       if (ed && ed.innerHTML) { closeEditor(); ev.preventDefault(); }
       return;
     }
-    if (ev.altKey || ev.ctrlKey || ev.metaKey || !/^[1-9]$/.test(ev.key)) return;
     const t = ev.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (ev.key === "/") {
+      if (ev.defaultPrevented || ev.isComposing || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+      const search = $("input.search");
+      if (search) { search.focus(); search.select(); ev.preventDefault(); }
+      return;
+    }
+    if (ev.altKey || ev.ctrlKey || ev.metaKey || !/^[1-9]$/.test(ev.key)) return;
     if ($('[data-panel="' + ev.key + '"]')) { fold(ev.key); ev.preventDefault(); }
   });
 

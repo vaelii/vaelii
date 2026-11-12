@@ -551,6 +551,99 @@
              (get (:all-specified-violations report)
                   ['predAllSpecified likes person]))))))
 
+;; ---- type-specified: (typeAllSpecified classifier indep) ---------------------
+
+(def ^:private type-specified #{:type-specified-violations})
+
+(defn- classifier-world
+  "`colour_kind` classifies by `red_kind` and `blue_kind`; three `gadget`s, the first red,
+  the third blue, the second classified by neither."
+  [kb {:keys [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree]}]
+  (doseq [t [colour_kind red_kind blue_kind gadget]]
+    (v/assert kb (list 'unary_predicate t) 'CxUniverse))
+  (v/assert kb (list colour_kind red_kind) 'CxUniverse)
+  (v/assert kb (list colour_kind blue_kind) 'CxUniverse)
+  (doseq [g [GadgetOne GadgetTwo GadgetThree]]
+    (v/assert kb (list gadget g) 'CxUniverse))
+  (v/assert kb (list red_kind GadgetOne) 'CxUniverse)
+  (v/assert kb (list blue_kind GadgetThree) 'CxUniverse))
+
+(tu/deftest-kb type-all-specified-reports-each-instance-no-classifier-member-holds
+  (tu/with-terms [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree]
+    (classifier-world kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
+                          :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
+                          :GadgetThree GadgetThree})
+    (is (= {:status :audited :candidate-count 0}
+           (sans-meter (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified})))
+        "with no requirement stated, nothing is required")
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (is (= {:status :gap :candidate-count 0
+            :type-specified-violations
+            {['typeAllSpecified colour_kind gadget] {:status :audited :violations #{GadgetTwo}}}}
+           (sans-meter (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified}))))
+    (testing "the default sweep runs the pass"
+      (is (contains? (v/kb-integrity kb #{} 'CxUniverse) :type-specified-violations)))
+    (testing "a classification makes the requirement hold, and a clean declaration is omitted"
+      (v/assert kb (list blue_kind GadgetTwo) 'CxUniverse)
+      (is (= {:status :audited :candidate-count 0}
+             (sans-meter (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified})))))))
+
+(tu/deftest-kb type-all-specified-is-not-implied-by-a-partition
+  ;; A partition constrains the world: every gadget IS red or blue.  typeAllSpecified
+  ;; constrains what the KB knows: every gadget must be believed red or believed blue.
+  (tu/with-terms [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree]
+    (classifier-world kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
+                          :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
+                          :GadgetThree GadgetThree})
+    (v/assert kb (list 'partition gadget red_kind blue_kind) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (is (= {['typeAllSpecified colour_kind gadget] {:status :audited :violations #{GadgetTwo}}}
+           (:type-specified-violations
+            (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified}))))))
+
+(tu/deftest-kb type-all-specified-reads-a-believed-membership-not-only-a-stored-one
+  (tu/with-terms [colour_kind red_kind blue_kind crimson_kind gadget GadgetOne GadgetTwo
+                  GadgetThree]
+    (classifier-world kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
+                          :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
+                          :GadgetThree GadgetThree})
+    (v/assert kb (list 'genl crimson_kind red_kind) 'CxUniverse)
+    (v/assert kb (list crimson_kind GadgetTwo) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (is (= {:status :audited :candidate-count 0}
+           (sans-meter (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified})))
+        "a crimson gadget is believed red through genl, so it is classified")))
+
+(tu/deftest-kb type-all-specified-over-an-empty-classifier-is-a-gap
+  (tu/with-terms [colour_kind gadget GadgetOne]
+    (v/assert kb (list 'unary_predicate colour_kind) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate gadget) 'CxUniverse)
+    (v/assert kb (list gadget GadgetOne) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (is (= {['typeAllSpecified colour_kind gadget]
+            {:status :gap :gap :empty-classifier :classifier colour_kind}}
+           (:type-specified-violations
+            (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified})))
+        "a classifier with no member could classify nothing, so the audit does not pretend to run")))
+
+(tu/deftest-kb type-all-specified-findings-count-against-the-result-cap
+  (tu/with-terms [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree
+                  widget]
+    (classifier-world kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
+                          :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
+                          :GadgetThree GadgetThree})
+    (v/assert kb (list 'unary_predicate widget) 'CxUniverse)
+    (v/assert kb (list widget GadgetTwo) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind gadget) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified colour_kind widget) 'CxUniverse)
+    (let [[[c i]] (content-order [[colour_kind gadget] [colour_kind widget]])
+          report  (v/kb-integrity kb #{} 'CxUniverse {:categories type-specified :max-results 1})]
+      (is (= :truncated (:status report)))
+      (is (= :max-results (:reason report)))
+      (is (= {['typeAllSpecified c i] {:status :audited :violations #{GadgetTwo}}}
+             (:type-specified-violations report))
+          "the first declaration in content order is kept, the second cut"))))
+
 ;; ---- genl-arg-widening ----------------------------------------------------
 
 (defn- declare-types!
@@ -1685,7 +1778,7 @@
   "A KB holding the upper ontology, whose core.txt states the forward rule that makes
   `declined_rule_macro` sugar for `acknowledgedFinding`."
   []
-  (doto (tu/fresh) (tu/load-core!)))
+  (doto (tu/isolated-fresh) (tu/load-core!)))
 
 (tu/deftest-kb a-declined-suggestion-moves-to-review-until-the-record-goes
   (tu/with-cleared-kb [kb core-kb]
@@ -1803,6 +1896,44 @@
       (v/assert kb r 'CxUniverse))
     (is (= [] (rule-macros kb)))))
 
+(tu/deftest-kb an-arg-restating-rule-is-reported
+  (tu/with-terms [temporalIndexArg time_indexed_relation]
+    (v/assert kb (list 'binary_predicate temporalIndexArg) 'CxUniverse)
+    (v/assert kb (list 'implies (list temporalIndexArg '?relation '?position)
+                       (list time_indexed_relation '?relation))
+              'CxUniverse)
+    (is (= [(list 'arg temporalIndexArg 1 time_indexed_relation)]
+           (map #(nth % 2) (rule-macros kb))))))
+
+(tu/deftest-kb a-unary-premise-rule-is-never-reported-as-arg
+  ;; A unary predicate gives a type, so (P ?x) => (C ?x) is the genl shape: the arg row
+  ;; applies only to a P of two or more places.
+  (tu/with-terms [container hollow]
+    (v/assert kb (list 'unary_predicate container) 'CxUniverse)
+    (v/assert kb (list 'implies (list container '?x) (list hollow '?x)) 'CxUniverse)
+    (is (not-any? #(= 'arg (second %)) (rule-macros kb))
+        (pr-str (rule-macros kb)))))
+
+(tu/deftest-kb arg-near-miss-rules-are-not-reported
+  (tu/with-terms [temporalIndexArg time_indexed_relation temporalIndexArgVar other_kind Bob]
+    (v/assert kb (list 'binary_predicate temporalIndexArg) 'CxUniverse)
+    (v/assert kb (list 'variable_arity temporalIndexArgVar) 'CxUniverse)
+    (doseq [r [;; a constant in another argument position
+               (list 'implies (list temporalIndexArg '?relation Bob)
+                     (list time_indexed_relation '?relation))
+               ;; a repeated variable
+               (list 'implies (list temporalIndexArg '?relation '?relation)
+                     (list time_indexed_relation '?relation))
+               ;; an extra antecedent
+               (list 'implies (list 'and (list temporalIndexArg '?relation '?position)
+                                    (list other_kind '?relation))
+                     (list time_indexed_relation '?relation))
+               ;; a variable-arity P
+               (list 'implies (list temporalIndexArgVar '?relation '?position)
+                     (list time_indexed_relation '?relation))]]
+      (v/assert kb r 'CxUniverse))
+    (is (= [] (rule-macros kb)))))
+
 (tu/deftest-kb a-mark-rule-stated-in-one-theory-is-not-reported
   (tu/with-terms [CxTheory likesX empty_kind]
     (v/assert kb (list 'genlCx CxTheory 'CxUniverse) 'CxUniverse)
@@ -1866,9 +1997,9 @@
   (tu/with-terms [FruitFn SeedFn PitFn tagged ripe seedOf pitOf stoneOf]
     (doseq [f [FruitFn SeedFn PitFn]]
       (v/assert kb (list 'reifiable_function f) 'CxUniverse))
-    (v/assert kb (list 'functionCorrespondingPredicate SeedFn seedOf) 'CxUniverse)
-    (v/assert kb (list 'functionCorrespondingPredicate PitFn pitOf) 'CxUniverse)
-    (v/assert kb (list 'functionCorrespondingPredicate PitFn stoneOf) 'CxUniverse)
+    (v/assert kb (list 'functionCorrespondingPredicate SeedFn seedOf 2) 'CxUniverse)
+    (v/assert kb (list 'functionCorrespondingPredicate PitFn pitOf 2) 'CxUniverse)
+    (v/assert kb (list 'functionCorrespondingPredicate PitFn stoneOf 2) 'CxUniverse)
     (let [h1 (v/assert kb (list 'implies (list tagged (list FruitFn '?t)) (list ripe '?t)) 'CxUniverse)
           _  (v/assert kb (list 'implies (list tagged (list PitFn '?t)) (list ripe '?t)) 'CxUniverse)
           _  (v/assert kb (list 'implies (list tagged (list SeedFn '?t)) (list ripe '?t)) 'CxUniverse)
@@ -2040,104 +2171,6 @@
       (is (= :audited (:status (v/kb-integrity kb terms 'CxUniverse
                                                {:categories #{:undeclared-term}})))))))
 
-;; ---- the upper ontology's stated residue under three review categories ----------
-
-(def ^:private open-sibling-residue
-  "`{parent n}`: the parents whose direct specs the upper ontology leaves `n` pairs of
-  open, as `:open-sibling-pair` reads them from CxUniverse.  A pair a change decides, by
-  a separation, an `orthogonal` or a shared member, lowers its parent's count; a new
-  open pair raises it."
-  '{acausal 1 animal 12 aspatial 1 at_least_metatype 4 binary_predicate 17 body_part 27
-    causal 1 closed_expression 3 context 1 denotational_term 2 event 2 expression 1
-    fixed_order_type 3 fluent 1 formula 4 function 9 intangible 1 integer 4
-    lepidopteran 1 literal 2 made 12 non_atomic_term 3 nowhere_never 1 organism 6
-    predicate 39 quantitative 6 relation 8 sentence 4 spatiotemporal 1 substance 15
-    tangible 5 temporal 6 thing 5 type 14 unary_predicate 26 variable_arity 3
-    vertebrate 5 wff_expression 2})
-
-(def ^:private undecided-relation-residue
-  "The binary predicates of the upper ontology no relation property mark or stated
-  denial decides, as `:undecided-relation-property` reads them from CxUniverse.  A
-  predicate a change decides leaves the set; a new binary predicate the change leaves
-  undecided joins it."
-  '#{actor admitsArgnum adultFormOf after arg1 arg2 arg3 arg4 arg5 args argsGenl
-     arityMax arityMin atSomeDistanceFrom before behind behindLeftOf behindRightOf
-     believes beyondFarDistanceFrom borderlineExample borderlineExampleComment
-     calendarYear capabilityType childOf clippedBefore closeTo closedExtentForArg1
-     closedExtentForArg2 closedExtentForArg3 closedExtentForArg4 closedExtentForArg5
-     coLocatedWith comment commutativeInArgAndRest contains cxMonadOf cxTimeOf
-     datetimeOf defnIff defnNecessary defnSufficient denotes derivativeOf
-     destroyedInput dimensionOf disjoint doneBy during earliestEndOf earliestStartOf
-     eastOf eastwardOf eats endOf equals evaluate exceptWhen exists expresses
-     externallyConnected farFrom finishedBy finishes forall frontLeftOf frontRightOf
-     frontwardOf functionTypeByArity functionalInArg genlInverse genlMonad
-     genlResult grandparentOf happens hasCapability hasRegionPart hasSubinterval
-     holdsAt implementationNote implies inFrontOf includesInstant input instantEqual
-     instantNotAfter instantNotBefore instantNotEqual intangibleOutput interArgs
-     intervalAfterOf intervalBeforeOf intervalEqual ist knows larvalFormOf
-     latestEndOf latestStartOf leftOf leftwardOf length likes livesIn madeOf
-     matchesPattern meetFunctionOf meets memberOf metBy moderatelyFarFrom natFormula
-     nearTo negativeExample negativeExampleComment nonTangentialProperPart
-     nonTangentialProperPartInverse northOf northeastOf northwardOf northwestOf
-     output overlappedBy overlaps owns parentOf partType partiallyOverlapping
-     partitionedByType performedBy positiveExample positiveExampleComment precededBy
-     precedes predAllSpecified predSpecifiedAll predicateTypeByArity preservedInput
-     properCounterpart quantityGreaterThan quantityGreaterThanOrEqual
-     quantityLessThan quantityLessThanOrEqual rearwardOf regionConnectedTo
-     regionDiscreteFrom regionOverlaps result resultArg rewriteOf rightOf
-     rightwardOf sameAs sameLocationAs sameQuantity sameRelativePositionAs seeAlso
-     sharesTimeWith signOf southOf southeastOf southwardOf southwestOf
-     spatiallyDisconnected spatiallyEqual speaks startOf startedBy starts
-     tangentialProperPart tangentialProperPartInverse tangibleOutput
-     temporallyDisjoint thereExists thingPerceived timeOf totalDuration trendOf
-     typeGenl typeOrthogonal typeToInstancePred veryCloseTo veryFarFrom westOf
-     westwardOf withinNearDistanceOf worksFor})
-
-(def ^:private unnoted-derivable-residue
-  "The stated edges of the upper ontology that hold without themselves and that no
-  `acknowledgedFinding` under `:derivable-stated-edge` names, as CxUniverse reads them.
-  An edge a change drops, or acknowledges with the exception of state it once that keeps
-  it, leaves the set."
-  '#{(genl animal organism) (genl atemporal intangible) (genl atomic_term denotational_term)
-     (genl binary fixed_arity) (genl biological tangible) (genl boolean unrepresented_term)
-     (genl character unrepresented_term) (genl closed_expression expression)
-     (genl closed_predication sentence) (genl formula linguistic)
-     (genl keyword unrepresented_term) (genl negated_predication literal)
-     (genl non_atomic_expression expression) (genl non_atomic_term linguistic)
-     (genl number unrepresented_term) (genl open_expression expression)
-     (genl open_predication open_formula) (genl organism biological)
-     (genl predication literal) (genl quaternary fixed_arity) (genl quinary fixed_arity)
-     (genl sentence formula) (genl string unrepresented_term) (genl symbol atomic_term)
-     (genl symbol linguistic) (genl ternary fixed_arity) (genl unary fixed_arity)
-     (genl unrepresented_term atomic_term) (genl unrepresented_term linguistic)
-     (genl warm_blooded animal) (genl wff_expression expression)
-     (disjoint animal building) (disjoint container substance)
-     (disjoint tangible situation)})
-
-(defn- upper-review
-  "The findings of `category` a review sweep of the upper ontology from CxUniverse
-  reports."
-  [category]
-  (tu/with-cleared-kb [kb core-kb]
-    (category (v/kb-integrity kb #{} 'CxUniverse {:categories #{category}}))))
-
-(tu/deftest-kb the-upper-ontology-leaves-these-sibling-pairs-open
-  (is (= open-sibling-residue
-         (into {} (map (juxt :parent :count)) (upper-review :open-sibling-pair)))
-      "decide a new open pair, or count it in open-sibling-residue"))
-
-(tu/deftest-kb the-upper-ontology-leaves-these-relation-properties-undecided
-  (is (= undecided-relation-residue
-         (into #{} (map :predicate) (upper-review :undecided-relation-property)))
-      "decide a new binary predicate's properties, or list it in undecided-relation-residue"))
-
-(tu/deftest-kb the-upper-ontology-states-these-derivable-edges-without-a-note
-  (is (= unnoted-derivable-residue
-         (into #{} (comp (remove :acknowledged) (map (comp :sentence :stated)))
-               (upper-review :derivable-stated-edge)))
-      "acknowledge a new derivable stated edge with its exception, or list it in
-       unnoted-derivable-residue"))
-
 (tu/deftest-kb undeclared-term-work-is-linear-in-the-candidates-and-flat-in-the-genl-edges
   (tu/with-terms [top_kind a_kind b_kind c_kind d_kind]
     (let [kinds [a_kind b_kind c_kind d_kind]
@@ -2236,6 +2269,61 @@
       (is (= :negation (:kind e)))
       (is (true? (:excepted e)))
       (is (not (contains? e :inert))))))
+
+(tu/deftest-kb quantified-exceptions-read-literals-but-not-quoted-predicates
+  (doseq [[label guard-of excepted?]
+          [["the other case occurs inside an existential conjunction"
+            (fn [penguin_kind guardLink]
+              (list 'thereExists '?w
+                    (list 'and (list penguin_kind '?x) (list guardLink '?x '?w)))) true]
+           ["an unrelated existential does not handle the clash"
+            (fn [_ guardLink] (list 'thereExists '?w (list guardLink '?x '?w))) false]
+           ["a predicate mentioned in quoted data is not queried"
+            (fn [penguin_kind guardLink]
+              (list 'thereExists '?w
+                    (list 'and (list guardLink '?x '?w)
+                          (list guardLink '?w (list 'Quote (list penguin_kind '?x)))))) false]]]
+    (testing label
+      (tu/with-terms [bird_kind penguin_kind flies guardLink]
+        (v/assert kb
+                  (list 'exceptWhen (guard-of penguin_kind guardLink)
+                        (list 'set/defaultRule
+                              (list 'set/forwardRule
+                                    (list 'implies (list bird_kind '?x) (list flies '?x)))))
+                  'CxUniverse)
+        (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x))
+                       'CxUniverse {:direction :forward})
+        (let [report (clash-sweep kb #{:rule-clash :rule-clash-review})
+              live   (about [flies] (:rule-clash report))
+              review (about [flies] (:rule-clash-review report))]
+          (is (= (if excepted? 0 1) (count live)))
+          (is (= (if excepted? 1 0) (count review)))
+          (is (= excepted? (:excepted (first (concat live review))))))))))
+
+(tu/deftest-kb a-quantified-exception-handles-only-readers-that-see-it
+  (tu/with-terms [bird_kind penguin_kind flies guardLink CxVisible CxHidden]
+    (doseq [cx [CxVisible CxHidden]]
+      (v/assert kb (list 'genlCx cx 'CxUniverse) 'CxUniverse))
+    (let [yes (list 'set/defaultRule
+                    (list 'set/forwardRule
+                          (list 'implies (list bird_kind '?x) (list flies '?x))))]
+      (v/assert kb yes 'CxUniverse)
+      (v/assert-rule kb [(list penguin_kind '?x)] (list 'not (list flies '?x))
+                     'CxUniverse {:direction :forward})
+      (v/assert kb
+                (list 'exceptWhen
+                      (list 'thereExists '?w
+                            (list 'and (list penguin_kind '?x) (list guardLink '?x '?w)))
+                      (list 'ist 'CxUniverse yes))
+                CxHidden)
+      (doseq [[cx excepted?] [[CxVisible false] [CxHidden true]]]
+        (testing (str "the exception's visibility at " cx)
+          (let [report (clash-sweep kb #{:rule-clash :rule-clash-review} cx)
+                live   (about [flies] (:rule-clash report))
+                review (about [flies] (:rule-clash-review report))]
+            (is (= (if excepted? 0 1) (count live)))
+            (is (= (if excepted? 1 0) (count review)))
+            (is (= excepted? (:excepted (first (concat live review)))))))))))
 
 (tu/deftest-kb an-acknowledged-rule-clash-is-review-only
   ;; The subject names the pair as (RulePairFn (Quote R1) (Quote R2)), each rule quoted on

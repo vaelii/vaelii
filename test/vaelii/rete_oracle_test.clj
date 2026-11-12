@@ -324,6 +324,9 @@
                       (covers I0 ?x I1 ?y)
                       (covers I0 I3 ?x ?y)
                       (covers ?w ?x ?y ?z)
+                      (parentOf ?x . ?r)     ; dotted rest: `.` is not a positional argument
+                      (parentOf I1 . ?r)
+                      (betweenIn ?x . ?r)
                       (ageOf ?x ?a)
                       (grandparentOf ?x ?z)]]
           (is (= (proj (res/match-pattern rete-kb pat '?ctx))
@@ -354,7 +357,7 @@
 
 (deftest ^:slow end-to-end-agrees-with-the-reference-chain
   (dotimes [trial 6]
-    (let [ref-kb  (doto (tu/fresh)          build-ontology!)
+    (let [ref-kb  (doto (tu/empty-kb)       build-ontology!)
           rete-kb (doto (tu/isolated-fresh) build-ontology!)]
       (try
         (rete/track! rete-kb)
@@ -378,7 +381,7 @@
 
 (deftest ^:slow suppressed-firings-agree-with-every-trigger-enumerated
   (dotimes [trial 6]
-    (let [sup-kb (tu/fresh)
+    (let [sup-kb (tu/empty-kb)
           ref-kb (tu/isolated-fresh)]
       (try
         (build-ontology! sup-kb core-context/load-into)
@@ -400,7 +403,7 @@
 ;; ---- targeted scenarios (deterministic, for localization) ---------------
 
 (defn- run-both [ops]
-  (let [ref-kb  (doto (tu/fresh)          build-ontology!)
+  (let [ref-kb  (doto (tu/empty-kb)       build-ontology!)
         rete-kb (doto (tu/isolated-fresh) build-ontology!)]
     (rete/track! rete-kb)
     (let [snaps (mapv #(apply-op! ref-kb rete-kb %) ops)

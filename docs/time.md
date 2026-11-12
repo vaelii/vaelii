@@ -141,6 +141,15 @@ B D)` force A and D to end at the same moment and say nothing about where they s
 leaving `#{:finishes :finished-by :equal}`: no base predicate is entailed, and
 `sharesTimeWith` is.
 
+**A calendar term is a node.** A term the calendar gives an extent, such as `(MonthFn 2000
+1)` or a `DatetimeRangeFn` range, is a node of the interval network beside the named
+intervals. `interval/calendar-relations`, a reader of the node set alone, relates every
+two of them in one frame by their fields (`calendar/relation`), with no support. It runs
+over a goal's nodes too, so a stated `(before Breakfast (MonthFn 2000 1))` entails
+`(before Breakfast (MonthFn 2000 3))`. A goal's calendar term cannot make a satisfiable
+network unsatisfiable: the relations fix its endpoints' order against every calendar term
+in its frame, and nothing else constrains it.
+
 `core/possible-relations kb :allen ctx i1 i2` returns the base relations still possible
 between two intervals, `#{}` when the network is inconsistent. A singleton is a determined
 ordering, and several members are an open one. `vaelii.impl.scenario` picks one relation
@@ -242,6 +251,16 @@ with no date for either stated. A clue that cannot fit closes a cycle, the point
 ordinary `:qualitative-inconsistency` report, and `qcn-kb/inconsistency-culprits` names the
 facts behind the pair that emptied.
 
+**An open goal waits for its binder.** An open goal enumerates the network's nodes. A
+calendar moment only a `happens` fact names is no node, so the enumeration of
+`(instantBefore T1 ?i)` leaves out a moment `m` for which `(instantBefore T1 m)` holds. The
+point prover estimates an open goal at `provers/deferred-est`. A conjunction therefore runs
+the goal after the conjunct binding its variable, in a `thereExists` join and in `query`
+alike (`calendar_test/an-open-instant-before-from-a-named-moment-answers-in-any-conjunct-order`).
+The interval prover estimates an open goal at `provers/deferred-est` for the same reason:
+`(during M ?m)` waits for the conjunct binding `?m` to a calendar term no interval fact names
+(`calendar_test/an-open-allen-goal-beside-a-calendar-term-answers-in-any-conjunct-order`).
+
 **A thing against a moment.** `(includesInstant X t)` holds when t is at or after X's start
 and before its end, the calendar terms' half-open convention, and its negation when t falls
 before the start or at or after the end. `IncludesInstantProver` answers both off the point
@@ -259,9 +278,10 @@ and a conjunction or a forward rule binds it first ([inference.md](inference.md)
 "Conjunctive query planning").
 
 **Allen relations follow.** The interval network's second narrowing reads, for every pair of
-things with points in the point network, which of the four endpoint comparisons the network
-still allows, and keeps the Allen relations whose endpoint signature fits
-(`stp/endpoint-signature`). A pair's support is the four comparisons'. A thing is read
+things with points in the point network, a calendar term included, which of the four
+endpoint comparisons the network still allows, and keeps the Allen relations whose
+endpoint signature fits (`stp/endpoint-signature`). A pair's support is the four
+comparisons'. A thing is read
 too when its stated `startOf` and `endOf` name two named moments that are nodes of the
 network, as an interval between two moments a stated `instantBefore` chain orders does:
 those nodes are readings of its start and end beside its own point terms, an endpoint
@@ -297,12 +317,92 @@ What it does not do:
   builds the other. The point network composes the stated facts' endpoint comparisons
   itself; what the interval network composes beyond what four comparisons express stays
   on the interval side.
-- **A calendar term is not an Allen node.** The narrowing reads things named by a symbol, so
-  the relation between a thing and `(YearFn 2013)` is asked through their points.
 - **No durations.** "After seven years" is metric, and point facts do not reach the
   `temporalDistance` network ([stp.md](stp.md)).
 - **The culprits name one derivation.** They are the support of the pair that emptied, which
   contains every fact whose removal alone restores consistency but may name more.
+
+## The order over time points (`vaelii.impl.point-order`)
+
+The slice ordering ([context-nat.md](context-nat.md#the-bounded-r-oracle--no-proof-inside-the-relabel-loop))
+decides containment between two times by comparing their points, through an order kept
+apart from the point network. The point network closes every pair of its nodes per context;
+this order answers one comparison at a time, from the links that reach its two points.
+
+- **Nodes** are a thing's six points, a moment named by a symbol, and a calendar moment.
+- **A stated link** rests on the handle of the fact it reads. `instantBefore`,
+  `instantAfter`, `instantNotAfter`, `instantNotBefore` and `instantEqual` link two
+  moments. `startOf` and `endOf` equate a thing's point with a moment. `(includesInstant X
+  m)` places `m` at or after `start(X)` and before `end(X)`. Every interval
+  predicate (`stp/interval-denotation`) links its two things' starts and ends at each
+  endpoint comparison whose union over its denotation is convex: `before`, `before or
+  equal`, `equal` and their converses. `(finishes Q H)` gives `start(H) < start(Q)` and
+  `end(Q) = end(H)`. A comparison that admits both before and after, as `overlaps ∪ during`
+  does at the starts, gives no link.
+- **A link from the terms alone** has no handle: a thing's six points keep
+  `timepoint/thing-order`, and a point of a moment is that moment.
+- **The calendar adds no link.** Two calendar moments compare by their fields.
+
+`path` asks whether `p` lies at or before `q`, or before it. `holds?` answers first, with
+no path. A comparison through an end of a link arriving at a reconcile (`*through*`) holds
+by membership in the walks back and on from that end. Otherwise, a walk from both ends that widens the smaller
+frontier first (`graph/reaches?`) rules out a pair no path and no calendar moment can join,
+in as many steps as the smaller side holds. The slice ordering asks `holds?` of each of a
+pair's comparisons before it reads a path, so a pair that fails costs no walk along the
+chain. When `holds?` answers true, `path` walks breadth-first from `p` over later nodes and
+from `q` over earlier ones, each node's links read in content order.
+The answer holds when the two walks meet at a node, or when a calendar moment the first walk
+reaches lies at or before, by its fields, a calendar moment the second reaches. The earliest
+moment of the first walk and the latest of the second decide that, so a chain that crosses
+the calendar several times needs no walk along it. A strict answer needs a strict link on
+the path or a strict field comparison. The support is the path's facts. Of several paths, the
+one with the fewest facts is chosen, then the first in content order, so the support does not
+depend on arrival order.
+
+The slice ordering's walk reads every context's believed facts, because its output is a
+`genlCx` edge, and the `genlCx` closure is global ([taxonomy.md](taxonomy.md)). A walk run
+under a bound `*context*` reads only the facts that context sees. A walk runs per question,
+and the walks are shared across one reconcile or one prover call (`with-memo`).
+
+What it does not do:
+
+- **No resident closure.** A question costs two walks over the links connected to its
+  points.
+- **A meet's links are read from the application.** A meet's start links back to each
+  argument's start and its end on to each argument's end, under the believed
+  `meetFunctionOf` declaration. A walk reaches those links from the meet's points only, so
+  a comparison whose one path runs from an argument's start into the meet's start and
+  on through the meet's end out to an argument's end is not found. A link fact arriving
+  pairs a slice whose time has a time the walk reached among its arguments.
+- **A symbol has two readings and no link between them.** The slice ordering reads a symbol
+  time both as a thing with points and as a named moment, and a fact about one reading says
+  nothing about the other.
+
+### The tightest known lower bound on a start: `tightestStartBoundOf`
+
+`(tightestStartBoundOf X ?t)` answers the known lower bound on X's start that every other
+known lower bound on it lies at or before. `TightestStartBoundProver` answers it from this
+order (`add-reasoner :tightest-start-bound`), and no other prover reads the order.
+`IncludesInstantProver` and the Allen narrowing read the point network. `time.txt` marks the
+predicate `not_assertible`, and the prover answers a goal whose first argument is ground.
+
+- **The starts** are the start nodes of X's `readings`: X for an `InstantFn` moment,
+  `(StartFn X)` for another compound, and both for a symbol.
+- **A known lower bound** is a node a walk back from a start reaches across at least one
+  stated fact. A start is not one, and a node the terms alone place below a start, such as
+  `(EarliestStartFn X)`, is not one either.
+- **The answer** is each known lower bound every other one lies at or before (`path`), in
+  content order. Two bounds that no path and no calendar comparison orders give no answer,
+  and two bounds stated equal are both answers.
+- **The walk reads the facts the asking context sees**, and every context's facts under a
+  variable context.
+
+A clock reading `(instantNotBefore W T)` is a known lower bound on the moment W, so a later
+reading at T2 after T moves the answer from T to T2
+(`temporal_capability_test/a-later-clock-reading-supersedes-an-earlier-one`). `(EarliestStartFn
+X)` is a point of X that no reading moves ([The points of a temporal
+thing](#the-points-of-a-temporal-thing)), so `earliestStartOf`, its corresponding predicate,
+is a different relation.
 
 ## The time a thing occupies
 
@@ -374,12 +474,15 @@ context)`, so an application written in a sentex's context slot reifies to a `cx
 constant, and `(contextArgSubrelation CxTimeFn 2 subintervalOf)`, so the application at
 the narrower time is a subcontext of the one at the wider time with the same monad.
 `(contextArgSubrelation CxTimeFn 2 subtimeOf)` orders the slice at an `InstantFn` moment
-below the slice at each interval holding the moment. A read of a slice nobody wrote into
+below the slice at each interval holding the moment. `(contextArgGenlCx CxTimeFn 1)`
+places every slice under the context it slices, so the year 2000 of `CxStory` sees what
+`CxStory` states, and `CxStory` does not see the slice. A read of a slice nobody wrote into
 sees what the slices it would be ordered below see
 ([context-nat.md](context-nat.md#write-and-read-are-symmetric)).
 `(contextArgSubrelation CxTimeFn 1 genlMonad)` orders the other way round: with
-`(genlMonad CxSubStory CxStory)` stated, the application along `CxSubStory` is a
-subcontext of the one along `CxStory` at the same time. Two applications that differ in
+`(genlCx CxSubStory CxStory)` stated between two monads, `(genlMonad CxSubStory CxStory)`
+holds and the application along `CxSubStory` is a subcontext of the one along `CxStory` at
+the same time. Two applications that differ in
 both arguments are ordered by the product: `(CxTimeFn CxSubStory (MonthFn 2000 1))` is a
 subcontext of `(CxTimeFn CxStory (YearFn 2000))`, and no slice between them need exist.
 
@@ -392,26 +495,62 @@ context)`. A `cx/` mint writes no result type
 all of its time. No declaration types `CxTimeFn`'s first argument by it, and `(not (arg CxTimeFn 1
 monad_context))` says so: a declared argument type entails membership, so that
 declaration would make every context written in the first argument a `monad_context`.
-`monad_context` is derived and never stated. A backward rule concludes it of a believed
-`context` that no `CxTimeFn` `natFormula` names and that is not a believed
-`time_slice_context`, both read by `unknown` ([naf.md](naf.md)). The `natFormula` conjunct
-covers the slices the engine mints. A query answers `(monad_context CxRealWorld)`, since `core.txt` states `(context CxRealWorld)`.
-`ask` expands no rule and does not answer it.
-`CxMonadOfFn` and `CxTimeOfFn` take a context apart, with
+`time.txt` marks `monad_context`, `cxMonadOf` and `cxTimeOf` `not_assertible`
+([naf.md](naf.md)), and `ContextPartsProver` answers all three
+([inference.md](inference.md)). It answers `(monad_context c)` of a `c` that is a `context`
+at level 6, that no `CxTimeFn` `natFormula` map names, and that is not a `time_slice_context`
+at level 6. The `natFormula` test covers the slices the engine mints, and
+`(monad_context CxRealWorld)` holds because `core.txt` states `(context CxRealWorld)`.
+`CxMonadOfFn` and `CxTimeOfFn` are reifiable functions that take a context apart, with
 `cxMonadOf` and `cxTimeOf` as their corresponding predicates: the monad of `(CxTimeFn
-CxStory (YearFn 2000))` is `CxStory` and its time is `(YearFn 2000)`. `genlMonad` orders
+CxStory (YearFn 2000))` is `CxStory` and its time is `(YearFn 2000)`. The prover reads
+both off the `natFormula` map alone, which the mint writes once, so a context that is not
+a slice is its own monad and covers `Forever` whatever else is stated about it. A written
+application resolves to the prover's value on a read and on a write
+([nat.md](nat.md#the-corresponding-predicate)): `(subintervalOf (YearFn 1) (CxTimeOfFn
+CxStory))` is `(subintervalOf (YearFn 1) Forever)`. `genlMonad` orders
 two contexts by their monads alone, as `subintervalOf` orders times alone. A monad's
-time is `Forever`, so the producer orders the slices along two monads by a `genlCx` path
-between them as by a stated `genlMonad`
+time is `Forever`, so two monads are `genlMonad`-ordered exactly when the `genlCx` closure
+orders them. `time.txt` marks `genlMonad` `not_assertible` ([naf.md](naf.md)): `assert`
+refuses it, `GenlMonadProver` answers it from the closure between the two contexts' monads
+([inference.md](inference.md)), and the producer orders the slices along two monads by the
+same closure
 ([context-nat.md](context-nat.md#the-bounded-r-oracle--no-proof-inside-the-relabel-loop)).
-A stated `genlMonad` orders `CxTimeFn` applications, and not the two contexts themselves.
+Along one monad the read runs the other way too: `SliceOrderProver` answers `(subtimeOf A
+B)` when a slice at `A` sees the slice of the same monad at `B`, whether the producer
+computed that `genlCx` edge or somebody stated it, and `(subintervalOf A B)` when both
+times are also `time_interval`s. A `genlCx` stated between two slices for a reason other
+than time containment answers both relations all the same.
 
 `Forever` is the time interval that contains every time, and the time of every
-`monad_context`. Backward rules answer `(subintervalOf ?interval Forever)` for each
-`time_interval`, `(includesInstant Forever ?instant)` for each `time_point`, and
-`(cxTimeOf ?monad Forever)` for each `monad_context`. They are answered on demand rather
-than stored, so the qualitative network and open enumerations over it list `Forever` only
-when a stated fact relates something to it.
+`monad_context`. `ForeverProver` answers `(subintervalOf ?interval Forever)` for each
+`time_interval` and `(includesInstant Forever ?instant)` for each `time_point`, solved at
+level 6 ([inference.md](inference.md)). Nothing stores these, so the qualitative network
+lists `Forever` only when a stated fact relates something to it.
+
+### The real world's present
+
+The present of the real world is the slice `(CxTimeFn CxRealWorld (IntervalAfterFn W))`:
+every moment at or after the instant W. A fact stated in the present holds from W on. A
+clock reading states a lower bound on W, `(instantNotBefore W T)`, and a later reading
+states a later bound. `assert` and `check` refuse two shapes of fact as `:exact-present`
+(`checks/check-exact-present`), in the present and in every context whose `genlCx`
+ancestor set holds the present. An exact start is `(instantEqual W T)` with T other than W.
+A dated present-tense fact is `(includesInstant X W)` with X a time that has an end. X has
+no end when it is `Forever`, an `IntervalAfterFn` application, or a term that a believed
+`(intervalAfterOf T X)` visible from the writing context names. A later reading
+contradicts either shape: W is not 3:41 once a reading states that W is no earlier than
+3:50. The check reads no type of X, so a named time and a calendar term are refused alike.
+An explicit upper bound on W, such as `(instantBefore W T)` or `(instantNotAfter W T)`, is
+stored.
+
+A `genlCx` edge that places a context holding such a fact under the present is refused as
+`:exact-present` too. The refusal decides what is stored, so arrival order decides which of
+the two writes is refused ([nmtms.md](nmtms.md#1-order-independence)). The check reads the
+writing context's ancestor set and the believed `intervalAfterOf` facts when the write
+arrives. Three writes are not checked: a `genlCx` edge the engine computes between two
+slices, a fact a rule derives, and a fact stated in a context the present sees, such as
+CxUniverse.
 
 ### A slice of a slice
 
@@ -420,34 +559,34 @@ have in common, `(TimeIntersectionFn A B)`. `subtimeOf` relates one time to anot
 lies within, whatever the two kinds of time: an interval inside an interval, an instant
 inside an interval, a piece of an intermittent time inside the whole. It is reflexive,
 `(genl subtimeOf partOf)` and `(genl subintervalOf subtimeOf)` place it, and a backward
-rule makes an instant a time includes a subtime of it. `TimeIntersectionFn` is the meet
-over `subtimeOf`: an `unreifiable_function` from two times to a time, with
-`timeIntersectionOf` as its corresponding predicate. Two times that share no time have no
-intersection. Backward rules make the intersection a `subtimeOf` each argument when both
-are believed times, and a `subintervalOf` each when both are believed `time_interval`s. A
-query asks and gets that answer; the genlCx producer reads only a comparator, a stated
-bound or a stored fact
-([context-nat.md](context-nat.md#the-bounded-r-oracle--no-proof-inside-the-relabel-loop)),
-so the slice at an intersection is not ordered under the slice at each argument.
+rule makes an instant a time includes a subtime of it. `(meetFunctionOf
+TimeIntersectionFn subtimeOf)` makes `TimeIntersectionFn` the meet over `subtimeOf`: an
+`unreifiable_function` from two or more times to a time, with `timeIntersectionOf` as its
+corresponding predicate at position 1. The meet's marks make it commutative, associative
+and idempotent, and the canonical form drops an argument that `subtimeOf`'s or
+`subintervalOf`'s comparator places above another, so `(TimeIntersectionFn (YearFn 2000)
+(MonthFn 2000 1))` is stored as `(MonthFn 2000 1)`
+([canonicalization.md](canonicalization.md)). Two times that share no time have no
+intersection: `assert`, `assert-inert` and `check` refuse an application of a meet over a
+time order as `:not-well-formed` when the calendar shows two of its arguments disjoint
+(`checks/empty-meet-problem`, `datetime/disjoint?`), in the sentence or in the context slot
+after a slice of a slice folds. Named times are not refused. Backward rules make an
+application of two times a `subtimeOf` each argument when both are believed times, and a `subintervalOf` each when both are believed
+`time_interval`s. The order over time points links the intersection's start at or after
+each argument's start and its end at or before each argument's end (below), so the slice
+at an intersection is ordered under the slice at each argument.
 
-Backward rules over `cxMonadOf` and `cxTimeOf` state the slice's two parts:
-
-```clojure
-(cxMonadOf ?monad ?monad)            ; a monad_context is its own monad
-(cxMonadOf ?slice ?monad)            ; a slice has the monad of the context it slices
-(cxTimeOf ?slice ?time)              ; a slice of a monad_context covers its own time
-(cxTimeOf ?slice (TimeIntersectionFn ?outer ?time))
-                                     ; a slice of a slice: the inner time and its own
-```
-
-Each rule reads the `natFormula` of the slice's `cx/` constant. A slice written with the
-inner slice's `cx/` constant, `(CxTimeFn S B)` where `S` names `(CxTimeFn CxStory A)`,
-answers through them: a depth-6 `query (cxTimeOf K ?t)` gives `(TimeIntersectionFn A B)`.
-An inner slice spelled as a `CxTimeFn` application is a term inside the `natFormula`,
-not a constant, and answers nothing. A further backward rule states that `(CxTimeFn
-(CxTimeFn C A) B)` equals `(CxTimeFn C (TimeIntersectionFn A B))`; it concludes about two
-applications, so it answers no goal ([nat.md](nat.md#a-rule-or-a-goal-that-names-an-open-application)),
-and the two spellings reify to two `cx/` constants that no reader equates.
+`cxMonadOf` and `cxTimeOf` state the slice's two parts: a slice has the monad of the
+context it slices, and a slice covers its own time. `(contextArgFold CxTimeFn 1
+TimeIntersectionFn)` folds a slice of a slice into one slice before the slot reifies: a
+slice written with the inner slice's `cx/` constant, `(CxTimeFn S B)` where `S` names
+`(CxTimeFn CxStory A)`, and one spelled with `CxTimeFn` twice both reify as `(CxTimeFn
+CxStory (TimeIntersectionFn A B))`, one `cx/` constant whose monad is `CxStory` and whose
+time is the intersection ([context-nat.md](context-nat.md#a-slice-of-a-slice-folds-by-declaration)).
+`(contextArgCalendarSpelling CxTimeFn 2)` respells the slice's time from its extent, so
+`(DatetimeFn "2000-01")` and `(MonthFn 2000 1)`, or `(InstantFn 2000 1 1 0 0 0)` and
+`(StartFn (MonthFn 2000 1))`, key one slice
+([context-nat.md](context-nat.md#two-spellings-of-one-calendar-time-name-one-context)).
 
 ## Change over time: events, fluents, and inertia
 
@@ -467,19 +606,34 @@ A narrative states four things and nothing else:
 Two questions follow, and neither is ever stated. `(clipped T1 F T2)` asks whether `F` was
 ended between the two moments, and `(clippedBefore F T)` whether a fluent that held from
 the outset was ended before `T`. `(holdsAt F T)` asks whether `F` is the case at `T`, and
-is **inertia**, one literal of negation as failure:
+is **inertia**, one literal of negation as failure over a terminating event the KB does
+not place outside the span:
 
 ```clojure
 (set/backwardRule
   (implies (and (happens ?e ?t1) (initiates ?e ?f ?t1) (instantBefore ?t1 ?t2)
-                (unknown (clipped ?t1 ?f ?t2)))
+                (unknown (thereExists (?ender ?t)
+                           (and (happens ?ender ?t) (terminates ?ender ?f ?t)
+                                (unknown (equals ?t ?t1)) (unknown (instantBefore ?t ?t1))
+                                (unknown (instantNotAfter ?t ?t1))
+                                (unknown (equals ?t ?t2)) (unknown (instantBefore ?t2 ?t))
+                                (unknown (instantNotBefore ?t ?t2))))))
            (holdsAt ?f ?t2)))
 ```
 
-A second `holdsAt` rule reads `initially` and `clippedBefore`, with `(time_point ?t)` as the
-generator that binds the moment before the `unknown` runs. So the cat is asleep at four
+A second `holdsAt` rule reads `initially` and the same test with no lower moment, with
+`(time_point ?t2)` as the generator that binds the moment before the `unknown` runs. So the cat is asleep at four
 because something put it to sleep at three and nothing woke it in between, and it is not
 asleep at six because something did.
+
+A terminator blocks inertia unless the KB places it at or before the start or at or after
+the asked moment. Three readings place it: `equals` proves its moment the start or the
+asked moment, a stated or transitive `instantBefore` orders it, or `instantNotAfter` /
+`instantNotBefore` does, which the default registry answers where stated and `:point`
+answers from the whole order. A terminator the KB does not order against the span
+therefore blocks it, an `indeterminate_term` moment included, and a fluent ended at a
+moment no order places is not known to hold
+([defenses.md](defenses.md#a-terminator-blocks-inertia-unless-the-kb-places-it-outside-the-span)).
 
 **A fluent is a term, not a sentence.** `(AsleepFn Whiskers)` is a reified NAT, one
 constant per subject, the bounded shape [nat.md](nat.md) reserves `reifiable_function` for,
@@ -488,30 +642,41 @@ so `holdsAt` is an ordinary binary predicate over two terms
 
 ### The two directions
 
-`clipped` and `clippedBefore` chain **forward**. An `(unknown S)` antecedent is answered
-over the registry, which **expands no rule** ([naf.md](naf.md)), so a `set/backwardRule`
-`clipped` would be invisible to the antecedent that consults it, and every fluent would
-persist for ever. Forward, it is a stored fact the registry reads, and its extent is
-bounded by the terminating events times the instant pairs the narrative wrote down.
+`clipped` and `clippedBefore` chain **forward**: each is a stored fact recording why
+inertia stopped, and its extent is bounded by the terminating events times the instant
+pairs the narrative wrote down. Inertia does not read them. Its `unknown` joins their
+antecedents over the registry when the question is asked ([naf.md](naf.md#the-conjunction-is-joined-so-its-conjuncts-may-share-a-witness)),
+because the moment asked about may be one no stored fact names, and a forward rule derives
+nothing about such a moment
+([defenses.md](defenses.md#inertia-joins-the-terminating-event-under-unknown-not-a-stored-clipped)).
 
 `holdsAt` is **backward**. A fluent holds at every moment between its start and its end, so
 forward chaining would store one fact per moment per fluent. Ask it with `query` / `prove`
 rather than `ask`: level 6 is the registry and expands no rule, and `holdsAt` is a rule
 ([levels.md](levels.md)).
 
-`clipped` is a predicate of its own because `unknown` takes **one literal**
-([defenses.md](defenses.md#clipped-is-a-predicate-not-a-conjunction-under-unknown)).
-
 ### Stratified, and admitted as written
 
 Simple event calculus is **predicate-stratified**: `holdsAt` depends negatively on
-`clipped` and `clippedBefore`, and neither of those depends on `holdsAt`. The assert-time
+`happens`, `terminates`, `instantBefore`, `instantNotAfter` and `instantNotBefore`, and none of those depends on `holdsAt`. The assert-time
 check is predicate-level ([exceptions.md](exceptions.md), "Stratification"), so it admits
 the theory as written, and a cycle through negation would have been refused.
 
 Inertia is **undercutting**, like an `exceptWhen` and unlike a defeat: a clipped fluent has
 no conclusion for the KB to arbitrate. So an event heard of *later* that terminates a
 fluent takes the answer back, and retracting that event gives it again.
+
+### A narrative stated in a slice
+
+`time.txt` makes `happens`, `initiates`, `terminates` and `holdsAt` `eternal_predicate`s
+([contexts.md](contexts.md#eternal_predicate-a-fact-stated-in-a-time-slice-holds-in-what-it-slices)),
+so a narrative stated in a time slice is copied into the slice's monad. Each of them
+carries its own moment, and the slice that states one adds nothing to when it holds. A
+narrative stated in `(CxTimeFn CxRealWorld (YearFn 2000))` therefore answers `holdsAt` from
+the present slice and from the 2025 slice, which see `CxRealWorld` and not the 2000 slice,
+since inertia's rules run in the asking context. A fact of the 2000 slice whose predicate
+no membership makes eternal stays there
+(`temporal_capability_test/a-fluent-started-in-a-past-slice-holds-at-w`).
 
 ### When an input and an output exist
 
@@ -541,10 +706,12 @@ two values of one subject hold: a merge for two symbols, a contradiction for two
 split `functional` makes. It reports rather than merges, because whether two fluents overlap
 at an instant follows from the clipping closure and is not known when a fluent is asserted,
 the shape `specified-violations` uses. The candidate moments are the `time_point` members
-`ask` answers in the context and the later moment of each `instantBefore` pair it answers
-there. An `(InstantFn …)` moment is no `time_point` member, and inertia holds a started
-fluent only at a moment some `instantBefore` places after its start, so the second set
-holds every such moment. See [equality.md](equality.md).
+`ask` answers in the context, the later moment of each `instantBefore` pair it answers
+there, and the moment of each `happens` fact. An `(InstantFn …)` moment is no `time_point`
+member, and with the calendar clock registered inertia holds a started fluent at every
+moment the clock orders after its start. The audit asks only the moments the context names,
+so two values that hold together only at moments no fact names are not reported. See
+[equality.md](equality.md).
 
 ### What `clipped` can see
 
@@ -561,17 +728,17 @@ antecedent from the network with support, so `clipped` fires through an `instant
 (`temporal_capability_test/clipped-reads-an-order-the-point-prover-entails-once-it-is-registered`).
 Without it, a pair the network narrowed to `:before` reaches no rule.
 
-A calendar moment is the same case. A narrative may be written at computed instants:
-`(happens RexSleeps (InstantFn 2000 1 15 15 0 0))` is an ordinary `happens`, `(InstantFn
-…)` being a `time_point`. Its `instantBefore` edges are then written down exactly as an
-afternoon of named moments needs them. The calendar clock supplies none, and both halves of
-the theory stop at the same place: `clipped`'s forward join and inertia's backward one each
-reach `instantBefore` with one end **open**, and the clock refuses an open end (["What the
-clock does not reach"](#what-the-clock-does-not-reach)). So a fluent is never reported as
-persisting past an event the clock could have ordered and the narrative did not. Which end
-is open depends on the conjunction's ranking ([inference.md](inference.md), "Where the
-ranking is required"). State the links, and `clipped` fires over `InstantFn` moments,
-`holdsAt` answers, and retracting a link takes both back.
+A calendar moment is ordered by the clock. A narrative may be written at computed
+instants: `(happens RexSleeps (InstantFn 2000 1 15 15 0 0))` is an ordinary `happens`,
+`(InstantFn …)` being a `time_point`. The clock estimates an `instantBefore` with an open
+end at `provers/deferred-est`, so inertia's rule body and its `unknown`'s join each run it
+after the `happens` that binds it ([naf.md](naf.md#the-conjunction-is-joined-so-its-conjuncts-may-share-a-witness)).
+So `holdsAt` answers off the clock's order, and a fluent stops at an event the clock
+orders between its start and the moment asked about
+(`calendar_test/inertia-over-computed-moments-reads-the-clocks-order`). `clipped`'s
+forward join reaches `instantBefore` with one end open, where the clock answers nothing,
+so it stores no reason until the narrative states the links. Stating them stores `clipped`
+and moves no answer.
 
 An event happens at a **moment**, so a calendar term is not one: `(happens E (DayFn 2000 1
 15))` is refused by the argument check, a day being a `time_interval` and `happens`' second
@@ -665,20 +832,23 @@ interval with two stated starts, or with a start not before its end, has no exte
 The clock answers the negation of an interval relation only between two terms.
 
 **Answered, never stored.** No sentex, no handle, no justification, no minted constant: a
-computed endpoint is not a belief, needs no retraction, and leaves no orphan for the NAT
-sweep ([nat.md](nat.md)). The prover implements `Prover` and *not* `SupportingProver`.
-Between two terms that is the claim that its answer reads nothing stored and no retraction
-can invalidate it ([inference.md](inference.md), "What a computed answer rests on"). An
-answer read through a named interval's stated bounds is a query-time answer, which the
-forward join drops for its empty support (below). So `why` has no handle to
-show; `query … {:proof? true}` shows a computed relation as a `:leaf`. Order independence
-and locality hold for the same reason: there is no state to accumulate and nothing to
-relabel.
+computed endpoint is not a belief and leaves no orphan for the NAT sweep ([nat.md](nat.md)).
+The prover implements `SupportingProver`. Its answer rests on the `(transitive
+instantBefore)` declaration its scoping reads (below), and an answer read through a named
+interval's stated bounds rests on those `startOf` and `endOf` facts too
+([inference.md](inference.md), "What a computed answer rests on"). So a forward rule fires
+on a clock answer, and its firing names those handles.
 
 **Cost, and what it claims.** `:lookup`: a bounded ground computation on at most six
 integers per term, with no closure and no network. A pair of terms reads no index, and a
 named interval adds one visible-match read per stated bound. `est-bindings` is 1: a
 check has the one empty solution or none, and an endpoint is a function of its interval.
+An instant ordering or interval relation with a variable beside a term of its kind, or an
+interval relation with one beside a named interval, is applicable at
+`provers/deferred-est` and answers nothing, so a conjunction or a forward rule binds the
+variable first: `[(holiday ?m) (during ?m (YearFn 2000))]` runs `holiday` first, and a
+rule arriving after its facts joins the same way
+(`calendar_test/a-rule-over-stated-bounds-fires-after-its-binder-in-any-order`).
 `completeness` is **50**. A KB may state `startOf` facts about a calendar term or interval
 relations between two of them, and the calculus provers entail more from those than the
 fields say, so the registry unions this prover in cheapest-first:
@@ -713,37 +883,21 @@ clock never materializes a `genlCx` edge, and the two share the field reader in
 #### What the clock does not reach
 
 - **Both terms must be bound.** An open variable on either side of an interval relation or
-  an instant ordering would ask the clock to enumerate the calendar, so `applicable?`
-  refuses it, as the point algebra answers nothing for a pair of open variables. The one
+  an instant ordering would ask the clock to enumerate the calendar, so the clock answers
+  nothing for it and reports `deferred-est` (above), as the point algebra answers nothing
+  for a pair of open variables. The one
   variable it binds is a `startOf` / `endOf` **result**, which is a function of the
   interval. Enumerating the calendar terms a KB happens to mention instead would make the
   relation between two calendar terms a function of the store.
-- **So a conjunction has to reach it ground, and the join planner does not know that.**
-  `[(holiday ?m) (during ?m (YearFn 2000))]` answers nothing: the planner costs a literal
-  by the stored facts it matches ([inference.md](inference.md), "Conjunctive query
-  planning"), a KB storing no `during` facts counts zero, and the `during` literal is placed
-  first, where its open argument answers nothing. Ask the relation of two terms already in
-  hand. A transitive walk with both ends open answers nothing in the same way.
-- **A calendar relation is not a constraint in the interval network.** The clock answers a
-  goal about a *pair*; the terms it speaks of appear in no stored fact and so are nodes of
-  no network. So a stated `(before Breakfast (MonthFn 2000 1))` does not compose with the
-  clock's `(before (MonthFn 2000 1) (MonthFn 2000 3))` to answer `(before Breakfast
-  (MonthFn 2000 3))`.
+- **A transitive walk with both ends open answers nothing**, and an open literal no term
+  of its kind sits beside is not deferred: `(during ?a ?b)` is costed by the stored facts
+  it matches.
 - **With the interval calculus registered, a relation between two named intervals is the
   calculus's alone.** The Allen calculus claims completeness over its literals, and the
   `:calendar` channel tests the goal's arguments for calendar terms, which a named interval
   is not. So with `:allen` beside `:calendar`, `(overlaps JanJun AprSep)` over two
   intervals with stated `InstantFn` bounds answers what the interval network entails, and
   that network reads a stated bound only when it is a named moment a point fact names.
-- **A forward join cannot reach it.** A prover answers a forward antecedent only through
-  `chain/solve-computed`, which drops an answer with **empty** support rather than building
-  a justification that names the rule alone. The clock's support is empty by construction.
-  So a calendar relation discharges a rule antecedent under `query` at a `:max-depth`, where
-  the leaf is the registry, and derives nothing forward.
-- **`totalDuration` does not follow.** The duration prover reads a stated length, and
-  nothing gives it one off a calendar term's fields ([duration.md](duration.md)).
-  `temporalDistance` does follow: the metric network places a calendar moment at an offset
-  from an epoch node ([stp.md](stp.md#calendar-moments)).
 - **Three edges of the calendar itself.** A term whose end would leave the four-digit year
   has no endpoints, so `(endOf (YearFn 9999) ?i)` answers nothing. A date the calendar does
   not have is stricter here than in the containment reader, which bounds a day at 31

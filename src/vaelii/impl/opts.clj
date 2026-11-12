@@ -95,7 +95,8 @@
    [:resume?           "true or false"          boolean?]
    [:retry-deferred?   "true or false"          boolean?]
    [:drop-principal?   "true or false"          boolean?]
-   [:refuse-unsatisfiable? "true or false"      boolean?]])
+   [:refuse-unsatisfiable? "true or false"      boolean?]
+   [:refuse-depth-cut? "true or false"          boolean?]])
 
 (def ^:private bound-domain-map
   "`bound-domains` as `{key [what pred]}`, for a per-key lookup rather than a scan of the

@@ -192,6 +192,8 @@ justification. `(v/why kb handle)` is the justification graph down to premises; 
 | `retract/1` | `(v/retract! kb handle)` — and it cascades |
 | bottom-up Datalog evaluation | `(v/forward-chain kb)`, semi-naive to a fixpoint |
 | `listing/1` | `(v/sentexes-with-functor kb 'p)` |
+| `[a, b \| T]` | `(listOf (ListFn a b c) a b . ?t)` binds `?t` to `(c)` → [nat.md](nat.md#a-data-structure-is-a-structural-term) |
+| `member/2`, `length/2`, `nth1/3` | `(elementOf ?x L)`, `(cardinalityOf ?n L)`, `(valueAt ?x 1 L)`, over a ground list `L` |
 
 ## What you keep
 

@@ -137,6 +137,16 @@ matrix_state_dir() {
   printf '%s/vaelii-matrix\n' "$d"
 }
 
+# box_state_dir prints the directory every clone on the box shares, creating it:
+# VAELII_BOX_STATE_DIR, else `$XDG_STATE_HOME/vaelii`, else `~/.local/state/vaelii`.  The
+# perf lock and the gate slots live there.  The matrix lock and its queue stay per clone,
+# because a queued line names a commit of that clone.
+box_state_dir() {
+  local d="${VAELII_BOX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/vaelii}"
+  mkdir -p "$d" 2>/dev/null || return 1
+  printf '%s\n' "$d"
+}
+
 # lock_create <lock file> <line> creates the lock file holding <line>, or returns 1 when the
 # file exists.  noclobber opens it O_CREAT|O_EXCL, so of two takers only one creates it.
 # Every take and restore goes through here rather than `ln`, which Android refuses: a
@@ -305,27 +315,30 @@ matrix_red_recent() {
   return 0
 }
 
-# ---- one perf run at a time, and a cap on concurrent `lein gate` test stages ---------------
+# ---- one perf run at a time, and a cap on concurrent sharded suites -----------------------
 #
 # `lein perf` and `lein perf-ab` time code, and a second perf run beside the first loads the
 # cores both are timing: each reads the other's JVMs as its own regression, and the suites
 # other sessions run beside them drop to one slot. So every perf run, `--only` and `lein gate`'s
-# perf stage included, from any worktree, holds `perf-lock` in the shared state directory
-# while it measures.
+# perf stage included, from any clone or worktree on the box, holds `perf-lock` in
+# `box_state_dir` while it measures.
 #
-# `lein gate`'s test stage sizes its shard count from the vaelii JVMs already running
-# (`default_slots`, floored at `TEST_MIN_JOBS`), so seven `lein gate` runs started together would
-# each start that floor's shards. So `lein gate`
-# holds one of GATE_MAX_CONCURRENT gate slots (2 by default, `0` for no cap),
-# `gate-lock.1` … `gate-lock.<n>`, for its test stage alone. The test stage starts after the
-# take, so its shard count reads the box as it is at admission. Lint runs while `lein gate`
+# `lein test-parallel` sizes its shard count from the vaelii JVMs already running
+# (`default_slots`, floored at `TEST_MIN_JOBS`), so seven suites started together would each
+# start that floor's shards. So a sharded suite holds one of GATE_MAX_CONCURRENT gate slots
+# (2 by default, `0` for no cap), `gate-lock.1` … `gate-lock.<n>` in `box_state_dir`, shared
+# by every clone and worktree on the box. `lein gate` takes its slot for its test stage alone
+# and exports GATE_SLOT, so the `lein test-parallel` it runs takes none of its own; a
+# `lein test-parallel` run outside `lein gate` takes one for its whole run. The shards start after
+# the take, so their count reads the box as it is at admission. Lint runs while `lein gate`
 # waits, and `lein gate` releases its slot before its perf stage takes `perf-lock`, so no
 # process holds both.
 #
 # A run that finds every slot of its lock held waits, naming the holders once a minute;
 # `PERF_NO_WAIT=1` and `GATE_NO_WAIT=1` exit 75 instead.
 #
-#   perf-lock, gate-lock.<i>  `<pid> <revision> <epoch> <requester> <command…>` of the holder
+#   perf-lock, gate-lock.<i>  `<pid> <revision> <epoch> <requester> <command…> (in <checkout>)`
+#                             of the holder
 
 # lock_holder <lock file> <command regex> prints the lock's line when its pid is alive and
 # that pid's command matches the regex, else nothing. A lock whose pid is gone, or runs
@@ -356,23 +369,24 @@ lock_describe() {
     "$(lock_duration $(( $(date '+%s') - epoch )))" "$cmd"
 }
 
-# lock_take <name> <slots> <command regex> <no-wait variable> <noun> <command…> takes one
-# slot of a lock for this shell: the file `<name>` when <slots> is 1, else the first free
-# of `<name>.1` … `<name>.<slots>`. It sets LOCK_FILE to the file taken and LOCK_WAITED to
-# the seconds it waited. While every slot is held it waits, naming the holders once a
-# minute, or returns 75 when the variable named <no-wait variable> is non-empty. Each
-# attempt is one `lock_create` per slot.
+# lock_take <dir fn> <name> <slots> <command regex> <no-wait variable> <noun> <command…>
+# takes one slot of a lock for this shell, in the directory <dir fn> prints: the file
+# `<name>` when <slots> is 1, else the first free of `<name>.1` … `<name>.<slots>`. It
+# sets LOCK_FILE to the file taken and LOCK_WAITED to the seconds it waited. While every
+# slot is held it waits, naming the holders once a minute, or returns 75 when the variable
+# named <no-wait variable> is non-empty. Each attempt is one `lock_create` per slot.
 lock_take() {
-  local name="$1" n="$2" re="$3" nowait="$4" noun="$5"; shift 5
+  local dirfn="$1" name="$2" n="$3" re="$4" nowait="$5" noun="$6"; shift 6
   local dir line f i held state waited=0 files=()
   LOCK_FILE=''; LOCK_WAITED=0
-  dir=$(matrix_state_dir) || return 0
+  dir=$("$dirfn") || return 0
   if (( n == 1 )); then files=("$dir/$name"); state="the $noun is held"; else
     for ((i = 1; i <= n; i++)); do files+=("$dir/$name.$i"); done
     state="all $n ${noun}s are held"
   fi
+  local top; top=$(git rev-parse --show-toplevel 2>/dev/null) || top=$PWD
   while :; do
-    line="$$ $(git rev-parse --short HEAD 2>/dev/null) $(date '+%s') $(matrix_requester) $*"
+    line="$$ $(git rev-parse --short HEAD 2>/dev/null) $(date '+%s') $(matrix_requester) $* (in ${top/#"$HOME"/\~})"
     for f in "${files[@]}"; do
       lock_holder "$f" "$re" >/dev/null
       if lock_create "$f" "$line"; then
@@ -412,27 +426,27 @@ lock_release() {
 # run holds it (or exiting 75 under PERF_NO_WAIT=1), and releases it when the shell exits.
 # A holder that is no longer perf.sh or perf-ab.sh is stale.
 perf_lock_take() {
-  lock_take perf-lock 1 'perf(-ab)?\.sh' PERF_NO_WAIT 'perf lock' "$@" || exit $?
+  lock_take box_state_dir perf-lock 1 'perf(-ab)?\.sh' PERF_NO_WAIT 'perf lock' "$@" || exit $?
   [[ -n "$LOCK_FILE" ]] && trap perf_lock_release EXIT
   return 0
 }
 
 perf_lock_release() {
   local dir
-  dir=$(matrix_state_dir) || return 0
+  dir=$(box_state_dir) || return 0
   lock_release "$dir/perf-lock"
 }
 
 # gate_slot_take <command…> takes a gate slot for this shell and sets GATE_SLOT to its file
 # and GATE_SLOT_WAITED to the seconds waited; returns 75 under GATE_NO_WAIT=1 when none is
-# free. GATE_MAX_CONCURRENT=0 takes nothing. A holder that is no longer gate.sh is stale.
-# The caller releases with gate_slot_release, on its EXIT trap too.
+# free. GATE_MAX_CONCURRENT=0 takes nothing. A holder that is no longer gate.sh or
+# test-parallel.sh is stale. The caller releases with gate_slot_release, on its EXIT trap too.
 gate_slot_take() {
   local n="${GATE_MAX_CONCURRENT:-2}" rc=0
   [[ "$n" =~ ^[0-9]+$ ]] || n=2
   GATE_SLOT=''; GATE_SLOT_WAITED=0
   (( n > 0 )) || return 0
-  lock_take gate-lock "$n" 'gate\.sh' GATE_NO_WAIT 'gate slot' "$@" || rc=$?
+  lock_take box_state_dir gate-lock "$n" 'gate\.sh|test-parallel\.sh' GATE_NO_WAIT 'gate slot' "$@" || rc=$?
   GATE_SLOT=$LOCK_FILE
   # shellcheck disable=SC2034  # gate.sh reads it
   GATE_SLOT_WAITED=$LOCK_WAITED

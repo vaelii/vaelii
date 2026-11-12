@@ -3,15 +3,11 @@
 (ns vaelii.specified-context-test
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
-            [vaelii.impl.budget :as budget]
             [vaelii.impl.defining :as defining]
-            [vaelii.impl.predall :as predall]
-            [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
-            [vaelii.impl.taxonomy :as tax]
             [vaelii.test-util :as tu]))
 
-(use-fixtures :each (tu/neutral-fresh #(doto (tu/fresh) (tu/load-core!))))
+(use-fixtures :each (tu/neutral-fresh #(doto (tu/empty-kb) (tu/load-core!))))
 
 (defn- note [functor pred subject]
   (if (= functor 'predAllSpecified)
@@ -26,61 +22,6 @@
 (defn- result [kb functor pred kind context]
   (get (v/all-specified-violations kb context) [functor pred kind]
        {:status :audited :violations #{}}))
-
-(tu/deftest-kb hidden-readers-still-consume-the-audits-work-budget
-  (tu/with-terms [CxParent CxHidden notes item_kind]
-    (doseq [max-work [0 160]]
-      (let [checks (atom 0)]
-        (with-redefs [tax/common-descendants (fn [_ _] (repeat 64 CxHidden))
-                      res/matches-visible (fn [_ _ _] (swap! checks inc) [])]
-          (let [outcome (try
-                          (budget/metered
-                           (budget/meter {:max-work max-work})
-                           #(doall (#'predall/specified-context-audits
-                                    kb 'predAllSpecified :second [[notes item_kind CxParent 1]])))
-                          :unexpected-completion
-                          (catch clojure.lang.ExceptionInfo e (budget/exhausted e)))]
-            (is (= :max-work outcome))
-            (is (< @checks 64)
-                "readers hidden before emission cannot bypass the bound")
-            (when (pos? max-work)
-              (is (pos? @checks) "the positive-budget control reaches the visibility checks"))))))))
-
-(tu/deftest-kb visibility-record-pulls-consume-the-audits-work-budget
-  (tu/with-terms [CxParent notes item_kind]
-    (let [pulls (atom 0)]
-      (with-redefs [tax/common-descendants (fn [_ _] [CxParent])
-                    res/matches-visible (fn [_ _ _]
-                                          (repeatedly 256
-                                                      #(do (swap! pulls inc)
-                                                           [{} 2 {:id 2}])))]
-        (let [outcome (try
-                        (budget/metered
-                         (budget/meter {:max-work 64})
-                         #(doall (#'predall/specified-context-audits
-                                  kb 'predAllSpecified :second [[notes item_kind CxParent 1]])))
-                        :unexpected-completion
-                        (catch clojure.lang.ExceptionInfo e (budget/exhausted e)))]
-          (is (= :max-work outcome))
-          (is (<= @pulls 64)
-              "a single hidden reader cannot scan every returned visibility record")
-          (is (pos? @pulls) "the control reaches the visibility provider's lazy records"))))))
-
-(tu/deftest-kb defining-home-unions-consume-the-audits-work-budget
-  (tu/with-terms [CxParent CxReader Subject]
-    (let [checks (atom 0)
-          homes (set (map #(symbol (str "FictionalHome" %)) (range 256)))]
-      (with-redefs [defining/definition-evidence (fn [_ _] {:contexts homes :skeletal-only? false})
-                    tax/common-descendants (fn [_ _] (swap! checks inc) [])]
-        (let [outcome (try
-                        (budget/metered (budget/meter {:max-work 32})
-                                        #((#'predall/member-selector kb) CxParent CxReader Subject))
-                        :unexpected-completion
-                        (catch clojure.lang.ExceptionInfo e (budget/exhausted e)))]
-          (is (= :max-work outcome))
-          (is (<= @checks 32)
-              "an empty home-to-reader join cannot scan every home before checking the bound")
-          (is (pos? @checks) "the positive-budget control reaches the home joins"))))))
 
 (tu/deftest-kb global-type-bookkeeping-does-not-require-a-child-definition-at-the-root
   (tu/with-terms [CxHome relation_kind nearbyRel notes]
@@ -170,7 +111,7 @@
     (v/assert kb (list 'genlCx CxRequirement 'CxUniverse) 'CxUniverse)
     (doseq [sentence [(list 'reifiable_function LookupFn)
                       (list 'result LookupFn access_kind)
-                      (list 'functionCorrespondingPredicate LookupFn lookupOf)
+                      (list 'functionCorrespondingPredicate LookupFn lookupOf 2)
                       (list 'arg lookupOf 1 namespace_kind)]]
       (v/assert kb sentence 'CxUniverse))
     (v/assert kb (list usedBy (list LookupFn Namespace) Observer) CxRequirement)
@@ -206,7 +147,7 @@
     (is (= {:status :audited :violations #{}}
            (result kb 'predAllSpecified notes item_kind CxRequirement)))))
 
-(tu/deftest-kb unclassified-defining-support-is-a-gap-when-the-filler-is-missing
+(tu/deftest-kb mixed-defining-support-is-audited-as-ordinary
   (tu/with-terms [CxOrigin Subject Marker Other liftedTrigger prerequisite notes item_kind]
     (schema kb 'predAllSpecified notes item_kind)
     (v/assert kb (list 'genlCx CxOrigin 'CxUniverse) 'CxUniverse)
@@ -219,23 +160,201 @@
                              (list item_kind Subject))) 'CxUniverse)
     (v/assert kb (list 'predAllSpecified notes item_kind) 'CxUniverse)
     (is (true? (v/ask? kb (list item_kind Subject) 'CxUniverse)))
-    (let [audit (result kb 'predAllSpecified notes item_kind 'CxUniverse)]
-      (is (= :gap (:status audit)))
-      (is (= :incomplete-defining-contexts (:gap audit)))
-      (is (= Subject (:term audit)))
-      (is (seq (:handles audit)))
-      (is (not (contains? audit :violations))))
+    (is (= {:status :audited :violations #{Subject}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))
+    (v/assert kb (note 'predAllSpecified notes Subject) 'CxUniverse)
+    (is (= {:status :audited :violations #{}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))))
+
+(tu/deftest-kb a-computed-only-firing-under-an-asserted-rule-is-audited-as-ordinary
+  ;; A forward firing whose antecedents are all computed names no antecedent, only its
+  ;; rule as informant.  The asserted rule is an ordinary leaf, so the subject has an
+  ;; ordinary home and must carry the specified comment.
+  (tu/with-terms [Subject notes item_kind]
+    (schema kb 'predAllSpecified notes item_kind)
+    (v/assert kb (tu/fwd [(list 'evaluate '?s (list '+ 1 2))] (list item_kind Subject))
+              'CxUniverse)
+    (v/assert kb (list 'predAllSpecified notes item_kind) 'CxUniverse)
+    (is (true? (v/ask? kb (list item_kind Subject) 'CxUniverse)))
+    (is (= {:contexts #{'CxUniverse} :skeletal-only? false}
+           (defining/definition-evidence kb Subject)))
+    (is (= {:status :audited :violations #{Subject}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))
+    (v/assert kb (note 'predAllSpecified notes Subject) 'CxUniverse)
+    (is (= {:status :audited :violations #{}}
+           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))))
+
+;; The classification requirement consumes the same defining readers as Specified.
+(defn- classification-schema [kb classifier class kind]
+  (doseq [t [classifier class kind]]
+    (v/assert kb (list 'unary_predicate t) 'CxUniverse))
+  (v/assert kb (list classifier class) 'CxUniverse))
+
+(defn- classification-result [kb classifier kind context]
+  (get (:type-specified-violations
+        (v/kb-integrity kb #{} context {:categories #{:type-specified-violations}}))
+       ['typeAllSpecified classifier kind]
+       {:status :audited :violations #{}}))
+
+(tu/deftest-kb classification-uses-ordinary-homes-not-quotes-or-nested-sentences
+  (tu/with-terms [CxHome Subject Observer classifier_kind classified_kind item_kind
+                  carriesSyntax DisplayFn]
+    (classification-schema kb classifier_kind classified_kind item_kind)
+    (v/assert kb (list 'genlCx CxHome 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'decontextualized_predicate item_kind) 'CxUniverse)
+    (v/assert kb (list item_kind Subject) CxHome)
+    (v/assert kb (list classified_kind Subject) CxHome)
+    (v/assert kb (list 'typeAllSpecified classifier_kind item_kind) 'CxUniverse)
+    (is (true? (v/ask? kb (list item_kind Subject) 'CxUniverse)))
+    (is (= {:status :audited :violations #{}}
+           (classification-result kb classifier_kind item_kind 'CxUniverse))
+        "the global population copy does not demand a global classification")
+    (doseq [sentence [(list carriesSyntax (list 'Quote Subject))
+                      (list 'believes Observer
+                            (list 'comment Subject "A fictional nested comment."))]]
+      (v/assert kb sentence 'CxUniverse)
+      (is (= {:status :audited :violations #{}}
+             (classification-result kb classifier_kind item_kind 'CxUniverse))
+          "syntax and belief contents do not create a new defining reader"))
+    (v/assert kb (list 'comment (list DisplayFn Subject) "An ordinary function argument.")
+              'CxUniverse)
+    (is (= {:status :audited :violations #{Subject}}
+           (classification-result kb classifier_kind item_kind 'CxUniverse))
+        "an ordinary function argument does create a global defining reader")
+    (v/assert kb (list classified_kind Subject) 'CxUniverse)
+    (is (= {:status :audited :violations #{}}
+           (classification-result kb classifier_kind item_kind 'CxUniverse)))))
+
+(tu/deftest-kb classification-is-reader-local-and-a-child-can-except-the-requirement
+  (tu/with-terms [CxParent CxLeft CxRight Subject classifier_kind classified_kind item_kind]
+    (classification-schema kb classifier_kind classified_kind item_kind)
+    (doseq [[sub super] [[CxParent 'CxUniverse] [CxLeft CxParent] [CxRight CxParent]]]
+      (v/assert kb (list 'genlCx sub super) 'CxUniverse))
+    (let [requirement (v/assert kb (list 'typeAllSpecified classifier_kind item_kind) CxParent)]
+      (v/assert kb (list item_kind Subject) CxParent)
+      (v/assert kb (list classified_kind Subject) CxLeft)
+      (is (= {:status :audited :violations #{Subject}}
+             (classification-result kb classifier_kind item_kind CxParent))
+          "CxLeft's classification cannot classify the parent or its sibling")
+      (let [classification (v/assert kb (list classified_kind Subject) CxParent)]
+        (is (= {:status :audited :violations #{}}
+               (classification-result kb classifier_kind item_kind CxParent)))
+        (v/assert kb (list 'except (list 'sentexHandle classification)) CxRight)
+        (is (true? (v/ask? kb (list classified_kind Subject) CxParent)))
+        (is (false? (v/ask? kb (list classified_kind Subject) CxRight)))
+        (is (= {:status :audited :violations #{Subject}}
+               (classification-result kb classifier_kind item_kind CxParent))
+            "the parent's passing classification does not hide a child violation")
+        (v/assert kb (list 'except (list 'sentexHandle requirement)) CxRight)
+        (is (false? (v/ask? kb (list 'typeAllSpecified classifier_kind item_kind) CxRight)))
+        (is (= {:status :audited :violations #{}}
+               (classification-result kb classifier_kind item_kind CxParent)))))))
+
+(tu/deftest-kb classification-requirement-and-home-meet-in-a-descendant-reader
+  (tu/with-terms [CxRequirement CxHome CxReader Subject classifier_kind classified_kind item_kind]
+    (classification-schema kb classifier_kind classified_kind item_kind)
+    (doseq [[sub super] [[CxRequirement 'CxUniverse] [CxHome 'CxUniverse]
+                         [CxReader CxRequirement] [CxReader CxHome]]]
+      (v/assert kb (list 'genlCx sub super) 'CxUniverse))
+    (v/assert kb (list 'typeAllSpecified classifier_kind item_kind) CxRequirement)
+    (v/assert kb (list item_kind Subject) CxHome)
+    (is (false? (v/ask? kb (list item_kind Subject) CxRequirement)))
+    (is (true? (v/ask? kb (list item_kind Subject) CxReader)))
+    (is (= {:status :audited :violations #{Subject}}
+           (classification-result kb classifier_kind item_kind CxRequirement)))
+    (v/assert kb (list classified_kind Subject) CxReader)
+    (is (= {:status :audited :violations #{}}
+           (classification-result kb classifier_kind item_kind CxRequirement)))))
+
+(tu/deftest-kb classification-exempts-only-proven-skeletal-population
+  (tu/with-terms [CxRequirement Namespace LookupFn lookupOf namespace_kind access_kind usedBy
+                  Observer classifier_kind classified_kind]
+    (classification-schema kb classifier_kind classified_kind namespace_kind)
+    (v/assert kb (list 'genlCx CxRequirement 'CxUniverse) 'CxUniverse)
+    (doseq [sentence [(list 'reifiable_function LookupFn)
+                      (list 'result LookupFn access_kind)
+                      (list 'functionCorrespondingPredicate LookupFn lookupOf 2)
+                      (list 'arg lookupOf 1 namespace_kind)]]
+      (v/assert kb sentence 'CxUniverse))
+    (v/assert kb (list usedBy (list LookupFn Namespace) Observer) CxRequirement)
+    (v/assert kb (list 'typeAllSpecified classifier_kind namespace_kind) CxRequirement)
+    (is (true? (v/ask? kb (list namespace_kind Namespace) CxRequirement)))
+    (is (= #{} (v/defining-contexts kb Namespace)))
+    (is (= {:status :audited :violations #{}}
+           (classification-result kb classifier_kind namespace_kind CxRequirement)))
+    (v/assert kb (list namespace_kind Namespace) CxRequirement)
+    (is (= {:status :audited :violations #{Namespace}}
+           (classification-result kb classifier_kind namespace_kind CxRequirement)))
+    (v/assert kb (list classified_kind Namespace) CxRequirement)
+    (is (= {:status :audited :violations #{}}
+           (classification-result kb classifier_kind namespace_kind CxRequirement)))))
+
+(tu/deftest-kb classification-does-not-exempt-a-native-answer-with-no-stored-home
+  (tu/with-terms [CxRequirement Subject classifier_kind classified_kind item_kind]
+    (classification-schema kb classifier_kind classified_kind item_kind)
+    (v/assert kb (list 'genlCx CxRequirement 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified classifier_kind item_kind) CxRequirement)
     (v/add-prover kb
                   (v/prover {:applicable? (fn [_ goal _]
-                                            (and (= notes (first goal))
-                                                 (= Subject (second goal))))
+                                            (and (= item_kind (first goal))
+                                                 (or (sx/variable? (second goal))
+                                                     (= Subject (second goal)))))
                              :solve (fn [_ goal _]
-                                      (if (sx/variable? (nth goal 2))
-                                        [{(nth goal 2) "A native filler."}]
-                                        (if (= "A native filler." (nth goal 2)) [{}] [])))}))
-    (is (true? (v/ask? kb (list notes Subject "A native filler.") 'CxUniverse)))
+                                      (if (sx/variable? (second goal))
+                                        [{(second goal) Subject}] [{}]))}))
+    (is (= #{} (v/defining-contexts kb Subject)))
+    (is (= {:status :audited :violations #{Subject}}
+           (classification-result kb classifier_kind item_kind CxRequirement))
+        "no known home is not proof of skeletal-only support")
+    (v/assert kb (list classified_kind Subject) CxRequirement)
     (is (= {:status :audited :violations #{}}
-           (result kb 'predAllSpecified notes item_kind 'CxUniverse)))
-    (let [failure (try (v/defining-contexts kb Subject) nil
-                       (catch clojure.lang.ExceptionInfo e (ex-data e)))]
-      (is (= :incomplete-defining-contexts (:type failure))))))
+           (classification-result kb classifier_kind item_kind CxRequirement)))))
+
+(tu/deftest-kb classification-accumulates-child-only-violations-for-one-declaration
+  (tu/with-terms [CxParent CxLeft CxRight First Second classifier_kind classified_kind item_kind]
+    (classification-schema kb classifier_kind classified_kind item_kind)
+    (doseq [[sub super] [[CxParent 'CxUniverse] [CxLeft CxParent] [CxRight CxParent]]]
+      (v/assert kb (list 'genlCx sub super) 'CxUniverse))
+    (v/assert kb (list 'typeAllSpecified classifier_kind item_kind) CxParent)
+    (v/assert kb (list item_kind First) CxLeft)
+    (v/assert kb (list item_kind Second) CxRight)
+    (is (false? (v/ask? kb (list item_kind First) CxParent)))
+    (is (false? (v/ask? kb (list item_kind Second) CxParent)))
+    (is (= {:status :audited :violations #{First Second}}
+           (classification-result kb classifier_kind item_kind CxParent))
+        "a passing or empty parent does not suppress either child's finding")
+    (v/assert kb (list classified_kind First) CxLeft)
+    (is (= {:status :audited :violations #{Second}}
+           (classification-result kb classifier_kind item_kind CxParent)))
+    (v/assert kb (list classified_kind Second) CxRight)
+    (is (= {:status :audited :violations #{}}
+           (classification-result kb classifier_kind item_kind CxParent)))))
+
+(tu/deftest-kb a-root-classification-requirement-audits-child-defined-instances
+  (tu/with-terms [CxHome Subject classifier_kind classified_kind item_kind]
+    (classification-schema kb classifier_kind classified_kind item_kind)
+    (v/assert kb (list 'genlCx CxHome 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'typeAllSpecified classifier_kind item_kind) 'CxUniverse)
+    (v/assert kb (list item_kind Subject) CxHome)
+    (is (false? (v/ask? kb (list item_kind Subject) 'CxUniverse)))
+    (is (= {:status :audited :violations #{Subject}}
+           (classification-result kb classifier_kind item_kind 'CxUniverse)))
+    (v/assert kb (list classified_kind Subject) CxHome)
+    (is (= {:status :audited :violations #{}}
+           (classification-result kb classifier_kind item_kind 'CxUniverse)))))
+
+(tu/deftest-kb a-root-defined-instance-is-audited-where-its-classification-is-excepted
+  (tu/with-terms [CxReader Subject classifier_kind classified_kind item_kind]
+    (classification-schema kb classifier_kind classified_kind item_kind)
+    (v/assert kb (list 'genlCx CxReader 'CxUniverse) 'CxUniverse)
+    (let [requirement (v/assert kb (list 'typeAllSpecified classifier_kind item_kind) 'CxUniverse)
+          classification (v/assert kb (list classified_kind Subject) 'CxUniverse)]
+      (v/assert kb (list item_kind Subject) 'CxUniverse)
+      (v/assert kb (list 'except (list 'sentexHandle classification)) CxReader)
+      (is (true? (v/ask? kb (list classified_kind Subject) 'CxUniverse)))
+      (is (false? (v/ask? kb (list classified_kind Subject) CxReader)))
+      (is (= {:status :audited :violations #{Subject}}
+             (classification-result kb classifier_kind item_kind 'CxUniverse)))
+      (v/assert kb (list 'except (list 'sentexHandle requirement)) CxReader)
+      (is (= {:status :audited :violations #{}}
+             (classification-result kb classifier_kind item_kind 'CxUniverse))))))

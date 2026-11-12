@@ -143,6 +143,20 @@
     (is (not (dt/subinterval? '(YearFn 2001) '(YearFn 2000))))
     (is (not (dt/subinterval? '(DayFn 2000 1 15) '(MonthFn 2000 2))))))
 
+(deftest two-times-are-disjoint-only-when-the-calendar-shows-no-shared-time
+  (let [instant (fn [d] (list 'InstantFn 2000 1 d 12 0 0))]
+    (is (= [true true true true false false false false false]
+           (mapv (fn [[a b]] (dt/disjoint? a b))
+                 [['(MonthFn 2000 1) '(MonthFn 2000 2)]
+                  [(instant 15) (instant 16)]
+                  [(instant 15) '(MonthFn 2000 2)]
+                  ['(DayFn 2000 1 14) (instant 15)]
+                  ['(MonthFn 2000 1) '(YearFn 2000)]
+                  [(instant 15) (instant 15)]
+                  [(instant 15) '(MonthFn 2000 1)]
+                  [(list 'DatetimeRangeFn "2000-01" "2000-02-01") '(MonthFn 2000 2)]
+                  ['(MonthFn 2000 1) 'Y2000]])))))
+
 (deftest the-two-spellings-name-the-same-intervals
   ;; A calendar term and the reduced-precision ISO string read to one field vector, so the
   ;; comparator never learns which constructor it was handed.

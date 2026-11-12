@@ -332,6 +332,22 @@
             (= pb (subvec pa 0 (count pb))))
        (when-let [[ea eb] (paired-extents a b)] (within? ea eb))))))
 
+(defn disjoint?
+  "True iff the calendar shows the time terms `a` and `b` share no time: two moments with
+  different fields, a moment outside an interval term's extent, or two extents in one
+  frame (`paired-extents`) that do not overlap.  `false` for anything else, a named time
+  included."
+  [a b]
+  (boolean
+   (let [ta (instant-fields a)
+         tb (instant-fields b)]
+     (cond
+       (and ta tb) (not= ta tb)
+       ta          (some->> (extent b) (at-or-inside? ta) not)
+       tb          (some->> (extent a) (at-or-inside? tb) not)
+       :else       (when-let [[[as ae] [bs be]] (paired-extents a b)]
+                     (or (<= (compare ae bs) 0) (<= (compare be as) 0)))))))
+
 (defn instant-within?
   "True iff `a` is an `InstantFn` moment at or inside the interval term `b`'s extent, or
   the same moment as the `InstantFn` term `b`.  `false` otherwise, two intervals
@@ -368,6 +384,61 @@
                               (for [[f n] calendar-functions :when (= n k)] (apply list f p))))))
           (range 1 (inc (count fs))))))
 
+;; ---- one spelling per time --------------------------------------------------
+
+(def ^:private calendar-constructors
+  "`field count → functor`, the inverse of `calendar-functions`."
+  (into {} (map (fn [[f n]] [n f])) calendar-functions))
+
+(def ^:private endpoint-functions
+  "The moment functions `calendar-spelling` reads off an extent: which half of it each names."
+  '{StartFn 0, EndFn 1})
+
+(defn- iso
+  "The ISO string of `fields`, the year four digits wide and every later field two."
+  [fields]
+  (let [[d t] (split-at 3 (map-indexed #(format (if (zero? %1) "%04d" "%02d") %2) fields))]
+    (cond-> (str/join "-" d) (seq t) (str "T" (str/join ":" t)))))
+
+(defn- coarsest-unit
+  "The fields of the coarsest calendar unit holding the moment `t` whose bounds satisfy
+  `ok?`, or nil."
+  [t ok?]
+  (some #(let [fs (subvec t 0 %)] (when (some-> (fields-bounds fs) ok?) fs))
+        (range 1 (inc instant-field-count))))
+
+(defn- extent-spelling
+  "The one term of the extent `[s e)`: the calendar term or the zero-padded `DatetimeFn`
+  term of the one unit with those bounds, else the `DatetimeRangeFn` range from the
+  coarsest unit starting at `s` to the coarsest unit ending at `e`."
+  [[s e :as ext]]
+  (if-let [fs (coarsest-unit s #(= ext %))]
+    (if-let [f (calendar-constructors (count fs))]
+      (apply list f fs)
+      (list datetime-function (iso fs)))
+    (let [last-second (from (.minusSeconds ^LocalDateTime (at e) 1))]
+      (list range-function
+            (iso (coarsest-unit s (fn [[bs be]] (and (= s bs) (<= (compare be e) 0)))))
+            (iso (coarsest-unit last-second (fn [[bs be]] (and (= e be) (<= (compare s bs) 0)))))))))
+
+(defn calendar-spelling
+  "`t` with each time term in no zone inside it, innermost first, in the one spelling read
+  off its extent: an `InstantFn` moment, and `(StartFn T)` / `(EndFn T)` of a term `T` with
+  an `extent`, as the `InstantFn` term; any other term with an `extent` as
+  `extent-spelling` gives it.  A time with a UTC offset or a zone, a named time and any
+  other term keep their spelling (docs/context-nat.md, \"Two spellings of one calendar time
+  name one context\")."
+  [t]
+  (if-not (and (sequential? t) (seq t))
+    t
+    (let [t (apply list (map calendar-spelling t))]
+      (if-let [fs (instant-fields t)]
+        (instant-term fs)
+        (or (when-let [half (and (= 2 (count t)) (endpoint-functions (first t)))]
+              (some-> (extent (second t)) (nth half) instant-term))
+            (some-> (extent t) extent-spelling)
+            t)))))
+
 (def order-comparators
   "The registered pure comparators of an order, `{relation → (fn [a b] a-below-b?)}`.
   Each reads two terms' shape with no store read and no proof, and is total, returning
@@ -386,3 +457,30 @@
   (and (sequential? form)
        (boolean (or (some? (term-fields form)) (instant-term? form) (some? (extent form))
                     (some? (utc-extent form))))))
+
+(def ^:private time-functions
+  "The functors of the terms `time-term?` can hold of."
+  (into #{datetime-function range-function instant-function zoned-function}
+        (keys calendar-functions)))
+
+(defn moments
+  "The `[frame fields]` of each point the calendar places of the time term `t`, in
+  `timepoint/moment`'s frames: an `InstantFn` moment's own, else the start and end of the
+  term's extent, `:local` in no zone and `:utc` with an offset or a zone.  Empty for any
+  other term."
+  [t]
+  (if-let [f (instant-fields t)]
+    [[:local f]]
+    (or (some->> (extent t) (mapv #(vector :local %)))
+        (some->> (utc-extent t) (mapv #(vector :utc %)))
+        [])))
+
+(defn month-buckets
+  "The `[frame year month]` of each point (`moments`) of each time term in `form`, as a
+  set: the months of the calendar index's nodes (`kv/index-families`' `:calendar`) a stored
+  fact enters under its functor."
+  [form]
+  (into #{} (comp (filter #(and (sequential? %) (contains? time-functions (first %))))
+                  (mapcat moments)
+                  (map (fn [[frame fs]] [frame (nth fs 0) (nth fs 1)])))
+        (tree-seq sequential? seq form)))

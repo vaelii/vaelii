@@ -8,6 +8,8 @@
   See docs/inference.md, \"Conjunctive query planning\"."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.caches :as caches]
+            [vaelii.impl.chain :as chain]
             [vaelii.impl.plan :as plan]
             [vaelii.impl.profile :as prof]
             [vaelii.impl.protocols :as p]
@@ -192,6 +194,73 @@
     (testing "but only est-matches takes the bindings in hand, and it is the bound"
       (is (= 1 (plan/est-matches kb (list animal '?x) '#{?x})))
       (is (= 2 (:rows (plan/est-rows kb (list animal '?x))))))))
+
+(tu/deftest-kb a-genl-read-with-one-end-open-is-priced-at-its-closure-without-a-walk
+  ;; A leaf stores no edge into it, and its closure still answers the leaf itself.
+  (tu/with-terms [top mid low side CxPlan]
+    (doseq [[s g] [[mid top] [low mid] [side top]]]
+      (v/assert kb (list 'genl s g) CxPlan))
+    (let [tx      (reasoning/taxonomy kb)
+          walks   (atom 0)
+          [sg gg] [tax/specs-global tax/genls-global]
+          price   (fn [goal]
+                    (with-redefs [tax/specs-global (fn [t n] (swap! walks inc) (sg t n))
+                                  tax/genls-global (fn [t n] (swap! walks inc) (gg t n))]
+                      [(plan/est-matches kb goal #{}) (:rows (plan/est-rows kb goal))]))
+          answers (fn [goal] (count (set (map #(get % '?v) (v/prove kb [goal] CxPlan)))))]
+      (caches/lru-clear! (:closure-lru @tx))
+      (testing "an end with no edge in the read direction answers its reflexive row alone"
+        (doseq [goal [(list 'genl '?v low) (list 'genl top '?v)]]
+          (is (= [1 1] (price goal)) (pr-str goal))
+          (is (= 1 (answers goal)) (pr-str goal))))
+      (testing "a closure the cache does not hold is bounded by the relation's active edges"
+        (let [[em rows] (price (list 'genl '?v top))]
+          (is (= (inc (tax/active-edge-count tx :genl)) em))
+          (is (= 3 rows) "the two stored edges into top and the reflexive row")))
+      (testing "a closure the join has read prices at its size"
+        (sg tx top)
+        (gg tx low)
+        (is (= [4 4] (price (list 'genl '?v top))))
+        (is (= 4 (answers (list 'genl '?v top))))
+        (is (= [3 3] (price (list 'genl low '?v))))
+        (is (= 3 (answers (list 'genl low '?v)))))
+      (is (zero? @walks) "no price reads a closure through the taxonomy"))))
+
+(defn- forward-join-order
+  "The literals a forward join of `(implies (and (goes ?t) (selects ?t ?g) (memberOf ?g ?x)
+  (wide ?x)) (out ?x))` takes, in order, by functor, with `replan` standing for
+  `chain/replanned`; and whether the rule concludes `out` of the one member of `Narrow`.  The
+  one `selects` row binds `?g` to `Narrow`, which has one member, and `Big` has thirty."
+  [kb replan]
+  (tu/with-terms [goes selects memberOf wide out T Narrow Big CxPlan]
+    (let [ws     (mapv #(tu/tmp-ind (str "W" %)) (range 6))
+          bs     (mapv #(tu/tmp-ind (str "B" %)) (range 30))
+          join   @#'chain/join-antecedent
+          joined (atom [])]
+      (doseq [f (concat [(list goes T) (list selects T Narrow) (list memberOf Narrow (first ws))]
+                        (map #(list memberOf Big %) bs)
+                        (map #(list wide %) ws))]
+        (v/assert kb f CxPlan))
+      (with-redefs-fn {#'chain/join-antecedent (fn [kb ante & args]
+                                                 (swap! joined conj ante)
+                                                 (apply join kb ante args))
+                       #'chain/replanned       replan}
+        #(v/assert kb (list 'implies (list 'and (list goes '?t) (list selects '?t '?g)
+                                           (list memberOf '?g '?x) (list wide '?x))
+                            (list out '?x))
+                   CxPlan {:direction :forward}))
+      [(into [] (keep #({goes :goes selects :selects memberOf :member wide :wide} (first %))) @joined)
+       (= [{'?x (first ws)}] (v/query kb [(list out '?x)] CxPlan))])))
+
+(tu/deftest-kb a-forward-join-re-plans-the-literals-left-at-the-values-of-its-one-row
+  (let [[first-plan concl-first] (forward-join-order kb (fn [_ more _ _] more))
+        [replanned concl]        (forward-join-order kb @#'chain/replanned)
+        before                   #(< (.indexOf ^java.util.List %1 :member) (.indexOf ^java.util.List %1 :wide))]
+    (testing "the first plan, with ?g bound to no value yet, joins memberOf after wide"
+      (is (not (before first-plan)) (pr-str first-plan)))
+    (testing "once selects leaves one row, memberOf is priced at Narrow's one member and leads"
+      (is (before replanned) (pr-str replanned)))
+    (is (and concl-first concl) "both orders conclude out of Narrow's one member")))
 
 (tu/deftest-kb the-counts-span-every-context-and-a-read-is-scoped-to-one
   (tu/with-terms [parentOf Tom Bob Cid CxTop CxSub]

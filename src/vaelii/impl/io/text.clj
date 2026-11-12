@@ -12,6 +12,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [vaelii.impl.assert-entry :as entry]
+            [vaelii.impl.disk.files :as dfiles]
             [vaelii.impl.io.digest :as digest]
             [vaelii.impl.io.export :as export]
             [vaelii.impl.jtms :as jtms]
@@ -141,7 +142,7 @@
                       {:type :missing-resource :path (.getPath f)})))
     (let [files    (if (.isDirectory f) (kb-files f) [f])
           ^File mf (io/file f manifest-file)
-          manifest (when (and (.isDirectory f) (.isFile mf)) (edn/read-string (slurp mf)))]
+          manifest (when (and (.isDirectory f) (.isFile mf)) (dfiles/read-edn-manifest mf nil))]
       (when (empty? files)
         (throw (ex-info (str (.getPath f) " holds no Cx….txt context files")
                         {:type :missing-resource :path (.getPath f)})))

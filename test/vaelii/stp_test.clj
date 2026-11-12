@@ -19,7 +19,7 @@
 ;; The KB is built per test because a test registers a prover of its own, which a KB
 ;; shared across tests would keep.
 (use-fixtures :each (tu/neutral-fresh
-                     #(doto (tu/fresh)
+                     #(doto (tu/empty-kb)
                         (tu/load-core!)
                         (v/add-prover (stp/stp-prover)))))
 
@@ -379,6 +379,23 @@
       (v/retract! kb (v/handle-of kb (list 'temporalDistance P R '(QuantityFn 1 Hour)) C))
       (is (not (inconsistent? kb C)))
       (is (= '(QuantityFn 7200 Second) (bound kb (list 'temporalDistance P R '?d)))))))
+
+(tu/deftest-kb a-metric-clash-is-filed-by-the-first-read-of-the-closure
+  ;; no `:allen` here, so the settle reads no metric closure
+  (load-time-units kb)
+  (v/clear-violations! kb)
+  (tu/with-terms [P Q R]
+    (let [filed #(filter (fn [e] (= :metric-temporal-inconsistency (:violation e)))
+                         (v/violations kb))]
+      (v/assert kb (list 'temporalDistance P Q '(QuantityFn 1 Hour)) C)
+      (v/assert kb (list 'temporalDistance Q R '(QuantityFn 1 Hour)) C)
+      (testing "try-assert stores the constraint that closes the cycle"
+        (is (nat-int? (v/try-assert kb (list 'temporalDistance P R '(QuantityFn 1 Hour)) C))))
+      (testing "the write files nothing"
+        (is (empty? (filed))))
+      (testing "a metric goal files one entry"
+        (v/ask kb (list 'temporalDistance P Q '?d) C)
+        (is (= 1 (count (filed))))))))
 
 (tu/deftest-kb constraints-of-two-dimensions-are-refused-and-reported
   (load-time-units kb)

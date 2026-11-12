@@ -291,7 +291,7 @@
   these is caught by review rather than by this test."
   {"GATE_JOBS"         "scripts/gate.sh, the test stage's shard count"
    "PERF_TOLERANCE"    "scripts/gate.sh, passed through to `lein perf --tolerance`"
-   "GATE_MAX_CONCURRENT" "scripts/lib/slots.sh, how many `lein gate` test stages run at once"
+   "GATE_MAX_CONCURRENT" "scripts/lib/slots.sh, how many sharded suites run at once on the box"
    "GATE_NO_WAIT"      "scripts/lib/slots.sh, exit 75 rather than wait for a gate slot"
    "TEST_MIN_JOBS"     "scripts/test-parallel.sh, the fewest shards its default count starts"
    "PERF_NO_WAIT"      "scripts/lib/slots.sh, exit 75 rather than wait for the perf lock"

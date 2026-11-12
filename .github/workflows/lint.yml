@@ -4,7 +4,7 @@ name: lint
 # scripts/lint.sh: glossary structure, relative-link resolution, doc/code drift,
 # clj-kondo, cljfmt, shellcheck, and the two ratchets — a compile pass whose
 # reflection warnings fail, and a public var nothing references. One job, because
-# the script already runs all eight and is deliberately NOT fail-fast: splitting
+# the script already runs every check and is deliberately NOT fail-fast: splitting
 # them would cost a JVM boot each to learn what one run already knows, and would
 # lose the report.
 #

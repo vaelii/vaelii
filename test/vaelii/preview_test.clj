@@ -908,10 +908,14 @@
 
 (defn- withholding!
   "`(dog Fred)` withholds the mint `(animal Fred)` that `(parentOf Fred Mary)` entails
-  under `(arg parentOf 1 animal)`; `more` is stored first.  Returns `(dog Fred)`'s handle."
+  under `(arg parentOf 1 animal)`; `more` is stored first.  `(genl dog animal)` is
+  monotonic, so a separation of `animal` meets `(dog Fred)` itself.  Returns `(dog Fred)`'s
+  handle."
   [kb animal dog parentOf Fred Mary more]
-  (doseq [s (concat more [(list 'genl animal 'thing) (list 'genl dog animal)
-                          (list 'arg parentOf 1 animal) (list dog Fred) (list parentOf Fred Mary)])]
+  (doseq [s (concat more [(list 'genl animal 'thing)])]
+    (v/assert kb s 'CxUniverse))
+  (v/assert kb (list 'genl dog animal) 'CxUniverse {:strength :monotonic})
+  (doseq [s [(list 'arg parentOf 1 animal) (list dog Fred) (list parentOf Fred Mary)]]
     (v/assert kb s 'CxUniverse))
   (v/handle-of kb (list dog Fred) 'CxUniverse))
 

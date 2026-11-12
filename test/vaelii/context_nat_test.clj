@@ -11,12 +11,14 @@
   sibling contexts structurally: `(CxTimeFn CxMonad (DatetimeFn \"2000-01\"))` is a spec of
   `(CxTimeFn CxMonad (DatetimeFn \"2000\"))` because January 2000 is inside 2000, with nobody
   asserting the `genlCx` edge."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [is testing use-fixtures]]
             [taoensso.trove :as trove]
             [vaelii.core :as v]
             [vaelii.impl.context-nat :as cn]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
+            [vaelii.impl.profile :as prof]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-core!))
@@ -247,6 +249,60 @@
       (is (not (v/sees? kb km ky)) "no edge before the declaration")
       (v/assert kb (list 'contextArgSubrelation cxfn 2 'subintervalOf) 'CxUniverse)
       (is (v/sees? kb km ky) "the declaration arriving last sweeps the existing contexts"))))
+
+(defn- cx-of [kb h] (:context (v/sentex kb h)))
+
+(tu/deftest-kb a-context-arg-genlcx-declaration-places-each-context-under-its-argument-in-either-arrival-order
+  (tu/with-terms [CxStory p q r]
+    (let [cxfn  (declare-datetime-dimension! kb)
+          early (list cxfn CxStory (list 'DatetimeFn "2000"))
+          late  (list cxfn CxStory (list 'DatetimeFn "2001"))
+          _     (v/assert kb (list p) CxStory)
+          ke    (cx-of kb (v/assert kb (list q) early))]
+      (is (not (v/sees? kb ke CxStory)) "no edge before the declaration")
+      (let [decl (v/assert kb (list 'contextArgGenlCx cxfn 1) 'CxUniverse)
+            kl   (cx-of kb (v/assert kb (list r) late))]
+        (testing "a context minted before the declaration and one minted after sit under their argument"
+          (is (v/sees? kb ke CxStory))
+          (is (v/sees? kb kl CxStory))
+          (is (true? (v/ask? kb (list p) early))))
+        (testing "the argument does not see the context"
+          (is (not (v/ask? kb (list q) CxStory))))
+        (testing "retracting the declaration withdraws both edges"
+          (v/retract! kb decl)
+          (is (not (v/sees? kb ke CxStory)))
+          (is (not (v/sees? kb kl CxStory))))))))
+
+(tu/deftest-kb a-hand-written-natformula-places-its-context-under-the-argument-until-it-is-retracted
+  (doseq [declaration-first? [true false]]
+    (tu/with-terms [CxStory CxNamed]
+      (let [cxfn (declare-datetime-dimension! kb)
+            decl #(v/assert kb (list 'contextArgGenlCx cxfn 1) 'CxUniverse)
+            _    (when declaration-first? (decl))
+            nf   (v/assert kb (list 'natFormula CxNamed (list cxfn CxStory (list 'DatetimeFn "2000"))) 'CxUniverse)]
+        (when-not declaration-first? (decl))
+        (testing (str "declaration first: " declaration-first?)
+          (is (v/sees? kb CxNamed CxStory))
+          (v/retract! kb nf)
+          (is (not (v/sees? kb CxNamed CxStory))))))))
+
+(tu/deftest-kb a-read-of-an-unwritten-application-sees-its-argument
+  (tu/with-terms [CxStory p]
+    (let [cxfn (declare-datetime-dimension! kb)]
+      (v/assert kb (list 'contextArgGenlCx cxfn 1) 'CxUniverse)
+      (v/assert kb (list p) CxStory)
+      (is (true? (v/ask? kb (list p) (list cxfn CxStory (list 'DatetimeFn "2000"))))))))
+
+(tu/deftest-kb a-context-arg-genlcx-declaration-builds-no-edge-to-cxuniverse
+  (let [cxfn (declare-datetime-dimension! kb)
+        _    (v/assert kb (list 'contextArgGenlCx cxfn 1) 'CxUniverse)
+        k    (cx-of kb (v/assert kb '(likes Tom Ann) (list cxfn 'CxUniverse (list 'DatetimeFn "2000"))))]
+    (is (empty? (v/sentexes-matching kb (list 'genlCx k 'CxUniverse) 'CxUniverse)))))
+
+(tu/deftest-kb a-context-arg-genlcx-declaration-needs-a-positive-position
+  (let [cxfn (declare-datetime-dimension! kb)]
+    (is (= :not-well-formed
+           (tu/refusal-type #(v/assert kb (list 'contextArgGenlCx cxfn 0) 'CxUniverse))))))
 
 (tu/deftest-kb a-fact-into-an-existing-context-orders-no-sibling-pair
   ;; The producer runs on every assert into a context NAT, so it examines only the pairs
@@ -665,6 +721,127 @@
             km (:context (v/sentex kb (v/assert kb (list 'weather Windy) (at '(InstantFn 2000 1 1 0 0 0)))))]
         (is (v/sees? kb km ks))))))
 
+(tu/deftest-kb allen-facts-order-two-slices-through-the-points-in-either-arrival-order
+  (doseq [facts-last? [false true]]
+    (let [cxfn (declare-calendar-dimension! kb)]
+      (tu/with-terms [H Q R Fog Rain Sun]
+        (let [at     #(list cxfn 'CxMonad %)
+              facts! #(doseq [s [(list 'finishes Q H) (list 'overlaps H R)]]
+                        (v/assert kb s 'CxUniverse))
+              _      (when-not facts-last? (facts!))
+              kh     (:context (v/sentex kb (v/assert kb (list 'weather Fog) (at H))))
+              kq     (:context (v/sentex kb (v/assert kb (list 'weather Rain) (at Q))))
+              kr     (:context (v/sentex kb (v/assert kb (list 'weather Sun) (at R))))
+              _      (when facts-last? (facts!))]
+          (is (= [true false false false] [(v/sees? kb kq kh) (v/sees? kb kh kq)
+                                           (v/sees? kb kh kr) (v/sees? kb kr kh)]))
+          (v/retract! kb (:id (tu/sentex-matching kb (list 'finishes Q H) 'CxUniverse)))
+          (is (not (v/sees? kb kq kh))))))))
+
+(tu/deftest-kb a-chain-of-subintervalof-facts-orders-the-slices-at-its-ends
+  (doseq [chain-last? [false true]]
+    (let [cxfn (declare-calendar-dimension! kb)]
+      (tu/with-terms [Inner Mid Outer Fog Rain]
+        (let [at     #(list cxfn 'CxMonad %)
+              chain! #(doseq [[a b] [[Inner Mid] [Mid Outer]]]
+                        (v/assert kb (list 'subintervalOf a b) 'CxUniverse))
+              _      (when-not chain-last? (chain!))
+              ko     (:context (v/sentex kb (v/assert kb (list 'weather Fog) (at Outer))))
+              ki     (:context (v/sentex kb (v/assert kb (list 'weather Rain) (at Inner))))
+              _      (when chain-last? (chain!))]
+          (is (= [true false] [(v/sees? kb ki ko) (v/sees? kb ko ki)])))))))
+
+(tu/deftest-kb a-slice-at-an-intersection-is-ordered-under-each-argument-and-what-holds-one
+  (doseq [fact-last? [false true]]
+    (let [cxfn (declare-calendar-dimension! kb)]
+      (tu/with-terms [A B Z Fog Rain Hail]
+        (let [at    #(list cxfn 'CxMonad %)
+              cx    #(:context (v/sentex kb (v/assert kb (list 'weather %1) (at %2))))
+              fact! #(v/assert kb (list 'subintervalOf A Z) 'CxUniverse)
+              _     (when-not fact-last? (fact!))
+              kz    (cx Fog Z)
+              kab   (cx Rain (list 'TimeIntersectionFn B A))
+              ka    (cx Hail A)
+              _     (when fact-last? (fact!))]
+          (is (= kab (cx Rain (list 'TimeIntersectionFn A B))))
+          (is (= [true true false] [(v/sees? kb kab ka) (v/sees? kb kab kz) (v/sees? kb ka kab)])))))))
+
+(tu/deftest-kb a-declared-time-position-takes-one-spelling-of-each-calendar-time
+  (let [cxfn (declare-calendar-dimension! kb)
+        cx   #(:context (v/sentex kb (v/assert kb (list 'weather %2) (list cxfn 'CxMonad %1))))]
+    (tu/with-terms [Fog Rain]
+      (testing "undeclared, two spellings of one month are two contexts"
+        (is (not= (cx '(MonthFn 2000 1) Fog) (cx '(DatetimeFn "2000-01") Rain)))))
+    (v/assert kb (list 'contextArgCalendarSpelling cxfn 2) 'CxUniverse)
+    (doseq [[a b] '[[(DatetimeRangeFn "2000-01" "2000-06") (DatetimeRangeFn "2000-01-01" "2000-06-30T23")]
+                    [(DatetimeFn "2000-01-15T1") (DatetimeFn "2000-01-15T01")]
+                    [(EndFn (MonthFn 2000 1)) (InstantFn 2000 2 1 0 0 0)]
+                    [(DatetimeRangeFn "2000-01" "2000-12") (YearFn 2000)]]]
+      (tu/with-terms [Fog Rain]
+        (is (= (cx a Fog) (cx b Rain)) (pr-str [a b]))))
+    (tu/with-terms [Fog]
+      (testing "the constant's expression holds the one spelling"
+        (is (= [{'?e (list cxfn 'CxMonad '(DatetimeRangeFn "2000-01" "2000-06"))}]
+               (v/ask kb (list 'natFormula (cx '(DatetimeRangeFn "2000-01-01" "2000-06-30T23") Fog) '?e)
+                      'CxUniverse)))))))
+
+(tu/deftest-kb a-link-to-a-calendar-moment-orders-a-slice-under-a-time-the-calendar-places
+  (doseq [links-last? [false true]]
+    (let [cxfn (declare-calendar-dimension! kb)]
+      (tu/with-terms [Year Visit M N Fog Rain]
+        (let [at     #(list cxfn 'CxMonad %)
+              links! #(doseq [s [(list 'instantBefore '(InstantFn 2000 6 1 0 0 0) M)
+                                 (list 'instantBefore N '(InstantFn 2000 9 1 0 0 0))]]
+                        (v/assert kb s 'CxUniverse))]
+          (doseq [s [(list 'startOf Year '(InstantFn 2000 1 1 0 0 0))
+                     (list 'endOf Year '(InstantFn 2001 1 1 0 0 0))
+                     (list 'startOf Visit M) (list 'endOf Visit N)]]
+            (v/assert kb s 'CxUniverse))
+          (when-not links-last? (links!))
+          (let [ky (:context (v/sentex kb (v/assert kb (list 'weather Fog) (at Year))))
+                kv (:context (v/sentex kb (v/assert kb (list 'weather Rain) (at Visit))))]
+            (when links-last? (links!))
+            (is (= [true false] [(v/sees? kb kv ky) (v/sees? kb ky kv)]))))))))
+
+(tu/deftest-kb a-link-to-a-calendar-moment-orders-calendar-slices-inside-and-around-a-named-time
+  (doseq [links-last? [false true]]
+    (let [cxfn (declare-calendar-dimension! kb)]
+      (tu/with-terms [Visit M N Fog Rain Sun]
+        (let [at     #(list cxfn 'CxMonad %)
+              cx     #(:context (v/sentex kb (v/assert kb (list 'weather %2) (at %1))))
+              links! #(doseq [s [(list 'instantBefore '(InstantFn 2000 2 1 0 0 0) M)
+                                 (list 'instantBefore M '(InstantFn 2000 7 1 0 0 0))
+                                 (list 'instantBefore '(InstantFn 2000 8 1 0 0 0) N)
+                                 (list 'instantBefore N '(InstantFn 2000 11 1 0 0 0))]]
+                        (v/assert kb s 'CxUniverse))]
+          (v/assert kb (list 'startOf Visit M) 'CxUniverse)
+          (v/assert kb (list 'endOf Visit N) 'CxUniverse)
+          (when-not links-last? (links!))
+          (let [kv (cx Visit Rain)
+                kj (cx '(MonthFn 2000 7) Sun)
+                ky (cx '(YearFn 2000) Fog)]
+            (when links-last? (links!))
+            (is (= [true true false false]
+                   [(v/sees? kb kj kv) (v/sees? kb kv ky) (v/sees? kb kv kj) (v/sees? kb ky kv)]))))))))
+
+(tu/deftest-kb a-link-to-the-calendar-reads-no-other-fact-naming-a-time-in-the-month
+  (let [cxfn (declare-calendar-dimension! kb)]
+    (tu/with-terms [Visit E Ann seenAt Rain Sun CxWorld]
+      (let [at     #(list cxfn 'CxMonad %)
+            cx     #(:context (v/sentex kb (v/assert kb (list 'weather %2) (at %1))))
+            seen   (into #{} (for [d (range 1 6)]
+                               (v/assert kb (list seenAt Ann (list 'InstantFn 2000 2 d 12 0 0)) CxWorld)))
+            km     (cx '(MonthFn 2000 2) Sun)
+            kv     (cx Visit Rain)
+            read   (volatile! #{})]
+        (v/assert kb (list 'startOf Visit '(InstantFn 2000 2 10 0 0 0)) 'CxUniverse)
+        (v/assert kb (list 'endOf Visit E) 'CxUniverse)
+        (is (not (v/sees? kb kv km)))
+        (binding [prof/*handle-sink* #(vswap! read conj %)]
+          (v/assert kb (list 'instantBefore E '(InstantFn 2000 2 20 0 0 0)) 'CxUniverse))
+        (is (v/sees? kb kv km))
+        (is (empty? (set/intersection seen @read)))))))
+
 (tu/deftest-kb a-genlcx-edge-a-rule-concludes-after-the-contexts-orders-them
   (tu/with-terms [CxLow CxHigh monadBelow]
     (let [cxfn (fresh-cxfn "Monad")]
@@ -748,25 +925,20 @@
                [(v/sees? kb (lows 1) (highs 1)) (v/sees? kb (lows 9) (highs 9))
                 (filterv #{:vaelii.impl.nat-maintenance/producer-rounds} @ids)]))))))
 
-(tu/deftest-kb a-genlcx-path-and-a-stated-genlmonad-each-justify-the-slice-edge-in-either-order
-  (doseq [[before after] [[:fact :path] [:path :fact]]]
-    (tu/with-terms [CxLow CxHigh]
-      (let [cxfn  (fresh-cxfn "Monad")
-            slice #(:context (v/sentex kb (v/assert kb '(holiday NewYear) (list cxfn %))))
-            stmt  {:fact (list 'genlMonad CxLow CxHigh) :path (list 'genlCx CxLow CxHigh)}
-            _     (v/assert kb (list 'result cxfn 'context) 'CxUniverse)
-            _     (v/assert kb (list 'contextArgSubrelation cxfn 1 'genlMonad) 'CxUniverse)
-            h1    (v/assert kb (stmt before) 'CxUniverse)
-            k1    (slice CxLow)
-            k2    (slice CxHigh)
-            h2    (v/assert kb (stmt after) 'CxUniverse)
-            edge  #(v/handle-of kb (list 'genlCx k1 k2) 'CxUniverse)
-            e     (edge)
-            n     (count (filter #(= 'contextArgSubrelation (:informant %))
-                                 (v/supporting-justifications kb e)))]
-        (v/retract! kb (if (= :path before) h1 h2))
-        (is (= [2 true e] [n (v/sees? kb k1 k2) (edge)])
-            (str before " then " after ": two justifications, and the fact keeps the edge"))))))
+(tu/deftest-kb a-stated-genlmonad-is-refused-and-the-genlcx-path-justifies-the-slice-edge
+  (tu/with-terms [CxLow CxHigh]
+    (let [cxfn  (fresh-cxfn "Monad")
+          slice #(:context (v/sentex kb (v/assert kb '(holiday NewYear) (list cxfn %))))]
+      (v/assert kb (list 'result cxfn 'context) 'CxUniverse)
+      (v/assert kb (list 'contextArgSubrelation cxfn 1 'genlMonad) 'CxUniverse)
+      (is (= :not-well-formed
+             (tu/refusal-type #(v/assert kb (list 'genlMonad CxLow CxHigh) 'CxUniverse))))
+      (let [h  (v/assert kb (list 'genlCx CxLow CxHigh) 'CxUniverse)
+            k1 (slice CxLow)
+            k2 (slice CxHigh)]
+        (is (= [true true] [(v/sees? kb k1 k2) (v/ask? kb (list 'genlMonad CxLow CxHigh) 'CxUniverse)]))
+        (v/retract! kb h)
+        (is (= [false false] [(v/sees? kb k1 k2) (v/ask? kb (list 'genlMonad CxLow CxHigh) 'CxUniverse)]))))))
 
 (tu/deftest-kb an-unwritten-slice-sees-both-its-supers-with-a-one-entry-supporter-cache
   (tu/with-terms [CxSupM CxSubM CxOtherM p q]
@@ -793,7 +965,7 @@
       (v/assert kb '(unreifiable_function DatetimeFn) 'CxUniverse)
       (v/assert kb '(unreifiable_function DatetimeRangeFn) 'CxUniverse)
       (v/assert kb (list 'contextArgSubrelation cxfn 1 'genlMonad) 'CxUniverse)
-      (v/assert kb (list 'genlMonad CxM CxSuperM) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxM CxSuperM) 'CxUniverse)
       (v/assert kb (list 'time_interval Spring) 'CxUniverse)
       (v/assert kb (list 'startOf Spring '(InstantFn 2000 3 1 0 0 0)) 'CxUniverse)
       (v/assert kb (list 'endOf Spring '(InstantFn 2000 6 1 0 0 0)) 'CxUniverse)

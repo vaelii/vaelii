@@ -29,23 +29,32 @@ should conclude only while `S` is not derivable, write `(unknown S)` as its ante
 ```
 
 `CxChange.txt` states inertia with negation as failure: a fluent an event initiated at
-one instant holds at a later instant unless something is known to have clipped it
-between the two.
+one instant holds at a later instant unless an event terminated it at a moment the KB
+does not place outside the two.
 
 ```clojure
 (set/backwardRule
   (implies (and (happens ?event ?instant1)
                 (initiates ?event ?fluent ?instant1)
                 (instantBefore ?instant1 ?instant2)
-                (unknown (clipped ?instant1 ?fluent ?instant2)))
+                (unknown (thereExists (?ender ?instant)
+                                      (and (happens ?ender ?instant)
+                                           (terminates ?ender ?fluent ?instant)
+                                           (unknown (equals ?instant ?instant1))
+                                           (unknown (instantBefore ?instant ?instant1))
+                                           (unknown (instantNotAfter ?instant ?instant1))
+                                           (unknown (equals ?instant ?instant2))
+                                           (unknown (instantBefore ?instant2 ?instant))
+                                           (unknown (instantNotBefore ?instant ?instant2))))))
            (holdsAt ?fluent ?instant2)))
 ```
 
 **Why.**
 
 - Logical: `(not (alive X))` is a claim about `X`, and it clashes with a believed
-  `(alive X)`. `(unknown (clipped …))` is a claim about the KB: it holds while no
-  `clipped` sentence is derivable, and it is withdrawn when one arrives.
+  `(alive X)`. `(unknown (thereExists …))` is a claim about the KB: it holds while no
+  terminating event the KB leaves unplaced against the two moments is derivable, and it
+  is withdrawn when one arrives.
 - Engine: an `(unknown S)` antecedent is the per-literal form of `exceptWhen`. In a
   forward rule it shares the evaluation point, the re-check index and the guard defeat,
   so a conclusion drawn while `S` was absent is withdrawn when `S` becomes derivable, and

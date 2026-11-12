@@ -130,7 +130,7 @@
     (let [as    (chain "oa" 4)
           bs    (chain "ob" 4)
           world {:rel relOf :con con :as as :bs bs}
-          pres  (build! (tu/fresh) (assoc world :preserving? true))
+          pres  (build! (tu/empty-kb) (assoc world :preserving? true))
           rng   (java.util.Random. 20260804)]
       (try
         (loop [step 0, claims #{}]

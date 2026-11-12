@@ -1166,7 +1166,7 @@
             (fn [kb k _] (v/retract! kb (v/handle-of kb (list 'genl k 'indeterminate_term)
                                                      'CxUniverse)))]]]
     (testing label
-      (tu/with-cleared-kb [kb tu/fresh]
+      (tu/with-cleared-kb [kb tu/isolated-fresh]
         (tu/with-terms [pRel qRel Aa Bb vague_kind]
           (v/assert kb (list 'binary_predicate pRel) 'CxUniverse)
           (v/assert kb (list 'binary_predicate qRel) 'CxUniverse)
@@ -1299,6 +1299,30 @@
                  (set (map #(different-guard-reading :main :other (concat % [unflip])) orders))))
           (is (= #{(different-guard-reading :main :other [:rule :fact flip])}
                  (set (map #(different-guard-reading :main :other (concat % [:unedge])) orders)))))))))
+
+(deftest a-merge-below-the-placement-with-a-stated-name-defeats-a-different-guarded-firing-there-in-every-order
+  (let [reading (fn [ops]
+                  (tu/with-neutral-kb [kb tu/fresh]
+                    (tu/with-terms [pRel qRel Ab Bb Kk CxMain CxOther]
+                      (let [M      {:strength :monotonic}
+                            stated {:edge  [(list 'genlCx CxOther CxMain) 'CxUniverse M]
+                                    :rule  [(list 'implies (list 'and (list pRel '?x '?y) (list 'different '?x '?y))
+                                                  (list qRel '?x '?y)) CxMain {:direction :forward}]
+                                    :fact  [(list pRel Kk Bb) CxMain {}]
+                                    :indet [(list 'indeterminate_term Ab) CxMain M]
+                                    :merge [(list 'sameAs Ab Kk) CxOther M]}]
+                        (doseq [op ops]
+                          (if (= :unmerge op)
+                            (v/retract! kb (apply v/handle-of kb (butlast (stated :merge))))
+                            (apply v/assert kb (stated op))))
+                        (vec (for [c [CxMain CxOther], g [(list 'different Kk Bb) (list qRel Kk Bb)]]
+                               (v/ask? kb g c)))))))
+        orders  (map #(cons :edge %) (tu/permutations [:rule :fact :indet :merge]))]
+    (is (= #{[true true false false]} (set (map reading orders)))
+        (str "Ab sorts before Kk, so CxOther elects the stated name, and the defeat rests on"
+             " Ab's membership and the merge"))
+    (is (= #{[true true true true]} (set (map #(reading (concat % [:unmerge])) orders)))
+        "retracting the merge lifts the defeat")))
 
 (defn- restatement-link-rows
   "The merges in CxOther restate the conclusion CxMain stores into CxOther, which sees it

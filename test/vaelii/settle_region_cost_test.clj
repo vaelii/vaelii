@@ -426,15 +426,15 @@
 
 (deftest a-recovers-placement-settle-walks-each-subsumption-once-per-vantage
   ;; CxUniverse  (disjoint srw_a srw_b) M, srw_a2 → srw_a1 → srw_a and srw_b2 → srw_b1 →
-  ;; srw_b, and n terms each in srw_a2 and srw_b2: n membership nogoods, every one placed
-  ;; over the same two subsumptions from the one vantage.
+  ;; srw_b at :monotonic, and n terms each in srw_a2 and srw_b2: n membership nogoods, every
+  ;; one placed over the same two subsumptions from the one vantage.
   (let [kb (tu/isolated-fresh)]
     (try
       (tu/with-shipped-config
         (v/with-deferred-settle kb
           (v/assert kb '(disjoint srw_a srw_b) 'CxUniverse {:strength :monotonic})
           (doseq [[s u] '[[srw_a1 srw_a] [srw_a2 srw_a1] [srw_b1 srw_b] [srw_b2 srw_b1]]]
-            (v/assert kb (list 'genl s u) 'CxUniverse {}))
+            (v/assert kb (list 'genl s u) 'CxUniverse {:strength :monotonic}))
           (dotimes [i n]
             (let [x (symbol (str "SrwT" i))]
               (v/assert kb (list 'srw_a2 x) 'CxUniverse {})
@@ -592,7 +592,8 @@
     (let [routes ((deref #'membership/cover-routes) (decide/unscoped-closures t)
                                                     '#{crbleaf} '#{crbpa crbpb})
           held   (fn [n] (caches/lru-get (:closure-lru @t) [:genl (:gen (:genl @t)) :fwd n]))]
-      (is (= [{:keys #{[:cover '[crbroot [crbpa crbpb]] :covering]} :links '[[crbleaf crbroot]]}]
+      (is (= [{:keys         #{[:cover '[crbroot [crbpa crbpb]] :covering]} :links '[[crbleaf crbroot]]
+               :strict-links '[[crbleaf crbroot]] :climbs '[[crbleaf crbroot]]}]
              (vec routes)))
       (is (not-any? held (list* 'crbleaf 'crbroot (for [i (range 20) j (range 4)] (node i j))))))))
 
@@ -744,14 +745,16 @@
         every  (resolve 'vaelii.impl.taxonomy/every-uncovered-route)
         plain  (run (cond-> {}
                       direct (assoc direct (constantly nil))
-                      every  (assoc every @#'tax/uncovered-routes)
+                      every  (assoc every (fn [t _ start goal step]
+                                            (#'tax/uncovered-routes t start goal step)))
                       batch  (assoc batch Integer/MAX_VALUE)))]
     (is (= 36 (count plain)))
     (is (= plain (run (cond-> {} batch (assoc batch 4)))))))
 
 (defn- hub-world!
-  "In one deferred settle: `nl_a` and `nl_b` disjoint, `nl_z` under `nl_hub` with
-  `nl_zs` under it at `:monotonic`, and `nl_s1` under `nl_s0`.  Each of `n` terms NlX_i holds `nl_zs`
+  "In one deferred settle: `nl_a` and `nl_b` disjoint with `nl_a1` and `nl_b1` under them
+  at `:monotonic`, `nl_z` under `nl_hub` with `nl_zs` under it at `:monotonic`, and `nl_s1`
+  under `nl_s0`.  Each of `n` terms NlX_i holds `nl_zs`
   beside an `nl_a` and an `nl_b` membership, one `:disjoint` nogood that names no type
   at or below `nl_z`.  NlW holds `nl_zs` and is denied `nl_hub`, a `:supertype` nogood
   no `:monotonic` path places, and NlY holds `nl_zs` and is denied `nl_s0`."
@@ -759,7 +762,9 @@
   (let [m {:strength :monotonic}]
     (v/with-deferred-settle kb
       (v/assert kb '(disjoint nl_a nl_b) 'CxUniverse m)
-      (doseq [[s t] '[[nl_a1 nl_a] [nl_b1 nl_b] [nl_s1 nl_s0] [nl_z nl_hub]]]
+      (doseq [[s t] '[[nl_a1 nl_a] [nl_b1 nl_b]]]
+        (v/assert kb (list 'genl s t) 'CxUniverse m))
+      (doseq [[s t] '[[nl_s1 nl_s0] [nl_z nl_hub]]]
         (v/assert kb (list 'genl s t) 'CxUniverse {}))
       (v/assert kb '(genl nl_zs nl_z) 'CxUniverse m)
       (dotimes [i n]

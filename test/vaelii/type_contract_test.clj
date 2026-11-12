@@ -387,7 +387,7 @@
     :compaction-failed :complement :cover :creator-mismatch :cross-origin :daemon-error :damaged-dictionary
     :damaged-frame :definitional-clash :derived-only :disallowed-class
     :disjoint :disjunction-too-wide :disk-locked :duplicate-handle :duplicate-tokens :error
-    :exception-not-closed :export-busy :forbidden-context :fork-base-overlap :frozen-base :functional
+    :exact-present :exception-not-closed :export-busy :forbidden-context :fork-base-overlap :frozen-base :functional
     :handle-ceiling
     :incomplete-defining-contexts :incomplete-racer :inter-arg-type :internal-error :interrupted :irreflexive :job-busy
     :labeling-inconsistent :labeling-run-blocked :length-against-shape
@@ -499,6 +499,7 @@
    :inter-arg-type          #{:message :sentence :arg :expected :position
                               :trigger :trigger-type :trigger-position :disjoint-with}
    :irreflexive             #{:clashes-with :message :pred :sentence}
+   :malformed-manifest      #{:file}
    :missing-adapter         #{:coordinate :records}
    :missing-resource        #{}
    :naf-not-closed          #{:antecedents :unbound}

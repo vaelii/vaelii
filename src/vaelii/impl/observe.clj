@@ -103,6 +103,12 @@
   `core/undoing-refusal` binds it while `assert-entry/*write-check*` is bound."
   nil)
 
+(def ^:dynamic *route-gain-sink*
+  "Nil, or `{:mirrors? m :note f}`: `jtms/add-justification` and `jtms/add-premise` call `f`
+  with each datum of a network `m` holds of that is believed and gains a route, a
+  justification or a premise mark it did not hold.  A write binds `special/route-gain-sink`'s."
+  nil)
+
 ;; ---- the write record -------------------------------------------------------------
 ;;
 ;; A write that owes a report records, at each choke point, what the structure it moves

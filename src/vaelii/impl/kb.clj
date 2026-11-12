@@ -626,7 +626,7 @@
   "Every key `open-kb` reads.  Public because it is the answer to \"is this a real
   option?\", and a caller that can ask does not have to find out from a wrong answer."
   #{:backend :records :index :space :dir :pg :tms :recover?
-    :naming :base :base-stores :overlay :oplog? :reasoners})
+    :naming :base :base-stores :overlay :oplog? :reasoners :fork-dirs})
 
 (defn- check-constraints-opt!
   "Refuse `:constraints` with the reading that replaces it.  No `open-kb` option chooses
@@ -690,6 +690,8 @@
   (doseq [[k ok? want] [[:space store-space?
                          "a whole number 0 or more (or a keyword, a symbol or a vector, for a private space)"]
                         [:dir store-dir? "a non-blank path string or a java.io.File"]
+                        [:fork-dirs #(and (sequential? %) (every? store-dir? %))
+                         "a sequence of fork directories, each a non-blank path string or a java.io.File"]
                         [:base-stores base-stores?
                          "the {:records :index} pair of open stores a live KB holds (fork passes it)"]]]
     (when (contains? opts k)
@@ -1565,12 +1567,29 @@
   (register-reasoners! kb names)
   (record-reasoners! kb (into (reasoners-of kb) names)))
 
+(defn- reserve-fork-handles!
+  "Make the record store `rstore` (axis `rkind`) skip every handle the durable forks at
+  `dirs` hold, before anything allocates one (`:fork-dirs`, docs/overlay.md).  Refused
+  for a fork's own KB and for a store that cannot skip handles."
+  [rstore rkind dirs]
+  (when (= :overlay rkind)
+    (throw (ex-info (str ":fork-dirs names the forks of the KB being opened, and a fork is never"
+                         " a base: name them on the base's open-kb")
+                    {:type :unknown-option :mismatch :conflict :option :fork-dirs})))
+  (when-not (cap/has? p/HandleReserving rstore)
+    (throw (ex-info (str ":fork-dirs needs a record store that skips the forks' handles, and "
+                         (pr-str rkind) " records do not: open the base on :memory or :disk records")
+                    {:type :unknown-backend :mismatch :illegal-position
+                     :axis :records :kind rkind :option :fork-dirs})))
+  (p/reserve-handles! rstore (mount/fork-dir-ranges dirs)))
+
 (defn open-kb
   "Construct a KB: the implementation behind `vaelii.core/open-kb`, which owns the
   user-facing docstring.  `:backend` (`:memory` default) names a record/index pair, or
   `:records` / `:index` select the axes; `:tms` (`:dense` default, or `:reference`) selects the
-  truth-maintenance representation.  `recover-fn` and `reindex-fn` (`core/reindex`: rebuild
-  the index from the records, then recover) are injected because they run the engine stack
+  truth-maintenance representation.  `recover-fn`, `reindex-fn` (`core/reindex`: rebuild
+  the index from the records, then recover) and `follow-fn` (`rebase/follow-base!`, a
+  durable fork's index over a grown base) are injected because they run the engine stack
   above this namespace."
   ;; A recovering mode is the default because under `:warn` a reopened store hands back a KB whose
   ;; `isa?` answers false and whose queries answer `[]`, with one `:warn` log as the only signal.  The
@@ -1580,7 +1599,7 @@
   [{:keys [space recover? tms naming]
     :or   {space 0 recover? :trust tms :dense naming :strict}
     :as   opts}
-   recover-fn reindex-fn]
+   recover-fn reindex-fn & [follow-fn]]
   ;; The build's switches come first: a wrong value is still reportable as a typo here (`config/check!`).
   (config/check!)
   ;; once per JVM: a chaining run refuses over a nearly full heap (docs/caches.md, "The
@@ -1665,8 +1684,10 @@
                                        ;; the opts a base refresh reopens the base from
                                        ;; (`vaelii.impl.overlay.rebase`); nil when it
                                        ;; arrived open, as another KB's stores
-                                       (when-not (:base-stores opts) (:base opts)))
+                                       (when-not (:base-stores opts) (:base opts))
+                                       (= :disk ovr))
                   (record-store-for rkind opts))
+        _       (when-let [dirs (:fork-dirs opts)] (reserve-fork-handles! rstore rkind dirs))
         [istore index-durable?]
         (if (= :overlay ikind)
           ;; A fork's merged index opens populated exactly when its base's did; the trie's root count
@@ -1838,6 +1859,7 @@
     ;; on every fork that has written, and clearing it and reindexing the own records would drop every
     ;; removal.  The rebuild is the one `reindex` makes on any fork (`kv-clear!` on the mount sets
     ;; `::cleared`, then the merged records reindex into the own half).  See docs/overlay.md.
+    (when (and own-istore follow-fn) (follow-fn kb))
     (when (and own-istore (= :disk-log ovi)
                (.isDirectory (java.io.File. (str (disk/disk-dir ov-opts) "/index"))))
       (let [root     (str (disk/disk-dir ov-opts) "/index")
@@ -2066,7 +2088,7 @@
   `memberships` is the batch form."
   ([kb x t] (isa? kb x t '?ctx))
   ([kb x t context]
-   (if (and (symbol? x) (not (sx/variable? x)))
+   (if (sx/plain-symbol? x)
      (let [tax (reasoning/taxonomy kb)]
        (boolean (some #(tax/genl? tax % t context) (types-of kb x context))))
      (exists-in? kb (list t x) context))))

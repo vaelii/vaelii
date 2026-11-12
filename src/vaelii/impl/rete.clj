@@ -236,7 +236,8 @@
   after the identical `unify` filter below — chosen selectively: the smallest bucket
   among the pattern's ground argument positions, or the whole functor extent when the
   pattern binds no argument.  A ground position whose bucket is empty means zero
-  matches, which the min naturally returns."
+  matches, which the min naturally returns.  A dotted pattern `(p ?c . ?xs)` keys
+  only the positions before the `.` marker."
   [by-functor pat]
   (let [pbody (sx/body pat)                       ; positive atomic body of the pattern
         f     (nm/functor pbody)]
@@ -249,7 +250,7 @@
       :else
       (let [fb      (get by-functor f)
             ground  (keep-indexed (fn [i a] (when (sx/ground-term? a) [(inc i) a]))
-                                  (nm/args pbody))]
+                                  (rest (sx/positional pbody)))]
         (cond
           (nil? fb)      nil
           (empty? ground) (vals (:all fb))

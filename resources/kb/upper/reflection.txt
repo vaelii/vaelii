@@ -41,6 +41,7 @@
 (positiveExampleComment variable "?person")
 (comment non_atomic_expression "An expression with parts. KB text writes one as an operator applied to zero or more arguments, (op a1 a2 ...), whatever op is.")
 (comment sentex_handle_term "The term (sentexHandle N), N a positive integer: the name of the stored sentex whose handle is N, written where a meta-sentex such as except, exceptWhen or contradicts names the sentex it is about.")
+(set/monotonic (eternal_predicate sentex_handle_term))
 (positiveExampleComment sentex_handle_term "(sentexHandle 212)")
 (negativeExampleComment sentex_handle_term "212, the bare integer, which names no sentex")
 (comment denotational_term "An expression that DENOTES an entity: an atomic_term (a symbol or a value) or a non_atomic_term. The logic sense of 'term', spelled in full because plain 'term' is the vocabulary sense — a name the term index is keyed by.")
@@ -50,29 +51,29 @@
 (comment negated_predication "A predication under not.")
 (positiveExampleComment negated_predication "(not (dog Muffet))")
 (positiveExampleComment negated_predication "(not (parentOf ?x Tom))")
-(genl expression linguistic)
+(set/monotonic (genl expression linguistic))
 (set/monotonic (disjoint expression language))
-(genl non_atomic_expression expression)
+(set/monotonic (genl non_atomic_expression expression))
 (set/monotonic (partition expression atomic_expression non_atomic_expression))
 (set/monotonic (partition atomic_expression atomic_term variable))
-(genl atomic_term denotational_term)
+(set/monotonic (genl atomic_term denotational_term))
 (set/monotonic (partition denotational_term atomic_term non_atomic_term))
-(genl symbol atomic_term)
-(genl unrepresented_term atomic_term)
+(set/monotonic (genl symbol atomic_term))
+(set/monotonic (genl unrepresented_term atomic_term))
 (set/monotonic (partition atomic_term unrepresented_term symbol))
-(genl non_atomic_term non_atomic_expression)
-(genl sentex_handle_term non_atomic_term)
-(genl formula non_atomic_expression)
+(set/monotonic (genl non_atomic_term non_atomic_expression))
+(set/monotonic (genl sentex_handle_term non_atomic_term))
+(set/monotonic (genl formula non_atomic_expression))
 (set/monotonic (disjoint formula non_atomic_term))
 ;; A literal can be ill-formed, e.g. (dog Muffet Fido) with dog unary, and a well-formed
 ;; term is a wff_expression that is no literal.
 (orthogonal literal wff_expression)
-(genl literal formula)
-(genl predication literal)
-(genl negated_predication literal)
+(set/monotonic (genl literal formula))
+(set/monotonic (genl predication literal))
+(set/monotonic (genl negated_predication literal))
 (set/monotonic (partition literal predication negated_predication))
-(genl closed_predication sentence)
-(genl indeterminate_term denotational_term)
+(set/monotonic (genl closed_predication sentence))
+(set/monotonic (genl indeterminate_term denotational_term))
 
 ;; Well-formedness crosses the kinds: an expression is wff or ill-formed whatever its
 ;; shape, and formula and sentence split the same way, each half the intersection of
@@ -96,19 +97,19 @@
 (positiveExampleComment wff_sentence "(dog Muffet)")
 (comment ill_formed_sentence "A closed formula-shaped expression that is not well-formed.")
 (positiveExampleComment ill_formed_sentence "(dog Muffet Rex)")
-(genl wff_expression expression)
-(genl ill_formed_expression non_atomic_expression)
+(set/monotonic (genl wff_expression expression))
+(set/monotonic (genl ill_formed_expression non_atomic_expression))
 (set/monotonic (partition expression wff_expression ill_formed_expression))
 (set/monotonic (partition formula wff ill_formed))
 (set/monotonic (partition sentence wff_sentence ill_formed_sentence))
-(intersection wff formula wff_expression)
-(intersection ill_formed formula ill_formed_expression)
-(genl wff_sentence wff)
-(genl ill_formed_sentence ill_formed)
-(intersection wff_sentence sentence wff_expression)
-(intersection ill_formed_sentence sentence ill_formed_expression)
-(genl denotational_term wff_expression)
-(genl atomic_expression wff_expression)
+(set/monotonic (intersection wff formula wff_expression))
+(set/monotonic (intersection ill_formed formula ill_formed_expression))
+(set/monotonic (genl wff_sentence wff))
+(set/monotonic (genl ill_formed_sentence ill_formed))
+(set/monotonic (intersection wff_sentence sentence wff_expression))
+(set/monotonic (intersection ill_formed_sentence sentence ill_formed_expression))
+(set/monotonic (genl denotational_term wff_expression))
+(set/monotonic (genl atomic_expression wff_expression))
 
 ;; An expression is OPEN when a variable occurs free in it and CLOSED otherwise.  The
 ;; split is reified only where it is used: formula, predication and literal, each half the
@@ -136,28 +137,28 @@
 (comment closed_literal "A literal with no free variable. What a stored LiteralSentex holds.")
 (positiveExampleComment closed_literal "(dog Muffet)")
 (positiveExampleComment closed_literal "(not (dog Muffet))")
-(genl open_expression expression)
-(genl closed_expression expression)
+(set/monotonic (genl open_expression expression))
+(set/monotonic (genl closed_expression expression))
 (set/monotonic (partition expression open_expression closed_expression))
-(intersection variable atomic_expression open_expression)
-(intersection atomic_term atomic_expression closed_expression)
-(genl denotational_term closed_expression)
+(set/monotonic (intersection variable atomic_expression open_expression))
+(set/monotonic (intersection atomic_term atomic_expression closed_expression))
+(set/monotonic (genl denotational_term closed_expression))
 (set/monotonic (partition formula open_formula sentence))
-(intersection open_formula formula open_expression)
-(intersection sentence formula closed_expression)
+(set/monotonic (intersection open_formula formula open_expression))
+(set/monotonic (intersection sentence formula closed_expression))
 (set/monotonic (partition predication open_predication closed_predication))
-(intersection open_predication predication open_expression)
-(intersection closed_predication predication closed_expression)
+(set/monotonic (intersection open_predication predication open_expression))
+(set/monotonic (intersection closed_predication predication closed_expression))
 (set/monotonic (partition literal open_literal closed_literal))
-(intersection open_literal literal open_expression)
-(intersection closed_literal literal closed_expression)
+(set/monotonic (intersection open_literal literal open_expression))
+(set/monotonic (intersection closed_literal literal closed_expression))
 ;; The intersections install each half's edge to its own kind and none between the halves
 ;; of two kinds, so the edges the closed and open halves inherit from the ladder are stated.
-(genl closed_literal sentence)
-(genl closed_predication closed_literal)
-(genl open_literal open_formula)
-(genl open_predication open_formula)
-(genl open_predication open_literal)
+(set/monotonic (genl closed_literal sentence))
+(set/monotonic (genl closed_predication closed_literal))
+(set/monotonic (genl open_literal open_formula))
+(set/monotonic (genl open_predication open_formula))
+(set/monotonic (genl open_predication open_literal))
 
 ;; Each expression kind is a type, a one-place predicate over expressions.
 (unary_predicate expression)
@@ -183,6 +184,30 @@
 (unary_predicate ill_formed)
 (unary_predicate wff_sentence)
 (unary_predicate ill_formed_sentence)
+;; Syntax is atemporal: an expression is of its kind for as long as it exists, so each
+;; expression kind is time-invariant.
+(set/monotonic (time_invariant_relation atomic_expression))
+(set/monotonic (time_invariant_relation atomic_term))
+(set/monotonic (time_invariant_relation closed_expression))
+(set/monotonic (time_invariant_relation closed_literal))
+(set/monotonic (time_invariant_relation closed_predication))
+(set/monotonic (time_invariant_relation denotational_term))
+(set/monotonic (time_invariant_relation expression))
+(set/monotonic (time_invariant_relation ill_formed))
+(set/monotonic (time_invariant_relation ill_formed_expression))
+(set/monotonic (time_invariant_relation ill_formed_sentence))
+(set/monotonic (time_invariant_relation literal))
+(set/monotonic (time_invariant_relation negated_predication))
+(set/monotonic (time_invariant_relation non_atomic_expression))
+(set/monotonic (time_invariant_relation open_expression))
+(set/monotonic (time_invariant_relation open_formula))
+(set/monotonic (time_invariant_relation open_literal))
+(set/monotonic (time_invariant_relation open_predication))
+(set/monotonic (time_invariant_relation predication))
+(set/monotonic (time_invariant_relation variable))
+(set/monotonic (time_invariant_relation wff))
+(set/monotonic (time_invariant_relation wff_expression))
+(set/monotonic (time_invariant_relation wff_sentence))
 
 ;; ---- use and mention ------------------------------------------------------------
 ;; Use is the default: dog written in a sentence denotes the predicate dog, and only
@@ -191,39 +216,69 @@
 ;; carries.
 (comment proposition "What a wff_sentence expresses: semantic content whose truth is evaluated in a context, which sentences in any language can carry. (dog Muffet) and \"Muffet est un chien\" express one proposition.")
 (unary_predicate proposition)
+(set/monotonic (time_invariant_relation proposition))
 ;; What a sentence says is neither an operator nor what the sentence holds in.  core.txt
 ;; separates relation from context; this declaration adds proposition.
 (set/monotonic (separating logical relation proposition context))
 
-(comment means "(means ?expression ?meaning) means that ?expression, a closed wff_expression, has ?meaning as its semantic content: for a term what it denotes, for a sentence the proposition it expresses. Read in the context the sentence is stated in, which supplies the interpretation. Functional: an expression has at most one meaning in a context.")
+(comment means "(means ?expression ?meaning) means that ?expression, a closed wff_expression, has ?meaning as its semantic content: for a term what it denotes, for a sentence the proposition it expresses. Read in the context the sentence is stated in, which supplies the interpretation. The relation includes fixed interpretations and time-dependent indexicals, so it is time-agnostic rather than invariant or eternal. Functional: an expression has at most one meaning in a context.")
 (positiveExampleComment means "(means (Quote Muffet) Muffet)")
 (arg means 1 wff_expression)
 (arg means 1 closed_expression)
 (arg means 2 thing)   ;; the meaning: what a term denotes or the proposition a sentence expresses
 (set/monotonic (functional means))
+(set/monotonic (time_agnostic_relation means))
+(not (eternal_predicate means))
 
-(comment denotes "(denotes ?term ?thing) means that the denotational_term ?term names ?thing. (denotes (Quote Muffet) Muffet): the symbol Muffet names the dog. (denotes (Quote dog) dog): the symbol dog names the predicate. (denotes (Quote (MotherFn Muffet)) (MotherFn Muffet)).")
+(comment denotes "(denotes ?term ?thing) means that the denotational_term ?term names ?thing. (denotes (Quote Muffet) Muffet): the symbol Muffet names the dog. (denotes (Quote dog) dog): the symbol dog names the predicate. (denotes (Quote (MotherFn Muffet)) (MotherFn Muffet)). Reference may be fixed or time-dependent under the context's interpretation, so the relation is time-agnostic, not invariant or eternal.")
 (binary_predicate denotes)
+(set/monotonic (time_agnostic_relation denotes))
+(not (eternal_predicate denotes))
 (genl denotes means)
 (arg denotes 1 denotational_term)
 (arg denotes 2 thing)   ;; what a denotational_term names: a thing of any kind
 
 (comment expresses "(expresses ?sentence ?proposition) means that the wff_sentence ?sentence says ?proposition. Two sentences can express one proposition, in two languages or two phrasings, and two true sentences can express different ones.")
 (binary_predicate expresses)
+(set/monotonic (time_agnostic_relation expresses))
+(not (eternal_predicate expresses))
 (genl expresses means)
 (arg expresses 1 wff_sentence)
 (arg expresses 2 proposition)
 
-;; A syncategorematic constant is written where a term goes and names nothing, so it is
-;; no expression: the expression lattice's atomic kinds are the denoting terms and the
+;; A syncategorematic constant is a reserved quotation or assertion-control constant of
+;; vaelii's syntax, written where a term goes.  A set/ wrapper names nothing, so it is no
+;; expression: the expression lattice's atomic kinds are the denoting terms and the
 ;; variables.  core.txt states the membership of each set/ wrapper and of Quote, and the
 ;; type is the list of syntax constants the :undeclared-term pass reads as declared.  The
 ;; type sits beside logical, linguistic and quantitative under nowhere_never, separated
-;; from linguistic and quantitative.  Nothing separates it from logical: a KB may declare
-;; Quote a reifiable_function, and a function is logical.
-(comment syncategorematic "A constant of vaelii's syntax that is written like a term and names nothing, e.g. set/monotonic, which the loader reads and never stores. A sentence mentions one only to document it.")
+;; from linguistic and quantitative, and from the truth-valued relations, contexts and
+;; propositions.  Nothing separates it from logical: a KB may declare Quote a
+;; reifiable_function, and a function is logical.
+(comment syncategorematic "A reserved quotation or assertion-control constant of vaelii's syntax, written like a term, e.g. set/monotonic, which the loader reads and never stores. A set/ wrapper names nothing; a KB may still read Quote as a function. A sentence mentions one only to document it.")
 (unary_predicate syncategorematic)
-(genl syncategorematic nowhere_never)
+(set/monotonic (eternal_predicate syncategorematic))
+(set/monotonic (genl syncategorematic nowhere_never))
 (set/monotonic (disjoint syncategorematic linguistic))
 (set/monotonic (disjoint syncategorematic quantitative))
+(set/monotonic (disjoint syncategorematic truth_valued_relation))
+(set/monotonic (disjoint syncategorematic context))
+(set/monotonic (disjoint syncategorematic proposition))
 (not (disjoint syncategorematic logical))
+
+;; arity_independent names the kinds of relation that no arity_type settles.
+(unary_predicate arity_independent)
+(comment arity_independent "A kind of relation that is orthogonal to every arity_type: no arity_type is a genl of it, a spec of it or disjoint with it, e.g. truth_valued_relation.")
+(at_least_metatype arity_independent)
+(set/monotonic (typeGenl arity_independent relation))
+(set/monotonic (genl arity_independent unary_predicate))
+(forced_monotonic_predicate arity_independent)
+(set/monotonic (time_invariant_relation arity_independent))
+(orthogonalMetatypes arity_independent arity_type)
+(arity_independent target_following_predicate)
+(arity_independent truth_valued_relation)
+(arity_independent stable_once_false)
+(arity_independent stable_once_true)
+(arity_independent closed_extent_predicate)
+(not (arity_independent time_indexed_relation))
+(comment (not (arity_independent time_indexed_relation)) "Every time_indexed_relation is at_least_binary: (genl time_indexed_relation at_least_binary) is stated in core.txt.")

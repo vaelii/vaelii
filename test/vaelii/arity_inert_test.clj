@@ -309,7 +309,7 @@
   "`{h [f n]}` of every stored fact of `n` arguments whose functor `f` has no engine shape."
   [kb]
   (let [recs  (:records kb)
-        shape @#'arity/fact-shape]
+        shape sx/fact-shape]
     (into {} (keep (fn [h] (when-let [[f :as fs] (some-> (p/get-sentex recs h) shape)]
                              (when-not (predicates/shape-of f) [h fs]))))
           (p/sentex-ids recs))))

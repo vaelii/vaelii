@@ -169,7 +169,8 @@
   same way through this one function."
   [kb goal context]
   (letfn [(read-nats [g] (if (res/equation? g)
-                           (binding [nat-read/*withheld* (nat-read/withheld-at kb context)]
+                           (binding [nat-read/*withheld*  (nat-read/withheld-at kb context)
+                                     nat-read/*sorted-by* (nat-read/sorted-by-at kb context)]
                              (nat-read/reify-existing kb g context))
                            (nat-read/maybe-reify-for-read kb g context)))
           (prep [g] (kb/rewrite-goal kb (read-nats (maybe-reduce kb g)) context))]

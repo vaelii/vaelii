@@ -10,8 +10,14 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein \
+# The launcher at a tag, checked against its sha256: the workflows run 2.12.0, because
+# 2.13.0's launcher self-installs an unpublished snapshot jar.  A new version takes the
+# digest of that tag's `bin/lein` with it.
+ARG LEIN_VERSION=2.12.0
+ARG LEIN_SHA256=f8e1266c0c78c08bd4af6e111889ecc316c9dd56d1e8645bbee6c1703d351bc3
+RUN curl -fsSL "https://raw.githubusercontent.com/technomancy/leiningen/${LEIN_VERSION}/bin/lein" \
       -o /usr/local/bin/lein \
+ && echo "${LEIN_SHA256}  /usr/local/bin/lein" | sha256sum -c - \
  && chmod +x /usr/local/bin/lein \
  && lein version
 
@@ -71,9 +77,9 @@ VOLUME /var/lib/vaelii
 USER vaelii
 EXPOSE 4200
 
-# Unset, the log level installs **no backend at all** — a container that writes
-# nothing is one nobody can operate, so the image names a level the operator can
-# override rather than inheriting silence.
+# Unset, the engine installs no backend and Trove's own console backend prints at
+# :info.  The image names a level, which installs the engine's one-line backend, and
+# the operator can override it.
 ENV VAELII_LOG_LEVEL=info
 
 # No `-Xmx`.  A JVM in a container reads the cgroup limit, so the operator's

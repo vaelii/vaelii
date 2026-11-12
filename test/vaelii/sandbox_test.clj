@@ -12,6 +12,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.browser.catalog :as catalog]
+            [vaelii.browser.jobs :as jobs]
             [vaelii.browser.sandbox :as sandbox]
             [vaelii.browser.web :as web]
             [vaelii.core :as v]
@@ -194,7 +195,12 @@
                                          :headers {}})
                                    [:headers "Set-Cookie"])
                            "; Secure")
-            "and Secure over HTTPS")))
+            "and Secure over HTTPS")
+        (is (str/includes? (get-in (app {:request-method :get :uri "/assert"
+                                         :headers {"x-forwarded-proto" "https"}})
+                                   [:headers "Set-Cookie"])
+                           "; Secure")
+            "and Secure behind a proxy that terminated HTTPS")))
     (testing "and the KB is untouched — looking is not writing"
       (is (= before (tu/sentex-ids kb))))
     (testing "the context field is pre-filled with the sandbox, so the safe thing is the
@@ -370,10 +376,13 @@
     (let [app      (web/app kb)
           before   (live-sandboxes kb)
           sessions (vec (repeatedly 8 #(session app)))
+          ;; a write slower than the form's wait goes on as a job, and the KB refuses the
+          ;; next write until it settles, so each write waits for its job
           write    (fn [{:keys [cookie ctx]} text]
                      (app {:request-method :post :uri "/assert"
                            :params {"text" text "ctx" ctx}
-                           :headers {"cookie" cookie "host" "localhost:3000"}}))]
+                           :headers {"cookie" cookie "host" "localhost:3000"}})
+                     (doseq [{:keys [id]} (jobs/running)] (jobs/wait id)))]
       (try
         (write (first sessions) "(organism SandboxFloodRufus)")
         (let [derived (v/handle-of kb '(mortal SandboxFloodRufus) (symbol (:ctx (first sessions))))]

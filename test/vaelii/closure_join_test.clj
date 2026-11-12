@@ -389,6 +389,44 @@
                           (map :subsumptions)))
               "one justification, reading the pair as the closure's"))))))
 
+(defn- fired-pairs
+  "The pairs over `types` that `p` holds in CxUniverse."
+  [kb p types]
+  (into #{} (comp (map #(vec (rest (:sentence %)))) (filter #(every? (set types) %)))
+        (v/sentexes-matching kb (list p '?x '?y) U)))
+
+(tu/deftest-kb a-disjoint-antecedent-no-other-literal-names-fires-on-the-stated-pair-in-every-order
+  (doseq [order (oi/permutations [:rule :disjoint :edge])]
+    (testing (str order)
+      (tu/with-terms [fish_ mammal_ whale_ keptApart]
+        (let [step {:rule     #(v/assert kb (list 'set/forwardRule
+                                                  (list 'implies '(disjoint ?a ?b)
+                                                        (list keptApart '?a '?b)))
+                                         U)
+                    :disjoint #(v/assert kb (list 'disjoint fish_ mammal_) U)
+                    :edge     #(v/assert kb (list 'genl whale_ mammal_) U)}]
+          (doseq [k order] ((step k)))
+          (is (holds? kb (list 'disjoint fish_ whale_) U) "the query answers the specialized pair")
+          (is (= #{[fish_ mammal_]} (fired-pairs kb keptApart [fish_ mammal_ whale_]))))))))
+
+(tu/deftest-kb a-disjoint-antecedent-another-literal-names-fires-on-every-separated-pair-in-every-order
+  ;; `(genl ?a animal)` names ?a alone.  The edge arriving last moves `whale`, so only a
+  ;; re-join binding ?b to it reads `[fish whale]`.
+  (doseq [order (oi/permutations [:rule :disjoint :edge :animals])]
+    (testing (str order)
+      (tu/with-terms [fish_ mammal_ whale_ animal_ keptApart]
+        (let [step {:rule     #(v/assert kb (list 'set/forwardRule
+                                                  (list 'implies (list 'and (list 'genl '?a animal_)
+                                                                       '(disjoint ?a ?b))
+                                                        (list keptApart '?a '?b)))
+                                         U)
+                    :disjoint #(v/assert kb (list 'disjoint fish_ mammal_) U)
+                    :edge     #(v/assert kb (list 'genl whale_ mammal_) U)
+                    :animals  #(doseq [t [fish_ whale_]] (v/assert kb (list 'genl t animal_) U))}]
+          (doseq [k order] ((step k)))
+          (is (= #{[fish_ mammal_] [fish_ whale_] [whale_ fish_]}
+                 (fired-pairs kb keptApart [fish_ mammal_ whale_]))))))))
+
 ;; ---- a negated antecedent reads a separation's denial ----------------------
 
 (defn- denial-rule

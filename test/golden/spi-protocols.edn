@@ -5,9 +5,14 @@
 {vaelii.impl.protocols/BulkAnnotating
  {mark-premise-batch "[[store id->strength]]",
   put-provenance-batch "[[store entries]]"},
+ vaelii.impl.protocols/BulkDeleting
+ {delete-justification-batch "[[store ids]]",
+  delete-sentex-batch "[[store ids]]"},
  vaelii.impl.protocols/BulkLoading
  {open-justification-sink "[[store opts]]",
   open-sentex-sink "[[store opts]]"},
+ vaelii.impl.protocols/HandleReserving
+ {reserve-handles! "[[store ranges]]"},
  vaelii.impl.protocols/ImageFingerprinting
  {belief-fingerprint "[[store]]", index-fingerprint "[[store]]"},
  vaelii.impl.protocols/IndexStore

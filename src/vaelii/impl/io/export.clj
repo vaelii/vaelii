@@ -131,17 +131,32 @@
           (when (seq sha) (subs sha 0 (min 12 (count sha)))))))
     (catch Exception _ nil)))
 
+(defn- jar-build
+  "`<version> <revision>` off the engine jar's Maven descriptor, or nil when the descriptor
+  is not inside a jar.  A checkout's `target/classes` copy names the last compile's
+  revision, so a checkout reads its git HEAD instead."
+  []
+  (when-let [u (io/resource "META-INF/maven/com.vaelii/vaelii/pom.properties")]
+    (when (= "jar" (.getProtocol ^java.net.URL u))
+      (let [props (java.util.Properties.)]
+        (with-open [in (io/input-stream u)] (.load props in))
+        (some->> [(.getProperty props "version")
+                  (some-> (.getProperty props "revision") str/trim not-empty
+                          (as-> r (subs r 0 (min 12 (count r)))))]
+                 (remove str/blank?) seq (str/join " "))))))
+
 (defn- writer-id
   "How the writing build names itself in `meta.edn`: the `vaelii.build` system
   property or `VAELII_BUILD` when a build sets a build label (a blank one sets none), else
-  the git HEAD, else `dev`.
+  the engine jar's version and revision, else the git HEAD of the working directory, else
+  `dev`.
   Diagnostic only — a dump that will not read is first a question about which build
   wrote it."
   []
   (str "vaelii "
        (or (some-> (System/getProperty "vaelii.build") str/trim not-empty)
            (some-> (System/getenv "VAELII_BUILD") str/trim not-empty)
-           (git-head) "dev")))
+           (jar-build) (git-head) "dev")))
 
 (defn- write-meta!
   "Write `meta.edn` — an array map, so the file reads in the order the schema is

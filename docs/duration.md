@@ -22,7 +22,10 @@ Neither is ever stored: `assert` refuses either one with `:not-well-formed`.
 An interval's own duration is an ordinary stored fact, `(length I M)`, whose measure `M`
 is one of [quantity.md](quantity.md)'s structural NATs: `(QuantityFn 2 Hour)`, or
 `(QuantityIntervalFn 1 2 Hour)` when only bounds are known. The prover reads those facts
-through `res/matches-visible`, its only direct KB read. The rest it takes from three other
+through `res/matches-visible`, its only direct KB read. A calendar term or range has a
+length without a fact: the seconds between its bounds (`datetime/extent`,
+`datetime/epoch-second`), read as a stated `(QuantityFn n Second)` would be, so `(totalDuration
+(list (YearFn 2000)) ?d)` is 31,622,400 seconds. The rest it takes from three other
 subsystems and adds nothing to them: each length normalizes through
 `provers/normalize-quantity` against the `dimensionOf` / `conversionFactor` table
 ([quantity.md](quantity.md)), the qualitative relation set comes from
@@ -36,6 +39,7 @@ bounds within tolerance give a point `(QuantityFn …)`, and anything wider give
 `(QuantityIntervalFn lo hi …)`. A stored length may itself be an interval measure, and an
 overlap is often only bounded, so an over-approximation renders as an interval. Two hours
 overlapping half an hour at an unknown offset is `(QuantityIntervalFn 0 1800 Second)`.
+A `length` whose lower bound is negative is stored and read as no length.
 
 ## Which unit the answer is in
 
@@ -80,7 +84,7 @@ whole of the unit consistency check: two hours plus five metres has no answer.
 
 Three cases yield no answer:
 
-- a component with no stated length (an open-world gap is not zero);
+- a component with no stated length and no calendar extent (an open-world gap is not zero);
 - a component with two stated lengths that differ once normalized;
 - an empty component list (zero of no unit is not a measure).
 

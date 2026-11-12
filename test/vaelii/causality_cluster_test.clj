@@ -55,18 +55,29 @@
     (is (not (v/ask? kb (list 'spatial Clip) 'CxUniverse)))
     (is (not (v/ask? kb (list 'tangible Clip) 'CxUniverse)))))
 
-(tu/deftest-kb a-held-state-is-not-a-happening-role-subject
+(tu/deftest-kb a-held-state-has-participants-but-is-not-perceived-or-done
   (tu/without-entailing
    (tu/with-terms [Calm Observer]
      (v/assert kb (list 'fluent Calm) 'CxUniverse)
-     (doseq [p '[actor thingPerceived]]
+     (is (not (some #(and (= :arg-type (:type %)) (= 1 (:position %)))
+                    (v/check kb (list 'actor Calm Observer) 'CxUniverse)))
+         "actor takes any situation, a held state included")
+     (doseq [p '[thingPerceived doneBy]]
        (is (some #(and (= :arg-type (:type %)) (= 1 (:position %)))
                  (tu/check-or-conviction kb (list p Calm Observer) 'CxUniverse))
            (str p " keeps the happening-versus-state boundary"))))))
 
 (tu/deftest-kb new-happening-roles-pass-the-candidate-integrity-sweep
   (let [terms '#{actor thingPerceived}]
-    (is (= :audited (:status (v/kb-integrity kb terms 'CxUniverse))))
+    (let [report (v/kb-integrity kb terms 'CxUniverse)
+          open   (get (:type-specified-violations report)
+                      '[typeAllSpecified rigidity_kind relation])]
+      (is (= {:status :audited :candidate-count (count terms)}
+             (dissoc report :type-specified-violations :work :elapsed-ms))
+          "the default passes find nothing")
+      (is (empty? (:type-specified-violations report)))
+      (is (empty? (filter terms (:violations open)))
+          "each happening role is classified by rigidity kind"))
     ;; The review-only missing-arg pass audits the whole visible KB, not just the
     ;; candidate set; unrelated intentionally untyped positions are not this change.
     (let [audit (v/kb-integrity kb terms 'CxUniverse {:categories #{:missing-arg}})]
@@ -467,3 +478,15 @@
         (is (some #(= #{causal (v/handle-of kb (list 'acausal_event Receipt) 'CxUniverse)}
                       (:nogood %))
                   (v/contradictions kb)))))))
+
+(tu/deftest-kb a-tangible-intermittent-thing-reads-neither-default-edge-s-supertype
+  (doseq [strength [:monotonic :default]]
+    (tu/with-terms [Watch]
+      (v/assert kb (list 'tangible Watch) 'CxUniverse {:strength strength})
+      (v/assert kb (list 'intermittent Watch) 'CxUniverse {:strength strength})
+      (is (= [[true true false false] []]
+             [(mapv #(v/ask? kb (list % Watch) 'CxUniverse)
+                    '[tangible intermittent uninterrupted intangible])
+              (filterv #(some #{Watch} (flatten (map :sentence (:sides %))))
+                       (v/contradictions kb))])
+          (str strength)))))

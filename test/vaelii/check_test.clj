@@ -15,7 +15,7 @@
   namespace.  Restored from `tu/load-starter!`'s dump rather than re-asserted: this
   namespace builds one 23 times, and the two routes produce the same KB
   (`starter_copy_test`)."
-  [] (doto (tu/fresh) (tu/load-starter!)))
+  [] (doto (tu/empty-kb) (tu/load-starter!)))
 
 (defn- types-of-check
   "The `:type` keywords `check` reports for a sentence, as a set."
@@ -185,6 +185,16 @@
       ;; `:unknown-option` `assert` throws, since `shape-problems` runs its guard
       (is (= #{:unknown-option}
              (into #{} (map :type) (v/check kb (list dog Muffet) CxThe :nope)))))))
+
+(deftest a-bare-sentex-handle-is-refused-because-it-states-nothing
+  (tu/with-neutral-kb [kb tu/fresh]
+    (tu/with-terms [CxHandle]
+      (let [s (list 'sentexHandle 1)]
+        (is (= #{:shape} (types-of-check kb s CxHandle)))
+        (doseq [write [v/assert v/assert-inert]]
+          (let [e (is (thrown? clojure.lang.ExceptionInfo (write kb s CxHandle)))]
+            (is (= :shape (:type (ex-data e))))))
+        (is (empty? (v/sentexes-matching kb (list 'sentexHandle '?n) CxHandle)))))))
 
 (deftest a-ground-application-in-the-context-slot-is-checked-as-the-context-assert-stores-in
   ;; `assert` reifies the slot to its `cx/` constant whatever is declared about the head
@@ -886,6 +896,21 @@
           (is (= h (v/handle-of kb (list dog Muffet) CxInert)))
           (is (not (v/in? kb h)) "inert means never a premise")
           (v/retract! kb h))))))
+
+(deftest assert-inert-refuses-what-assert-refuses-on-the-sentence-alone
+  (tu/with-neutral-kb [kb tu/fresh]
+    (tu/with-terms [dog Muffet CxInert]
+      (let [h      (v/assert kb (list dog Muffet) CxInert)
+            before (v/sentex-count kb)]
+        (doseq [[type sentence] [[:derived-only (list 'defeat (list 'sentexHandle h))]
+                                 [:not-well-formed (list 'genl dog dog)]
+                                 [:unknown-handle (list 'except (list 'sentexHandle 99999999))]
+                                 [:not-assertible (list 'do/nosuch CxInert)]]]
+          (testing (pr-str sentence)
+            (let [e (is (thrown? clojure.lang.ExceptionInfo
+                                 (v/assert-inert kb sentence CxInert)))]
+              (is (= type (:type (ex-data e)))))))
+        (is (= before (v/sentex-count kb)) "no refusal stored a record")))))
 
 (deftest assert-inert-refuses-a-rule
   ;; A rule is indexed where it is *created* — `assert-rule-sentence`'s new branch and

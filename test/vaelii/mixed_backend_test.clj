@@ -270,7 +270,7 @@
   ;; is the bug this whole test is about.  So the key set is frozen here: it shrinks on purpose.
   (testing "and the key set is exactly the vocabulary"
     (is (= #{:backend :records :index :space :dir :pg :tms :recover?
-             :naming :base :base-stores :overlay :oplog? :reasoners}
+             :naming :base :base-stores :overlay :oplog? :reasoners :fork-dirs}
            kb/opt-keys))))
 
 (deftest a-store-value-outside-its-domain-is-refused

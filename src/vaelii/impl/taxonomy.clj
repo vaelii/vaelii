@@ -12,17 +12,8 @@
   closure *on demand*.  `genls` is ancestors-incl-self, `specs` is descendants-
   incl-self.
 
-  We deliberately do **not** materialize the full closure.  A materialized closure
-  is Θ(V²) for a deep hierarchy — a 10k-node `genl` chain stores ~50M pairs — so
-  building it incrementally makes a bulk load quadratic no matter how clever each
-  insert is: the representation itself is the cost.  Storing only the O(V+E)
-  adjacency makes a closure read O(reachable-subgraph) and an insert the adjacency
-  write plus a depth repair — O(1) for an edge arriving parent-before-child, and
-  proportional to the *descendants* of the node `raise-depth` lifts for one arriving
-  child-first, so that order is quadratic in the hierarchy and `*defer-depths?*` is
-  the trade written for it.  Reads are memoized per closure
-  *generation* (bumped on every edge change), so a shallow hierarchy — where the
-  reachable subgraph is tiny — still answers each repeat read in O(1).
+  The closure is not materialized: reads walk the adjacency and are memoized per closure
+  generation (docs/taxonomy.md, \"The closure is not materialized\").
 
   - **Insertion** records the edge in `:fwd` / `:rev` and, so cycle checks stay
     cheap, maintains a topological `:depth` potential (`edge x→y ⇒ depth[x] >
@@ -357,7 +348,7 @@
           :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
           :sibling-disjoint #{} :sib-exception-index {}
           :covers {} :cover-parts {} :partitions #{}
-          :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {}
+          :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
           :cache-dirty #{} :cache-ctxs {}
           ;; The supporter cache (`supporters-of`), over the index's supporter families
           :supporters empty-supporters
@@ -581,6 +572,26 @@
     (if (= rel-key :genlCx)
       (with-root tax dir-key node nil v #(stored-closure-of tax :genlCx :fwd root-cx))
       v)))
+
+(defn held-closure-size
+  "The size of `stored-closure-of`'s answer for `node`, read without a walk: 1 when no
+  active edge leaves `node` in direction `dir-key`, else the size of the closure the cache
+  holds under the relation's generation, else nil."
+  [tax rel-key dir-key node]
+  (let [t   @tax
+        rel (get t rel-key)]
+    (if (empty? (get (dir-key rel) node))
+      1
+      (some-> (caches/lru-peek (:closure-lru t)
+                               [rel-key (:gen rel) dir-key
+                                (if (= dir-key :fwd) (get (:scc rel) node node) node)])
+              count))))
+
+(defn active-edge-count
+  "How many active edges relation `rel-key` holds.  One more bounds the size of every
+  closure in it."
+  [tax rel-key]
+  (count (:edges (get @tax rel-key))))
 
 ;; ---- scoped reads: the visibility filter over the same closures ----------
 ;; A read from context K uses the edges some believed supporter asserts from a context in
@@ -1238,7 +1249,8 @@
     :commuting (update-in t [:commuting a] (fnil conj #{}) b)                     ; a = pred, b = group
     ;; `:meet` holds the orders a `(meetFunctionOf F R)` names for `F`, the shape
     ;; `:arity` has: one function may be declared the meet of two orders.
-    :meet      (update-in t [:meet a] (fnil conj #{}) b)))                        ; a = fn, b = order
+    :meet      (update-in t [:meet a] (fnil conj #{}) b)                          ; a = fn, b = order
+    :distinct  (update-in t [:distinct a] (fnil conj #{}) b)))                    ; a = fn, b = n
 
 (defn- cache-uninstall
   "Remove the derived cache entry for support key `k` — the exact inverse of
@@ -1302,7 +1314,12 @@
     (let [rs' (disj (get-in t [:meet a] #{}) b)]
       (if (seq rs')
         (assoc-in t [:meet a] rs')
-        (update t :meet dissoc a)))))
+        (update t :meet dissoc a)))
+    :distinct
+    (let [ns' (disj (get-in t [:distinct a] #{}) b)]
+      (if (seq ns')
+        (assoc-in t [:distinct a] ns')
+        (update t :distinct dissoc a)))))
 
 (defn- named-ops
   "`op` (`:post` or `:retire`) for each stored positive `except` and `defeat` naming
@@ -1358,6 +1375,16 @@
   (let [ks (vec (reads/as-stored-installed-keys idx h))]
     (doseq [k ks] (retire-posting! idx k h))
     (count ks)))
+
+(defn copy-stored-supporter!
+  "Post stored handle `h`, stated in `ctx`, in index store `to` as a supporter of every
+  taxonomy key it installs in index store `from`: the mirror of `retire-stored-supporter!`,
+  which a fork's reopen over a grown base runs per arrival (`vaelii.impl.overlay.rebase`).
+  Returns nil."
+  [from to h ctx]
+  (doseq [k (reads/as-stored-installed-keys from h)]
+    (p/family-apply! to (into [[:post :tax-support (conj k ctx) h] [:post :tax-installs [h] k]]
+                              (named-ops to :post (kv/key-relation k) h)))))
 
 (defn- add-supported
   "Record `handle` as asserting the flat-cache key `k` from `ctx`, installing the entry,
@@ -2445,7 +2472,7 @@
   [[kind a b]]
   (case kind
     (:disjoint :sib-exception :inverse) (some nm/value? a)      ; a = #{x y}
-    (:metatype :sib-disjoint)           (nm/value? a)
+    (:metatype :sib-disjoint :distinct) (nm/value? a)
     :prop                               (nm/value? b)           ; b = pred
     (:genl-inverse :meet)               (or (nm/value? a) (nm/value? b))
     :cover                              (let [[whole parts] a]
@@ -2524,7 +2551,7 @@
          :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
          :sibling-disjoint #{} :sib-exception-index {}
          :covers {} :cover-parts {} :partitions #{}
-         :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {}
+         :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
          :cache-dirty #{} :cache-ctxs {}
          :supporters empty-supporters
          :cache-moves (journal/restart nil)
@@ -3849,19 +3876,23 @@
   [tax f]
   (reduce (fn [m c] (max m (context-specificity tax c))) 0 f))
 
+(defn- trail-step
+  "A step to `node` over supporter `w` with content key `k`, as `trail-order` compares it:
+  the printed node, then the key, or the printed context where there is none."
+  [node w k]
+  [(nm/print-key node) (or k (nm/print-key (nth w 1)))])
+
 (defn- trail-order
   "The content order of two partial routes the queue key of `uncovered-routes` ties, each
-  a trail of `[node [handle ctx] key]` steps from the start: by each step's printed node,
-  then its supporter's key, or its printed context where it has none.  Two trails equal
-  here name the same route."
+  a trail of `trail-step`s from the start.  Two trails equal here name the same route.  Two
+  trails grown from one entry share their steps up to it, which compare equal by identity."
   [a b]
   (let [n (min (count a) (count b))]
     (loop [i 0]
       (if (< i n)
-        (let [[na wa ka] (nth a i)
-              [nb wb kb] (nth b i)
-              c (compare [(nm/print-key na) (or ka (nm/print-key (nth wa 1)))]
-                         [(nm/print-key nb) (or kb (nm/print-key (nth wb 1)))])]
+        (let [sa (nth a i)
+              sb (nth b i)
+              c  (if (identical? sa sb) 0 (compare sa sb))]
           (if (zero? c) (recur (inc i)) c))
         (compare (count a) (count b))))))
 
@@ -3882,16 +3913,16 @@
     (let [pq       (java.util.PriorityQueue. 16 ^java.util.Comparator
                                              (fn [a b] (let [c (compare (nth a 0) (nth b 0))]
                                                          (if (zero? c) (trail-order (nth a 5) (nth b 5)) c))))
-          ;; a walk meets few distinct labels, so a label carries its own queue key; `one?` holds
-          ;; while every label built is the first one, and a route found then covers every entry
-          ;; still queued
+          ;; a walk meets few distinct labels, so a label carries its queue key and an index,
+          ;; and `covers?` and a step's next label are held per index; `one?` holds while every
+          ;; label built is the first one, and a route found then covers every entry still queued
           labels   (java.util.HashMap.)
           one?     (volatile! true)
           label    (fn [rank floor hid]
                      (let [k [rank floor hid]]
                        (or (.get labels k)
                            (let [l [rank floor hid (- (or rank 0)) (floor-specificity tax floor)
-                                    (vec (sort (map nm/print-key floor)))]]
+                                    (vec (sort (map nm/print-key floor))) (.size labels)]]
                              (when (pos? (.size labels)) (vreset! one? false))
                              (.put labels k l)
                              l))))
@@ -3899,7 +3930,24 @@
                      (.add pq [[(nth l 3) (nth l 4) len (nm/print-key node)
                                 (nm/print-key from) (nth l 5)]
                                node l path len trail]))
-          lcovers? (fn [a b] (covers? tax a b))
+          pairs    (java.util.HashMap.)
+          lcovers? (fn [a b]
+                     (let [k (bit-or (bit-shift-left (long (nth a 6)) 32) (long (nth b 6)))]
+                       (if-some [v (.get pairs k)]
+                         v
+                         (let [v (covers? tax a b)] (.put pairs k v) v))))
+          moves    (java.util.HashMap.)
+          moved    (fn [l r c hidden]
+                     (let [k [(nth l 6) r c hidden]]
+                       (or (.get moves k)
+                           (let [rank (nth l 0), floor (nth l 1), hid (nth l 2)
+                                 v    (label (cond (nil? r) rank (nil? rank) r :else (min rank r))
+                                             (if (or (nil? c) (contains? floor c))
+                                               floor
+                                               (context-floor tax (conj floor c)))
+                                             (if hidden (conj (or hid #{}) hidden) hid))]
+                             (.put moves k v)
+                             v))))
           covered? (fn [ls l] (some #(lcovers? % l) ls))
           keep-in  (fn [ls l] (conj (filterv #(not (lcovers? l %)) ls) l))
           routes   (fn [found] (mapv (fn [[_ path]] (vec (rseq path))) found))]
@@ -3929,14 +3977,10 @@
                                              (or (nil? c) (contains? floor c))
                                              (not h?))
                                       l
-                                      (label (cond (nil? r) rank (nil? rank) r :else (min rank r))
-                                             (if (or (nil? c) (contains? floor c))
-                                               floor
-                                               (context-floor tax (conj floor c)))
-                                             (if h? (conj (or hid #{}) (nth w 0)) hid)))]
+                                      (moved l r c (when h? (nth w 0))))]
                           :when (not (or (covered? (get held n2) l2)
                                          (covered? flabels l2)))]
-                    (push! l2 n2 node (conj path w) len2 (conj trail [n2 w k])))
+                    (push! l2 n2 node (conj path w) len2 (conj trail (trail-step n2 w k))))
                   (recur held found flabels))))
             (routes found)))))))
 
@@ -3946,14 +3990,16 @@
   supporter covers.  `dir-key` `:fwd` steps along the edges and `:rev` against them.  With
   `supporter-class` each supporter carries its strength rank; with `hidable` (`handle ->
   boolean`) each supporter an except can hide is marked; with the class `floor`, only the
-  supporters `supporter-class` reads at least that strong.  Built eagerly into a vector, and
-  a node's sorted neighbours are held for a reading pass under `reach-support`'s key
-  (`pass-held`)."
+  supporters `supporter-class` reads at least that strong.  Built eagerly into a vector; a
+  node's sorted neighbours are held for a reading pass (`pass-held`), and its steps, without
+  `hidable`, in a `router` (`reach-support`'s, one class reading) per scope and floor."
   ([tax rel-key context supporter-class hidable]
    (edge-steps tax rel-key context supporter-class hidable :fwd nil))
   ([tax rel-key context supporter-class hidable dir-key]
    (edge-steps tax rel-key context supporter-class hidable dir-key nil))
   ([tax rel-key context supporter-class hidable dir-key floor]
+   (edge-steps tax rel-key context supporter-class hidable dir-key floor nil))
+  ([tax rel-key context supporter-class hidable dir-key floor ^java.util.HashMap router]
    (let [t     @tax
          rel   (get t rel-key)
          scope (relation-scope tax rel-key context)
@@ -3963,34 +4009,50 @@
                  #(strength/rank-of (or (supporter-class %) :default)))
          hid?  (if hidable #(boolean (hidable %)) (constantly false))
          label (fn [[h c]] [(when rank (rank h)) (if (nil? c) #{} #{c}) (when (hid? h) #{h})])
-         step  (fn [acc n2 w] (conj! acc [n2 w (when rank (rank (nth w 0))) (hid? (nth w 0))]))]
-     (fn [node]
-       (persistent!
-        (reduce (fn [acc n2]
-                  (let [cands (cond->> (visible-edge-supporters t rel-key (e-of node n2) scope)
-                                floor (filterv #(>= (long (rank (nth % 0))) (strength/rank-of floor))))]
-                    (cond
-                      (empty? cands)      acc
-                      (nil? (next cands)) (step acc n2 (nth cands 0))
-                      :else               (reduce #(step %1 n2 %2)
-                                                  acc
-                                                  (uncovered tax label
-                                                             (nm/sort-by-content-key
-                                                              (fn [[_ c]] (nm/print-key c))
-                                                              compare cands))))))
-                (transient [])
-                (pass-held [::sorted rel-key dir-key scope node]
-                           #(nm/sort-by-content-key nm/print-key compare (adj node)))))))))
+         step  (fn [acc n2 w] (conj! acc [n2 w (when rank (rank (nth w 0))) (hid? (nth w 0))]))
+         steps (fn [node]
+                 (persistent!
+                  (reduce (fn [acc n2]
+                            (let [cands (cond->> (visible-edge-supporters t rel-key (e-of node n2) scope)
+                                          floor (filterv #(>= (long (rank (nth % 0))) (strength/rank-of floor))))]
+                              (cond
+                                (empty? cands)      acc
+                                (nil? (next cands)) (step acc n2 (nth cands 0))
+                                :else               (reduce #(step %1 n2 %2)
+                                                            acc
+                                                            (uncovered tax label
+                                                                       (nm/sort-by-content-key
+                                                                        (fn [[_ c]] (nm/print-key c))
+                                                                        compare cands))))))
+                          (transient [])
+                          (pass-held [::sorted rel-key dir-key scope node]
+                                     #(nm/sort-by-content-key nm/print-key compare (adj node))))))]
+     (if (and router (nil? hidable))
+       (let [k [::steps rel-key dir-key scope floor (some? supporter-class)]
+             ^java.util.HashMap held (or (.get router k)
+                                         (let [m (java.util.HashMap.)] (.put router k m) m))]
+         (fn [node]
+           (or (.get held node)
+               (let [v (steps node)] (.put held node v) v))))
+       steps))))
 
 (defn- every-uncovered-route
   "`uncovered-routes` from `start` to `goal` over `step`, answered without the walk when
   `start`'s one step ends at `goal`: every route begins with a step from `start`, and the
-  walk returns the route it finds at `goal` through that step alone."
-  [tax start goal step]
+  walk returns the route it finds at `goal` through that step alone.  The walk takes no
+  step to a type the potential shows has no path to `goal` in `rel-key`
+  (`reaches-target`): an entry at such a type reaches no route and no type that does, so
+  the routes are the same."
+  [tax rel-key start goal step]
   (let [s (when (not= start goal) (step start))]
     (if (and (= 1 (count s)) (= goal (nth (first s) 0)))
       [[(nth (first s) 1)]]
-      (uncovered-routes tax start goal step))))
+      (let [reaches? (reaches-target tax rel-key goal)
+            on-path? (fn [st] (let [n (nth st 0)] (or (= goal n) (reaches? n))))]
+        (uncovered-routes tax start goal
+                          (fn [node]
+                            (let [ss (step node)]
+                              (if (every? on-path? ss) ss (filterv on-path? ss)))))))))
 
 (defn general-reach-supports
   "Every witness for `sub ->* super` in `rel-key` that `context` sees and no other witness
@@ -4000,24 +4062,26 @@
   whose contexts neither sees are each returned.  Ties are settled on content, never a
   handle (docs/nmtms.md)."
   [tax rel-key sub super context]
-  (every-uncovered-route tax sub super (edge-steps tax rel-key context nil nil)))
+  (every-uncovered-route tax rel-key sub super (edge-steps tax rel-key context nil nil)))
 
 (defn reach-supports
   "Every witness for `sub →* super` in `rel-key` that `context` sees and no other witness
   covers, weighing the defeat class of each supporter (`supporter-class`) beside its
   context: a route covers another only if its floor class is at least as strong and it
-  is seen wherever the other is.  The routes a placement that has to descend below the
-  firing's other ingredients chooses among (`chain/placement-ingredients`).  With
-  `hidable` (`handle → boolean`), a route resting on a supporter an except can hide
-  covers only the routes resting on that supporter too.  With the class `floor`, only the
-  routes every supporter of which reads that strong, which no weaker route covers."
+  is seen wherever the other is.  The routes a descending placement chooses among
+  (`chain/placement-ingredients`).  With `hidable` (`handle → boolean`), a route resting on
+  a supporter an except can hide covers only the routes resting on that supporter too.
+  With the class `floor`, only the routes every supporter of which reads that strong,
+  which no weaker route covers.  A `router` holds the walk's steps (`edge-steps`)."
   ([tax rel-key sub super context supporter-class]
-   (reach-supports tax rel-key sub super context supporter-class nil nil))
+   (reach-supports tax rel-key sub super context supporter-class nil nil nil))
   ([tax rel-key sub super context supporter-class hidable]
-   (reach-supports tax rel-key sub super context supporter-class hidable nil))
+   (reach-supports tax rel-key sub super context supporter-class hidable nil nil))
   ([tax rel-key sub super context supporter-class hidable floor]
-   (every-uncovered-route tax sub super
-                          (edge-steps tax rel-key context supporter-class hidable :fwd floor))))
+   (reach-supports tax rel-key sub super context supporter-class hidable floor nil))
+  ([tax rel-key sub super context supporter-class hidable floor router]
+   (every-uncovered-route tax rel-key sub super
+                          (edge-steps tax rel-key context supporter-class hidable :fwd floor router))))
 
 (defn reach-strength
   "The defeat class of the strongest route `sub ->* super` in `rel-key` that `context`
@@ -4863,10 +4927,11 @@
   answers the scoped closure.  A type whose build hands back answers the scoped closure
   uncut, and the hand back is remembered."
   [tax a context]
-  (let [scope (cond (set? context)            context
-                    (scoped-context? context) (relation-scope tax :genl context))
-        sep   (separation-inputs tax)
+  (let [sep   (separation-inputs tax)
         terms (separable-terms tax sep)
+        scope (when (seq terms)
+                (cond (set? context)            context
+                      (scoped-context? context) (relation-scope tax :genl context)))
         t     @tax
         rel   (:genl t)
         lru   (:closure-lru t)
@@ -4891,6 +4956,14 @@
                                 (filter terms) nil)
               (do (hold! (key node) ::uncut)
                   (genls-at tax a context))))))))
+
+(defn- separations?
+  "Does the taxonomy hold any separation `separation-frame` reads: a `disjoint` pair, a
+  disjoint metatype, a sibling-disjoint parent or a partition?  Four set reads."
+  [tax]
+  (let [t @tax]
+    (boolean (or (seq (:disjoint-index t)) (seq (:disjoint-metatypes t))
+                 (seq (:sibling-disjoint t)) (seq (:partitions t))))))
 
 (defn- separation-frame
   "Everything a disjointness question about `a` settles before any candidate is named:
@@ -4966,11 +5039,15 @@
   "`disjointness-test`, or nil when no declaration reaches `a`: a caller testing many
   candidates against `a` learns from the nil that every one answers false, and tests
   none.  Unscoped (`context` nil), the test is symmetric: when `a`'s answers `b`,
-  `b`'s answers `a`, so a nil for `a` also means no candidate's test answers `a`."
-  ([tax a context] (separation-test tax a context (exemption tax context)))
+  `b`'s answers `a`, so a nil for `a` also means no candidate's test answers `a`.
+
+  The frame's four parts are cut from the four separation sets (`separations?`), so a
+  KB holding none answers nil before `a`'s supertypes or the exemption are read."
+  ([tax a context]
+   (when (separations? tax) (separation-test tax a context (exemption tax context))))
   ([tax a context exempt?]
    (let [{:keys [scoped? seps metas sibs parts pair-vis? member-vis?]}
-         (separation-frame tax a context)]
+         (when (separations? tax) (separation-frame tax a context))]
      (when-not (and (empty? seps) (empty? metas) (empty? sibs) (empty? parts))
        ;; genl-relatedness is read globally, as `wff/disjoint-problems` reads it for an explicit
        ;; pair: a scoped read would let a descendant context that cannot see an `(genl x y)`
@@ -5624,6 +5701,23 @@
   included."
   [tax f order] (cache-supporters tax [:meet f order]))
 
+(defn add-distinct
+  "Install `(distinctInArgAndRest f n)`: `f`'s arguments from position `n` on are distinct."
+  ([tax f n handle] (add-distinct tax f n handle nil))
+  ([tax f n handle ctx] (add-supported tax [:distinct f n] handle ctx)))
+
+(defn del-distinct! [tax f n handle] (del-supported! tax [:distinct f n] handle))
+
+(defn distinct-positions
+  "The positions `f` is declared distinct from, as a set; empty for nearly every function.
+  The exact functor, and global, for `commuting-groups`' reasons."
+  [tax f] (get (:distinct @tax) f #{}))
+
+(defn distinct-supporters
+  "The handles of the sentexes stating `(distinctInArgAndRest f n)`, defeated members
+  included."
+  [tax f n] (cache-supporters tax [:distinct f n]))
+
 (defn commuting-predicates-among
   "The members of `specs` carrying any commutativity group, as a set, or nil when none do:
   `commuting-groups` mirrored for a caller holding a spec closure.  Iterates the table's
@@ -5985,7 +6079,7 @@
 (def ^:private flat-keys
   [:disjoint :disjoint-index :disjoint-metatypes :metatype-members :sibling-disjoint
    :sib-exception-index :covers :cover-parts :partitions :props :inverse :negates :genl-inverse-down :genl-inverse-up :arity
-   :functional-in-arg :commuting :meet :cache-dirty :cache-ctxs])
+   :functional-in-arg :commuting :meet :distinct :cache-dirty :cache-ctxs])
 
 (caches/register-derived
  {:id :T1 :label "genl and genlCx relations" :kind :index :keyed-by :node

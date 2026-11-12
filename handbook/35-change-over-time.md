@@ -39,7 +39,7 @@ whether the cat sleeps at four.
   moment between its start and the next event that ends it.
 - Engine: a slice carries nothing forward, so a read at a time no slice covers is
   unknown. Inertia carries a fluent forward to every moment the narrative orders after its
-  start, until a stored `clipped` ends it.
+  start, until an event ordered between its start and that moment ends it.
 - Engine: a narrative goes in a context under CxWell, which sees `CxChange` and its
   inertia rules.
 
@@ -131,7 +131,9 @@ at five clipped it.
   initially the case nor initiated holds nowhere.
 - Engine: `instantBefore` is transitive, and a forward join over an antecedent on a
   transitive predicate reads the closure. A narrative writes the consecutive links, and
-  `clipped` sees three-before-six from the three links between them.
+  `clipped` sees three-before-six from the three links between them. Inertia's
+  `unknown` reads the same closure when `holdsAt` is asked, and with `:calendar`
+  registered the clock orders `InstantFn` moments with no link stated.
 - Engine: with `:point` registered, the join also reads an ordering the point network
   entails, and the answer carries the facts it rests on. A moment ordered before a second
   that is `instantEqual` to a third is ordered before the third, and `clipped` fires on
@@ -142,8 +144,8 @@ at five clipped it.
 
 **Why not the other ways.** A stated `(holdsAt F T)` is a fact that no terminating event
 takes back, so a narrative that later learns of the waking still holds the cat asleep at
-six. A stated `clipped` repeats what the forward rule derives from the events, and stays
-when the event is retracted.
+six. A stated `clipped` repeats what the forward rule derives from the events, stays
+when the event is retracted, and is not what inertia reads.
 
 **Audit.** `git grep -n 'holdsAt\|clipped' <file>` over the change's test-world returns
 only queries. Each ordering of moments the source gives is stated, and no ordering the

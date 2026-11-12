@@ -136,7 +136,9 @@ resume loop under a fixed budget terminates here too. The other readers of the s
  :resume     <fn | nil>   ; nil iff :complete or :incomplete; else (budget -> partial result)
  :unenumerated [P …]      ; ask-within / prove-within: transitive predicates whose closure
                           ; a both-open goal did not enumerate, cumulative over the steps
- :unenumerated-in-guards [P …]}  ; the subset recorded inside unknown / exceptWhen
+ :unenumerated-in-guards [P …]   ; the subset recorded inside unknown / exceptWhen
+ :truncated?  bool}       ; prove-within: :max-depth refused a rule whose consequent
+                          ; unifies, cumulative over the steps
 ```
 
 `:complete` is the required one and it is exact: it is reported only when the
@@ -157,13 +159,22 @@ exactly *n*.
 **The plain entry points take a bound too, and answer differently.** `ask`, `ask?`, `prove` and
 `provable?` each take a trailing option map — `{:max-ms n}` at the first two,
 `{:max-ms n :max-depth n}` at the last two ([api.md](api.md)) — and what a reached
-`:max-ms` gets there is a refusal, `:type :budget-exhausted`, rather than the prefix. A
+`:max-ms` gets there is a refusal, `:type :budget-exhausted`, rather than the prefix.
+`query`, `query?`, `argue` and `lookup` refuse the same way, and `query-status` reports
+`:status :timeout`. A
 solution vector and a boolean have no `:status` slot, so a prefix returned in either shape
 is a wrong answer wearing a right one's face; the contract below is what a caller asks
 through when the prefix is what they want
 [why refuse there](defenses.md#a-deadline-on-ask--prove-refuses-a-depth-does-not).
 `:max-depth` at `prove` / `provable?` prunes rather than suspends, so it never refuses —
-the run is `:complete` for the depth it was given.
+the run is `:complete` for the depth it was given. `prove-within` reports the prune: its
+`:truncated?` is true once the bound has refused a rule, on either engine.
+`{:refuse-depth-cut? true}` makes the depth a bound the caller did not choose, as the
+daemon's filled ceiling is ([operations.md](operations.md#daemon--vaeliiserve)): a run the
+depth cut short is refused `:budget-exhausted` with `:status :depth-cut`. That run takes
+the DFS whatever `*query-engine*` names, because the node engine reports a cyclic rule set
+cut at every depth ([inference.md](inference.md#truncation-is-observable-corequery-status))
+and the DFS's loop check stops one before the depth does.
 
 `:results` are **per step, not cumulative** — concatenate across steps for the
 whole answer. `:resume` is a one-argument function taking a fresh budget, so each
@@ -222,13 +233,14 @@ for?* (`vaelii.impl.provers/cost-tiers`):
 
 - `:lookup` — a bounded single-step retrieval: an O(1) ground test (reflexive,
   `evaluate`, `different`, the evaluable and quantity comparisons, the arity-position
-  query `admitsArgnum`), a cached closure /
-  metadata read (genl/genlCx transitivity, disjointness, arg-type), or one index hit
+  query `admitsArgnum`, the structure relations over a ground term), a cached closure /
+  metadata read (genl/genlCx transitivity, genlMonad, disjointness, arg-type), or one index hit
   (facts, symmetric, inverse). All three are one bounded
   step, lazy to the first result, and no decision turns on which of the three it is, so
-  they fold into one tier. Nineteen of the shipped provers sit here.
-- `:compute` — work over stored facts before the first answer, and thirteen provers claim
-  it: a declared-`transitive` predicate walking its closure, `transitiveInArg`, `unknown`,
+  they fold into one tier. Twenty-one of the shipped provers sit here.
+- `:compute` — work over stored facts before the first answer, and sixteen provers claim
+  it: a declared-`transitive` predicate walking its closure, `transitiveInArg`, a
+  context's monad and time, the order between two slices' times, `Forever`'s containment, `unknown`,
   `thereExists`, `forall`, a declared-complete extent's negation, the two
   definitional-membership provers (`defnSufficient` and the `defnNecessary` negation), the
   aggregates, a modal belief projection, and the argument-type meta-predicates read up

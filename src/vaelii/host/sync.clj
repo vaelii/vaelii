@@ -9,10 +9,10 @@
   ships, context by context, and leaves everything else alone.
 
   **What is shipped** is what `starter/load-into` produces, read off a scratch in-memory KB
-  it is loaded into — not the text of the files.  The two differ: `genlCx` edges are stored
-  in CxUniverse whichever file states them, and the closing `unary_predicate` batch is
-  stated by no file.  Each premise is attributed to the load that stored it: CxUniverse
-  for the upper ontology, the middle context for a middle file.
+  it is loaded into — not the text of the files.  The two differ in one place: `genlCx`
+  edges are stored in CxUniverse whichever file states them.  Each premise is attributed
+  to the load that stored it: CxUniverse for the upper ontology, the middle context for a
+  middle file.
 
   **Which contexts are synced exactly**: CxUniverse and the `kb/middle/` contexts.  A
   premise there that the engine does not ship is retracted when it is about the engine's
@@ -27,8 +27,7 @@
 
   **Only the layers a KB has.**  A middle file whose context holds nothing in the KB is
   not loaded into it.  The upper ontology is loaded only into a KB whose CxUniverse holds
-  a premise the upper load ships, and the `unary_predicate` batch only into one that also
-  holds a mark the batch ships.
+  a premise the upper load ships.
 
   Comparison is by the form a KB file writes (`text/premise-entries`): a fact or rule
   under its strength wrapper, an `exceptWhen` as the wrapper it was asserted as.  A
@@ -105,8 +104,7 @@
 (defn premises
   "Every premise the starter stores, as `{:context c :form f :file ctx}`: the form a KB
   file writes it in, the context it is stored in, and the context of the load that stored
-  it — CxUniverse for the upper ontology, `:unary-predicates` for the closing batch no
-  file states.  In the order the
+  it — CxUniverse for the upper ontology or the defining middle context.  In the order the
   load stored them, which is an order they assert in: the load retried what arrived
   before its dependencies.  Built in a scratch in-memory KB that is cleared before this
   returns."
@@ -241,17 +239,13 @@
    (let [shipped (map #(update % :form canonical-form) shipped)
          exact   (set (exact-contexts))
          root    sx/root-context
-         ;; each layer belongs to a KB that holds some of it: the upper ontology to one
-         ;; whose CxUniverse holds a premise it ships, and the closing batch, which a
-         ;; vocabulary KB does not run, to one holding a mark the batch ships
+         ;; the upper layer belongs to a KB whose CxUniverse holds a premise it ships
          holds?  (fn [load] (some (fn [{:keys [context form file]}]
                                     (and (= load file) (= root context) (not (edge? form))
                                          (stored? kb context form)))
                                   shipped))
          upper?  (holds? root)
-         present (into (cond-> #{}
-                         upper?                                (conj root)
-                         (and upper? (holds? :unary-predicates)) (conj :unary-predicates))
+         present (into (cond-> #{} upper? (conj root))
                        (filter #(and (not= root %) (pos? (v/count-in-context kb %))))
                        (distinct (filter symbol? (keep :file shipped))))
          ours    (into #{} (map (juxt :context :form)) shipped)

@@ -110,40 +110,78 @@
                 (= 1 (count (nm/args (peel-negation lit))))
                 (tax/pair-separated? (reasoning/taxonomy kb) tp pred))))
 
+(defn- edge-reach
+  "The terms `seeds` reach over `step`, a term's global closure in one direction with the
+  term itself, and over `extra`, a map from a term to the terms a trigger edge joins it
+  to in that direction."
+  [step extra seeds]
+  (loop [acc #{} todo seeds]
+    (if-let [fresh (seq (remove acc todo))]
+      (let [acc (into acc (mapcat step) fresh)]
+        (recur acc (into [] (comp (filter (comp acc key)) (mapcat val)) extra)))
+      acc)))
+
+(defn- genl-pair-test
+  "When every trigger of `sens` is a `genl` edge or a cover between symbols
+  (`tax/installed-edges`), a fn `f` answering whether they can have moved a `genl` pair,
+  read off the global closure plus the trigger edges, since one settle can remove several
+  edges of one route; each firing kept is asked again from its own placement.  A pair
+  moves only with a route through a trigger edge: `(f lower upper)` holds when `lower`
+  lies at or below an edge's lower end and `upper` at or above its upper end.  A reflexive
+  pair moves only on a term in either reach, which `(f term)` answers.  nil for any other
+  trigger set."
+  [kb sens]
+  (let [per (mapv tax/installed-edges sens)]
+    (when (and (seq per) (every? seq per))
+      (let [edges (into [] cat per)]
+        (when (every? #(every? symbol? %) edges)
+          (let [tx    (reasoning/taxonomy kb)
+                group (fn [k v] (reduce (fn [m e] (update m (k e) (fnil conj []) (v e))) {} edges))
+                lows  (edge-reach #(tax/specs-global tx %) (group second first) (map first edges))
+                highs (edge-reach #(tax/genls-global tx %) (group first second) (map second edges))]
+            (fn moves?
+              ([term] (or (contains? lows term) (contains? highs term)))
+              ([lower upper]
+               (if (= lower upper)
+                 (moves? lower)
+                 (and (contains? lows lower) (contains? highs upper)))))))))))
+
 (defn- firing-reachable?
   "Could a trigger of a shape in `shapes` have flipped this firing's block condition?
   `except` is the rule's block literals, each substituted with `bindings` and put through
   `norm` (`merge-normalizer`); one literal whose arguments agree with a trigger's and whose
   `reachable-predicates` hold the trigger's predicate, or whose denial a membership or a
   tuple on it answers (`separation-reaches?`, `negates-reaches?`), is enough.  An
-  unreadable literal, or one on a `cross?` predicate, keeps the firing.  `cross?` is
-  `cross-argument-predicate?` memoized for the pass, since one of its arms reads the
-  index."
-  [kb except bindings shapes cross? norm]
+  unreadable literal, or one on a `cross?` predicate, keeps the firing, but a positive
+  `genl` literal asks `genl-pair?` when there is one.  `cross?` is
+  `cross-argument-predicate?` memoized for the pass, since one of its arms reads the index."
+  [kb except bindings shapes cross? norm genl-pair?]
   (boolean
    (some (fn [lit]
            (let [lit' (cond-> (res/substitute lit bindings) norm norm)]
              (if-let [[lp la] (literal-shape lit')]
-               (or (cross? lp)
-                   (let [reach (reachable-predicates kb lp lit')]
-                     (some (fn [[tp ta]] (and (= la ta)
-                                              (or (contains? reach tp)
-                                                  (separation-reaches? kb lp lit' tp)
-                                                  (negates-reaches? kb lp lit' tp))))
-                           shapes)))
+               (if (and genl-pair? (= 'genl lp) (= 'genl (first lit')) (= 3 (count lit')))
+                 (genl-pair? (nth lit' 1) (nth lit' 2))
+                 (or (cross? lp)
+                     (let [reach (reachable-predicates kb lp lit')]
+                       (some (fn [[tp ta]] (and (= la ta)
+                                                (or (contains? reach tp)
+                                                    (separation-reaches? kb lp lit' tp)
+                                                    (negates-reaches? kb lp lit' tp))))
+                             shapes))))
                true)))                                    ; unreadable conjunct: keep
          except)))
 
 (defn- firing-test
   "A `bindings -> boolean` fn answering `firing-reachable?` for the block literals
-  `except` against the trigger `shapes`, for one rule.  With no equality class
-  (`norm` nil) and every literal flat, on a named predicate `cross?` refuses and with a
-  variable argument, a literal agrees with a trigger only when a variable of it is bound
-  to a trigger argument.  So the fn first looks each variable up in `bindings`, and
-  rejects a firing that binds every one to an atom and none to a trigger argument: a
-  firing the trigger does not name costs a lookup per variable, not a substitution per
-  literal."
-  [kb except shapes cross? norm]
+  `except` against the trigger `shapes`, for one rule, or nil when every literal is a
+  positive `genl` pair with a constant side `genl-pair?` places on no route.  With no
+  equality class (`norm` nil) and every literal flat, on a named predicate `cross?`
+  refuses and with a variable argument, a literal agrees with a trigger only when a
+  variable of it is bound to a trigger argument.  So the fn first looks each variable up,
+  and rejects a firing that binds every one to an atom and none to a trigger argument.
+  The rejection costs a lookup per variable, not a substitution per literal."
+  [kb except shapes cross? norm genl-pair?]
   (let [args  (into #{} (mapcat (comp keys second)) shapes)
         var?  #(and (symbol? %) (sx/variable? %))
         flat? (fn [lit]
@@ -151,17 +189,23 @@
                   (and (sequential? b) (symbol? (nm/functor b)) (not (var? (nm/functor b)))
                        (not (cross? (nm/functor b)))
                        (not-any? sequential? (nm/args b)) (some var? (nm/args b)))))
+        off?  (fn [lit]
+                (and genl-pair? (sequential? lit) (= 'genl (first lit)) (= 3 (count lit))
+                     (some #(and (symbol? %) (not (var? %)) (not (genl-pair? %))) (rest lit))))
         vars  (when (and (nil? norm) (seq except) (every? flat? except))
                 (into [] (comp (mapcat #(nm/args (peel-negation %))) (filter var?) (distinct))
                       except))]
-    (if vars
+    (cond
+      (and (seq except) (every? off? except)) nil
+      vars
       ;; a variable left unbound (a query's own) or bound to a compound gives a literal
       ;; the shape test cannot read, so it goes to the full test
       (fn [bindings] (and (some #(let [x (res/substitute % bindings)]
                                    (or (sequential? x) (var? x) (contains? args x)))
                                 vars)
-                          (firing-reachable? kb except bindings shapes cross? norm)))
-      (fn [bindings] (firing-reachable? kb except bindings shapes cross? norm)))))
+                          (firing-reachable? kb except bindings shapes cross? norm genl-pair?)))
+      :else
+      (fn [bindings] (firing-reachable? kb except bindings shapes cross? norm genl-pair?)))))
 
 (defn withdrawal-marker?
   "Is queued trigger `t` one of `special`'s withdrawal markers rather than a sentence?"
@@ -255,7 +299,8 @@
           cross?   (memoize #(cross-argument-predicate? kb %))
           norm     (merge-normalizer kb)
           blocked  (delay (jtms/blocked tms))
-          test-for (memoize #(inherit/moved-goal-test kb %))]
+          test-for (memoize #(inherit/moved-goal-test kb %))
+          genl-for (memoize #(when-not norm (genl-pair-test kb %)))]
       (into #{}
             (mapcat (fn [[rh triggers]]
                       (let [firings (delay (jtms/dependents tms rh))
@@ -284,15 +329,16 @@
                               (and (seq marks) (nil? rsx)) @firings
                               :else
                               (concat
-                               (when (seq sens)
-                                 ;; the bindings are on the record: the network keeps only
-                                 ;; what belief is computed from (`jtms/graph-just`)
-                                 (let [reach? (firing-test kb block-lits shapes cross? norm)]
-                                   (filter (fn [jid]
-                                             (if-let [j (p/get-justification (:records kb) jid)]
-                                               (reach? (:bindings j))
-                                               false))
-                                           @firings)))
+                               ;; the bindings are on the record: the network keeps only
+                               ;; what belief is computed from (`jtms/graph-just`)
+                               (when-let [reach? (when (seq sens)
+                                                   (firing-test kb block-lits shapes cross? norm
+                                                                (genl-for sens)))]
+                                 (filter (fn [jid]
+                                           (if-let [j (p/get-justification (:records kb) jid)]
+                                             (reach? (:bindings j))
+                                             false))
+                                         @firings))
                                (when (some #{::special/entailment} marks)
                                  (entailment-candidates kb rsx @firings block-lits blocked))
                                ;; a computed answer moves with every source the prover
@@ -369,7 +415,8 @@
                          acc
                          (cond
                            moved?      (filter #(moved? (:bindings %)) recs)
-                           (seq lits)  (let [reach? (firing-test kb lits shapes cross? norm)]
+                           (seq lits)  (let [reach? (firing-test kb lits shapes cross? norm
+                                                                 (when-not norm (genl-pair-test kb triggers)))]
                                          (filter #(reach? (:bindings %)) recs))
                            :else       recs))))))
          {:free [] :overflow []}

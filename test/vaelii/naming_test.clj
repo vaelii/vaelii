@@ -244,12 +244,10 @@
   (testing "anything else is not a context name"
     (is (seq (nm/problems '(ist Muffet (flies Tweety)) 'CxWell)))))
 
-(deftest the-dotted-marker-is-still-refused-at-the-top-level
-  (is (seq (nm/problems '(parentOf Tom . Bob) 'CxWell)))
-  (testing "but is legal inside a rule pattern"
-    (is (empty? (nm/problems '(set/inertRule
-                               (implies (?pred . ?args) (?pred . ?args)))
-                             'CxUniverse)))))
+(deftest a-rest-pattern-in-a-rule-passes-naming
+  (is (empty? (nm/problems '(set/inertRule
+                             (implies (?pred . ?args) (?pred . ?args)))
+                           'CxUniverse))))
 
 ;; ---- a problem is data before it is prose --------------------------------
 
@@ -271,7 +269,7 @@
 (defn- kb-with
   "An empty KB on the scratch space under one naming policy."
   [policy]
-  (fn [] (tu/fresh {:naming policy})))
+  (fn [] (tu/empty-kb {:naming policy})))
 
 (def ^:private misnamed '(parentOf Baby_Penguin Tom))
 
@@ -485,8 +483,7 @@
    :functor-arity  ['(lives_in Tweety cold_place)  'CxWell    'lives_in]
    :functor-unary  ['(warmBlooded Muffet)          'CxWell    'warmBlooded]
    :argument       ['(parentOf Baby_Penguin Tom)   'CxWell    'Baby_Penguin]
-   :ist-context    ['(ist Muffet (flies Tweety))   'CxWell    'Muffet]
-   :dot-marker     ['(parentOf Tom .)              'CxWell    '.]})
+   :ist-context    ['(ist Muffet (flies Tweety))   'CxWell    'Muffet]})
 
 (deftest every-problem-class-renders-a-message
   ;; `message` is a `case` over the `problem-classes` keys: a class with no arm would throw

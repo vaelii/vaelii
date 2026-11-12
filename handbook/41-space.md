@@ -153,7 +153,7 @@ the region relations to generic parthood:
 
 ```clojure
 (set/monotonic (reflexive partOfRegion))
-(genl partOfRegion partOf)
+(genl partOfRegion permanentPartOf)
 (set/monotonic (irreflexive properPartOfRegion))
 (genl properPartOfRegion properPartOf)
 ```
@@ -181,7 +181,7 @@ about one pair:
 - *Engine.* A goal is answered when every relation still possible between the pair
   satisfies it, so a derived goal is entailed by more networks than a base one. A pair
   left open answers neither a goal nor its negation.
-- *Engine.* `(genl partOfRegion partOf)` makes an entailed `partOfRegion` tuple answer a
+- *Engine.* `(genl partOfRegion permanentPartOf)` makes an entailed `partOfRegion` tuple answer a
   `partOf` goal, and `(genl properPartOfRegion properPartOf)` does the same for
   `properPartOf`. An NTPP chain therefore answers generic parthood questions
   (`space_test/an-entailed-region-part-answers-generic-parthood`).

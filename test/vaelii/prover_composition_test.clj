@@ -134,12 +134,12 @@
 ;; ---- the channel set itself ---------------------------------------------
 
 (tu/deftest-kb the-shadowing-channel-is-named-and-empty-by-default
-  (tu/with-terms [dog_t animal_t largerThan]
-    (is (empty? (provers/shadowing-channels kb (list largerThan dog_t animal_t) ctx))
+  (tu/with-terms [dog_t animal_t typeLargerThan]
+    (is (empty? (provers/shadowing-channels kb (list typeLargerThan dog_t animal_t) ctx))
         "nothing shadows a computed answer in a KB that declares no preservation")
-    (v/assert kb (list 'transitiveInArgInverse largerThan 1 'genl) ctx)
+    (v/assert kb (list 'transitiveInArgInverse typeLargerThan 1 'genl) ctx)
     (is (= #{:preserving}
-           (provers/shadowing-channels kb (list largerThan dog_t animal_t) ctx)))
+           (provers/shadowing-channels kb (list typeLargerThan dog_t animal_t) ctx)))
     (testing "and it is scoped like every other declaration read"
       (tu/with-terms [CxOther CxSide largerThan2]
         ;; a declaration in CxSide is invisible from its sibling CxOther

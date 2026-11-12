@@ -1756,18 +1756,19 @@
                                                     (for [i (range 20) j (range 4)] (node s i j)))]
                            n))))))
 
-(deftest the-uncovered-routes-a-pass-reads-over-held-neighbours-are-those-read-alone
+(deftest the-uncovered-routes-a-pass-reads-over-held-neighbours-and-steps-are-those-read-alone
   ;; random graphs of 60 types, edges stated in four contexts (one with none) under two
   ;; branches, some edges with two supporters of two classes: the uncovered routes, with
-  ;; and without supporter classes, read inside one reading pass after a witness walk
-  ;; over the same edges, against the same reads outside any pass
+  ;; and without classes and a class floor, from three vantages, in one pass after a witness
+  ;; walk and with a graph's steps in one router, against the reads outside both
   (let [rnd   (java.util.Random. 4906)
         found (atom 0)
         cls   #(if (even? %) :monotonic :default)]
     (dotimes [trial 8]
-      (let [t   (tax/create-taxonomy)
-            ts  (mapv #(symbol (str "ur" %)) (range 60))
-            cxs [nil 'CxUrA 'CxUrB 'CxUrC]]
+      (let [t      (tax/create-taxonomy)
+            ts     (mapv #(symbol (str "ur" %)) (range 60))
+            cxs    [nil 'CxUrA 'CxUrB 'CxUrC]
+            router (java.util.HashMap.)]
         (tax/add-genlCx t 'CxUrA 'CxUniverse 1)
         (tax/add-genlCx t 'CxUrB 'CxUniverse 2)
         (tax/add-genlCx t 'CxUrC 'CxUrA 3)
@@ -1779,20 +1780,22 @@
                 (tax/add-genl t (ts i) (ts j) (+ 1000 h) (cxs (.nextInt rnd 4)))))))
         (dotimes [_ 25]
           (let [sub   (ts (.nextInt rnd 30))
-                super (ts (+ 30 (.nextInt rnd 30)))
-                walk  (fn [] [(tax/reach-supports t :genl sub super nil cls)
-                              (tax/general-reach-supports t :genl sub super nil)])
-                want  (walk)]
-            (when (seq (first want)) (swap! found inc))
-            (is (= want (tax/with-neighbours (atom {})
-                          (fn [] (tax/reach-support t :genl sub super nil cls) (walk))))
-                (str "trial " trial " " sub " " super))))))
+                super (ts (+ 30 (.nextInt rnd 30)))]
+            (doseq [ctx [nil 'CxUrA 'CxUrC]]
+              (let [walk (fn [r] [(tax/reach-supports t :genl sub super ctx cls nil nil r)
+                                  (tax/reach-supports t :genl sub super ctx cls nil :monotonic r)
+                                  (tax/general-reach-supports t :genl sub super ctx)])
+                    want (walk nil)]
+                (when (seq (first want)) (swap! found inc))
+                (is (= want (tax/with-neighbours (atom {})
+                              (fn [] (tax/reach-support t :genl sub super ctx cls) (walk router))))
+                    (str "trial " trial " " sub " " super " " ctx))))))))
     (is (pos? @found) "some pairs have routes")))
 
 (deftest a-walk-from-a-source-one-edge-from-its-target-names-what-the-full-walk-names
   ;; random graphs of 50 types, edges in four contexts, some with two supporters of two
-  ;; classes, and many sources one edge from their target: the witness and every
-  ;; uncovered route, read from three vantages, with the one-edge answers and without
+  ;; classes, and many sources one edge from their target: the witness and every uncovered
+  ;; route, from three vantages, against the walk over every step and no one-edge answer
   (let [rnd   (java.util.Random. 5001)
         ;; seeded, so the cases asked, and the assertion count, are the same every run
         pick  (fn [n xs] (let [l (java.util.ArrayList. ^java.util.Collection (sort xs))]
@@ -1823,7 +1826,8 @@
                                 (tax/reach-supports t :genl sub super ctx cls)
                                 (tax/general-reach-supports t :genl sub super ctx)]))
                 want (with-redefs [tax/direct-witness        (constantly nil)
-                                   tax/every-uncovered-route @#'tax/uncovered-routes]
+                                   tax/every-uncovered-route (fn [t _ start goal step]
+                                                               (#'tax/uncovered-routes t start goal step))]
                        (walk))]
             (swap! short inc)
             (is (= want (walk)) (str "trial " trial " " sub " " super " " ctx))))))

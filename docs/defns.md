@@ -140,9 +140,9 @@ condition that is believed is answered by both paths and deduped by the union.
   **spec**'s, a spec being below `Coll` on the `genl` edges so that its members are
   members. The walk uses the reflexive `tax/specs`, which folds the own-sufficient case
   into the same iteration.
-- **A failing necessary of a strict `genl` fast-fails first.** The strict-genl ancestor set is
-  walked most-general-first, so the broadest disqualifier is checked first and a rejected
-  query never evaluates the possibly-expensive sufficient at all. The ancestor set is a
+- **A failing necessary of a strict `genl` fast-fails first.** The strict genls that declare
+  a necessary are walked most-general-first, so the broadest disqualifier is checked first
+  and a rejected query never evaluates the possibly-expensive sufficient at all. The ancestor set is a
   set, so a defn reachable by two paths through a diamond is evaluated exactly once.
   `Coll`'s **own** necessary is excluded from that veto: a sufficient is authoritative,
   and a collection whose two halves disagree has the inconsistency documented rather than
@@ -153,6 +153,10 @@ condition that is believed is answered by both paths and deduped by the union.
 - **A self-referential condition is bounded.** Nothing forbids `(defnSufficient Coll
   (Coll ?x))` and level 6 carries no depth guard, so the walk holds a re-entry guard on
   the collections it is already inside, shared with the negative walk below.
+- **A walk asks each ground conjunct once.** The walk keeps each ground conjunct's answer
+  for the rest of its conditions, so the four integer sign classes, each conditioned on
+  `(integer ?x)`, ask `(integer a)` once per walk instead of four times. The walk writes
+  nothing, so no answer it keeps goes stale during it.
 
 ## Open-world, and the one negative answer
 

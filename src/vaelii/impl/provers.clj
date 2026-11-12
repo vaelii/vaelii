@@ -125,10 +125,11 @@
 ;; Several records reach the engine that dispatches them, and the engine is assembled
 ;; below the records it holds — so the knot is closed with one forward declaration.
 ;; `unknown` / `thereExists` / an aggregate run their argument back through
-;; `solve-goal-with` over the whole `registry`; `parse-rule` builds the `exceptWhen`
-;; guard that a rule read carries; `solve-inverted` composes the metadata provers minus
-;; itself.
-(declare parse-rule solve-inverted solve-mirrored registry solve-goal-with est-goal)
+;; `solve-goal-with` over the whole `registry`, and order its conjuncts by `est-goal` and
+;; `applicable-provers`; `parse-rule` builds the `exceptWhen` guard that a rule read
+;; carries; `solve-inverted` composes the metadata provers minus itself.
+(declare parse-rule solve-inverted solve-mirrored registry solve-goal-with est-goal
+         applicable-provers)
 
 (defn- pvar? [x] (sx/variable? x))
 (def ^:private ground? sx/ground-term?)
@@ -166,6 +167,16 @@
     (let [calc (qkb/calculus-for kb pred)]
       (not (and calc (every? #(qkb/converse-entailed? calc pred %) qs))))))
 
+(defn- forever-goal?
+  "Is `goal` `(subintervalOf x y)` or `(includesInstant y x)` with `y` `Forever` or a
+  variable?"
+  [goal]
+  (let [y (case (when (and (sequential? goal) (= 3 (count goal))) (first goal))
+            subintervalOf   (nth goal 2)
+            includesInstant (second goal)
+            nil)]
+    (boolean (or (= 'Forever y) (and (some? y) (sx/variable? y))))))
+
 (defn shadowing-channels
   "The ways this KB could reach `goal` that a **computed** prover does not read: the set a
   conditionally-complete prover checks before claiming its answers are a superset of everyone
@@ -182,9 +193,9 @@
     `P` owns `Q` and its converse table implies the pair (`unread-inverse?`).
   - `:negates`: a `(not (Q …))` goal with `Q` at or below a side of a `negates` declaration
     (`NegatesProver`).
-  - `:calendar`: an argument, of the goal or of the literal it negates, that is a calendar
-    term (`(YearFn 2000)`, `DatetimeFn`, `InstantFn`), which carries its ordering in its
-    fields (`vaelii.impl.calendar`).  A pure test on the arguments.
+  - `:calendar`: an argument of the goal, or of the literal it negates, that is a calendar
+    term (`(YearFn 2000)`, `DatetimeFn`, `InstantFn`), ordered by its fields.
+  - `:forever`: a goal `ForeverProver` answers (`forever-goal?`).
 
   Absorbed, so not a channel: a stored fact, a merged term (rewritten into the goal first),
   `symmetric` / `transitive` / `reflexive` over a calculus's own predicate, and `arg` type
@@ -205,7 +216,8 @@
         (and (= sx/not-functor pred) (sequential? (second goal))
              (seq (tax/negates-over (reasoning/taxonomy kb) (first (second goal)) context)))
         (conj :negates)
-        (some datetime/time-term? (nm/args (cond-> goal (sx/negation? goal) second))) (conj :calendar)))))
+        (some datetime/time-term? (nm/args (cond-> goal (sx/negation? goal) second))) (conj :calendar)
+        (forever-goal? goal)                                 (conj :forever)))))
 
 (defn sole-prover
   "The prover that may answer `goal` **alone**, or nil for the union path.
@@ -307,6 +319,61 @@
         ;; closure rather than asserting a reflexivity of its own.
         (= a b) (for [x all :when (contains? (up x) x)] {a x})
         :else (for [x all, y (up x)] {a x b y})))))
+
+(defn slice-parts
+  "`[context time natFormula-handle]` of the slice `c`: the arguments of a `(CxTimeFn
+  context time)` application written in place, with no handle, or named by a believed
+  `(natFormula c (CxTimeFn …))` in CxUniverse; nil when `c` is not a slice."
+  [kb c]
+  (let [parts #(when (and (sequential? %) (= 'CxTimeFn (first %)) (= 3 (count %))) (vec (rest %)))]
+    (or (parts c)
+        (when (symbol? c)
+          (some (fn [[h b]] (some-> (parts (get b '?e)) (conj h)))
+                (res/matches-visible kb (list 'natFormula c '?e) sx/root-context))))))
+
+(defn- monad-of
+  "The monad of the context `c`: the context a slice slices, followed to its own monad;
+  else `c`."
+  [kb c]
+  (loop [c c seen #{}]
+    (let [[m] (slice-parts kb c)]
+      (if (and (some? m) (not (contains? seen m)))
+        (recur m (conj seen c))
+        c))))
+
+(defn- time-of
+  "The time the context `c` covers: `Forever` for a context that is not a slice, a slice's
+  own time where it slices a context that is not one, and `(TimeIntersectionFn outer t)`
+  for a slice at `t` of a slice covering `outer`."
+  [kb c]
+  (letfn [(walk [c seen]
+            (when-let [[inner t] (when-not (contains? seen c) (slice-parts kb c))]
+              (if-let [outer (walk inner (conj seen c))]
+                (list 'TimeIntersectionFn outer t)
+                t)))]
+    (or (walk c #{}) 'Forever)))
+
+(defrecord GenlMonadProver []
+  Prover
+  (applicable? [_ _ goal _]
+    (and (binary-pred? goal 'genlMonad) (or (ground? (second goal)) (ground? (nth goal 2)))))
+  (est-bindings [_ kb goal _]
+    (let [[_ a b] goal tx (reasoning/taxonomy kb)]
+      (cond (and (ground? a) (ground? b)) 1
+            (ground? a) (count (tax/context-up tx (monad-of kb a)))
+            :else       (count (tax/context-down tx (monad-of kb b))))))
+  (cost         [_ _ _ _] :lookup)
+  (completeness [_ _ _ _] 100)
+  (solve [_ kb goal _]
+    (let [[_ a b] goal
+          tx      (reasoning/taxonomy kb)
+          monad?  #(= % (monad-of kb %))
+          sorted  #(nm/sort-by-content-key identity %)]
+      (cond
+        (and (ground? a) (ground? b))
+        (if (contains? (set (tax/context-up tx (monad-of kb a))) (monad-of kb b)) [{}] [])
+        (ground? a) (map (fn [m] {b m}) (sorted (filter monad? (tax/context-up tx (monad-of kb a)))))
+        :else       (map (fn [m] {a m}) (sorted (filter monad? (tax/context-down tx (monad-of kb b)))))))))
 
 ;; ---- disjointness -------------------------------------------------------
 
@@ -1294,7 +1361,17 @@
 
 ;; ---- different: the unique-name assumption over the equality closure ----
 
-;; An unmerged `indeterminate_term` member suspends the UNA for itself (docs/predall.md).
+(defn- scoped-equiv-class
+  "`term`'s equivalence class as `visible?` sees the merges: the global class when the read
+  is unscoped or nothing merged `term`, else the scoped election (`tax/scoped-class`), since
+  an invisible edge can split a class."
+  [kb visible? term]
+  (let [tx (reasoning/taxonomy kb)]
+    (if (and visible? (tax/merged? tx term))
+      (first (tax/scoped-class tx term visible?))
+      (tax/equiv-class tx term))))
+
+;; An indeterminate term suspends the UNA for every name of its class (docs/predall.md).
 (defn- skolem-indeterminate? [kb term context]
   (and (nat-read/reified-nat-symbol? term)
        (boolean
@@ -1312,14 +1389,23 @@
   ;; negative answer, which is the common one.
   (boolean (seq (res/matches-visible kb (list 'indeterminate_term term) context))))
 
+(defn- class-indeterminate?
+  "`indeterminate-term?` with the merges read through `visible?`."
+  [kb visible? term context]
+  (let [cls (scoped-equiv-class kb visible? term)]
+    (if (next cls)
+      (boolean (some #(category-indeterminate? kb % context) cls))
+      (or (skolem-indeterminate? kb term context)
+          (category-indeterminate? kb term context)))))
+
 (defn indeterminate-term?
-  "Is `term` an unmerged **indeterminate term** in `context`: a skolem constant, read off
-  its `SkolemFn` minting expression, or a believed member of the `indeterminate_term`
-  category, subkinds included (docs/predall.md)?  Public for `vaelii.impl.predall`'s
+  "Is `term` an **indeterminate term** in `context` (docs/predall.md)?  A believed member
+  of the `indeterminate_term` category, subkinds included, makes every name of its class
+  one, as `context` sees the merges.  A skolem constant, read off its `SkolemFn` minting
+  expression, is one only while nothing merges it.  Public for `vaelii.impl.predall`'s
   `predAllSpecified` audit, which asks the same question of a filler."
   [kb term context]
-  (or (skolem-indeterminate? kb term context)
-      (category-indeterminate? kb term context)))
+  (class-indeterminate? kb (res/visible-supporter-fn kb context) term context))
 
 (defn indeterminacy-supports
   "The handles of the stored sentexes, in any context, that make `term` an indeterminate
@@ -1335,22 +1421,21 @@
 
 (defn- pairwise-distinct?
   "Do no two of `args` share an equivalence class as `context` sees the merges, with no
-  argument an unmerged `indeterminate_term`?  `(different A A)` fails on the `=` arm
-  without reading the closure.  Compound arguments normalize recursively
+  argument an `indeterminate-term?`?  `(different A A)` fails on the `=` arm without
+  reading the closure.  Compound arguments normalize recursively
   (`res/representative-term`).
 
   The exemption is read after the pairwise check, so a goal that fails on a repeat reads
   no `indeterminate_term`: `(different A A)` measures 14.6 us/op against 19.4 for the
   other order, over a KB holding core.txt and no indeterminate term."
   [kb context args]
-  (let [vis     (res/visible-supporter-fn kb context)
-        rep     #(res/representative-term kb vis %)
-        v       (vec args)
-        exempt? (fn [t] (and (= (rep t) t) (indeterminate-term? kb t context)))]
+  (let [vis (res/visible-supporter-fn kb context)
+        rep #(res/representative-term kb vis %)
+        v   (vec args)]
     (and (every? (fn [[a b]] (not (or (= a b) (= (rep a) (rep b)))))
                  (for [i (range (count v)), j (range (inc i) (count v))]
                    [(nth v i) (nth v j)]))
-         (not-any? exempt? v))))
+         (not-any? #(class-indeterminate? kb vis % context) v))))
 
 (defrecord DifferentProver []
   Prover
@@ -1374,16 +1459,6 @@
   over the partition.  `rewriteOf` is not here.  It is directional, and the goal
   `(rewriteOf P D)` is answered by the stored edge as spelled (`res/goal-held-as-spelled?`)."
   '#{sameAs equals})
-
-(defn- scoped-equiv-class
-  "`term`'s equivalence class as `visible?` sees the merges: the global class when the read
-  is unscoped or nothing merged `term`, else the scoped election (`tax/scoped-class`), since
-  an invisible edge can split a class."
-  [kb visible? term]
-  (let [tx (reasoning/taxonomy kb)]
-    (if (and visible? (tax/merged? tx term))
-      (first (tax/scoped-class tx term visible?))
-      (tax/equiv-class tx term))))
 
 (defn- terms-equal-in?
   "Do ground terms `a` and `b` reach one normal form as `visible?` sees the merges and the
@@ -1424,6 +1499,199 @@
         (if (terms-equal-in? kb vis a b) [{}] [])
         (ground? a) (map (fn [t] {b t}) (sort (scoped-equiv-class kb vis a)))
         :else       (map (fn [t] {a t}) (sort (scoped-equiv-class kb vis b)))))))
+
+(defn- structure-kind
+  "The kind `sx/structure-constructors` names for `t`, a ground application of a structure
+  constructor, else nil (docs/nat.md, \"A data structure is a structural term\").  A ground
+  application holds no rest variable, so it is never dotted."
+  [t]
+  (when (and (seq? t) (seq t) (ground? t))
+    (get sx/structure-constructors (first t))))
+
+(defn- entry-parts
+  "The key and value of `(EntryFn k v)`, else nil."
+  [e]
+  (when (and (seq? e) (= 'EntryFn (first e)) (= 3 (count e))) (rest e)))
+
+(defn- structure-items
+  "The arguments of a structure of `kind` as the store spells it, a set's or map's repeats
+  dropped by identity, so a KB that declares no mark on the constructor still reads one."
+  [kb kind s]
+  (let [items (rest (sx/canonical-subterm s (res/store-marks kb)))]
+    (if (#{:set :map} kind) (distinct items) items)))
+
+(defn- same-term-fn
+  "`terms-equal-in?` over one read of the rewrite rules, each side's normal form computed
+  once."
+  [kb context]
+  (let [vis   (res/visible-supporter-fn kb context)
+        rules (delay (res/rewrite-rules-in kb vis))
+        nf    (memoize #(rewrite/normalize @rules (res/representative-term kb vis %)))]
+    (fn [a b] (or (= a b) (= (nf a) (nf b))))))
+
+(defn- same-classes
+  "`xs` grouped into classes of `same?` items, each a vector in the order `xs` holds them."
+  [same? xs]
+  (reduce (fn [cs t] (if-let [i (first (keep-indexed #(when (same? t (first %2)) %1) cs))]
+                       (update cs i conj t)
+                       (conj cs [t])))
+          [] xs))
+
+(defn- match-item
+  "Bindings extending `b` under which goal argument `x` is item `t`: by `same?` when `x` is
+  ground, by unification otherwise."
+  [same? x t b]
+  (if (ground? x) (when (same? x t) b) (res/unify x t b)))
+
+(defn- count-binding
+  "Bindings extending `b` under which goal argument `n` is the count `c`."
+  [n c b]
+  (cond (pvar? n)                 (assoc b n c)
+        (and (number? n) (== n c)) b))
+
+(defn- solve-structure-relation
+  "The answers to a structure relation over a ground structure, every element, entry or key
+  read in `context`'s normal form: an open element binds one of each class, a set's and a
+  map's count is its classes, and a map whose keys merge there answers each value."
+  [kb [f :as goal] context]
+  (let [s     (last goal)
+        kind  (structure-kind s)
+        items (structure-items kb kind s)
+        same? (same-term-fn kb context)
+        reps  (delay (map first (same-classes same? items)))
+        times (fn [e] (if (#{:list :multiset} kind)
+                        (count (filter #(same? e %) items))
+                        (if (some #(same? e %) items) 1 0)))]
+    (case f
+      elementOf
+      (let [[_ x] goal]
+        (if (ground? x)
+          (if (some #(same? x %) items) [{}] [])
+          (keep #(res/unify x % {}) @reps)))
+      cardinalityOf
+      (let [c (if (#{:list :multiset} kind) (count items) (count @reps))]
+        (if-let [b (count-binding (second goal) c {})] [b] []))
+      multiplicityOf
+      (let [[_ n x] goal]
+        (if (ground? x)
+          (if-let [b (count-binding n (times x) {})] [b] [])
+          (keep (fn [e] (when-let [b (res/unify x e {})]
+                          (count-binding (res/substitute n b) (times e) b)))
+                @reps)))
+      valueAt
+      (let [[_ v k] goal
+            pairs   (case kind
+                      :map  (keep entry-parts @reps)
+                      :list (map-indexed (fn [i t] [(inc i) t]) items)
+                      nil)]
+        (for [[pk pv] pairs
+              :let  [b (match-item same? k pk {})]
+              :when b
+              :let  [b (match-item same? (res/substitute v b) pv b)]
+              :when b]
+          b)))))
+
+(defn- split-rest
+  "`[explicit rest-var]` of a corresponding predicate's element arguments: the arguments
+  before a dot and the variable after it, or all of them and nil."
+  [args]
+  (if (sx/dotted? args) [(sx/positional args) (last args)] [args nil]))
+
+(defn- positional-matches
+  "Bindings under which patterns `xs`, then rest variable `r` if any, are a list's or an
+  entry's `items` in order, a ground pattern compared by `same?`."
+  [same? items xs r]
+  (let [n (count xs)]
+    (or (when (if r (<= n (count items)) (= n (count items)))
+          (when-let [b (reduce (fn [b [x t]] (or (match-item same? (res/substitute x b) t b) (reduced nil)))
+                               {} (map vector xs items))]
+            (if r (some-> (res/unify r (apply list (drop n items)) b) vector) [b])))
+        [])))
+
+(defn- commuting-matches
+  "Bindings under which patterns `xs` name items of a multiset, set or map, compared by
+  `same?`: a multiset's patterns take one occurrence each, and a set's or map's may name one
+  element twice.  Without rest variable `r` they name every item; with it, `r` binds the
+  items none names, in the store's order.  `v` open patterns answer up to `m^v` ways."
+  [same? kind items xs r]
+  (let [set?    (#{:set :map} kind)
+        classes (if set? (same-classes same? items) (mapv vector items))
+        go      (fn go [ps used b]
+                  (if (empty? ps)
+                    [[used b]]
+                    (let [p (res/substitute (first ps) b)]
+                      (mapcat (fn [i]
+                                (when (or set? (not (used i)))
+                                  (let [c (nth classes i)]
+                                    (if (ground? p)
+                                      (when (same? p (first c)) (go (rest ps) (conj used i) b))
+                                      (mapcat #(some->> (res/unify p % b) (go (rest ps) (conj used i)))
+                                              (distinct c))))))
+                              (range (count classes))))))]
+    (distinct
+     (for [[used b] (go (sort-by (complement ground?) xs) #{} {})
+           :let  [left (remove used (range (count classes)))]
+           :when (or r (empty? left))
+           :let  [b (if r (res/unify r (apply list (map #(first (nth classes %)) left)) b) b)]
+           :when b]
+       b))))
+
+(defn- solve-structure-predicate
+  "The answers to a corresponding predicate: the canonical structure its ground elements
+  build, or each way its element patterns, a rest after them binding what they leave, name
+  the elements of its ground structure in `context`'s normal form."
+  [kb [f s & args] context]
+  (let [ctor   (get sx/structure-predicates f)
+        marks  (res/store-marks kb)
+        [xs r] (split-rest args)
+        xs     (map #(if (ground? %) (sx/canonical-subterm % marks) %) xs)]
+    (cond
+      (pvar? s)
+      [{s (sx/canonical-subterm (apply list ctor args) marks)}]
+
+      (not (and (seq? s) (= ctor (first s))))
+      []
+
+      :else
+      (let [same? (same-term-fn kb context)
+            kind  (structure-kind s)]
+        (if (or (= 'EntryFn ctor) (= :list kind))
+          (positional-matches same? (rest (sx/canonical-subterm s marks)) xs r)
+          (commuting-matches same? kind (structure-items kb kind s) xs r))))))
+
+(defn- structure-goal?
+  "Is `goal` one `StructureProver` answers: a structure relation of its arity over a ground
+  structure, or a corresponding predicate whose structure is ground, or whose elements are
+  ground and undotted?"
+  [goal]
+  (and (seq? goal) (symbol? (first goal))
+       (let [[f & args] goal]
+         (cond
+           (contains? sx/structure-relations f)
+           (and (= ({'elementOf 2 'cardinalityOf 2} f 3) (count args))
+                (some? (structure-kind (last args))))
+
+           (contains? sx/structure-predicates f)
+           (let [[s & es] args
+                 [_ r]    (split-rest es)]
+             (and (some? s)
+                  (or (not= 'entryOf f) (= 3 (count args)))
+                  (if (pvar? s)
+                    (and (nil? r) (every? ground? es))
+                    (and (ground? s) (or (nil? r) (pvar? r))))))
+           :else false))))
+
+(defrecord StructureProver []
+  Prover
+  (applicable? [_ _ goal _] (structure-goal? goal))
+  (est-bindings [_ _ goal _]
+    (if (contains? sx/structure-relations (first goal)) (max 1 (dec (count (last goal)))) 1))
+  (cost         [_ _ _ _] :lookup)
+  (completeness [_ _ _ _] 100)
+  (solve [_ kb goal context]
+    (if (contains? sx/structure-relations (first goal))
+      (solve-structure-relation kb goal context)
+      (solve-structure-predicate kb goal context))))
 
 ;; ---- evaluate: symbolic computation -------------------------------------
 ;; (evaluate ?result <expr>) binds ?result to the value of a symbolic expression,
@@ -1540,28 +1808,42 @@
     (let [c (second goal)]
       (when (and (symbol? c) (not (sx/variable? c))) c))))
 
+(defn membership-route
+  "The handles the believed membership at `h`, `(S x)`, rests on as a member of the type
+  `c`: `[h]` when `S` is `c`, else `h` followed by the least believed supporter in content
+  order of each `genl` edge on one path from `S` up to `c` (`tax/genl-path-edges`) that a
+  reader at `context` can use, every supporter when `context` is nil.  Where an edge on
+  that path has none, the supporters of a path `context` sees (`tax/reach-support`).  nil
+  when `context` sees no path up to `c`."
+  [kb h c context]
+  (let [tms  (reasoning/tms kb)
+        recs (:records kb)
+        tx   (reasoning/taxonomy kb)
+        ckey (fn [h] (let [r (p/get-sentex recs h)] [(sx/sentence-of r) (:context r)]))
+        s    (nm/functor (sx/sentence-of (p/get-sentex recs h)))]
+    (if (= s c)
+      [h]
+      (or (when-let [es (tax/genl-path-edges tx s c)]
+            (let [ws (mapv (fn [[a b]]
+                             (nm/min-by-content-key
+                              ckey (filter #(jtms/in? tms %) (tax/genl-edge-supporters tx a b context))))
+                           es)]
+              (when (every? some? ws) (into [h] ws))))
+          (when context
+            (some->> (tax/reach-support tx :genl s c context) (into [h] (map first))))))))
+
 (defn nonempty-witness
   "The handles a believed member of the type `c` seen from `context` rests on, as a set,
-  or nil when `c` has none: the first in content order of the believed memberships `(S x)`
-  that `res/matches-visible` answers for `(c ?x)`, `S` being `c` or a subtype, and for a
-  subtype the first believed supporter of each `genl` edge on one path from `S` up to `c`
-  (`tax/genl-path-edges`).  A member whose path has an edge with no believed supporter
-  seen from `context` is passed over.  Reads one count per subtype of `c` first
-  (`reads/stored-count-with-functor`), and the visible extent of `c` in full when one is
-  positive."
+  or nil when `c` has none: the `membership-route` of the first in content order of the
+  believed memberships `(S x)` that `res/matches-visible` answers for `(c ?x)` that has
+  one.  Reads one count per subtype of `c` first (`reads/stored-count-with-functor`), and
+  the visible extent of `c` in full when one is positive."
   [kb c context]
   (let [tms   (reasoning/tms kb)
         recs  (:records kb)
         tx    (reasoning/taxonomy kb)
         ckey  (fn [h] (let [r (p/get-sentex recs h)] [(sx/sentence-of r) (:context r)]))
-        least (fn [hs] (nm/min-by-content-key ckey (filter #(jtms/in? tms %) hs)))
-        route (fn [h]
-                (let [s (nm/functor (sx/sentence-of (p/get-sentex recs h)))]
-                  (if (= s c)
-                    #{h}
-                    (when-let [es (tax/genl-path-edges tx s c)]
-                      (let [ws (mapv (fn [[a b]] (least (tax/genl-edge-supporters tx a b context))) es)]
-                        (when (every? some? ws) (into #{h} ws)))))))
+        route #(some-> (membership-route kb % c context) set)
         hs    (when (some #(pos? (reads/stored-count-with-functor (:index kb) %)) (tax/specs tx c context))
                 (into [] (comp (map first) (distinct) (filter #(jtms/in? tms %)))
                       (res/matches-visible kb (list c '?x) context false)))]
@@ -1654,8 +1936,7 @@
     (let [f (nth goal 3)]
       (if (sequential? f) (count f) deferred-est)))
   (cost         [_ _ _ _] :lookup)
-  ;; 50, not 100: a stored argN fact answers beside this
-  (completeness [_ _ _ _] 50)
+  (completeness [_ _ _ _] 100)
   (solve [_ kb goal context] (mapv first (arg-positions kb goal context)))
   SupportingProver
   ;; A formula written out, or quoted by a quoting function, rests on no statement: the
@@ -1767,19 +2048,24 @@
        (and (instance? ArgPositionProver p) (arg-position-goal? goal)) [(nth goal 3)]
        :else args))))
 
+(defn- deferred-reads
+  "The variables of `goal` read (`input-vars`) by the provers among `ps` that report
+  `deferred-est` for it, or nil when none of them does."
+  [ps kb goal context]
+  (when (sequential? goal)
+    (when-let [ds (seq (filter #(= deferred-est (est-bindings % kb goal context)) ps))]
+      (into #{} (mapcat #(input-vars % goal)) ds))))
+
 (defn- est-under
   "The estimate `e` the applicable provers `ps` gave for `goal` as written, read with the
   variables in `bound` bound: `deferred-est` becomes 1, the one answer or none a
   computation gives, once `bound` holds every variable the provers among `ps` that report
-  `deferred-est` read (`input-vars`), and is `e` otherwise.  Each `:est-override` below
-  reads a goal through this, so `plan/order` runs a computed literal once its inputs are
-  bound, ahead of a literal its output binds."
+  `deferred-est` read (`deferred-reads`), and is `e` otherwise.  Each `:est-override`
+  below reads a goal through this, so `plan/order` runs a computed literal once its inputs
+  are bound, ahead of a literal its output binds."
   [e ps kb goal context bound]
-  (if (and (= deferred-est e) (sequential? goal))
-    (let [bound (if (set? bound) bound (set bound))
-          ds    (filterv #(= deferred-est (est-bindings % kb goal context)) ps)]
-      (if (and (seq ds) (every? #(every? bound (input-vars % goal)) ds)) 1 e))
-    e))
+  (let [reads (when (= deferred-est e) (deferred-reads ps kb goal context))]
+    (if (and reads (every? (if (set? bound) bound (set bound)) reads)) 1 e)))
 
 (defn evaluatable-est-override
   "An `:est-override` for `vaelii.impl.plan/order` that costs only `preds`, a KB's registered
@@ -2213,23 +2499,26 @@
 
 (defn- planned-conjuncts
   "`conjuncts` in an order every computed conjunct can run in, given the variables
-  `bound` at entry: each computed one, and each literal in `tests`, placed once the
-  variables it reads are bound, matched conjuncts keeping their canonical order.  A
-  conjunct nothing can make ready is placed anyway, not dropped; `sentex/check-naf-closed`
-  refuses such a rule (docs/naf.md, \"The conjunction is joined\")."
-  [conjuncts bound tests]
+  `bound` at entry: each computed one, and each literal the predicate `tests` holds of,
+  placed once the variables it reads are bound, matched conjuncts keeping their canonical
+  order.  Such a literal reads the variables `(reads c)` names, or every variable it holds
+  when `(reads c)` is nil.  `tests` and `reads` are called only on a literal reached with
+  a variable unbound.  A conjunct nothing can make ready is placed anyway, not dropped;
+  `sentex/check-naf-closed` refuses such a rule (docs/naf.md, \"The conjunction is joined\")."
+  [conjuncts bound tests reads]
   (loop [pending (vec conjuncts) bound (set bound) out []]
     (if (empty? pending)
       out
-      (let [i (or (first (keep-indexed
-                          (fn [i c] (when (or (not (or (conjunct-computed? c) (contains? tests c)))
-                                              (every? bound (sx/deferred-input-vars c)))
-                                      i))
-                          pending))
+      (let [i (or (some (fn [i] (let [c (nth pending i)]   ; `some`, not a chunked seq
+                                  (when (or (every? bound (sx/deferred-input-vars c bound))
+                                            (not (or (conjunct-computed? c) (tests c)))
+                                            (and (tests c) (some->> (reads c) (every? bound))))
+                                    i)))
+                        (range (count pending)))
                   0)
             c (nth pending i)]
         (recur (into (subvec pending 0 i) (subvec pending (inc i)))
-               (into bound (concat (sx/free-vars c) (sx/deferred-output-vars c)))
+               (into bound (concat (sx/free-vars c) (sx/deferred-output-vars c bound)))
                (conj out c))))))
 
 (defn conjunction-solutions
@@ -2237,13 +2526,19 @@
   `context`: the one joined evaluator `unknown`, `thereExists`, `exceptWhen` and an
   aggregate's census read.  Each conjunct, in `planned-conjuncts` order, is substituted
   with what the conjuncts before it bound, put in `norm`'s normal form when `norm` is
-  non-nil, and run through the registry.  A closed negative conjunct over a predicate a
-  closed extent is declared on (`rules/closed-extent-antecedents`) runs after the
-  conjuncts that bind it, since `ClosedExtentProver` answers it only ground.  Lazy throughout, so a caller taking one
-  solution enumerates no extent (docs/naf.md, \"The conjunction is joined\")."
+  non-nil, and run through the registry.  A conjunct its prover answers only bound (a
+  closed negative over a closed extent, or one at `deferred-est`) runs after its binders.
+  Lazy throughout, so a caller taking one solution enumerates no extent (docs/naf.md,
+  \"The conjunction is joined\")."
   ([kb conjuncts bindings context] (conjunction-solutions kb conjuncts bindings context nil))
   ([kb conjuncts bindings context norm]
-   (let [pv (registry kb)]
+   (let [pv      (registry kb)
+         open?   (fn [c] (some #(not (contains? bindings %)) (sx/free-vars c)))
+         waiting (some-fn (set (rules/closed-extent-antecedents (reasoning/taxonomy kb) conjuncts))
+                          (memoize #(and (not (conjunct-computed? %)) (open? %)
+                                         (= deferred-est (est-goal kb (res/substitute % bindings) context)))))
+         reads   (memoize #(let [g (res/substitute % bindings)]
+                             (deferred-reads (applicable-provers kb pv g context) kb g context)))]
      (reduce (fn [sols c]
                (res/lazy-mapcat
                 (fn [b]
@@ -2252,9 +2547,7 @@
                     (map #(merge b %) (solve-goal-with kb pv g context))))
                 sols))
              [bindings]
-             (planned-conjuncts conjuncts (keys bindings)
-                                (set (rules/closed-extent-antecedents (reasoning/taxonomy kb)
-                                                                      conjuncts)))))))
+             (planned-conjuncts conjuncts (keys bindings) waiting reads)))))
 
 (defn conjunction-derivable?
   "Does the conjunctive level-6 body `conjuncts` have a solution under `bindings` in
@@ -2357,6 +2650,92 @@
     ;; the desugared nested NAF, handed back to the registry (docs/naf.md)
     (solve-goal-with kb (registry kb) (sx/desugar-forall-literal goal) context)))
 
+(defn- monad-context?
+  "Is `c` a `context` at level 6 that is neither a slice (`slice-parts`) nor a
+  `time_slice_context` at level 6?"
+  [kb c context]
+  (and (nil? (slice-parts kb c))
+       (conjunction-derivable? kb [(list 'context c)] {} context)
+       (not (conjunction-derivable? kb [(list 'time_slice_context c)] {} context))))
+
+(defrecord ContextPartsProver []
+  Prover
+  (applicable? [_ _ goal _]
+    (and (sequential? goal) (ground? (second goal))
+         (case (first goal)
+           monad_context        (= 2 (count goal))
+           (cxMonadOf cxTimeOf) (= 3 (count goal))
+           false)))
+  (est-bindings [_ _ _ _] 1)
+  (cost         [_ _ _ _] :compute)
+  (completeness [_ _ _ _] 100)
+  (solve [_ kb goal context]
+    (let [[p c v] goal]
+      (case p
+        monad_context (if (monad-context? kb c context) [{}] [])
+        (if-let [b (res/unify v (if (= 'cxMonadOf p) (monad-of kb c) (time-of kb c)) {})] [b] [])))))
+
+(def ^:private slice-orders
+  "The time orders `SliceOrderProver` answers, each with the type both its times take:
+  `subtimeOf` relates two times, `subintervalOf` two `time_interval`s."
+  '{subtimeOf time, subintervalOf time_interval})
+
+(defn- slices-at
+  "Each `[k m]`, a slice `k` whose `natFormula` expression is `(CxTimeFn m t)` with `m` a
+  monad, in content order."
+  [kb t]
+  (->> (res/matches-visible kb (list 'natFormula '?k (list 'CxTimeFn '?m t)) sx/root-context)
+       (keep (fn [[_ b]] (let [m (get b '?m)] (when (= m (monad-of kb m)) [(get b '?k) m]))))
+       distinct
+       (nm/sort-by-content-key identity)))
+
+(defn- slice-order-answers
+  "The times `t` ordered against `x` because a slice at `x` sees (`up?`), or is seen by, a
+  slice of the same monad at `t`, each of `R`'s type `typed?` accepts."
+  [kb x up? typed?]
+  (let [tx (reasoning/taxonomy kb)]
+    (->> (for [[k m] (slices-at kb x)
+               c     ((if up? tax/context-up tax/context-down) tx k)
+               :let  [[m' t] (when (not= c k) (slice-parts kb c))]
+               :when (and (= m m') (some? t))]
+           t)
+         distinct (filter typed?) (nm/sort-by-content-key identity))))
+
+(defrecord SliceOrderProver []
+  Prover
+  (applicable? [_ kb goal _]
+    (and (sequential? goal) (= 3 (count goal)) (contains? slice-orders (first goal))
+         (or (ground? (second goal)) (ground? (nth goal 2)))
+         (pos? (reads/stored-count-with-functor (:index kb) 'natFormula))))
+  (est-bindings [_ kb [_ a b] _]
+    (if (and (ground? a) (ground? b)) 1 (count (slices-at kb (if (ground? a) a b)))))
+  (cost         [_ _ _ _] :compute)
+  (completeness [_ _ _ _] 50)
+  (solve [_ kb [r a b] context]
+    (let [typed? #(conjunction-derivable? kb [(list (slice-orders r) %)] {} context)]
+      (cond
+        (not (typed? (if (ground? a) a b))) []
+        (ground? b) (if (ground? a)
+                      (if (some #{b} (slice-order-answers kb a true typed?)) [{}] [])
+                      (map (fn [t] {a t}) (slice-order-answers kb b false typed?)))
+        :else       (map (fn [t] {b t}) (slice-order-answers kb a true typed?))))))
+
+(defrecord ForeverProver []
+  Prover
+  (applicable? [_ _ goal _] (forever-goal? goal))
+  (est-bindings [_ kb goal _]
+    (let [[p a b] goal]
+      (if (ground? (if (= 'subintervalOf p) a b))
+        1
+        (reads/stored-count-with-functor (:index kb) (if (= 'subintervalOf p) 'time_interval 'time_point)))))
+  (cost         [_ _ _ _] :compute)
+  (completeness [_ _ _ _] 50)
+  (solve [_ kb goal context]
+    (let [[p a b] goal
+          [member forever] (if (= 'subintervalOf p) [(list 'time_interval a) b] [(list 'time_point b) a])]
+      (when-let [b0 (res/unify forever 'Forever {})]
+        (conjunction-solutions kb [(res/substitute member b0)] b0 context)))))
+
 ;; ---- evaluative defnSufficient: prove membership by evaluating the condition ----
 ;; A `(defnSufficient Coll C)` whose condition `C` is built from computed predicates alone
 ;; (`integer`, `lessThan`, an `add-evaluatable` check) derives no member forward, since its
@@ -2391,10 +2770,21 @@
   "Does the defn condition `cond` hold for `member`, evaluated at query time through the
   registry (level-6, no backchaining)?  The member is substituted for `sx/defn-member-var`
   and each conjunct answered by the evaluables, the facts and the closures.  **Two-valued**:
-  a condition that is not derivable is false — there is no third 'unknown' state."
-  [kb cond member context]
-  (conjunction-derivable?
-   kb (sx/conjuncts (res/substitute cond {sx/defn-member-var member})) {} context))
+  a condition that is not derivable is false — there is no third 'unknown' state.  `held`,
+  a volatile map one walk shares across its conditions, answers each ground conjunct once."
+  ([kb cond member context] (condition-holds? kb cond member context nil))
+  ([kb cond member context held]
+   (let [cs (sx/conjuncts (res/substitute cond {sx/defn-member-var member}))]
+     (if (and held (seq cs) (every? #(empty? (sx/free-vars %)) cs))
+       (every? (fn [c]
+                 (let [g (sx/canon c)]
+                   (if-some [r (get @held g)]
+                     r
+                     (let [r (boolean (seq (take 1 (solve-goal-with kb (registry kb) g context))))]
+                       (vswap! held assoc g r)
+                       r))))
+               cs)
+       (conjunction-derivable? kb cs {} context)))))
 
 ;; ---- applicability checks: is a defn even in reach, without the per-node walk? ---
 ;; Both defn provers ship in the default registry, so their `applicable?` runs on EVERY
@@ -2467,21 +2857,22 @@
 
 (defn- genl-necessary-fails?
   "Does some necessary of a **strict** genl of `coll` fail for `member` — the positive
-  query's fast-fail?  Walks the strict-genl ancestor set most-general-first and stops at the first
-  failing necessary (the broadest disqualifier), so a consistent KB rejects without
-  evaluating the sides or the (possibly expensive) sufficient.
+  query's fast-fail?  Walks the strict genls of `coll` that declare a necessary,
+  most-general-first, and stops at the first failing necessary (the broadest disqualifier),
+  so a consistent KB rejects without evaluating the sides or the (possibly expensive) sufficient.
   **Strict** (excludes `coll` itself): a collection's own necessary does not veto its own
   sufficient — sufficient is authoritative — and the ancestor set is a set, so a defn reachable
   by two genl paths (a diamond's apex) is checked exactly once.  Sound only on a consistent
   KB: on an inconsistent one the negation prover records
   the ¬member half and this merely declines to admit."
-  [kb coll member context]
+  [kb coll member context held]
   (and (has-defn-fact? kb 'defnNecessary)
        (let [tx        (reasoning/taxonomy kb)
-             ancestors (disj (tax/genls tx coll context) coll)]
+             ancestors (filter #(and (not= % coll) (tax/genl? tx coll % context))
+                               (defn-declaring-colls kb 'defnNecessary context))]
          (boolean
           (some (fn [g]
-                  (some (fn [c] (not (condition-holds? kb c member context)))
+                  (some (fn [c] (not (condition-holds? kb c member context held)))
                         (defn-conditions kb 'defnNecessary g context)))
                 (most-general-first tx context ancestors))))))
 
@@ -2507,12 +2898,13 @@
   (completeness [_ _ _ _] 50)
   (solve [_ kb goal context]
     (let [coll   (first goal)
-          member (second goal)]
+          member (second goal)
+          held   (volatile! {})]
       (binding [*defn-stack* (conj *defn-stack* coll)]
         ;; Fast-fail FIRST (short-circuit `or`), so a failing genl-necessary rejects
         ;; without the sufficient ever being evaluated — a pure speedup on a consistent KB.
-        (if (or (genl-necessary-fails? kb coll member context)
-                (not (some (fn [c] (condition-holds? kb c member context))
+        (if (or (genl-necessary-fails? kb coll member context held)
+                (not (some (fn [c] (condition-holds? kb c member context held))
                            (spec-sufficient-conditions kb coll context))))
           []
           [{}])))))
@@ -3409,13 +3801,15 @@
 ;; ---- the engine ---------------------------------------------------------
 
 (def default-provers
-  [(->TransitivityProver) (->DisjointnessProver) (->CommonGenlProver)
+  [(->TransitivityProver) (->GenlMonadProver) (->ContextPartsProver) (->SliceOrderProver) (->ForeverProver)
+   (->DisjointnessProver) (->CommonGenlProver)
    (->TransitivePredicateProver) (->TransitiveInArgProver) (->SymmetricProver) (->InverseProver) (->ReflexiveProver)
    (->EvaluableProver) (->ExpressionKindProver) (->NonemptyProver) (->ResultTypeProver) (->ArgPositionProver) (->DifferentProver) (->EqualityProver) (->EvaluateProver) (->QuantityProver)
    (->AdmitsArgnumProver)
    (->UnknownProver) (->ThereExistsProver) (->ForallProver) (->ClosedExtentProver)
    (->DefnSufficientProver) (->DefnNecessaryNegationProver) (->DisjointnessNegationProver)
    (->NegatesProver)
+   (->StructureProver)
    (->CoveringProver)
    (->AggregateProver) (->BeliefProjectionProver)
    ;; FactProver before ArgTypeProver: both are :lookup / completeness 50, so vector
@@ -3448,6 +3842,7 @@
     :sign        vaelii.impl.sign/sign-prover
     :calendar    vaelii.impl.calendar/calendar-prover
     :includes-instant vaelii.impl.point/includes-instant-prover
+    :tightest-start-bound vaelii.impl.point-order/tightest-start-bound-prover
     :brave-cautious vaelii.impl.asp.prover/brave-cautious-prover})
 
 (defn reasoner-names
@@ -4020,6 +4415,16 @@
           (under goal (into #{} (filter (set bound)) (sx/form-variables goal)))
           e)))))
 
+(defn registry-bounds
+  "Search bounds whose leaf is the prover registry: `solve-goal`, costed by
+  `registry-est-override`.  A backward search (`res/prove`, the node engine, the ASP
+  grounding join) then answers a literal it does not rewrite by transitivity, an
+  evaluable, a calculus or an inferred argument type as well as by a stored fact, so a
+  rule expansion never answers less than `ask` does for the same literal."
+  [kb context]
+  {:leaf-solver  solve-goal
+   :est-override (registry-est-override kb context)})
+
 ;; ---- exceptWhen: evaluating a rule's exception ---------------------------
 ;; This lives here, rather than beside the forward chainer that first needed it,
 ;; because *three* consumers must agree on it: forward chaining, the recursive chainer
@@ -4233,7 +4638,7 @@
   returns.  Lazy, so a bounded caller (`ask-within`) still pays per result."
   [goal sols]
   (let [gvars (goal-vars goal)]
-    (distinct (map (fn [b] (select-keys (res/resolve-bindings b) gvars)) sols))))
+    (distinct (map (fn [b] (res/resolve-vars b gvars)) sols))))
 
 (defn ask
   "Answer `goal` in `context`; solution binding maps projected to the goal's

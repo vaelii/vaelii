@@ -326,6 +326,16 @@
   [spec why]
   (assoc spec :facets #{:inert} :inert why))
 
+(def ^:private structure-relation
+  "The note on each structure relation of structure.txt."
+  (str "computed by provers/StructureProver from the ground structure term in the last"
+       " argument, and deferred in a forward join (sx/structure-relations)."))
+
+(def ^:private structure-predicate
+  "The note on each constructor's corresponding predicate."
+  (str "a constructor's corresponding predicate, computed by provers/StructureProver in"
+       " either direction, and deferred in a forward join (sx/structure-predicates)."))
+
 (def ^:private length-clash-checks
   "The `:clash-checks` of every length binding: a fact after the binding is asked
   `checks/fact-clash-checks`' `:arity`, and the binding after facts
@@ -503,6 +513,20 @@
                                   " core.txt's forward rules."))
                 (str "taxonomy/add-meet — read by sentex/canonical-term through res/meet-order,"
                      " and integrate/commute-existing for the facts already stored"))]
+     ['distinctInArgAndRest
+      (enforced {:shape   {:args [:relation :position]}
+                 :storage [:pred-position :distinct]
+                 :checked true
+                 :facets  #{:cached :derived :reach}
+                 :family  nil
+                 :notes   (str "a canonicalization mark on the applications below the literal:"
+                               " an argument from the position on that repeats an earlier one is"
+                               " dropped, and the application keeps its functor at any count,"
+                               " so (SetFn a) stays a term. The mark a set constructor carries"
+                               " beside its commutativity.")}
+                (str "taxonomy/add-distinct — read by sentex/canonical-term through"
+                     " res/distinct-from, and integrate/commute-existing for the facts already"
+                     " stored"))]
      ['asymmetric  (enforced (assoc (prop :asymmetric :facets #{:reach :convicts :arbitrable
                                                                 :answers})
                                     :opposing-read
@@ -714,6 +738,12 @@
                                   " the derivation path discards an arm's return value. A reach in"
                                   " the *lift* direction, which :reach does not name."))
                 "special — the CxUniverse lift, retroactive over the extent")]
+     ['eternal_predicate
+      (enforced (collection :notes (str "a predicate whose tuples hold independently of time within a"
+                                        " theory. A membership under it, stated or derived, through"
+                                        " eternal_predicate or a type below it, is read from the slice"
+                                        " the fact is stated in."))
+                "special/slice-lift — the copy of a fact stated in a time slice into the context the slice slices, retroactive over the extent")]
      ['forced_decontextualized_predicate (enforced (prop :forced-decontextualized)
                                                    "special — storage straight into CxUniverse")]
      ['forced_monotonic_predicate (enforced (prop :forced-monotonic)
@@ -734,6 +764,13 @@
                      " the sentex it names by handle is retracted"))]
      ['abducible_predicate  (enforced (prop :abducible)
                                       "taxonomy prop :abducible — the check on what abduce may hypothesize")]
+     ['not_assertible
+      (enforced (prop :not-assertible :facets #{:reach :convicts}
+                      :notes (str "a prover answers the predicate and nothing stores it: written"
+                                  " after the mark a (P …) or (not (P …)) is refused, and one"
+                                  " stored before it is held in the :out forced set."))
+                (str "special/wff-problems refuses a literal of a marked predicate, and"
+                     " checks/forced-out? holds a stored one in the :out forced set"))]
      ['closed_extent_predicate
       (enforced (prop :closed-extent :facets #{:answers :retriggers}
                       :notes (str "its re-check trigger (special/recheck-on-sentence) re-indexes"
@@ -800,11 +837,31 @@
      ['contextArgSubrelation   (enforced (wff-only [:function :position :predicate])
                                          (str "context-nat producer — sibling F-contexts differing at one arg are"
                                               " ordered by the sub-relation on that arg, materializing genlCx"))]
+     ['contextArgGenlCx        (enforced (wff-only [:function :position])
+                                         (str "context-nat producer — every F-context is a genlCx spec of the"
+                                              " context at the declared arg, materializing genlCx"))]
+     ['contextArgFold
+      (enforced {:shape {:args [:function :position :function]} :storage [:none] :checked false
+                 :facets #{} :family nil}
+                (str "nat/context-form — a context slot whose declared arg is an application of F"
+                     " folds into one application before it reifies to its cx/ constant"))]
+     ['contextArgCalendarSpelling
+      (enforced {:shape {:args [:function :position]} :storage [:none] :checked false
+                 :facets #{} :family nil}
+                (str "nat/context-form — a calendar time at the declared arg of a context slot takes"
+                     " its one spelling (datetime/calendar-spelling) before the slot reifies"))]
      ['functionCorrespondingPredicate
-      (enforced (wff-only [:function :predicate] :optional [:position]
+      (enforced (wff-only [:function :predicate :position]
                           :facets #{:answers})
-                (str "nat — reifies an application to the value the predicate already names,"
-                     " and projects a minted constant back onto it"))]]
+                (str "nat — merges an application's constant with the value the predicate names,"
+                     " and projects the constant back onto the predicate"))]
+     ['functionCorrespondingBinaryPredicate
+      (enforced {:shape {:args [:function :predicate]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by the generic chain, not by name: the core.txt rule"
+                             " beside it concludes (functionCorrespondingPredicate F P 2).")}
+                (str "generic forward chaining: the core.txt rule concludes"
+                     " (functionCorrespondingPredicate F P 2), which the nat reify reads"))]]
 
     ;; ---- the equality relations ------------------------------------------
     ;; Sorted, so the table is a function of the set rather than of set iteration
@@ -1045,9 +1102,9 @@
                                    " quotedArg's reason at the covering arity.")}
                              :notes (str "the every-position instance twin of arg: one"
                                          " declaration types the whole admitted tail.  Sugar"
-                                         " for (argAndRest P 1 T), which core.txt's forward"
-                                         " rule stores beside it; the entry point reads that"
-                                         " twin, never args, so a super-predicate's covering"
+                                         " for (argAndRest P 1 T), which its shared interface"
+                                         " rule (kb/upper/interface-rules.txt) stores beside"
+                                         " it; the entry point reads that twin, never args, so a super-predicate's covering"
                                          " constraint binds a sub-predicate's tuples as"
                                          " argAndRest's does."))
                       "checks/covering-args-problem — every accepted position typed as an instance, through the argAndRest twin")]
@@ -1157,7 +1214,26 @@
                                (str "provers/CommonGenlProver — taxonomy/max-common-specs of"
                                     " arguments 2 and up, read through the edges the asking"
                                     " context sees"))]
-     ['unknown     (operator {:args [:sentence]})]
+     ['elementOf      (operator {:args [:term :term]}
+                                :notes structure-relation)]
+     ['cardinalityOf  (operator {:args [:integer :term]}
+                                :notes structure-relation)]
+     ['multiplicityOf (operator {:args [:integer :term :term]}
+                                :notes structure-relation)]
+     ['valueAt        (operator {:args [:term :term :term]}
+                                :notes structure-relation)]
+     ['listOf         (operator {:args [:term] :variadic :term}
+                                :notes structure-predicate)]
+     ['multisetOf     (operator {:args [:term] :variadic :term}
+                                :notes structure-predicate)]
+     ['setOf          (operator {:args [:term] :variadic :term}
+                                :notes structure-predicate)]
+     ['mapOf          (operator {:args [:term] :variadic :term}
+                                :notes structure-predicate)]
+     ['entryOf        (operator {:args [:term :term :term]}
+                                :notes structure-predicate)]
+     ['unknown     (enforced (operator {:args [:sentence]})
+                             "provers/UnknownProver — negation as failure over a ground or closed argument")]
      ['thereExists (enforced (operator {:args [:term :sentence]})
                              "provers/ThereExistsProver — a ground existential, binding its variable(s) against the body and projecting the binder out")]
      ['forall      (enforced (operator {:args [:term :sentence]}
@@ -1166,12 +1242,14 @@
      ['exists      (enforced (structural {:args [:term :sentence]}
                                          "a head existential: a consequent variable no antecedent binds. Unlike forall/thereExists it is never answered by a prover — the canonicalizer strips and skolemizes it before the rule stores, so no wff arm of its own belongs in the special-predicate table.")
                              "skolem/skolemize-conclusion, sentex/head-exists? — forward firing mints a fresh witness per firing (docs/skolem.md)")]
-     ['bravely     (operator {:args [:sentence]}
-                             :notes (str "a read of the current dilemmas — S in some optimal"
-                                         " labeling; answered by the :brave-cautious prover."))]
-     ['cautiously  (operator {:args [:sentence]}
-                             :notes (str "a read of the current dilemmas — S in every optimal"
-                                         " labeling; answered by the :brave-cautious prover."))]
+     ['bravely     (enforced (operator {:args [:sentence]}
+                                       :notes (str "a read of the current dilemmas — S in some optimal"
+                                                   " labeling; answered by the :brave-cautious prover."))
+                             "the :brave-cautious prover — S in some optimal labeling of the current dilemmas")]
+     ['cautiously  (enforced (operator {:args [:sentence]}
+                                       :notes (str "a read of the current dilemmas — S in every optimal"
+                                                   " labeling; answered by the :brave-cautious prover."))
+                             "the :brave-cautious prover — S in every optimal labeling of the current dilemmas")]
      ['totalDuration   (operator {:args [:term :term]}
                                  :notes (str "a sum of the stored lengths, computed by the"
                                              " :duration prover, which reads no stored one."))]
@@ -1257,13 +1335,13 @@
     ;; ---- bounded and unbounded arity ---------------------------------------
     ;; The bounded/unbounded split of relation and arityMax are stated so the KB says
     ;; what the arity check enforces; the check itself reads fixed_arity, variable_arity
-    ;; and arityMin, and bounds functionCorrespondingPredicate by name.
+    ;; and arityMin.
     (map (fn [[t why]] [t (inert (collection :notes why) why)])
          '[[bounded_arity "documentary: a relation with an upper bound on its arguments; with unbounded_arity it partitions relation. Nothing reads it by name."]
            [unbounded_arity "documentary: a relation taking any number of arguments beyond its required ones. Nothing reads it by name."]
            [unbounded_arity_predicate "documentary: unbounded_arity intersected with predicate. Nothing reads it by name."]
            [unbounded_arity_function "documentary: unbounded_arity intersected with function. Nothing reads it by name."]
-           [arityMax "documentary: the upper bound of a bounded_arity relation; the arity check bounds functionCorrespondingPredicate by name, not through this."]])
+           [arityMax "documentary: the upper bound of a bounded_arity relation; the arity check does not read it."]])
 
     ;; ---- the top of the ontology -----------------------------------------
     ;; The collections core.txt states so that the domain files can place their own types
@@ -1298,6 +1376,7 @@
          '[[temporal "ontology, not grammar: something that exists in time. core.txt states it because time.txt and abstract.txt both extend it; no engine check names it."]
            [aspatial "ontology, not grammar: not located in any space, the complement of spatial. core.txt states it as the top of the ontology the domain files place kinds under; no engine check names it."]
            [atemporal "ontology, not grammar: not located in time, the complement of temporal. core.txt states it so nowhere_never can sit under it; no engine check names it."]
+           [sempiternal "ontology, not grammar: present at every evaluation time, the common genl of atemporal, time and situation. core.txt states it so the eternal_predicate bridge rule can read it; no engine check names it."]
            [uninterrupted "ontology, not grammar: something temporal present at every moment between its start and its end, one side of the partition of temporal. core.txt states it as the top of the ontology the domain files place kinds under; no engine check names it."]
            [intermittent "ontology, not grammar: something temporal with a gap between its start and its end, the other side of the partition of temporal. core.txt states it as the top of the ontology the domain files place kinds under; no engine check names it."]
            [nowhere_never "ontology, not grammar: in no space and at no time, below aspatial and atemporal and the whole that logical, linguistic and quantitative are separated under; no engine check names it."]
@@ -1310,7 +1389,17 @@
            [type_type_by_order "ontology, not grammar: the disjoint_metatype partitioning fixed_order_type by order. No engine check names it."]
            [spatiality_type "ontology, not grammar: the at_least_metatype holding spatial and aspatial. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
            [temporality_type "ontology, not grammar: the at_least_metatype holding temporal and atemporal. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
-           [arity_type "ontology, not grammar: the at_least_metatype of the relation-level arity types, e.g. binary and variable_arity. The typeOrthogonal rule reads its memberships as any membership is; no engine check names it."]])
+           [arity_type "ontology, not grammar: the at_least_metatype of the relation-level arity types, e.g. binary and variable_arity. The typeOrthogonal rule reads its memberships as any membership is; no engine check names it."]
+           [time_invariant_relation "ontology, not grammar: a relation no instance of which could lose it and still exist (OntoClean +R), one part of the rigidity partition of relation. No engine check names it."]
+           [time_agnostic_relation "ontology, not grammar: a relation some instances of which could lose it and still exist and some not (OntoClean -R), one part of the rigidity partition of relation. No engine check names it."]
+           [time_varying_relation "ontology, not grammar: a relation every instance of which could lose it and still exist (OntoClean ~R), preserved down genl by transitiveInArgInverse. No engine check names it."]
+           [possibly_time_invariant_relation "ontology, not grammar: time_invariant_relation and time_agnostic_relation together, preserved up genl by transitiveInArg. No engine check names it."]
+           [rigidity_kind "ontology, not grammar: the at_least_metatype holding the three rigidity kinds of relation. No engine check names it."]
+           [time_indexed_relation "ontology, not grammar: a relation one argument of which names the time a tuple holds at, below time_invariant_relation. temporalIndexArg's first argument is typed time_indexed_relation, so a fact of it makes the relation one; no engine check names it."]
+           [documentation_predicate "ontology, not grammar: a predicate documenting a term, implementation or usage example, below eternal_predicate. It classifies the annotation, not the truth or temporality of a quoted example; no engine check names it."]
+           [situation_predicate "ontology, not grammar: a predicate whose first argument is a situation and whose truth that situation fixes, below eternal_predicate. No engine check names it; the arg-1 constraint is checked by test, not by rule (#273)."]
+           [stable_once_true "ontology, not grammar: a time-varying relation that, once it holds at a time, holds at every later time. No engine check names it."]
+           [stable_once_false "ontology, not grammar: a time-varying relation that, once it fails at a time, fails at every later time. No engine check names it."]])
 
     ;; ---- the two halves of unary_predicate ---------------------------------
     ;; `empty` and `nonempty` partition `unary_predicate`.  The disjointness audit reads
@@ -1330,8 +1419,9 @@
                            "generic: the predicate specialization of relation")]
      ['function  (enforced (collection :notes "the arg target the function-valued positions name.")
                            (str "generic: the function specialization of relation and the arg"
-                                " target the function-valued positions of result, genlResult"
-                                " and functionCorrespondingPredicate name"))]
+                                " target the function-valued positions of result, genlResult,"
+                                " functionCorrespondingPredicate and"
+                                " functionCorrespondingBinaryPredicate name"))]
      ;; The other half of relation, and the three levels below it.  core.txt comments them
      ;; and `vocabulary/audit` answers for every term core.txt comments; no engine check names
      ;; any of the four.  The connectives are read by their own names (the `implies`, `and`,
@@ -1340,8 +1430,8 @@
                                     "ontology, not grammar: a relation whose applications are true or false, the complement of function within relation. No engine check names it.")]
      ['logical_constant      (inert (collection :notes "ontology, not grammar: a quantifier or a logical connective, the relations whose meaning the logic fixes. No engine check names it.")
                                     "ontology, not grammar: a quantifier or a logical connective, the relations whose meaning the logic fixes. No engine check names it.")]
-     ['logical_connective    (inert (collection :notes "ontology, not grammar: a relation that builds a formula from formulas — and, or, not, implies. The connectives are read by their own names, never through this type.")
-                                    "ontology, not grammar: a relation that builds a formula from formulas — and, or, not, implies. The connectives are read by their own names, never through this type.")]
+     ['logical_connective    (inert (collection :notes "ontology, not grammar: a relation that builds a formula from formulas — and, or, not, implies, unknown, bravely, cautiously. The connectives are read by their own names, never through this type.")
+                                    "ontology, not grammar: a relation that builds a formula from formulas — and, or, not, implies, unknown, bravely, cautiously. The connectives are read by their own names, never through this type.")]
      ['quantifier            (inert (collection :notes "ontology, not grammar: a relation that binds variables in a formula. No shipped term is one; the engine reads forall and thereExists by name.")
                                     "ontology, not grammar: a relation that binds variables in a formula. No shipped term is one; the engine reads forall and thereExists by name.")]
 
@@ -1714,6 +1804,14 @@
                 (str "generic rule generators (docs/generators.md): a fact of two or three"
                      " metatypes generates rules making every member of each orthogonal to every"
                      " member of the others; four or more pends variable-arity rule support"))]
+     ['temporalIndexArg
+      (enforced {:shape {:args [:relation :position]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "enforced by argument typing, not by name: core.txt's"
+                             " (arg temporalIndexArg 1 time_indexed_relation) types each fact's"
+                             " relation a time_indexed_relation.")}
+                (str "a core.txt arg declaration: a relation with a temporal index argument"
+                     " is a time_indexed_relation, so at_least_binary and time-invariant"))]
      ['partitionedByType
       (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
                  :family nil :facets #{}
@@ -1927,6 +2025,18 @@
                              " binary, filler type derived from ?pred's slot-1 contract.")}
                 (str "vaelii.core/specified-violations with :first — audits ?pred's"
                      " first position, the argument-swapped twin"))]
+     ['typeAllSpecified
+      (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "an on-demand audit, not a stored constraint: nothing fires on"
+                             " assert, and kb-integrity's :type-specified-violations pass reads"
+                             " it. Every ?indep instance needs a believed membership in some"
+                             " ?classifier member; a classifier with no member is a gap the"
+                             " audit reports explicitly.")}
+                (str "vaelii.impl.predall/type-specified-violations — kb-integrity's"
+                     " :type-specified-violations pass reads the declaration and returns the"
+                     " instances of ?indep no member of ?classifier is believed to hold;"
+                     " generates no rule"))]
      ['PredAllExistsFn
       (enforced (collection :notes (str "a function constant, never a sentence functor; its"
                                         " unreifiable_function mark keeps a ground"

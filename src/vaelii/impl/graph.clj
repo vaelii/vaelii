@@ -74,14 +74,20 @@
   "Does a path lead from `a` to the distinct node `b`, `succ` and `pred` giving a node's
   successors and predecessors?  Walks from both ends, each step widening the smaller
   frontier by one level, and answers false once either frontier is empty, so a node with
-  few successors or `b` with few predecessors answers in few steps whatever lies beyond."
-  [succ pred a b]
-  (loop [fseen #{a} front [a] bseen #{b} back [b]]
-    (cond
-      (or (empty? front) (empty? back)) false
-      (<= (count front) (count back))
-      (let [nx (into [] (comp (mapcat succ) (remove fseen) (distinct)) front)]
-        (or (boolean (some bseen nx)) (recur (into fseen nx) nx bseen back)))
-      :else
-      (let [nx (into [] (comp (mapcat pred) (remove bseen) (distinct)) back)]
-        (or (boolean (some fseen nx)) (recur fseen front (into bseen nx) nx))))))
+  few successors or `b` with few predecessors answers in few steps whatever lies beyond.
+  With `open?`, a walk that ends having reached a node `open?` accepts answers true, for a
+  caller that decides through those nodes by other means."
+  ([succ pred a b] (reaches? succ pred a b (constantly false)))
+  ([succ pred a b open?]
+   (loop [fseen #{a} front [a] fo (open? a) bseen #{b} back [b] bo (open? b)]
+     (cond
+       (empty? front) (boolean fo)
+       (empty? back)  (boolean bo)
+       (<= (count front) (count back))
+       (let [nx (into [] (comp (mapcat succ) (remove fseen) (distinct)) front)]
+         (or (boolean (some bseen nx))
+             (recur (into fseen nx) nx (or fo (boolean (some open? nx))) bseen back bo)))
+       :else
+       (let [nx (into [] (comp (mapcat pred) (remove bseen) (distinct)) back)]
+         (or (boolean (some fseen nx))
+             (recur fseen front fo (into bseen nx) nx (or bo (boolean (some open? nx))))))))))

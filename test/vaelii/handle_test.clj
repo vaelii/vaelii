@@ -120,7 +120,7 @@
 ;; second is the easy over-correction.
 
 (deftest nil-is-a-question-with-an-answer-not-a-bad-handle
-  (let [kb (tu/fresh)]
+  (tu/with-cleared-kb [kb #(tu/fresh)]
     (testing "every handle-taking read answers rather than throwing"
       (is (false? (v/in? kb nil)))
       (is (false? (v/premise? kb nil)))
@@ -148,7 +148,7 @@
             "handle-of found nothing, so nothing is believed")))))
 
 (deftest a-vector-of-handles-is-refused-rather-than-silently-ignored
-  (let [kb (tu/fresh)]
+  (tu/with-cleared-kb [kb #(tu/fresh)]
     (tu/with-terms [pOf aOf rOf]
       (let [hs (v/assert-rule kb [(list pOf '?x '?y)]
                               (list 'and (list aOf '?x '?y) (list rOf '?x '?y))

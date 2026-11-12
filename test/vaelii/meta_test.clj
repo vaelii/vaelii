@@ -8,8 +8,8 @@
     * the predicate meta-ontology — predicates classified by arity and by the
       algebraic properties their metadata declares (each mark is itself a
       binary_predicate type, so the property is the classification);
-    * decontextualized_predicate — a fact stated in one context deduced into
-      CxUniverse and thereby visible everywhere."
+    * decontextualized_predicate and eternal_predicate — a fact deduced into
+      CxUniverse, or out of a time slice into the context the slice slices."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.walk :as walk]
@@ -167,15 +167,15 @@
     ;; queryable classification without routing them to the generic prover — which is why
     ;; they do not appear in `(props kb :transitive)`.
     ;; `heavierThan` / `tallerThan` / `olderThan` are the instance-level strict orders,
-    ;; transitive beside `largerThan`'s type-level claim: two stated comparisons compose
+    ;; transitive beside `typeLargerThan`'s type-level claim: two stated comparisons compose
     ;; into the third off the closure, which is the route a KB that weighed nothing has.
     ;; `greaterInMagnitudeThan` is the fourth, over quantities rather than objects.
     ;; `instantBefore` / `instantAfter` are the point algebra's strict orders, transitive
     ;; so a forward join reads a narrative's consecutive links as one ordering.
     ;; `intangiblePartOf` is `tangiblePartOf`'s twin for things without mass, and
     ;; `subInformationOf` its spec over information; CxTra's `runsOn` chains through hosts.
-    (is (= '#{ancestorOf partOf tangiblePartOf intangiblePartOf subInformationOf runsOn subSituationOf properPartOf properTangiblePartOf
-              properSubSituationOf properPartOfRegion properSubintervalOf locatedIn largerThan instantBefore instantAfter
+    (is (= '#{ancestorOf partOf permanentPartOf tangiblePartOf intangiblePartOf subInformationOf runsOn subSituationOf properPartOf properTangiblePartOf
+              properSubSituationOf properPartOfRegion properSubintervalOf locatedIn typeLargerThan instantBefore instantAfter
               causes beforeEvent genl genlCx
               heavierThan tallerThan olderThan greaterInMagnitudeThan}
            (set (map #(get % '?p) (v/ask kb '(transitive ?p) '?ctx)))))
@@ -1257,29 +1257,29 @@
       (is (contains? (v/props kb :decontextualized) rulesOver)))))
 
 (tu/deftest-kb the-shipped-ontology-decontextualizes-predicate-metadata-and-nothing-else
-  ;; What carries the mark is a claim about a *predicate* — its algebra — plus
-  ;; genlCx by force.  A domain relation carrying it would make one theory's fact
+  ;; What carries the mark is a claim about a *predicate* — its algebra — plus genlCx and
+  ;; not_assertible by force.  A domain relation carrying it would make one theory's fact
   ;; a claim of the whole KB, and would take a rule's conclusions out with it: a
   ;; decontextualized marriage lifts (knows ?x ?y) through CxSocial's rule into a
   ;; context every data context sees, decontextualizing a predicate nothing declared.
-  (testing "the marked predicates are the algebraic marks, the inverse declaration, the length bindings, and genlCx"
+  (testing "the marked predicates are the algebraic marks, the inverse declaration, the length bindings, genlCx and not_assertible"
     ;; The three commutativity marks are here for `symmetric`'s reason and one of its
     ;; own: they are predicate algebra, and `res/kb-sentex` reads them **globally** —
     ;; a sentex has one key, so whether a predicate sorts its arguments cannot vary by
     ;; reader.  A context-scoped declaration behind a global read would be a mark
     ;; visible from one context and acted on from every one.
-    ;; The term marks (`associative`, `idempotent`, `meetFunctionOf`) are read globally by
-    ;; the same key, below the literal.
+    ;; The term marks (`associative`, `idempotent`, `meetFunctionOf`, `distinctInArgAndRest`)
+    ;; are read globally by the same key, below the literal.
     ;; `functionalInArg` is `functional` read at another position, and lifted with it.
     ;; The length bindings are lifted so a relation's length reads the same everywhere.
     (is (= (into '#{functional functionalInArg inverse reflexive symmetric asymmetric transitive
                     irreflexive anti_symmetric anti_transitive equivalence_relation
                     injection surjection bijection
                     commutative commutativeInArgs commutativeInArgAndRest
-                    associative idempotent meetFunctionOf}
+                    associative idempotent meetFunctionOf distinctInArgAndRest}
                  sx/arity-binding-functors)
            (v/props kb :decontextualized)))
-    (is (= '#{genlCx} (v/props kb :forced-decontextualized))))
+    (is (= '#{genlCx not_assertible} (v/props kb :forced-decontextualized))))
   (testing "so a social fact stays in the theory that states it"
     (is (not (v/has-prop? kb :decontextualized 'marriedTo)))
     (is (empty? (v/sentexes-matching kb '(marriedTo Bob Nancy) 'CxUniverse)))
@@ -1448,18 +1448,19 @@
     (testing "so a sibling context sees it, which it would not without the lift"
       (is (v/ask? kb (list reachesFrom B A) CxSibling)))))
 
-(tu/deftest-kb a-negative-fact-is-not-lifted
-  ;; `(not (P a))` has functor `not`, so a declaration about `P` does not reach it: the
-  ;; positive extent becomes universal and the negative one stays in its context.
-  ;; Deliberate, and asserted here so changing it has to be a decision.
+(tu/deftest-kb a-negative-fact-is-lifted
+  ;; The lift reads the literal's predicate, so the declaration about `P` reaches
+  ;; `(not (P a))` too, and its copy rests on the denial and the declaration.
   (tu/with-terms [flies Tweety Opus CxAlpha]
     (v/assert kb (list 'genlCx CxAlpha 'CxUniverse) 'CxUniverse)
-    (v/assert kb (list 'decontextualized_predicate flies) 'CxUniverse)
-    (v/assert kb (list flies Tweety) CxAlpha)
-    (v/assert kb (list 'not (list flies Opus)) CxAlpha)
-    (is (seq (v/sentexes-matching kb (list flies Tweety) 'CxUniverse)) "the positive literal lifts")
-    (is (empty? (v/sentexes-matching kb (list 'not (list flies Opus)) 'CxUniverse))
-        "the negative literal does not")))
+    (let [dh (v/assert kb (list 'decontextualized_predicate flies) 'CxUniverse)
+          nh (v/assert kb (list 'not (list flies Opus)) CxAlpha)]
+      (v/assert kb (list flies Tweety) CxAlpha)
+      (is (seq (v/sentexes-matching kb (list flies Tweety) 'CxUniverse)) "the positive literal lifts")
+      (let [u (v/handle-of kb (list 'not (list flies Opus)) 'CxUniverse)]
+        (is (some? u) "and so does the negative one")
+        (is (= [['decontextualized_predicate #{nh dh}]]
+               (mapv (juxt :informant (comp set :antecedents)) (v/supporting-justifications kb u))))))))
 
 (tu/deftest-kb a-fact-clashing-with-a-lifted-copy-is-checked-at-the-assert
   ;; Two contexts no genlCx edge names, neither seeing the other's fact.  Each sees
@@ -1502,3 +1503,211 @@
              (:type (try (v/assert kb (list 'decontextualized_predicate rulesOver 'CxUniverse)
                                    'CxUniverse)
                          (catch clojure.lang.ExceptionInfo e (ex-data e)))))))))
+
+(defn- year-slice [monad year] (list 'CxTimeFn monad (list 'YearFn year)))
+
+(defn- sees? [kb sentence & contexts] (mapv #(v/ask? kb sentence %) contexts))
+
+(tu/deftest-kb an-eternal-fact-in-a-slice-is-copied-into-what-the-slice-slices
+  (tu/with-terms [tookPlace stayedIn Ann Bob CxStory CxOther]
+    (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxOther 'CxWell) 'CxUniverse)
+    (let [m     (v/assert kb (list 'eternal_predicate tookPlace) 'CxUniverse)
+          y2000 (year-slice CxStory 2000)
+          h     (v/assert kb (list tookPlace Ann Bob) y2000)
+          slice (:context (v/sentex kb h))]
+      (v/assert kb (list stayedIn Ann Bob) y2000)
+      (v/assert kb (list tookPlace Bob Ann) CxStory)
+      (testing "the monad holds the copy, and its earlier and later slices see it"
+        (is (= [true true true] (sees? kb (list tookPlace Ann Bob)
+                                       CxStory (year-slice CxStory 1900) (year-slice CxStory 2025)))))
+      (testing "the copy rests on the fact, the membership and the slice's natFormula"
+        (is (= [['eternal_predicate #{h m (v/handle-of kb (list 'natFormula slice y2000) 'CxUniverse)}]]
+               (mapv (juxt :informant (comp set :antecedents))
+                     (v/supporting-justifications kb (v/handle-of kb (list tookPlace Ann Bob) CxStory))))))
+      (testing "CxUniverse and another monad's contexts do not see it"
+        (is (= [false false false] (sees? kb (list tookPlace Ann Bob)
+                                          'CxUniverse CxOther (year-slice CxOther 2000)))))
+      (testing "a predicate no membership makes eternal stays in its slice"
+        (is (= [true false] (sees? kb (list stayedIn Ann Bob) y2000 (year-slice CxStory 2025)))))
+      (testing "and a fact stated in the monad itself is copied nowhere"
+        (is (= [CxStory] (map :context (v/sentexes-matching kb (list tookPlace Bob Ann) '?ctx))))))))
+
+(tu/deftest-kb the-slice-copy-follows-the-membership-in-either-arrival-order
+  (doseq [membership-first? [true false]]
+    (tu/with-terms [tookPlace Ann Bob CxStory]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (let [member #(v/assert kb (list 'eternal_predicate tookPlace) 'CxUniverse)
+            m      (when membership-first? (member))
+            _      (v/assert kb (list tookPlace Ann Bob) (year-slice CxStory 2000))
+            m      (or m (member))]
+        (testing (str "membership first: " membership-first?)
+          (is (seq (v/sentexes-matching kb (list tookPlace Ann Bob) CxStory)))
+          (v/retract! kb m)
+          (is (empty? (v/sentexes-matching kb (list tookPlace Ann Bob) CxStory))
+              "retracting the membership withdraws the copy"))))))
+
+(tu/deftest-kb a-type-below-eternal_predicate-makes-its-members-eternal-in-every-arrival-order
+  (doseq [order [[0 1 2] [0 2 1] [1 0 2] [1 2 0] [2 0 1] [2 1 0]]]
+    (tu/with-terms [tookPlace Ann Bob review_kind CxStory]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (let [edge (atom nil)
+            ops  [#(reset! edge (v/assert kb (list 'genl review_kind 'eternal_predicate) 'CxUniverse))
+                  #(v/assert kb (list review_kind tookPlace) 'CxUniverse)
+                  #(v/assert kb (list tookPlace Ann Bob) (year-slice CxStory 2000))]]
+        (doseq [i order] ((ops i)))
+        (testing (str "edge, membership and fact in the order " order)
+          (is (= [true] (sees? kb (list 'eternal_predicate tookPlace) 'CxUniverse)))
+          (is (= [true true] (sees? kb (list tookPlace Ann Bob) CxStory (year-slice CxStory 2025))))
+          (v/retract! kb @edge)
+          (is (= [false false] (sees? kb (list tookPlace Ann Bob) CxStory (year-slice CxStory 2025)))
+              "retracting the edge withdraws the copy"))))))
+
+(tu/deftest-kb a-departing-route-edge-re-derives-the-copy-over-a-surviving-route
+  (doseq [first-out [:direct :via-mid]]
+    (tu/with-terms [tookPlace Ann Bob review_kind mid_kind CxStory]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (let [U      'CxUniverse
+            direct (v/assert kb (list 'genl review_kind 'eternal_predicate) U)
+            via    (v/assert kb (list 'genl review_kind mid_kind) U)
+            _      (v/assert kb (list 'genl mid_kind 'eternal_predicate) U)
+            [a b]  (if (= :direct first-out) [direct via] [via direct])]
+        (v/assert kb (list review_kind tookPlace) U)
+        (v/assert kb (list tookPlace Ann Bob) (year-slice CxStory 2000))
+        (testing (str "the copy's justification names one of two routes; first out: " first-out)
+          (v/retract! kb a)
+          (is (= [true] (sees? kb (list tookPlace Ann Bob) CxStory)) "the surviving route keeps a copy")
+          (v/retract! kb b)
+          (is (= [false] (sees? kb (list tookPlace Ann Bob) CxStory)) "and with no route there is none"))))))
+
+(tu/deftest-kb a-nested-slice-fact-is-copied-into-the-outer-monad-in-either-order
+  (doseq [membership-first? [true false]]
+    (tu/with-terms [tookPlace Ann Bob CxStory]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (let [member #(v/assert kb (list 'eternal_predicate tookPlace) 'CxUniverse)
+            inner  (year-slice (year-slice CxStory 2000) 2000)]
+        (when membership-first? (member))
+        (v/assert kb (list tookPlace Ann Bob) inner)
+        (when-not membership-first? (member))
+        (is (= [true true] (sees? kb (list tookPlace Ann Bob) inner CxStory))
+            (str "membership first: " membership-first?))))))
+
+(tu/deftest-kb a-slice-of-a-named-slice-copies-up-each-step-in-either-order
+  (doseq [natformula-first? [true false]]
+    (tu/with-terms [tookPlace Ann Bob CxStory CxNamed]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'eternal_predicate tookPlace) 'CxUniverse)
+      (let [named #(v/assert kb (list 'natFormula CxNamed (year-slice CxStory 2001)) 'CxUniverse)
+            _     (when natformula-first? (named))
+            h     (v/assert kb (list tookPlace Ann Bob) (list 'CxTimeFn CxNamed '(MonthFn 2001 7)))]
+        (when-not natformula-first? (named))
+        (is (= #{(:context (v/sentex kb h)) CxNamed CxStory}
+               (set (map :context (v/sentexes-matching kb (list tookPlace Ann Bob) '?ctx))))
+            (str "CxNamed's natFormula first: " natformula-first?))))))
+
+(tu/deftest-kb a-named-slice-sees-the-denial-the-context-it-slices-holds-in-either-order
+  (doseq [natformula-first? [true false]]
+    (tu/with-terms [tookPlace Ann Bob CxStory CxNamed]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'eternal_predicate tookPlace) 'CxUniverse)
+      (v/assert kb (list 'not (list tookPlace Ann Bob)) CxStory {:strength :monotonic})
+      (let [named #(v/assert kb (list 'natFormula CxNamed (year-slice CxStory 2001)) 'CxUniverse)]
+        (when natformula-first? (named))
+        (v/assert kb (list tookPlace Ann Bob) CxNamed)
+        (when-not natformula-first? (named))
+        (testing (str "CxNamed's natFormula first: " natformula-first?)
+          (is (= [true true] (sees? kb (list 'not (list tookPlace Ann Bob)) CxNamed CxStory)))
+          (is (= [false false] (sees? kb (list tookPlace Ann Bob) CxNamed CxStory))))))))
+
+(tu/deftest-kb a-rule-concluded-membership-copies-the-facts-already-in-a-slice
+  (tu/with-terms [tookPlace logged Ann Bob CxStory]
+    (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+    (v/assert kb (list tookPlace Ann Bob) (year-slice CxStory 2000))
+    (v/assert-rule kb [(list logged '?p)] (list 'eternal_predicate '?p) 'CxUniverse {:direction :forward})
+    (is (= [false] (sees? kb (list tookPlace Ann Bob) CxStory)))
+    (v/assert kb (list logged tookPlace) 'CxUniverse)
+    (is (= [true] (sees? kb (list tookPlace Ann Bob) CxStory)))))
+
+(tu/deftest-kb a-denied-inherited-membership-makes-no-copy-in-either-arrival-order
+  (doseq [denial-first? [true false]]
+    (tu/with-terms [tookPlace Ann Bob review_kind CxStory]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'genl review_kind 'eternal_predicate) 'CxUniverse)
+      (let [deny   #(v/assert kb (list 'not (list 'eternal_predicate tookPlace)) 'CxUniverse
+                              {:strength :monotonic})
+            d      (when denial-first? (deny))
+            _      (v/assert kb (list review_kind tookPlace) 'CxUniverse)
+            _      (v/assert kb (list tookPlace Ann Bob) (year-slice CxStory 2000))
+            d      (or d (deny))
+            reads  #(into (sees? kb (list 'eternal_predicate tookPlace) 'CxUniverse)
+                          (sees? kb (list tookPlace Ann Bob) CxStory (year-slice CxStory 2025)))]
+        (testing (str "denial first: " denial-first?)
+          (is (= [false false false] (reads))
+              "the denial undercuts the :default edge's reading of the membership and the copy")
+          (v/retract! kb d)
+          (is (= [true true true] (reads)) "retracting the denial believes both"))))))
+
+(tu/deftest-kb a-membership-makes-a-slice-fact-eternal-only-where-the-slice-sees-it
+  (doseq [edge-first? [true false]]
+    (tu/with-terms [tookPlace stayedIn Ann Bob review_kind CxStory CxOther]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxOther 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'eternal_predicate tookPlace) CxOther)
+      (v/assert kb (list 'genl review_kind 'eternal_predicate) CxOther)
+      (v/assert kb (list review_kind stayedIn) 'CxUniverse)
+      (let [edge   #(v/assert kb (list 'genlCx CxStory CxOther) 'CxUniverse)
+            e      (when edge-first? (edge))
+            _      (v/assert kb (list tookPlace Ann Bob) (year-slice CxStory 2000))
+            _      (v/assert kb (list stayedIn Ann Bob) (year-slice CxStory 2000))
+            copies #(into (sees? kb (list tookPlace Ann Bob) CxStory)
+                          (sees? kb (list stayedIn Ann Bob) CxStory))]
+        (testing (str "the genlCx edge first: " edge-first?)
+          (when-not edge-first?
+            (is (= [false false] (copies)) "a slice that does not see CxOther copies nothing"))
+          (let [e (or e (edge))]
+            (is (= [true true] (copies))
+                "the edge shows the membership and the genl edge, stated in CxOther, to the slice")
+            (v/retract! kb e)
+            (is (= [false false] (copies)) "retracting the edge withdraws both copies")))))))
+
+(tu/deftest-kb a-withdrawn-eternal-reading-withdraws-the-copy-and-its-return-restores-it
+  (let [U    'CxUniverse
+        deny (fn [s] (fn [kb] (let [d (v/assert kb (list 'not s) U {:strength :monotonic})]
+                                #(v/retract! kb d))))]
+    (doseq [{:keys [label setup withdraw named? held]}
+            [{:label    "the membership denied"
+              :setup    (fn [{:keys [P]}] [(list 'eternal_predicate P)])
+              :withdraw (fn [{:keys [P]}] (deny (list 'eternal_predicate P)))
+              :held     false}
+             {:label    "the route edge denied"
+              :setup    (fn [{:keys [P k]}] [(list 'genl k 'eternal_predicate) (list k P)])
+              :withdraw (fn [{:keys [k]}] (deny (list 'genl k 'eternal_predicate)))
+              :held     false}
+             {:label    "the route edge denied beside a second route"
+              :setup    (fn [{:keys [P k mid]}] [(list 'genl k 'eternal_predicate) (list 'genl k mid)
+                                                 (list 'genl mid 'eternal_predicate) (list k P)])
+              :withdraw (fn [{:keys [k]}] (deny (list 'genl k 'eternal_predicate)))
+              :held     true}
+             {:label    "the named slice's natFormula retracted"
+              :named?   true
+              :setup    (fn [{:keys [P M K]}] [(list 'eternal_predicate P)
+                                               (list 'natFormula K (year-slice M 2001))])
+              :withdraw (fn [{:keys [M K]}]
+                          (fn [kb] (let [s (list 'natFormula K (year-slice M 2001))]
+                                     (v/retract! kb (v/handle-of kb s U))
+                                     #(v/assert kb s U))))
+              :held     false}]
+            fact-first? [true false]]
+      (tu/with-terms [tookPlace Ann Bob review_kind mid_kind CxStory CxNamed]
+        (let [t    {:P tookPlace :k review_kind :mid mid_kind :M CxStory :K CxNamed}
+              _    (v/assert kb (list 'genlCx CxStory 'CxWell) U)
+              _    (doseq [s (setup t)] (v/assert kb s U))
+              fact #(v/assert kb (list tookPlace Ann Bob) (if named? CxNamed (year-slice CxStory 2000)))
+              _    (when fact-first? (fact))
+              undo ((withdraw t) kb)
+              _    (when-not fact-first? (fact))
+              copy #(v/ask? kb (list tookPlace Ann Bob) CxStory)
+              during (copy)]
+          (undo)
+          (is (= [held true] [during (copy)])
+              (str label ", the fact stated " (if fact-first? "before" "during") " the withdrawal")))))))

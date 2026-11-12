@@ -2,7 +2,8 @@
 
 - **Covers:** the cache register (`vaelii.impl.caches`) — how a derived, droppable
   structure declares itself, what a descriptor says (`:scope` `:unit` `:limit`
-  `:counters` `:note`), the one bound policy (wholesale clear, never eviction), the profile
+  `:counters` `:note`), the two bound policies (a counted cache cleared wholesale, a weighted
+  LRU evicted from its cold end), the profile
   that scales every counted bound (`VAELII_CACHE_SCALE`, `cache-profile`,
   `set-cache-scale`, `set-cache-limit`), the memory-pressure guard that shrinks the caches
   under a filling heap and grows them back, the heap mark that refuses a chaining run over
@@ -67,7 +68,7 @@ A row whose `:entries` is nil cannot be counted from outside — it is scope-bou
 for the length of one chaining run or one search step and garbage when it returns. It is
 registered all the same, so the list is complete rather than merely finite.
 
-## The bound: cleared wholesale, not evicted
+## The bound: a counted cache is cleared wholesale
 
 A counted cache past its bound is dropped **whole** (`assoc-bounded`), not trimmed to the
 one entry that would make room. Evicting exactly the right entry costs more bookkeeping
@@ -77,6 +78,12 @@ bump** (a taxonomy edge or context change retires every closure read at once), b
 **change clock** (a per-placement counter, so a chaining run meets its own reads cold), or
 they are structural (the symbol pool, the compiled algebras) where dropping entries costs
 the sharing they exist for.
+
+A **weighted LRU** (`caches/weighted-lru`) bounds the sum of its entries' weights instead,
+and evicts from its cold end until the sum is under the bound. The taxonomy closures
+([taxonomy.md](taxonomy.md#reads-are-scoped-by-the-asking-context)), the arity lengths and
+the whole `genl` reaches `inherit` walks use it, because their entries differ in size by
+orders of magnitude.
 
 Clearing wholesale is cheap and it is fragile in one direction, so **a scan does not get
 to fill one**. A read that asks thousands of literals *once* — a transitive closure walk
@@ -354,10 +361,11 @@ The tables are generated from the register by `lein regen-goldens`, and
 | N10 | Argument holds | `decide.argument` | handle | index records M1 T1 J5 | E1 K, E3 K, E5 K, E7 G, E8 G, E17 R, E18 R, E22 Q | write | cache | state |  |  |
 | X1 | Sync memo | `decide` | global | N1 T1 | E20 W, every other event I | read | cache | no |  |  |
 | X3 | Change clock | `observe` | global |  | every event G* | write | counter | no |  |  |
+| X4 | Declaration presence memo | `decide.argument` | global | T2 | every event I | read | cache | no |  |  |
 | D3 | Preserved clashes | `discovery` | handle | index T1 Q2 Q3 J4 J6 M2 | E3 K, E15 K, E16 K, E17 R, E18 R, E22 K | settle | cache | state |  |  |
 | Q1 | Exception re-check queue | `special` | handle | records | E17 R, E18 R, E22 Q | write | queue | state |  |  |
 | Q2 | Supersession moves | `special` | value | Q5 M1 | E16 Q, E17 R, E18 R, E19 W | write | queue | state |  |  |
-| Q3 | Except moves | `special` | handle | index T1 | E16 Q, E17 W, E22 Q | write | queue | no |  |  |
+| Q3 | Except moves | `special` | handle | index T1 | E5 K, E16 Q, E17 W, E22 Q | write | queue | no |  |  |
 | Q4 | Respell queue | `special` | functor | index | E6 Q, E17 W | write | queue | no |  |  |
 | Q5 | Equality moves | `taxonomy` | term | T3 | E8 K, E11 K, E16 Q, E17 R, E18 R, E22 Q | write | queue | taxonomy |  |  |
 | Q6 | Feed accumulator | `feed` | handle | M2 | E16 Q, E17 Q | settle | queue | no |  |  |
@@ -396,28 +404,28 @@ The tables are generated from the register by `lein regen-goldens`, and
 
 | id | event | choke points | names | rows it retires |
 |---|---|---|---|---|
-| E1 | `stored` | `kb/create-sentex` | handle, sentence, context | T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 R1 R2 R3 R6 R9 R10 R13 K10 K11 K13 K14 |
-| E2 | `integrated` | `special/integrate-sentex`, `special/derived-sentex-added`, `special/integrate-twin` | handle, functor | S5 T4 T5 T7 X1 X3 R1 R2 R3 K10 K11 |
-| E3 | `removed` | `integrate/sentex-removed!` | record, except target | S5 T4 T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 D3 Q7 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 K13 K14 |
-| E4 | `respelled` | `kb/respell-sentex!` | old and new sentex, one handle | T5 T7 T12 J1 J2 N1 N2 N5 N6 X1 X3 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 |
-| E5 | `relabelled` | `jtms/supersede`, `jtms/ensure-node`, `jtms/add-premise`, `jtms/suspend-premise`, `jtms/add-justification`, `jtms/restrength-informant`, `jtms/set-forced`, `jtms/relabel`, `jtms/set-blocked`, `jtms/retract!`, `jtms/sweep!`, `jtms/drop-justification!` | the handles of the region, held in the network | T5 T7 T12 M1 M2 M4 N3 N10 X1 X3 R1 R2 R3 K10 K11 |
-| E6 | `held` | `settle/hold-belief!`, `settle/publish-belief!` | hold token | T5 T7 T12 M3 X1 X3 Q4 R1 R2 R3 K10 K11 |
-| E7 | `edge` | `taxonomy/add-genl`, `taxonomy/del-genl!`, `taxonomy/add-genlCx`, `taxonomy/del-genlCx!` | handle, edge, context | T1 T5 T7 T11 J1 J5 N1 N2 N3 N5 N6 N8 N10 X1 X3 R1 R2 R3 K10 K11 |
-| E8 | `edge-belief` | `special/reconcile-belief-change`, `taxonomy/refresh-beliefs` | moved handles, or nil for all | T1 T2 T3 T4 T5 T7 T11 J1 J2 J4 J5 N2 N3 N5 N6 N8 N10 X1 X3 Q5 R1 R2 R3 K10 K11 |
-| E9 | `declared` | `taxonomy/add-supported`, `taxonomy/del-supported!` | handle, [kind key], context | T2 T5 T7 T11 J1 J4 N1 N2 N5 N6 X1 X3 R1 R2 R3 K10 K11 |
-| E10 | `forced-monotonic` | `checks/force-reach!` | predicate | T5 T7 M1 M2 X1 X3 R1 R2 R3 K10 K11 |
-| E11 | `equality` | `taxonomy/add-equality`, `taxonomy/del-equality!` | handle, pair | T3 T5 T7 X1 X3 Q5 R1 R2 R3 K10 K11 |
-| E12 | `except` | `special/recheck-except` | except, target, context | T5 T7 X1 X3 R1 R2 R3 K10 K11 |
-| E13 | `rule-indexed` | `special/index-rule-sentex` | rule, antecedent predicates, context | T5 T7 X1 X3 R1 R2 R3 K10 K11 |
-| E14 | `recheck` | `special/mark-recheck` | rules; a trigger, :all or :all-rejoin | T5 T7 X1 X3 R1 R2 R3 K10 K11 |
-| E15 | `inherited` | `decide.inherited/install-inherited!`, `decide.inherited/update-inherited!` | clash rows | T5 T7 J1 J2 N7 X1 X3 D3 R1 R2 R3 K10 K11 |
-| E16 | `settle-exit` | `settle/settle-finish` | region | T1 T5 T7 T12 M2 X1 X3 D3 Q2 Q3 Q5 Q6 R1 R2 R3 K10 K11 |
-| E17 | `recover` | `recovery/recover-from-records`, `recovery/install-rebuilt!` | the whole store | S5 T1 T2 T3 T4 T5 T7 T11 T12 M1 M2 J1 J2 J4 J5 J6 N1 N2 N3 N5 N6 N7 N8 N10 X1 X3 D3 Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 R1 R2 R3 R6 R9 K10 K11 K13 K14 |
-| E18 | `image-install` | `reasoning-image/install-from!` | the image | S5 S7 T1 T2 T3 T4 T5 T7 T12 M1 J1 J2 J5 J6 N1 N2 N3 N5 N6 N7 N10 X1 X3 D3 Q1 Q2 Q5 Q7 Q10 R1 R2 R3 K10 K11 |
-| E19 | `cleared` | `vaelii.core/clear!`, `reindex/reindex`, `io.import/clearing-on-refusal` | the stores, wiped | S5 T5 T7 X1 X3 Q2 Q8 Q9 Q10 R1 R2 R3 R4 R10 K10 K11 K13 K14 |
-| E20 | `closed` | `vaelii.core/close!` | the KB | T5 T7 X1 X3 R1 R2 R3 R9 K10 K11 |
-| E21 | `caches-cleared` | `caches/clear-caches`, `caches/shrink!` | the KB, or every live KB | T5 T7 T11 N8 X1 X3 R1 R2 R3 R6 R9 K3 K4 K5 K6 K10 K11 |
-| E22 | `settle-pass` | `settle/pass-work`, `settle/apply-pass!` | the region, the queues a pass drains | S5 T5 T7 J1 J6 N2 N3 N5 N6 N8 N10 X1 X3 D3 Q1 Q3 Q5 Q7 Q8 Q9 R1 R2 R3 K10 K11 |
+| E1 | `stored` | `kb/create-sentex` | handle, sentence, context | T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 R1 R2 R3 R6 R9 R10 R13 K10 K11 K13 K14 |
+| E2 | `integrated` | `special/integrate-sentex`, `special/derived-sentex-added`, `special/integrate-twin` | handle, functor | S5 T4 T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
+| E3 | `removed` | `integrate/sentex-removed!` | record, except target | S5 T4 T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 D3 Q7 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 K13 K14 |
+| E4 | `respelled` | `kb/respell-sentex!` | old and new sentex, one handle | T5 T7 T12 J1 J2 N1 N2 N5 N6 X1 X3 X4 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 |
+| E5 | `relabelled` | `jtms/supersede`, `jtms/ensure-node`, `jtms/add-premise`, `jtms/suspend-premise`, `jtms/add-justification`, `jtms/restrength-informant`, `jtms/set-forced`, `jtms/relabel`, `jtms/set-blocked`, `jtms/retract!`, `jtms/sweep!`, `jtms/drop-justification!` | the handles of the region, held in the network | T5 T7 T12 M1 M2 M4 N3 N10 X1 X3 X4 Q3 R1 R2 R3 K10 K11 |
+| E6 | `held` | `settle/hold-belief!`, `settle/publish-belief!` | hold token | T5 T7 T12 M3 X1 X3 X4 Q4 R1 R2 R3 K10 K11 |
+| E7 | `edge` | `taxonomy/add-genl`, `taxonomy/del-genl!`, `taxonomy/add-genlCx`, `taxonomy/del-genlCx!` | handle, edge, context | T1 T5 T7 T11 J1 J5 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 R1 R2 R3 K10 K11 |
+| E8 | `edge-belief` | `special/reconcile-belief-change`, `taxonomy/refresh-beliefs` | moved handles, or nil for all | T1 T2 T3 T4 T5 T7 T11 J1 J2 J4 J5 N2 N3 N5 N6 N8 N10 X1 X3 X4 Q5 R1 R2 R3 K10 K11 |
+| E9 | `declared` | `taxonomy/add-supported`, `taxonomy/del-supported!` | handle, [kind key], context | T2 T5 T7 T11 J1 J4 N1 N2 N5 N6 X1 X3 X4 R1 R2 R3 K10 K11 |
+| E10 | `forced-monotonic` | `checks/force-reach!` | predicate | T5 T7 M1 M2 X1 X3 X4 R1 R2 R3 K10 K11 |
+| E11 | `equality` | `taxonomy/add-equality`, `taxonomy/del-equality!` | handle, pair | T3 T5 T7 X1 X3 X4 Q5 R1 R2 R3 K10 K11 |
+| E12 | `except` | `special/recheck-except` | except, target, context | T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
+| E13 | `rule-indexed` | `special/index-rule-sentex` | rule, antecedent predicates, context | T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
+| E14 | `recheck` | `special/mark-recheck` | rules; a trigger, :all or :all-rejoin | T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
+| E15 | `inherited` | `decide.inherited/install-inherited!`, `decide.inherited/update-inherited!` | clash rows | T5 T7 J1 J2 N7 X1 X3 X4 D3 R1 R2 R3 K10 K11 |
+| E16 | `settle-exit` | `settle/settle-finish` | region | T1 T5 T7 T12 M2 X1 X3 X4 D3 Q2 Q3 Q5 Q6 R1 R2 R3 K10 K11 |
+| E17 | `recover` | `recovery/recover-from-records`, `recovery/install-rebuilt!` | the whole store | S5 T1 T2 T3 T4 T5 T7 T11 T12 M1 M2 J1 J2 J4 J5 J6 N1 N2 N3 N5 N6 N7 N8 N10 X1 X3 X4 D3 Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 R1 R2 R3 R6 R9 K10 K11 K13 K14 |
+| E18 | `image-install` | `reasoning-image/install-from!` | the image | S5 S7 T1 T2 T3 T4 T5 T7 T12 M1 J1 J2 J5 J6 N1 N2 N3 N5 N6 N7 N10 X1 X3 X4 D3 Q1 Q2 Q5 Q7 Q10 R1 R2 R3 K10 K11 |
+| E19 | `cleared` | `vaelii.core/clear!`, `reindex/reindex`, `io.import/clearing-on-refusal` | the stores, wiped | S5 T5 T7 X1 X3 X4 Q2 Q8 Q9 Q10 R1 R2 R3 R4 R10 K10 K11 K13 K14 |
+| E20 | `closed` | `vaelii.core/close!` | the KB | T5 T7 X1 X3 X4 R1 R2 R3 R9 K10 K11 |
+| E21 | `caches-cleared` | `caches/clear-caches`, `caches/shrink!` | the KB, or every live KB | T5 T7 T11 N8 X1 X3 X4 R1 R2 R3 R6 R9 K3 K4 K5 K6 K10 K11 |
+| E22 | `settle-pass` | `settle/pass-work`, `settle/apply-pass!` | the region, the queues a pass drains | S5 T5 T7 J1 J6 N2 N3 N5 N6 N8 N10 X1 X3 X4 D3 Q1 Q3 Q5 Q7 Q8 Q9 R1 R2 R3 K10 K11 |
 
 <!-- end of the generated register -->
 

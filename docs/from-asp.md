@@ -33,6 +33,7 @@ program for it. Read the two structural sections before the tables.
 | an answer set | a labeling context | materialized, inert, one per optimal answer set |
 | `X` | `?x` | |
 | `p/2` | — | arity is not part of a name; declare it with `(arity p 2)` or `arg` |
+| `elem(s,1). elem(s,2).` | `(SetFn 1 2)` in an argument, read by `(elementOf ?x (SetFn 1 2))` | the elements stay in one structural term, and nothing is stored per element → [nat.md](nat.md#a-data-structure-is-a-structural-term) |
 | `#show` | — | reads are queries; nothing is projected at solve time |
 | cautious consequence | `forced` | |
 | brave consequence | `supportable` | |

@@ -388,6 +388,36 @@
   (prof/record-read :predicate-extent)
   (p/family-leaf index :shape-lengths [f]))
 
+(defn as-stored-calendar-buckets
+  "The `[frame year month]` months a point of a time some **stored** fact of functor `f`
+  names falls in (`datetime/month-buckets`), as a set, belief unread: one name-set read.  A
+  month leaves with the last such fact."
+  [index f]
+  (prof/record-read :calendar)
+  (p/family-leaf index :calendar-buckets [f]))
+
+(defn as-stored-calendar-at-global
+  "The handles of the **stored** facts of functor `f` naming a time with a point in the
+  month `bucket` (`as-stored-calendar-buckets`), in every context, belief unread."
+  [index f bucket]
+  (prof/record-read :calendar)
+  (p/family-handles index :calendar (into [f] bucket) p/every-context))
+
+(defn as-stored-nat-formulas-at
+  "The handles of the **stored** `(natFormula K (f …))` maps whose formula holds `term` at
+  argument `pos`, stated in a context of `contexts`, belief unread."
+  [index f pos term contexts]
+  (read-in! contexts)
+  (prof/record-read :nat-argument)
+  (p/family-handles index :nat-argument [f pos (sx/canon term)] contexts))
+
+(defn stored-count-nat-formulas-at
+  "How many handles `as-stored-nat-formulas-at` answers: one leaf count per context."
+  [index f pos term contexts]
+  (read-in! contexts)
+  (prof/record-read :nat-argument)
+  (long (p/family-count index :nat-argument [f pos (sx/canon term)] contexts)))
+
 (defn as-stored-mint-rules
   "The `[kind handle]` of every **stored** rule of `kv/mint-rules`, as a set: one name-set
   read."
@@ -507,6 +537,20 @@
   [index pred]
   (prof/record-read :argument-slot)
   (p/family-leaf index :unary-kept [pred]))
+
+(defn stores-unary-kept?
+  "Does `as-stored-unary-kept-terms` hold a term under `pred`?  One membership read,
+  belief unread."
+  [index pred]
+  (prof/record-read :argument-slot)
+  (p/family-member? index :unary-kept-types [] pred))
+
+(defn stored-unary-kept?
+  "Does `as-stored-unary-kept-terms` of `pred` hold `term`?  One membership read, belief
+  unread."
+  [index pred term]
+  (prof/record-read :argument-slot)
+  (p/family-member? index :unary-kept [pred] (sx/canon term)))
 
 (defn as-stored-unary-kept-types
   "The predicates `as-stored-unary-kept-terms` holds a term under, as a set, belief

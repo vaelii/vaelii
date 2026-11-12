@@ -71,18 +71,19 @@
       (update [a b] (fnil set/intersection universe) fwd)
       (update [b a] (fnil set/intersection universe) bwd)))
 
+(def thing-order
+  "The order a thing's six points fix among themselves, `[lower upper strict?]`."
+  [[:start :end true] [:earliest-start :start false] [:start :latest-start false]
+   [:earliest-end :end false] [:end :latest-end false]
+   [:earliest-start :earliest-end false] [:latest-start :latest-end false]])
+
 (defn- thing-edges
   "The order among `x`'s points, over the ones in `present`."
   [x present]
-  (let [[s e es ls ee le] (map #(point % x) [:start :end :earliest-start :latest-start
-                                             :earliest-end :latest-end])]
-    (cond-> [[s e strict]]
-      (present es)                    (conj [es s weak])
-      (present ls)                    (conj [s ls weak])
-      (present ee)                    (conj [ee e weak])
-      (present le)                    (conj [e le weak])
-      (and (present es) (present ee)) (conj [es ee weak])
-      (and (present ls) (present le)) (conj [ls le weak]))))
+  (for [[lo hi s] thing-order
+        :let [a (point lo x) b (point hi x)]
+        :when (and (present a) (present b))]
+    [a b (if s strict weak)]))
 
 (defn- moment?
   "Does the term `x` name a moment by its spelling — an `(InstantFn …)` term or a point?"
@@ -116,7 +117,7 @@
                       (mapcat #(take-while point-term? (iterate thing-of (thing-of %))))
                       nodes)
         {moments true things false}
-        (group-by moment? (into #{} (comp (keep thing-of) (remove dt/bounds)) nodes))
+        (group-by moment? (into #{} (keep thing-of) nodes))
         present (-> nodes
                     (into moments)
                     (into (mapcat #(vector (point :start %) (point :end %))) things))

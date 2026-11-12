@@ -282,7 +282,7 @@
 
 (defn- starter-load
   "`vaelii.starter/load-into` over an empty in-memory KB: every shipped file, the upper
-  layer and the middle theories, and the closing `unary_predicate` batch."
+  layer and the middle theories."
   []
   (sample-fresh fresh-kb starter/load-into 1 3))
 

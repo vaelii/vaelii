@@ -206,7 +206,7 @@ config_owed_for_path() {
     # retrieval is the swept half AND what every backend is read through
     src/vaelii/impl/resolution.clj)      printf 'hier-off backends' ;;
     # the entailment's mint, withdrawal and pruning paths, which `assertive-off` turns
-    # off; `checks.clj` holds the switch and owes `routine`, which includes this run
+    # off; `decide/argument.clj` holds the switch and owes `routine`, which includes this run
     src/vaelii/impl/special.clj)         printf 'assertive-off' ;;
     # the shipped ontology is read under both readings, and a membership the
     # entailment mints is one the constraint-only reading needs stated
@@ -215,11 +215,15 @@ config_owed_for_path() {
     # `kb.clj` is also where `:tms` picks the network, the one read of that option
     src/vaelii/impl/kb.clj)              printf 'backends tms-reference' ;;
     # `recover` and `reindex` rebuild the belief and the index from whichever record
-    # store the run built, and the rebuilt index is whichever the pairing names
+    # store the run built, and the rebuilt index is whichever the pairing names; the
+    # import, the record surgery and the op log's store wrapper write through both
     src/vaelii/impl/memory.clj \
     |src/vaelii/impl/kv.clj \
     |src/vaelii/impl/recovery.clj \
     |src/vaelii/impl/reindex.clj \
+    |src/vaelii/impl/io/import.clj \
+    |src/vaelii/impl/record_edit.clj \
+    |src/vaelii/impl/oplog.clj \
     |src/vaelii/impl/types/sentex.clj \
     |src/vaelii/impl/protocols.clj \
     |src/vaelii/impl/capabilities.clj \

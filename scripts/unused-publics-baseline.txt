@@ -18,7 +18,8 @@
 # `--update` rewrites the entries and keeps this header and each line's reason, so an
 # interior divider would survive one refresh and be wrong after the next.
 
-vaelii.browser.web/dev-repl  # REACHED requiring-resolve in project.clj's :browser :init
+vaelii.coverage/install!  # REACHED lein injection, scripts/coverage.sh
+vaelii.coverage/write-hits  # REACHED cloverage --custom-report symbol, scripts/coverage.sh
 vaelii.foreign-contract-test/marking-dump-reader  # REACHED quoted-symbol registry, foreign/register in the same test file
 vaelii.foreign-contract-test/versionless-dump-reader  # REACHED quoted-symbol registry, foreign/register in the same test file
 vaelii.impl.asp.clingo/classify-both  # REACHED requiring-resolve, impl/asp/solver.clj
@@ -26,5 +27,6 @@ vaelii.impl.asp.label/label-dilemmas  # REACHED quoted-symbol registry, impl/imp
 vaelii.impl.asp.solve-context/classify  # REACHED quoted-symbol registry, impl/imperative.clj
 vaelii.impl.asp.solve-context/label  # REACHED quoted-symbol registry, impl/imperative.clj
 vaelii.impl.handle-set/collector  # REACHED out of tree — the vaelii-postgres and vaelii-sqlite record stores' cursor walks build their handle set with it
+vaelii.impl.point-order/tightest-start-bound-prover  # REACHED quoted-symbol registry, impl/provers.clj reasoner-vars
 vaelii.koinii.channel/writer-order  # REACHED doc affordance — a docstring-only def of koinii's D7 consistency model (value unread), discoverable via (doc)
 vaelii.ns-counts/install!  # REACHED resolve in project.clj's :test :injections, behind VAELII_TEST_NS_COUNTS

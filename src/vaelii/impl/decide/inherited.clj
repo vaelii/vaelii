@@ -47,14 +47,17 @@
   "Keep the nogood maps `ngs`, every clash a discovery found, under `:inherited` in place
   of what it held: one entry per member set (`set-entry`).  Journals only the members that
   entered or left, so a clash found again moves no candidate.  Returns the member sets the
-  index held before and does not hold now."
+  index held before and does not hold now.  Writes nothing when `ngs` is empty and nothing
+  is held."
   [kb ngs]
-  (let [old     (:inherited @(reasoning/nogood-candidates kb))
-        was     (:members old #{})
-        by-set  (into {} (map (fn [[ms es]] [ms (set-entry ms es)])) (group-by :nogood ngs))
-        members (into #{} cat (keys by-set))]
-    (install! kb by-set members (-> #{} (into (remove was) members) (into (remove members) was)))
-    (into [] (remove #(contains? by-set %)) (keys (:by-set old)))))
+  (let [old (:inherited @(reasoning/nogood-candidates kb))]
+    (if (and (empty? ngs) (nil? old))
+      []
+      (let [was     (:members old #{})
+            by-set  (into {} (map (fn [[ms es]] [ms (set-entry ms es)])) (group-by :nogood ngs))
+            members (into #{} cat (keys by-set))]
+        (install! kb by-set members (-> #{} (into (remove was) members) (into (remove members) was)))
+        (into [] (remove #(contains? by-set %)) (keys (:by-set old)))))))
 
 (defn update-inherited!
   "Apply `changes`, `{members [ngmap]}` the clashes a discovery found for each member set

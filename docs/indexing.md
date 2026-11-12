@@ -2,8 +2,8 @@
 
 - **Covers:** the index families' key shapes — the trie, the secondary roots, the rule
   and exception indexes, the term index, the term-name set, the taxonomy's supporter
-  families and the mint family — what each answers, and what a read scoped to the
-  contexts a reader sees costs.
+  families, the mint family, the calendar index and the `natFormula` arguments — what each
+  answers, and what a read scoped to the contexts a reader sees costs.
 - **Not here:** the dense/columnar representations these families are packed into →
   [density.md](density.md); the record store and the protocols the index sits beside →
   [storage.md](storage.md).
@@ -47,6 +47,13 @@ ints and keywords keep their type. The whole layout:
 | `[:shape-tuple :children [f n]]` | set | the contexts that state such a fact |
 | `[:shape-tuple :handles [f n ctx]]` | set | the handles of those facts stated in `ctx` |
 | `[:shape-lengths f]` | set | the argument counts the positive facts of `f` are stored at (numbers, not handles) |
+| `[:calendar :count [f frame y m]]` | integer | how many facts of functor `f` name a time with a point in month `m` of year `y`, in frame `:local` or `:utc`, in every context |
+| `[:calendar :children [f frame y m]]` | set | the contexts that state such a fact |
+| `[:calendar :handles [f frame y m ctx]]` | set | the handles of those facts stated in `ctx` |
+| `[:calendar-buckets f]` | set | the `[frame y m]` of every `:calendar` node of `f` (triples, not handles) |
+| `[:nat-argument :count [f pos term]]` | integer | how many positive `(natFormula K (f …))` maps hold `term` at argument `pos`, in every context |
+| `[:nat-argument :children [f pos term]]` | set | the contexts that state such a map |
+| `[:nat-argument :handles [f pos term ctx]]` | set | the handles of those maps stated in `ctx` |
 | `[:rule-antecedent :count [key]]` | integer | how many rules take an antecedent on `key` (a predicate, or `[:not pred]`) |
 | `[:rule-antecedent :children [key]]` | set | the contexts that state such a rule |
 | `[:rule-antecedent :handles [key ctx]]` | set | the handles of those rules stated in `ctx` |
@@ -162,7 +169,7 @@ three readers decide from it rather than from spelled tags:
 | `:context-last?` | boolean | whether the key's last level is the context |
 | `:children?` | boolean | whether a node lists the contexts below it, which a by-context read intersects ([By-context reads](#by-context-reads)); the context root and `[:opposed-in ctx]` list none |
 | `:root` | a family tag | the name set one level above the family's nodes (`[:rule-antecedent-keys]`, `[:opposed-bodies]`, `[:mint-terms]`, …), which the key builders read |
-| `:canon?` | boolean | whether a key term is `sx/canon`'d: the argument root, the two slot predicate sets and the term index |
+| `:canon?` | boolean | whether a key term is `sx/canon`'d: the argument root, the two slot predicate sets, the `natFormula` arguments and the term index |
 | `:source` | `:sentex`, `:rule`, `:justification`, `:taxonomy` | which write posts the family; a records-only import skips the `:justification` families (`kv/justification-family-entry?`), since it stores no justification |
 | `:class` | `:access-path`, `:scan-recoverable`, `:sole-witness` | what a KB without the family would lose, with `:class-evidence` |
 
@@ -179,7 +186,8 @@ that case).
   (`:oracle`) and the families that other path reads (`:via`). The argument root's other
   path is the trie (`arg_root_retrieval_test`, `matches_hierarchical_test`); the predicate
   extent's and the two slot predicate sets' is the term index, filtered by the record
-  (`arg_root_retrieval_test/the-families-agree-with-the-term-index`).
+  (`arg_root_retrieval_test/the-families-agree-with-the-term-index`), and so is the
+  `natFormula` arguments' (`index_test/the-nat-argument-family-agrees-with-the-term-index`).
 - **`:scan-recoverable`**: a scan of the whole store returns the identical answer, at a
   cost linear in the KB. `:class-evidence` names the writes that read the family
   (`:writes`). A write's cost is bounded whatever the content, so only a family no write
@@ -768,6 +776,39 @@ every context here (`reads/as-stored-arity-binding-kinds`,
 once per type they read (`reads/stored-arity-bound?`), so no binding record is read and
 recover rebuilds no list of them.
 
+### The calendar index
+
+A fact naming a time the calendar places (`datetime/time-term?`) enters the count trie
+`:calendar` under the node `[f frame year month]` of its functor `f` and each point of
+that time (`datetime/month-buckets`): an `InstantFn` moment's own, and the start and end
+of any other term's extent, in frame `:local` for a time in no zone and `:utc` for one
+with an offset or a zone. `[:calendar-buckets f]`, the trie's root level, lists `f`'s
+months, so a month leaves it with its node's last fact (`kv/calendar-adds`,
+`calendar-retires`). A rule names no node. The index write posts both from the sentence
+in hand, so `reindex` and a layout rebuild rebuild them.
+
+The reader is the context-NAT producer's link arm ([context-nat.md](context-nat.md)). It
+reads the functors of a context NAT's map and of the facts giving point-order links
+(`context-nat/calendar-functors`): each one's months (`reads/as-stored-calendar-buckets`),
+and its nodes between two months (`reads/as-stored-calendar-at-global`). A read costs one
+name-set read per functor, a scan of those functors' months, and their facts filed in the
+months it keeps, whatever the count of facts of other functors (`lein perf`'s
+`context-nat-calendar-link-beside-timestamps`).
+
+### The `natFormula` arguments
+
+A positive `(natFormula K (f a1 … an))` map enters the count trie `:nat-argument` under
+the node `[f pos a]` of each argument the argument root would key (`kv/arg-slots`): a
+symbol or a ground compound, canonical and whole at any size. A number, a string and a
+negated map enter no node. The index write posts the nodes from the sentence in hand
+(`kv/fact-nodes`), so `reindex` and a layout rebuild rebuild them.
+
+The reader is the context-NAT producer ([context-nat.md](context-nat.md)). It reads the
+CxUniverse maps holding a term at a declared position (`reads/as-stored-nat-formulas-at`)
+and counts them with one leaf count (`stored-count-nat-formulas-at`). A read costs one
+node per position and term, whatever the size of the term's own posting in the term index
+(`lein perf`'s `context-nat-read-unwritten-slice-beside-monads`).
+
 ## 3. The rule index
 
 Rules are sentexes; they are additionally posted by predicate so chaining finds
@@ -943,7 +984,10 @@ the members as a set on each read (`release-beside-watched-rules` in `lein perf`
 **Every sentex is findable by any term it contains.** On `index-sentex` we post the
 handle under every indexable subterm of its **connective-free content**
 (`sentex/index-terms` over `content-forms` — a rule's antecedents and consequent,
-or a fact's positive body, never the `not` / `implies` / `and`) plus its context:
+or a fact's positive body, never the `not` / `implies` / `and`) plus its context. The
+head of a compound one of the three heads is skipped at every depth too, as in the rule a
+generator's consequent quotes, and the compound's other subterms are keyed;
+`sentex/probe-atoms` narrows a compound probe by the same atoms:
 
 ```
 [:term-index term] -> #{handles containing term}
@@ -953,7 +997,8 @@ An *indexable* subterm (`sentex/indexable-term?`) is a non-variable symbol
 (predicate, individual, type, context) or a fully-ground compound. **Numbers,
 strings, and variables are dropped** — a year like `1970` or a comment string is
 not a lookup key, since it only bloats the index; predicates, individuals,
-and ground compound subterms still key.
+and ground compound subterms still key. The `.` of a rest pattern `(?f . ?args)` is
+syntax and is dropped too, so `terms` never lists it.
 
 - `find-sentexes kb term` — sentexes containing `term` anywhere, any nesting.
 - `find-sentexes-all kb terms` — the intersection.
@@ -1252,7 +1297,11 @@ than failing:
   hands it to `matches-visible`. What `res/candidate-handles` chooses between is seven
   named access paths — `:trie`, `:structural`, `:arg-roots`, `:context-extent`,
   `:functor-extent`, `:negative-roots`, `:negative-fan` — each of which answers a
-  **superset** that `unify` then filters exact; there is no eighth for a dotted shape.
+  **superset** that `unify` then filters exact; there is no eighth for a dotted shape. A
+  dotted pattern with a concrete functor, `(p ?c . ?xs)`, reads `:functor-extent`, and
+  `unify` binds the rest against each fact of `p` at every length. A dotted pattern under
+  a variable functor matches no stored fact, since the trie and the argument roots both
+  read its `.` as an argument.
 - **The rule indexes are keyed by predicate**, not by full antecedent shape, so two rules
   whose antecedents differ below the predicate share a bucket.  A predicate is what the
   key *is*, so a variable in functor position turns on *where* it sits.  In an

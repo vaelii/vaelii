@@ -13,7 +13,8 @@
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
-            [vaelii.impl.types.reasoning :as reasoning]))
+            [vaelii.impl.types.reasoning :as reasoning]
+            [vaelii.impl.wiring :as wiring]))
 
 (def nat-namespace
   "Reserved namespace of an object reified constant, which a ground application of a
@@ -113,6 +114,26 @@
           (tax/props (reasoning/taxonomy kb) :reifiable))
     #{}))
 
+(def ^:dynamic *sorted-by*
+  "`{f entries}`: while bound, `sorted-expression` sorts an application of each key `f` by
+  the `symmetric` and commuting marks of `f` its `entries` list (`res/mark-entries`' keys)
+  and no others, the marks one reader believes (`sorted-by-at`), so the reconcile stores,
+  and a read looks up, the constant that reader names the application by."
+  {})
+
+(defn sorted-by-at
+  "The `*sorted-by*` binding that names an application as `reader` names it: each
+  reifiable function some reader does not believe a permuting mark of
+  (`res/split-mark-entries`), with the marks `reader` believes.  Empty for a variable or
+  nil `reader`.  The `reifiable_function` mark is read unscoped, a superset of the
+  functions `reader` names an application of, and a function it does not believe
+  reifiable is withheld (`withheld-at`) before its marks are read."
+  [kb reader]
+  (if (and (symbol? reader) (not (sx/variable? reader)))
+    (into {} (keep #(when-let [e (res/split-mark-entries kb %)] [% (res/entries-at kb e reader)]))
+          (tax/props (reasoning/taxonomy kb) :reifiable))
+    {}))
+
 (defn reifiable-ground-nat?
   "True iff `form` is a ground `(F …)` whose head is a reifiable function: a NAT the
   argument-position reify mints to a `nat/` constant."
@@ -191,19 +212,24 @@
 
 (defn- permuting-marks
   "The `symmetric` and commuting marks of taxonomy `tax`, in the shape `sx/permute-args`
-  and `sx/every-order` take.  They are read unscoped, since a constant's name is a stored
-  key every reader shares."
+  and `sx/every-order` take: those of a key of `*sorted-by*` the entries it lists, and
+  every other function's read unscoped, since a constant's name is a stored key every
+  reader shares."
   [tax]
-  {:symmetric? #(tax/has-prop? tax :symmetric %)
-   :groups-of  (fn [g _] (tax/commuting-groups tax g))})
+  (let [by *sorted-by*]
+    {:symmetric? #(if-let [e (get by %)]
+                    (contains? e [:prop :symmetric %])
+                    (tax/has-prop? tax :symmetric %))
+     :groups-of  (fn [g _] (if-let [e (get by g)]
+                             (into #{} (filter #(contains? e [:commuting g %])) (tax/commuting-groups tax g))
+                             (tax/commuting-groups tax g)))}))
 
 (defn sorted-expression
-  "Ground application `E` with its own arguments in the order the store's `symmetric` and
-  commuting marks give it (`sx/permute-args`): the expression a reified constant is named
-  by and found under, so both spellings of a commuted application name one constant.  The
-  associative, idempotent and meet arms are not applied, since they can collapse an
-  application to one argument.  The marks are read unscoped: the constant decides the
-  stored key, which every reader shares."
+  "Ground application `E` with its own arguments in the order its `symmetric` and
+  commuting marks give it (`sx/permute-args`, `permuting-marks`): the expression a reified
+  constant is named by and found under, so both spellings of a commuted application name
+  one constant.  The associative, idempotent and meet arms are not applied, since they can
+  collapse an application to one argument."
   [kb E]
   (let [tax (reasoning/taxonomy kb)
         f   (first E)]
@@ -249,12 +275,16 @@
   (default `nat/`) for a reader in `context` (CxUniverse when nil), or nil: the
   `natFormula` rows `map-rows` reads.  Where several constants map `E` in one namespace
   (an import restores what the dump held, or a merge the reader sees joins two
-  expressions), the lexicographically smallest, the survivor `group-collisions` elects."
+  expressions), the lexicographically smallest, the survivor `group-collisions` elects.
+  With `write?`, a `nat/` expression answers only a reified constant, never a term a
+  merge's twin of the map names: a write names the application's own constant."
   ([kb E] (dedup-constant kb E nat-namespace nil))
-  ([kb E ns context]
+  ([kb E ns context] (dedup-constant kb E ns context false))
+  ([kb E ns context write?]
    (->> (map-rows kb 'natFormula E context)
         (map #(second (:sentence %)))
-        (filter #(in-namespace? ns %))
+        (filter #(and (in-namespace? ns %)
+                      (or (not write?) (= context-namespace ns) (reified-object-symbol? %))))
         sort
         first)))
 
@@ -263,93 +293,125 @@
   reads (`map-rows`) reifies NAT expression `E` to, spelled under `context`'s merges, or
   nil.  Nil when the declarations name more than one target (docs/nat.md, The
   corresponding predicate), and when the one `T` lies outside reify namespace `ns`
-  (`in-namespace?`)."
+  (`in-namespace?`).  Every row `map-rows` reads is a stored `rewriteOf`, so a KB storing
+  none answers nil off one functor count, before `E` is normalized and spelled."
   [kb E ns context]
-  (let [ts (into #{} (comp (map #(second (:sentence %)))
-                           (map #(res/normal-form kb % (res/visible-supporter-fn kb (reader-of context))))
-                           (distinct)
-                           (take 2))
-                 (map-rows kb 'rewriteOf E context))]
-    (when (= 1 (count ts))
-      (let [t (first ts)]
-        (when (in-namespace? ns t) t)))))
+  (when (pos? (reads/stored-count-with-functor (:index kb) 'rewriteOf))
+    (let [ts (into #{} (comp (map #(second (:sentence %)))
+                             (map #(res/normal-form kb % (res/visible-supporter-fn kb (reader-of context))))
+                             (distinct)
+                             (take 2))
+                   (map-rows kb 'rewriteOf E context))]
+      (when (= 1 (count ts))
+        (let [t (first ts)]
+          (when (in-namespace? ns t) t))))))
 
 (defn- sole-value
   "`[value facts]` when the corresponding facts visible from `context` name exactly one
-  value for `E` (`res/corresponding-values`), else nil."
-  [kb E context]
-  (let [vs (res/corresponding-values kb E context)]
+  value for `E` (`res/corresponding-values`, through `cor` where the caller holds it),
+  else nil."
+  ([kb E context] (sole-value kb E nil context))
+  ([kb E cor context]
+   (let [vs (if cor (res/corresponding-values kb E cor context) (res/corresponding-values kb E context))]
+     (when (= 1 (count vs)) (first vs)))))
+
+(defn- computed-value
+  "The one ground value the prover registry binds at position `pos` of `(pr a… ?v)` for
+  the ground NAT expression `E` = `(F a…)`, solved in `context`, or nil."
+  [kb E [pr pos] context]
+  (let [ctx (if (sx/variable? context) universal-context context)
+        vs  (into [] (comp (map #(get % '?v)) (filter sx/ground-term?) (distinct) (take 2))
+                  (wiring/solve-goal kb (apply list pr (res/insert-at (rest E) pos '?v)) ctx))]
     (when (= 1 (count vs)) (first vs))))
 
 (defn correspondence-value
   "The term a `:monotonic` corresponding fact visible from `context` (CxUniverse when nil)
   names as the value of the ground NAT expression `E`, spelled under `context`'s merges,
-  when the visible facts name that one value and no other, or nil.  A value only
-  `:default` facts name resolves no write (docs/nat.md, The corresponding predicate)."
-  [kb E context]
-  (when-let [[v hs] (sole-value kb E context)]
-    (let [tms (reasoning/tms kb)]
-      (when (some #(tuple/monotonic-member? tms %) hs) v))))
+  when the visible facts name that one value and no other, or nil.  Where the
+  corresponding predicate is `not_assertible`, a mark read KB-wide as `assert`'s refusal
+  reads it, the value is the prover registry's (`computed-value`).  With `write?`, only
+  that prover value: a write names the application's own constant, which a stored value
+  reaches through `chain/sync-values!`'s merge (docs/nat.md, The corresponding predicate)."
+  ([kb E context] (correspondence-value kb E context false))
+  ([kb E context write?]
+   (let [ctx (reader-of context)]
+     (when-let [[pr :as cor] (res/correspondence-of kb (first E) (count (rest E)) ctx)]
+       (cond
+         (tax/has-prop? (reasoning/taxonomy kb) :not-assertible pr) (computed-value kb E cor ctx)
+         write? nil
+         :else (when-let [[v hs] (sole-value kb E cor ctx)]
+                 (let [tms (reasoning/tms kb)]
+                   (when (some #(tuple/monotonic-member? tms %) hs) v))))))))
 
 (defn reify-in
   "Reify every reifiable ground NAT subterm of literal/sentence `s`, calling `nat-fn` (a
-  `(fn [kb form])`) at each one; `nat-fn` returns the NAT's term, having reified its
-  nested NAT arguments itself.  A head predicate, a quoting-predicate argument and a
-  `modal_predicate`'s proposition (`res/attitude-application?`) stay opaque.  The modal
-  mark is read KB-wide, once per walk: whether an argument is a mention is a fact about
-  the sentence (`tax/mention-marks`).  A vector is descended element by element
-  (docs/nat.md, Write path)."
-  [kb s nat-fn]
-  (let [modal (:modal (tax/mention-marks (reasoning/taxonomy kb)))]
-    (letfn [(walk [s]
-              (cond
-                (reifiable-ground-nat? kb s) (nat-fn kb s)
-                (vector? s) (mapv walk s)
-                (and (seq? s) (seq s))
-                (cond
-                  (contains? res/nat-quoting-predicates (first s)) s
-                  (res/attitude-application? modal s) (list (first s) (walk (second s)) (nth s 2))
-                  :else (apply list (first s) (map walk (rest s))))
-                :else s))]
-      (walk s))))
+  `(fn [kb form])`) at each one, and `head-fn` (default `nat-fn`) at a literal's head that
+  is one; each returns the NAT's term, having reified its nested NAT arguments itself.  A
+  symbol head, a quoting-predicate argument and a `modal_predicate`'s proposition
+  (`res/attitude-application?`) stay opaque.  The modal mark is read KB-wide, once per
+  walk: whether an argument is a mention is a fact about the sentence
+  (`tax/mention-marks`).  A vector is descended element by element (docs/nat.md, Write
+  path)."
+  ([kb s nat-fn] (reify-in kb s nat-fn nat-fn))
+  ([kb s nat-fn head-fn]
+   (let [modal (:modal (tax/mention-marks (reasoning/taxonomy kb)))]
+     (letfn [(walk [s]
+               (cond
+                 (reifiable-ground-nat? kb s) (nat-fn kb s)
+                 (vector? s) (mapv walk s)
+                 (and (seq? s) (seq s))
+                 (cond
+                   (contains? res/nat-quoting-predicates (first s)) s
+                   (res/attitude-application? modal s) (list (first s) (walk (second s)) (nth s 2))
+                   :else (apply list (head (first s)) (map walk (rest s))))
+                 :else s))
+             (head [h] (if (reifiable-ground-nat? kb h) (head-fn kb h) h))]
+       (walk s)))))
 
 (defn existing-term
   "The term ground NAT expression `E` already resolves to in reify namespace `ns` for a
-  reader or writer in `context`, or nil: a `rewriteOf` target, the value its
-  corresponding predicate names where `context` reads it (`correspondence-value`), else
-  the constant `dedup-constant` finds.  A context slot (`cx/`) takes no correspondence
-  value, which names an object."
-  [kb E ns context]
-  (if (= context-namespace ns)
-    (or (rewrite-target kb E ns context) (dedup-constant kb E ns context))
-    (or (rewrite-target kb E ns context) (correspondence-value kb E context)
-        (dedup-constant kb E ns context))))
+  reader in `context`, or nil: a `rewriteOf` target, the value its corresponding
+  predicate names where `context` reads it (`correspondence-value`), else the constant
+  `dedup-constant` finds.  With `write?`, the term a write in `context` stores: the
+  value and the constant as `correspondence-value` and `dedup-constant` read them for a
+  write.  A context slot (`cx/`) takes no correspondence value, which names an object."
+  ([kb E ns context] (existing-term kb E ns context false))
+  ([kb E ns context write?]
+   (if (= context-namespace ns)
+     (or (rewrite-target kb E ns context) (dedup-constant kb E ns context))
+     (or (rewrite-target kb E ns context) (correspondence-value kb E context write?)
+         (dedup-constant kb E ns context write?)))))
 
 (defn reify-nat-for-read
   "Read-mode leaf: reify nested NAT arguments, then resolve the expression, in its
   `sorted-expression` order, to its existing term in reify namespace `ns` for a reader in
-  `context` (`existing-term`), or to `no-match`.  Never mints.  A quoting function's
-  argument stays opaque, as `reify-or-mint-nat` holds it."
-  [kb form ns context]
-  (let [E (if (sx/quoting-functor? (first form))
-            (apply list form)
-            (sorted-expression
-             kb (apply list (first form)
-                       (map #(if (reifiable-ground-nat? kb %) (reify-nat-for-read kb % nat-namespace context) %)
-                            (rest form)))))]
-    (or (existing-term kb E ns context) no-match)))
+  `context` (`existing-term`, with `write?` as a write in `context` stores it), or to
+  `no-match`.  Never mints.  A quoting function's argument stays opaque, as
+  `reify-or-mint-nat` holds it."
+  ([kb form ns context] (reify-nat-for-read kb form ns context false))
+  ([kb form ns context write?]
+   (let [E (if (sx/quoting-functor? (first form))
+             (apply list form)
+             (sorted-expression
+              kb (apply list (first form)
+                        (map #(if (reifiable-ground-nat? kb %)
+                                (reify-nat-for-read kb % nat-namespace context write?)
+                                %)
+                             (rest form)))))]
+     (or (existing-term kb E ns context write?) no-match))))
 
 (defn- read-leaf
   "`reify-in`'s leaf for a read in `context`: the existing term, else the one value the
   corresponding facts visible from `context` name for an application nothing minted, or
-  `no-match`.  A never-minted quoting application stays as written: a mention names its
-  own syntax."
-  [context]
+  `no-match`.  With `write?`, the term a write in `context` stores, or `no-match`.  A
+  never-minted quoting application stays as written: a mention names its own syntax."
+  [context write?]
   (fn [kb form]
-    (let [k (reify-nat-for-read kb form nat-namespace context)]
+    (let [k (reify-nat-for-read kb form nat-namespace context write?)]
       (cond
         (not= no-match k)                    k
         (sx/quoting-functor? (first form))   form
+        write?                               k
         :else (or (when (res/any-corresponding-predicates? kb)
                     (first (sole-value kb (apply list (first form)
                                                  (map #(if (reifiable-ground-nat? kb %)
@@ -362,25 +424,33 @@
 (defn reify-existing
   "Reify every reifiable ground NAT subterm of `sentence` that has an existing term for a
   reader in `context` (CxUniverse when nil) to that term, and leave every other one as
-  written.  Never mints.  `vaelii.core/check` reads a sentence through this (docs/nat.md,
-  Typing an application that is never minted)."
-  [kb sentence context]
-  (if (any-reifiable-functions? kb)
-    (reify-in kb sentence (fn [kb form]
-                            (let [k (reify-nat-for-read kb form nat-namespace context)]
-                              (if (= no-match k) form k))))
-    sentence))
+  written.  With `write?`, the existing term a write in `context` stores
+  (`existing-term`).  Never mints.  `vaelii.core/check` and a firing's conclusion read a
+  sentence through this with `write?` (docs/nat.md, Typing an application that is never
+  minted)."
+  ([kb sentence context] (reify-existing kb sentence context false))
+  ([kb sentence context write?]
+   (if (any-reifiable-functions? kb)
+     (reify-in kb sentence (fn [kb form]
+                             (let [k (reify-nat-for-read kb form nat-namespace context write?)]
+                               (if (= no-match k) form k))))
+     sentence)))
 
 (defn maybe-reify-for-read
   "Reify every reifiable ground NAT subterm of a query `sentence` to its existing term for
   a reader in `context` (CxUniverse when nil), never minting; a never-minted NAT resolves
-  to `no-match`, except a quoting application, which stays as written.  An application
-  of a function `context` does not believe reifiable stays as written (`withheld-at`)."
-  [kb sentence context]
-  (if (any-reifiable-functions? kb)
-    (binding [*withheld* (withheld-at kb context)]
-      (reify-in kb sentence (read-leaf context)))
-    sentence))
+  to `no-match`, except a quoting application, which stays as written.  With `write?`,
+  each resolves to the term a write in `context` stores (`read-leaf`), the reading a
+  lookup of a stored sentex takes.  An application of a function `context` does not
+  believe reifiable stays as written (`withheld-at`), and an application of a function
+  whose permuting marks some reader does not believe is sorted by the ones `context`
+  believes (`sorted-by-at`)."
+  ([kb sentence context] (maybe-reify-for-read kb sentence context false))
+  ([kb sentence context write?]
+   (if (any-reifiable-functions? kb)
+     (binding [*withheld* (withheld-at kb context) *sorted-by* (sorted-by-at kb context)]
+       (reify-in kb sentence (read-leaf context write?)))
+     sentence)))
 
 (defn- has-no-match?
   "Does `form` hold the `no-match` sentinel in a list or vector, at any nesting?"
@@ -390,11 +460,12 @@
            (boolean (some has-no-match? form)))))
 
 (defn resolve-for-read
-  "The read-mode reify of `sentence` for a reader in `context` (`maybe-reify-for-read`)
-  when every reifiable NAT in it has a stored term, else nil."
-  [kb sentence context]
-  (let [r (maybe-reify-for-read kb sentence context)]
-    (when-not (has-no-match? r) r)))
+  "The read-mode reify of `sentence` for a reader in `context` (`maybe-reify-for-read`,
+  with `write?` as given) when every reifiable NAT in it has a stored term, else nil."
+  ([kb sentence context] (resolve-for-read kb sentence context false))
+  ([kb sentence context write?]
+   (let [r (maybe-reify-for-read kb sentence context write?)]
+     (when-not (has-no-match? r) r))))
 
 ;; ---- the constants a value can reach -------------------------------------
 ;; docs/nat.md, The corresponding predicate.  The queue `chain/sync-values!` drains.
@@ -435,14 +506,15 @@
 (defn- valued-constants
   "The reified object constants `sentence` names whose function a stored correspondence
   declaration declares, when `corr?`, or whose expression a stored compound `rewriteOf`
-  names, when `rw?` (a delay) holds."
+  names, when `rw?` (a delay) holds.  Empty with no walk of `sentence` when neither does."
   [kb sentence corr? rw?]
-  (into #{} (filter #(and (reified-object-symbol? %)
-                          (or corr? @rw?)
-                          (when-let [E (res/minted-expression kb %)]
-                            (or (and corr? (declared-function? kb (first E)))
-                                (and @rw? (rewritten? kb E))))))
-        (tree-seq sequential? seq sentence)))
+  (if-not (or corr? @rw?)
+    #{}
+    (into #{} (filter #(and (reified-object-symbol? %)
+                            (when-let [E (res/minted-expression kb %)]
+                              (or (and corr? (declared-function? kb (first E)))
+                                  (and @rw? (rewritten? kb E))))))
+          (tree-seq sequential? seq sentence))))
 
 (defn fact-constants
   "The constants minted for the applications the positive literal `sentence` names a value
@@ -455,9 +527,10 @@
           m    (dec (count args))]
       (into #{}
             (keep (fn [h]
-                    (let [[_ f _ n] (:sentence (p/get-sentex recs h))
-                          pos       (if (integer? n) n (inc m))]
-                      (when (and (symbol? f) (<= 0 m) (<= 1 pos (inc m)))
+                    (let [s   (:sentence (p/get-sentex recs h))
+                          f   (second s)
+                          pos (res/stated-position s)]
+                      (when (and pos (<= 0 m) (<= pos (inc m)))
                         (dedup-constant kb (apply list f (concat (subvec args 0 (dec pos)) (subvec args pos)))
                                         nat-namespace nil)))))
             (reads/as-stored-with-args (:index kb) res/correspondence-predicate {2 (first sentence)})))))

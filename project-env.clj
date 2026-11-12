@@ -45,11 +45,17 @@
 ;; the periodic collection return freed heap to the OS between tests. Two parallel and
 ;; one concurrent collector thread per JVM keep a dozen concurrent suites from running
 ;; ~100 collector threads on ten cores.
+;;
+;; `VAELII_TEST_TMPDIR` becomes the test JVM's `java.io.tmpdir`, which every directory a
+;; test builds is created under: the disk backends' stores, `tu/temp-dir` and the
+;; `^:fuzz` probes. A RAM disk there keeps the suite's stores and fsyncs off the SSD.
 (def test-jvm-opts
   (let [heap     (some-> (System/getenv "VAELII_TEST_HEAP") .trim not-empty)
+        tmpdir   (some-> (System/getenv "VAELII_TEST_TMPDIR") .trim not-empty)
         ;; the launcher's variable, read through `env` for the reason `bash` gives
         env      #(System/getenv %)
         jvm-opts (str (env "JVM_OPTS"))]
     (cond-> ["-XX:MinHeapFreeRatio=10" "-XX:MaxHeapFreeRatio=30"
              "-XX:G1PeriodicGCInterval=15000" "-XX:ParallelGCThreads=2" "-XX:ConcGCThreads=1"]
-      (or heap (not (re-find #"-Xmx" jvm-opts))) (conj (str "-Xmx" (or heap "4g"))))))
+      (or heap (not (re-find #"-Xmx" jvm-opts))) (conj (str "-Xmx" (or heap "4g")))
+      tmpdir                                     (conj (str "-Djava.io.tmpdir=" tmpdir)))))

@@ -29,7 +29,7 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (catalog/register! "base" "Base KB" kb {:source (catalog/source "core")})
       (binding [tu/*kb* kb, *app* (web/app (catalog/holder kb))]
         (try (f) (finally (catalog/reset-registry!) (tu/clear-kb! kb)))))))
@@ -178,7 +178,7 @@
                 @@#'web/dev-instance]))
         (finally
           (deliver release true)
-          (jobs/wait id 10000)
+          (jobs/wait id)
           (reset! @#'web/dev-instance nil))))))
 
 (deftest an-unload-during-a-chain-answers-without-waiting-for-it
@@ -213,7 +213,7 @@
           (is (nil? (catalog/entry "other")))))
       (finally
         (deliver release true)
-        (jobs/wait id 10000)
+        (jobs/wait id)
         (tu/clear-kb! other)))))
 
 (deftest a-refused-load-is-reported-on-the-page
@@ -430,7 +430,7 @@
                                     (reset! id (submit spec work)))
                   access/forward-chain (fn [& _] (swap! chained inc) {:derived 0})]
       (POST "/chain" {})
-      (jobs/wait @id 10000))
+      (jobs/wait @id))
     (is (nil? (catalog/entry "late")))
     (is (zero? @chained) "the chain never ran over the released KB")
     (is (= :failed (:status (jobs/job @id))))

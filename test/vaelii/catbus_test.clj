@@ -19,8 +19,8 @@
   (v/assert kb '(genlCx CxTotoro CxWell) 'CxUniverse)
   (v/assert kb '(context CxTotoro) 'CxUniverse)
   (tu/with-terms [tu_bus Catbus OrdinaryCat Catbus2]
-    ;; bus does not exist upstream, so this is the test's own fresh spec of vehicle.
-    (v/assert kb (list 'genl tu_bus 'vehicle) 'CxUniverse)
+    ;; bus does not exist upstream, so this is the test's own :monotonic spec of vehicle.
+    (v/assert kb (list 'genl tu_bus 'vehicle) 'CxUniverse {:strength :monotonic})
 
     (testing "CxTotoro holds the catbus as both a cat and a bus"
       (v/assert kb (list 'cat Catbus) 'CxTotoro)
@@ -68,7 +68,7 @@
   ;; Where (disjoint animal vehicle) is provable and both memberships are visible, the
   ;; clash is reported whatever strengths the memberships were written at.
   (tu/with-terms [tu_bus DefaultBoth MonoCat MonoBoth]
-    (v/assert kb (list 'genl tu_bus 'vehicle) 'CxUniverse)
+    (v/assert kb (list 'genl tu_bus 'vehicle) 'CxUniverse {:strength :monotonic})
     (doseq [[term cat-strength bus-strength] [[DefaultBoth :default :default]
                                               [MonoCat :monotonic :default]
                                               [MonoBoth :monotonic :monotonic]]]

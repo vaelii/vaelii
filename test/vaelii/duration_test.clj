@@ -161,7 +161,9 @@
                                        [10 10] [4 4]))))
   (testing "a bounded length bounds the overlap it contains"
     (is (= [3 5] (#'dur/overlap-bounds #{:during} [3 5] [10 10])))
-    (is (= [0 5] (#'dur/overlap-bounds #{:overlaps} [3 5] [10 10])))))
+    (is (= [0 5] (#'dur/overlap-bounds #{:overlaps} [3 5] [10 10]))))
+  (testing "a negative upper bound gives a zero overlap, never crossed bounds"
+    (is (= [0 0] (#'dur/overlap-bounds #{:overlaps} [-5 -5] [10 10])))))
 
 ;; ---- overlapDuration -----------------------------------------------------
 
@@ -227,6 +229,16 @@
     (testing "and a length of the wrong dimension is refused rather than compared"
       (v/assert kb (list 'length B '(QuantityFn 5 Metre)) C)
       (is (empty? (v/ask kb (list 'overlapDuration A B '?d) C))))))
+
+(tu/deftest-kb a-negative-length-is-stored-and-read-as-no-length
+  (load-time-units kb)
+  (tu/with-terms [A B]
+    (v/assert kb (list 'length A '(QuantityFn 1 Hour)) C)
+    (v/assert kb (list 'length B '(QuantityFn -5 Minute)) C)
+    (is (seq (v/sentexes-matching kb (list 'length B '?m) C)))
+    (is (empty? (v/ask kb (list 'overlapDuration A B '?d) C)))
+    (is (empty? (v/ask kb (list 'overlapDuration B A '?d) C)))
+    (is (empty? (v/ask kb (list 'totalDuration (list 'list A B) '?d) C)))))
 
 ;; ---- sharpened by the metric network -------------------------------------
 

@@ -78,7 +78,7 @@
     (into #{} (map (fn [[h b]] [h b])) (res/matches-visible kb pattern context false))))
 
 (deftest an-open-negative-answers-what-the-reference-read-answers
-  (let [kb (kb-with-both-polarities)]
+  (tu/with-cleared-kb [kb #(kb-with-both-polarities)]
     (doseq [c '[CxNrA CxNrB CxNrC CxNrD CxUniverse ?ctx]
             pat patterns]
       (testing (str pat " at " c)
@@ -106,7 +106,7 @@
 (deftest an-open-negative-fetches-no-positive-record
   ;; one fetch per denial stored in a context the read reaches, whatever the positive
   ;; extent: an except or a defeat hides a denial after it is fetched
-  (let [kb (kb-with-both-polarities)]
+  (tu/with-cleared-kb [kb #(kb-with-both-polarities)]
     (testing "no denial in the contexts read: nothing is fetched"
       (is (zero? (fetched kb '(not (nr_bare ?w)) 'CxNrA true)))
       (is (zero? (fetched kb '(not (nr_absent ?w)) 'CxNrA true))))

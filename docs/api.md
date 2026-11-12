@@ -24,7 +24,7 @@ should. The file map is [namespaces.md](namespaces.md). Entry points are `lein r
                                               ; :memory :memory-dense :memory-columnar
                                               ; :disk-memory :disk-dense :disk-columnar
                                               ; :disk-snapshot :disk-log :sqlite :pg-memory
-                                              ; :pg-disk-log — or
+                                              ; :pg-disk-log :pg-snapshot — or
                                               ; :records / :index override a half of one
                                               ; (docs/storage.md)
                                               ; :sqlite and :pg records come from Apache-2.0
@@ -207,7 +207,12 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; Reads only, nothing filed (docs/predall.md)
 (kb-integrity kb candidate-terms ctx)
 (kb-integrity kb candidate-terms ctx opts)       ; the bounded checkpoint sweep: the complete specified
-                                                ; audit above, query-only definition clashes over an
+                                                ; audit above, every visible (typeAllSpecified
+                                                ; classifier indep) requirement, each instance of indep
+                                                ; with no believed membership in a member of classifier,
+                                                ; every functionCorrespondingPredicate pair whose function
+                                                ; and predicate are believed of different rigidity kinds,
+                                                ; query-only definition clashes over an
                                                 ; explicit finite set of ground terms, every visible
                                                 ; predicate genl edge whose spec declares an arg type its
                                                 ; genl's constraint does not subsume, every candidate
@@ -235,6 +240,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; {:status :audited :candidate-count n}
                                                 ; when clean, or :status :gap plus any of the sparse
                                                 ; categories :all-specified-violations,
+                                                ; :type-specified-violations,
+                                                ; :rigidity-correspondence,
                                                 ; :definition-inconsistencies, :genl-arg-widening,
                                                 ; :not-under-thing, :implicit-genl,
                                                 ; :implicit-arity-class, :undeclared-term,
@@ -282,9 +289,10 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; engine, bounded at that many rule rewrites.  There
                                                ; is no default depth — name the smallest that works
                                                ; goal = a sentence, or a VECTOR of them, at any depth
-                                               ; opts: {:max-depth n :proof? true} + the node engine's
-                                               ; :strategy :portfolio? :auto? :racers — the whole
+                                               ; opts: {:max-depth n :max-ms n :proof? true} + the node
+                                               ; engine's :strategy :portfolio? :auto? :racers — the whole
                                                ; key set is `query-opt-keys`; a key off it is refused.
+                                               ; Reaching :max-ms is `:budget-exhausted`
                                                ; query? stops the search at the first answer
 (query-status kb goal context opts)            ; query's answers PLUS a report -> {:answers :count :status
                                                ; :truncated? :unenumerated :unenumerated-in-guards :depth
@@ -294,17 +302,20 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; answer; it is conservative (a cyclic set is truncated at
                                                ; every depth).  :unenumerated names each transitive P a
                                                ; (P ?x ?y) goal answered by its extent, not its closure;
-                                               ; :status is :complete, :truncated or :incomplete.
+                                               ; :status is :complete, :truncated, :incomplete, or
+                                               ; :timeout when :max-ms passed first.
                                                ; One concrete context — a fanned context is refused
 (prove kb goal context opts)                   ; recur DFS backward chaining -> [solutions].  With no
                                                ; opts the UNBOUNDED one: terminates on the data,
                                                ; facts+rules
                                                ; goal = a sentence, or a VECTOR of them = a
                                                ; conjunctive query (shared vars join; cost-ordered)
-                                               ; opts: `prove-opt-keys` — {:max-ms n :max-depth n}.
-                                               ; :max-depth PRUNES (the answer is complete for that
-                                               ; depth); :max-ms SUSPENDS, and a deadline reached is
-                                               ; `:budget-exhausted`, never a short answer
+                                               ; opts: `prove-opt-keys` — {:max-ms n :max-depth n
+                                               ; :refuse-depth-cut? bool}.  :max-depth PRUNES (the
+                                               ; answer is complete for that depth); :max-ms
+                                               ; SUSPENDS, and a deadline reached is
+                                               ; `:budget-exhausted`, never a short answer, as is a
+                                               ; depth cut under :refuse-depth-cut?
 (provable? kb goal context opts)               ; boolean (same single-or-vector goal, same opts).
                                                ; Stops at the first solution; an exhausted :max-ms
                                                ; is `:budget-exhausted`, never `false`
@@ -347,7 +358,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; :unenumerated and :answers SET.  Every complete tactician returns the same set —
                                                ; the rows let you verify it, not trust it
                                                ; opts: `compare-tacticians-opt-keys` — the same three
-                                               ; bounds + :tacticians, and NOT :strategy (set per row)
+                                               ; bounds + :tacticians, and NOT :strategy (set per row);
+                                               ; :max-ms is one deadline for every row
 (add-prover kb prover)                         ; register a custom prover
 (prover {:applicable? f :solve f})             ; a prover built from fns of [kb goal context], for
                                                ; add-prover.  :solve-with-support in place of :solve,
@@ -370,10 +382,14 @@ default-chain-opts                              ; the bounds a chain run takes w
 (add-reasoner kb :allen :rcc8)                 ; register shipped ones by name, recorded in the
                                                ;   store an open is held to (docs/storage.md) -> kb
 (reasoners)                                    ; the list: the six algebras + :duration :metric-time
-                                               ;   :sign :calendar, and :brave-cautious, the ASP
-                                               ;   dilemma reader (docs/labeling.md)
+                                               ;   :sign :calendar :includes-instant
+                                               ;   :tightest-start-bound, and
+                                               ;   :brave-cautious, the ASP dilemma reader
+                                               ;   (docs/labeling.md)
 (reasoner :allen)                              ; one as a value, for a registry of your own
-(lookup kb level goal context)                 ; the lookup-to-query stack, levels 0-7
+(lookup kb level goal context [opts])          ; the lookup-to-query stack, levels 0-7; opts
+                                               ; `lookup-opt-keys`: {:max-ms n}, a vector answer or
+                                               ; `:budget-exhausted` at the clock
 (escalate kb goal context [floor] [opts])      ; cheapest level that answers (floor defaults to 2);
                                                ; opts `escalate-opt-keys`: {:max-ms n}, and a climb it
                                                ; stops early is {:level nil :status :timeout}
@@ -576,10 +592,10 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; the three DECLARED readings beside them —
                                                ; :genls-direct / :specs-direct (one genl edge, not
                                                ; reflexive) and :disjoint-maximal (the types the
-                                               ; separation was declared between).  One collection
-                                               ; in the OpenCyc import is disjoint from 79,638 types
-                                               ; and separated from 43; `thing` reaches 110,128
-                                               ; subtypes and was told a handful
+                                               ; separation was declared between).  On the OpenCyc
+                                               ; import (docs/kbs.md, about 114k types) a closure
+                                               ; line can name most of them where the declared
+                                               ; reading names a handful
                                                ; :predicate adds :arity (inherited through genl
                                                ;   included) :arity-via :arg-declarations :props
                                                ;   :inverse :extent-count and the four grants
@@ -1199,7 +1215,8 @@ spelling — `functor lives_in in rule consequent (lives_in ?x cold_place) is sn
 It returns a **vector of problems**, empty when the sentence is admissible.  Each is a
 map with the `:type` keyword `assert` would have thrown — `:naming`, `:not-ground`,
 `:not-well-formed`, `:unknown-handle` (an `except` naming no stored sentex), `:not-range-restricted`, `:not-indexable`, `:disjunction-too-wide`, `:not-stratified`,
-`:not-assertible`, `:exception-not-closed`, `:arg-type`, `:arg-genl`, `:inter-arg-type`,
+`:not-assertible`, `:exception-not-closed`, `:exact-present` (an exact or dated start of the real
+world's present, [time.md](time.md#the-real-worlds-present)), `:arg-type`, `:arg-genl`, `:inter-arg-type`,
 `:disjoint`, `:functional`, `:asymmetric`,
 `:anti-transitive` — a readable
 `:message`, and whatever else that check knows (`:arg` / `:expected` / `:position` for an
@@ -1374,7 +1391,7 @@ content that is stored and not believed. A compound argument at a declared posit
 not read by the declaration check. `check` reports what `assert` refuses, and does not report the
 clashes `try-assert` adds, a fact's own argument conviction among them.
 
-**This is the one write entry point that depends on arrival order.** With `(dog Rex)`
+**What this entry point stores depends on arrival order.** With `(dog Rex)`
 stored, `(cat Rex)` is refused, and with `(cat Rex)` stored, `(dog Rex)` is refused, so the
 KB holds whichever membership arrived first.
 
@@ -1436,8 +1453,9 @@ policy of the context that states them, so `describe` reads them from the asking
 answered from the whole KB would report a declaration to a reader for whom it does not
 bind, and nothing in the answer would say so.  And **every list is truncated, with its size
 beside it** — `{:terms :total :exact? :sorted?}` for terms, `{:rows …}` for maps — because
-on an imported ontology one type has 110,000 subtypes and a reader who is handed a
-truncated list without its total has been told something false.
+on an imported ontology one type has nearly all of its ~114k types as subtypes
+([kbs.md](kbs.md#opencyc-40-which-you-supply)), and a reader who is handed a truncated
+list without its total has been told something false.
 
 Stored content overrides `term-role`'s spelling read. A term `relation?` answers for at the
 asking context (an arity of two or more, or `variable_arity`) is described as a
@@ -1539,8 +1557,8 @@ extent with defeated defaults in it, and an `open-kb` mount or durability key na
 axis opened a KB other than the one asked for.  Each of those is a plausible answer to a
 question nobody asked, which is the structure of failure hardest to notice from the outside.
 
-`query`'s key set is **`query-opt-keys`**: its own dial plus the node engine's keys, which
-is where everything but `:max-depth` and `:proof?` goes — and the engine reads what it
+`query`'s key set is **`query-opt-keys`**: its own dials plus the node engine's keys, which
+is where everything but `:max-depth`, `:max-ms` and `:proof?` goes — and the engine reads what it
 knows and ignores the rest, so an open key set there would let `{:max-deph 3}` answer
 facts-only with nothing to say it had.
 
@@ -1686,18 +1704,20 @@ under `resources/kb/`, read by `vaelii.host.seed`
 never run code). Every sentence about a term is grouped **term-centrically** (blocks in
 natural sort order), and every context file is **discovered on the classpath and loaded
 on kb start** (`seed/layer-files`), so adding a KB is dropping a file — no code
-change. What stays in `starter.clj` is the *order the layers* load in and the one
-computed batch (every type is a `unary_predicate`, placed in CxUniverse). `(load-into kb
+change. What stays in `starter.clj` is the *order the layers* load in. A type's file
+declares it a `unary_predicate` beside its definition, in the context whose `genl` edges
+make it a subtype of `thing`. `(load-into kb
 {:layers [path …]})` then loads each text KB path through `load-text!`, and over a durable
 store nothing wrote to since the last call skips the sources before the first whose files
 changed ([operations.md](operations.md#restarting-over-a-built-store)). The context
 topology is three levels, most general (top) to most specific (bottom).
 
 **CxUniverse** is the root, seen by every context the topology wires in. It holds the
-upper layer: `core.txt`, the vocabulary and the top of the ontology; `abstract.txt`, the
-kinds below the skeleton `core.txt` holds, body parts and substances,
+upper layer: `core.txt`, the vocabulary and the top of the ontology;
+`interface-rules.txt`, the `args`→`argAndRest` twin rule; `abstract.txt`, the kinds below
+the skeleton `core.txt` holds, body parts and substances,
 `tangiblePartOf`/`locatedIn`/`madeOf`, and the two **type-level** relations
-`largerThan`/`partType`; `organism.txt`, the biological taxonomy and its disjointness;
+`typeLargerThan`/`partType`; `organism.txt`, the biological taxonomy and its disjointness;
 `life.txt`, the organism relations and states; `society.txt`, the social relations;
 `measure.txt`, the theory of measurement; `reflection.txt`, the expression lattice and
 the use/mention vocabulary; `space.txt`, the four spatial calculi of
@@ -1734,7 +1754,7 @@ a variable so they join — grandparentOf, part-location, owns-parts).
 **A binary predicate says which level it relates at, unless its two ends disagree.**
 `relation_kind` is a `disjoint_metatype` over `instance_relation_predicate` and
 `type_relation_predicate`: `parentOf`, `northOf` and `madeOf` relate individuals; `genl`,
-`disjoint`, `orthogonal`, `largerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
+`disjoint`, `orthogonal`, `typeLargerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
 exactly one — the unmarked are those whose two ends sit at different levels, or at no
 level at all (`implies` is a connective; `rewriteOf` takes either role so long as its two
 sides agree; `result` and `genlResult` relate a function to a type;
@@ -1744,7 +1764,7 @@ relates one causal thing to an event kind). The mark is not decoration: an
 `try-assert` refuses `genlArg` on one (`:arg-constraint-kind`). A `type_relation_predicate` takes `genlArg` and
 `arg` both: the kinds it relates are subtypes of what `genlArg` names and instances of
 what `arg` names. The distinction is
-what `typeToInstancePred` is stated over, and it is the difference between `(largerThan
+what `typeToInstancePred` is stated over, and it is the difference between `(typeLargerThan
 dog cat)` — dogs are bigger than cats — and a claim about two particular animals.
 
 **Contingent data lives in the tests.** The starter ships no cast: individuals, facts,
@@ -1862,7 +1882,7 @@ those, in content order, read off the held facts and rules
 (`checks/held-argument-entries`), and neither the cap nor `clear-violations!` removes
 one either.
 
-## Contract notes moved out of the docstrings
+## Contract notes
 
 The docstring of each var below holds its contract; the rest of what it said is here.
 

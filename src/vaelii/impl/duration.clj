@@ -6,6 +6,7 @@
   magnitude bounds, with the overlap sharpened by `stp/overlap-window-with-support`.
   Opt-in, as the `:duration` reasoner.  See docs/duration.md."
   (:require [clojure.set :as set]
+            [vaelii.impl.datetime :as dt]
             [vaelii.impl.interval :as iv]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
@@ -32,22 +33,36 @@
 
 ;; ---- reading an interval's own length ------------------------------------
 
+(defn- calendar-seconds
+  "The seconds between the bounds the calendar gives the term `i` (`dt/extent`,
+  `dt/utc-extent`), or nil for a term it gives none."
+  [i]
+  (when-let [[s e] (when (seq? i) (or (dt/extent i) (dt/utc-extent i)))]
+    (let [a (dt/epoch-second s) b (dt/epoch-second e)]
+      (when (and a b) (- b a)))))
+
 (defn- interval-length-with-support
   "The believed length of interval `i` as `[[[dimension base-unit] lo hi] handles]`, the
   bounds snapped to the tolerance grid, or nil when the KB states no length for `i` or two
   that differ once normalized.  Only a `length` match whose measure is a structural
-  quantity term (`provers/measure?`) is read; a match naming its measure by a symbol is
-  skipped.  The handles are each match read and the unit rows each converted through."
+  quantity term (`provers/measure?`) is read; a match naming its measure by a symbol, or
+  one whose lower bound is negative, is skipped.  A calendar term's `calendar-seconds` is
+  read as a stated length in `Second`.  The handles are each match read and the unit rows
+  each converted through."
   [kb i context]
   (let [ms (res/matches-visible kb (list 'length i '?m) context)
-        rs (into []
-                 (keep (fn [m]
-                         (let [measure (get (second m) '?m)]
-                           (when (provers/measure? measure)
-                             (let [[[k lo hi] sup] (provers/measure-with-support kb measure context)]
-                               [[k (provers/round-magnitude lo) (provers/round-magnitude hi)]
-                                (conj sup (first m))])))))
-                 ms)
+        cs (calendar-seconds i)
+        read (fn [measure h]
+               (let [[[k lo hi] sup] (provers/measure-with-support kb measure context)]
+                 (when-not (neg? lo)
+                   [[k (provers/round-magnitude lo) (provers/round-magnitude hi)]
+                    (cond-> sup h (conj h))])))
+        rs (cond-> (into []
+                         (keep (fn [m]
+                                 (let [measure (get (second m) '?m)]
+                                   (when (provers/measure? measure) (read measure (first m))))))
+                         ms)
+             cs (conj (read (list 'QuantityFn cs 'Second) nil)))
         ls (into #{} (map first) rs)]
     (when (= 1 (count ls))
       [(first ls) (into #{} (mapcat second) rs)])))
@@ -58,8 +73,6 @@
   "Is `x` the `(list I1 I2 …)` term `totalDuration` takes its components as?"
   [x]
   (and (sequential? x) (seq x) (= 'list (first x))))
-
-(defn- interval-term? [x] (and (symbol? x) (not (sx/variable? x))))
 
 (defn- sum-bounds
   "The summed `[dim lo hi]` of several normalized lengths, or nil when they do not all
@@ -76,7 +89,7 @@
   * `rels` within `temporallyDisjoint` — `[0 0]`;
   * within `subintervalOf` — the first length;
   * within `hasSubinterval` — the second length;
-  * otherwise `[0, min(hi1, hi2)]`.
+  * otherwise `[0, max(0, min(hi1, hi2))]`.
 
   Nil for an empty `rels`, which is an inconsistent network."
   [rels [lo1 hi1] [lo2 hi2]]
@@ -85,7 +98,7 @@
     (set/subset? rels (stp/interval-denotation 'temporallyDisjoint)) [0 0]
     (set/subset? rels (stp/interval-denotation 'subintervalOf))      [lo1 hi1]
     (set/subset? rels (stp/interval-denotation 'hasSubinterval))     [lo2 hi2]
-    :else                                                      [0 (min hi1 hi2)]))
+    :else                                                      [0 (max 0 (min hi1 hi2))]))
 
 (defn- solve-total
   "`(totalDuration (list I1 I2 …) D)`: the components' summed lengths, bound or checked,
@@ -93,7 +106,7 @@
   [kb goal context]
   (let [[_ components d] goal
         intervals (rest components)]
-    (when (and (seq intervals) (every? interval-term? intervals))
+    (when (and (seq intervals) (every? #(or (sx/plain-symbol? %) (calendar-seconds %)) intervals))
       (let [reads (map #(interval-length-with-support kb % context) intervals)]
         (when (every? some? reads)
           (when-let [[dim lo hi] (sum-bounds (map first reads))]
@@ -125,7 +138,7 @@
   `iv/allen-support` for the pair and the metric overlap window's support."
   [kb goal context]
   (let [[_ i1 i2 d] goal]
-    (when (and (interval-term? i1) (interval-term? i2))
+    (when (and (sx/plain-symbol? i1) (sx/plain-symbol? i2))
       (let [[[dim1 lo1 hi1] s1] (interval-length-with-support kb i1 context)
             [[dim2 lo2 hi2] s2] (interval-length-with-support kb i2 context)]
         (when (and dim1 dim2 (= dim1 dim2))
@@ -167,8 +180,8 @@
                                 (list-form? (nth goal 1))
                                 (answer-slot? (nth goal 2)))
            overlapDuration (and (= 4 (count goal))
-                                (interval-term? (nth goal 1))
-                                (interval-term? (nth goal 2))
+                                (sx/plain-symbol? (nth goal 1))
+                                (sx/plain-symbol? (nth goal 2))
                                 (answer-slot? (nth goal 3)))
            false)))
   (est-bindings [_ _ _ _] 1)

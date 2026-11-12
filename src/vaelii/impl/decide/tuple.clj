@@ -44,12 +44,15 @@
   [sx]
   (let [[a b :as ab] (binary-tuple sx)] (boolean (and ab (= a b)))))
 
-(defn- symbol-pair?
-  "Two plain symbols, which an all-`:monotonic` `anti_symmetric` converse or functional
-  collision merges instead of convicting (`special/derive-antisymmetric-equalities`,
-  `special/derive-functional-equalities`)."
-  [a b]
-  (and (symbol? a) (symbol? b) (not (sx/variable? a)) (not (sx/variable? b))))
+(defn mergeable-values?
+  "Could a clash between `x` and `y` be resolved by merging them?  Only when both are plain
+  symbols, since the equality partition holds symbols: a functional clash `checks` reports,
+  and an all-`:monotonic` `anti_symmetric` converse or functional collision, which
+  `special/derive-antisymmetric-equalities` and `special/derive-functional-equalities`
+  merge instead of convicting.  Any other clash is a nogood the settle decides
+  (docs/equality.md, \"`functional` infers equality instead of throwing\")."
+  [x y]
+  (and (sx/plain-symbol? x) (sx/plain-symbol? y)))
 
 (defn- converse-functors
   "The functors a converse of a tuple of `q` is read under: `q`, and every predicate
@@ -548,7 +551,7 @@
   two symbols, both members `:monotonic` (`h-mono?`, `o-mono?`, each `monotonic-member?`
   of a stored member)."
   [a b h-mono? o-mono?]
-  (and (symbol-pair? a b) h-mono? o-mono?))
+  (and (mergeable-values? a b) h-mono? o-mono?))
 
 (defn- same-class-at?
   "Do the symbols `a` and `b` denote one thing through equality edges a reader with
@@ -732,7 +735,7 @@
                                     (by :anti-symmetric))))
                  :det   (let [[q k n] key
                               [v1 v2] (map #(first (get-in c [::det key %])) members)
-                              sym?    (symbol-pair? v1 v2)]
+                              sym?    (mergeable-values? v1 v2)]
                           (when-not (and sym? (every? #(monotonic-member? tms %) members))
                             (for [mk (cond-> [[:functional-in-arg q n]] (= 2 k n) (conj [:prop :functional q]))]
                               (cond-> {:keys #{mk} :links (links q)}
@@ -811,7 +814,7 @@
                (when (and (= ::det kind) (contains? (get-in c [::member-of o]) k))
                  (let [v1 (first (get-in c [::det key h]))
                        v2 (first (get-in c [::det key o]))]
-                   (and (not= v1 v2) (symbol-pair? v1 v2) (same-class-at? kb up hidden? v1 v2)))))
+                   (and (not= v1 v2) (mergeable-values? v1 v2) (same-class-at? kb up hidden? v1 v2)))))
              (get-in c [::member-of h]))))))
 
 (def converse-family

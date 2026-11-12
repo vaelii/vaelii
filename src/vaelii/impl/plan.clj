@@ -55,12 +55,6 @@
   [goal]
   (and (sequential? goal) (seq goal) (sx/variable? (first goal))))
 
-(defn- dotted?
-  "A dotted rest pattern, `(?pred . ?args)` or `(rel A . ?rest)`.  No argument past the
-  marker sits at a fixed position, so both index models answer 0 for it."
-  [goal]
-  (and (sequential? goal) (boolean (some #(= sx/dot-marker %) goal))))
-
 (defn- unary-literal? [goal]
   (and (sequential? goal) (= 2 (count goal)) (symbol? (first goal))
        (not (sx/variable? (first goal)))))
@@ -100,7 +94,7 @@
   or nil when none is ground.  Each count bounds the literal's matches from above.
   Arguments past a dotted rest marker have no position and are skipped."
   [ix goal count-with-arg*]
-  (let [args   (take-while #(not= sx/dot-marker %) (rest goal))
+  (let [args   (rest (sx/positional goal))
         counts (keep-indexed (fn [i a] (when (sx/ground-term? a) (count-with-arg* ix (inc i) a)))
                              args)]
     (when (seq counts) (apply min counts))))
@@ -123,6 +117,26 @@
   argument, read without building a literal per subtype."
   [ix specs count-at]
   (reduce (fn [acc t'] (+ acc (long (count-at ix [t'])))) 0 specs))
+
+(defn- closure-read
+  "`[dir end]` for a `genl` literal with exactly one end an open atom under `bound`, which
+  `chain/solve-closure` answers from the bound end's global closure, the reflexive member
+  included: `:fwd` when the open end is the upper one, `:rev` when it is the lower one.
+  Nil otherwise."
+  [goal bound]
+  (when (and (sequential? goal) (= 3 (count goal)) (= 'genl (first goal)))
+    (let [[_ a b] goal
+          oa (open-atom? a bound)
+          ob (open-atom? b bound)]
+      (cond (and ob (not oa)) [:fwd a]
+            (and oa (not ob)) [:rev b]))))
+
+(defn- held-closure-rows
+  "The rows of the closure read `[dir end]` when the taxonomy knows them without a walk
+  (`tax/held-closure-size`), else nil.  A bound but unknown end has none."
+  [kb [dir end]]
+  (when (sx/ground-term? end)
+    (tax/held-closure-size (reasoning/taxonomy kb) :genl dir end)))
 
 (defn est-matches
   "A sound upper bound on how many stored facts `goal` matches with the variables in
@@ -152,11 +166,15 @@
            (or (arg-root-estimate ix body count-with-arg) unbounded)
            (count-with-functor ix (functor-of goal))))
 
-       ;; a dotted rest binds no position: the predicate extent, or nothing
-       (dotted? goal)
+       ;; a dotted rest binds no position past its marker: the predicate extent, or nothing
+       (sx/dotted? goal)
        (if (variable-functor? goal)
          unbounded
          (count-with-functor ix (functor-of goal)))
+
+       (closure-read goal bound)
+       (or (held-closure-rows kb (closure-read goal bound))
+           (inc (long (tax/active-edge-count (reasoning/taxonomy kb) :genl))))
 
        ;; A unary type literal matches over its subtype closure, scoped to `context`
        ;; as the matcher's `res/sub-predicates` is.
@@ -287,6 +305,13 @@
         ;; A deferred literal is computed from bindings: one row over no columns, which
         ;; any prefix joins with unchanged.
         vs   (if (sx/deferred-literal? goal) #{} (sx/form-variables goal))
+        trie (fn []
+               (let [p    (prefix-summary ix goal count-at count-children)
+                     a    (arg-root-estimate ix goal count-with-arg)
+                     rows (if a (min (:rows p) (double a)) (:rows p))
+                     f    (self-join-factor goal (:distinct p))
+                     rows (if (and (> f 1.0) (>= rows 1.0)) (max 1.0 (/ rows f)) rows)]
+                 {:rows rows :distinct (cap-distinct (:distinct p) rows)}))
         base (cond
                (not (sequential? goal)) {:rows 1.0 :distinct {}}
 
@@ -294,7 +319,7 @@
 
                ;; A negative literal, a dotted rest and an open functor have no trie
                ;; walk: the rows are `est-matches`'s, and no column is counted.
-               (or (negative? goal) (dotted? goal) (variable-functor? goal))
+               (or (negative? goal) (sx/dotted? goal) (variable-functor? goal))
                {:rows (double (est-matches kb goal #{}
                                            {:count-at count-at :count-children count-children
                                             :count-with-arg count-with-arg
@@ -315,13 +340,15 @@
                  {:rows rows
                   :distinct (cap-distinct (apply merge-with + {} (map :distinct parts)) rows)})
 
-               :else
-               (let [p    (prefix-summary ix goal count-at count-children)
-                     a    (arg-root-estimate ix goal count-with-arg)
-                     rows (if a (min (:rows p) (double a)) (:rows p))
-                     f    (self-join-factor goal (:distinct p))
-                     rows (if (and (> f 1.0) (>= rows 1.0)) (max 1.0 (/ rows f)) rows)]
-                 {:rows rows :distinct (cap-distinct (:distinct p) rows)}))
+               (closure-read goal #{})
+               (let [[dir :as cr] (closure-read goal #{})
+                     open (nth goal (if (= :fwd dir) 2 1))
+                     rows (double (or (held-closure-rows kb cr)
+                                      (min (inc (tax/active-edge-count (reasoning/taxonomy kb) :genl))
+                                           (inc (:rows (trie))))))]
+                 {:rows rows :distinct {open rows}})
+
+               :else (trie))
         ;; a literal with no variables yields one row or none, however many contexts
         ;; store it
         rows (if (seq vs) (:rows base) (min 1.0 (:rows base)))]
@@ -622,7 +649,7 @@
                      (if (and (not (deferred? l)) (computed? l))
                        (or (every? bnd (sx/form-variables l))
                            (let [e (est-override l bnd)] (or (nil? e) (< e unbounded))))
-                       (every? bnd (sx/deferred-input-vars l))))
+                       (every? bnd (sx/deferred-input-vars l bnd))))
             [gens held] (hold-computed gens recs bound computed? runs?)
             defs   (if (seq held) (vec (sort-by first (into defs held))) defs)
             [gens waits] (split-waits gens recs bound end-vars)

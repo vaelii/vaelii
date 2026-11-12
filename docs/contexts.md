@@ -109,7 +109,9 @@ Data hangs below CxWell.
   of the ontology: the parts of the three partitions of `thing`
   ([taxonomy.md](taxonomy.md#the-three-partitions-of-thing)), `physical`, `spatiotemporal`,
   `nowhere_never`, `logical`, `linguistic`, `quantitative`, `biological`, `organism`
-  and `measure`. Each other file is one domain:
+  and `measure`. `interface-rules.txt` is not a domain: it holds the
+  `args`→`argAndRest` twin rule, which stores the `(argAndRest P 1 T)` an `(args P T)`
+  stands for ([argtypes.md](argtypes.md)). Each other file is one domain:
   - `abstract.txt` — the kinds below the skeleton `core.txt` holds (`made`, `food`,
     `substance`, `body_part`, `context`, …), the structural relations
     `tangiblePartOf`/`locatedIn`, and the `travelling` and `flying` event kinds.
@@ -159,7 +161,7 @@ Data hangs below CxWell.
   - `CxAnatomy` — what kinds of thing have what kinds of part, entirely in
     `partType` claims. Nothing here concludes anything about an individual, which is
     deliberate: "birds have wings" to "Pingu has a wing" needs a quantifier reading.
-  - `CxSize` — comparative size said the two ways it can be said: `largerThan`
+  - `CxSize` — comparative size said the two ways it can be said: `typeLargerThan`
     among kinds, and a comparison computed between two objects' measures. The worked
     example of `transitiveInArgInverse` ([inherit.md](inherit.md)).
   - `CxSocial` — what acquaintance follows from, how employment relates to
@@ -224,9 +226,9 @@ Data hangs below CxWell.
   - **pull requests** — a `pull_request` of a `forge_repository` (both below
     `digital_artifact`) is named by the reifiable `(PullRequestFn ?repository
     ?number)`, with `pullRequestOf` its corresponding predicate, value last.
-    `(prStatus ?pullRequest ?status)` takes one of four `pull_request_status` values,
-    `PullRequestDraft`, `PullRequestReady`, `PullRequestMerged` and
-    `PullRequestClosed`, and no time argument. `(holdsReadyLatch ?person ?repository)`
+    Its status is its membership in time-varying kinds: `open_pr`, `merged_pr` and
+    `closed_pr` partition `pull_request`, and `draft_pr` and `ready_pr` partition
+    `open_pr`. A membership takes no time argument. `(holdsReadyLatch ?person ?repository)`
     says whose call it is that a repository's drafts are ready, and is not a grant.
     `merge_access` is below `write_access`, `(hasCapability ?principal (MergeAccessFn
     ?repository))` states a grant of it, with `mergeAccessOf` its functional
@@ -252,6 +254,35 @@ Data hangs below CxWell.
     `agentClaims` is, so it does not outlive H, and records where a claim came from,
     not that it is true. `(nameString ?thing ?name)` takes a thing of any kind and
     a string, and a thing can have more than one name string.
+  - **Discord channel permissions** — a `communication_channel` is an established
+    logical route or shared venue for transmitting messages. Channels are aspatial,
+    temporal and acausal, and therefore intangible. An empty available venue is still
+    a channel. A physical carrier,
+    bare frequency, address or message content is not itself such a channel.
+    `discord_channel` specializes this kind. `DiscordChannelFn` names a channel or thread by
+    its decimal-string snowflake, with `discordChannelOf` as its corresponding predicate.
+    `ChannelViewFn` names the happening kind of accessing that channel under
+    `VIEW_CHANNEL`, with `channelViewOf` as its corresponding predicate. A
+    `(hasCapability ?person (ChannelViewFn ?channel))` grant does not imply reading
+    message history, sending messages, connector delivery or authorization to disclose
+    content. `discordChannelName` records a human-readable label; names need not be
+    unique and can change. `discordAccountId` links a person to the decimal-string ID
+    of a Discord account that person is authorized to use. Neither position is
+    functional: a person can use several accounts and an account can be shared.
+    Account use alone concludes no channel permission. These GAFs take their time
+    from the context, for example:
+
+    ```clojure
+    (ist (CxTimeFn CxDesk (InstantFn 2026 11 3 15 30 0))
+         (hasCapability ExamplePerson (ChannelViewFn (DiscordChannelFn "42"))))
+    ```
+
+    The instant states the permission observation's as-of time, not a persistence
+    interval. A non-atomic permission scan does not establish continuous permission
+    throughout its read interval. An unknown or omitted account produces neither a
+    grant nor a denial. A denial for one account does not establish that a person
+    lacks permission through another account. This vocabulary performs no Discord
+    reads or automatic account-to-capability projection.
   - **perception** — `perceives` is the general relation and `sees` specializes it.
     `seeImage` and `watchVideo` conclude `sees` by a rule guarded by its `spatial`
     second argument, since an image or a video need not be located.
@@ -264,11 +295,11 @@ Data hangs below CxWell.
     `originatorOf` naming the person who founded a construct), and the plurality terms: `singlet`, `plural_system` and
     `alter`, separated under `person`, with `alterOf` and `headmateOf` (read by a rule
     from `alterOf`, and not a spec of `knows`).
-- **CxWell** — sees every middle context except the two opt-in theories, so it (and any
-  context below it) transitively sees the whole ontology except
-  CxNormalPhysicalConditions and CxTra. A
-  `kb/middle/` file is one of the seven theories when it states `(genlCx CxWell <its
-  context>)`, and an opt-in theory when it does not.
+- **CxWell** — sees CxUniverse and the seven theories, and none of the other three middle
+  contexts: CxRealWorld, which sees CxWell, and the opt-in theories
+  CxNormalPhysicalConditions and CxTra. A `kb/middle/` file is one of the seven theories
+  when it states `(genlCx CxWell <its context>)`. CxRealWorld states `(genlCx CxRealWorld
+  CxWell)` instead, and an opt-in theory states neither.
 
 **CxUniverse is locked to the shipped files where it speaks the engine's vocabulary.**
 `vaelii.host.sync/sync!` makes CxUniverse's premises about the engine's own terms exactly
@@ -609,7 +640,14 @@ The removal is **total**, not just for reads:
   that closure when it leaves (`special/recheck-except`, `special/drain-except-moves!`),
   so its cost is the consequences of `H` and not the extent of the rules they use
   (`lein perf`'s `except-beside-unrelated-firings`). A rule in the closure is re-joined
-  over its own extent, since the except moved that rule's visibility. A conclusion placed *above*
+  over its own extent, since the except moved that rule's visibility. A fact outside the
+  closure that a firing over it names is re-chained alone: its visibility did not move, so
+  an edge among those facts re-chains none of the facts under it (`lein perf`'s
+  `except-beside-facts-under-an-edge`). A believed datum that
+  is not a premise and gains a route, a premise mark or a justification, can come into view
+  below the except with no except moving, so the settle re-checks each stored except naming
+  a handle of its support as that except's arrival does (`special/recheck-route-gains!`,
+  `lein perf`'s `route-gain-beside-unrelated-excepts`). A conclusion placed *above*
   the ancestor set (a context that does not see the except) stays stored and believed
   there. A read from a context that sees the except does not find that conclusion when
   every justification it has rests on a hidden handle (the read walk, `exc/hidden-fn`,
@@ -828,14 +866,14 @@ that sees CxUniverse ([the arity rules](#the-consumers-and-what-each-of-them-may
 
 ## decontextualized_predicate: a fact that belongs to the KB, not to one theory
 
-`(decontextualized_predicate P)` takes every `(P ...)` out of the context it was stated
-in. Each one — asserted, or concluded by a rule — is additionally **deduced into
-CxUniverse**, supported by the placement sentex *and* the
+`(decontextualized_predicate P)` takes every `(P ...)` and every `(not (P ...))` out of
+the context it was stated in. Each one — asserted, or concluded by a rule — is
+additionally **deduced into CxUniverse**, supported by the placement sentex *and* the
 `(decontextualized_predicate P)` sentex. Since every context the topology wires in sees CxUniverse,
 the fact becomes visible everywhere, even from a *sibling* context that cannot see
 where it was stated. Retracting or defeating either the original or the declaration
 withdraws the copy through the JTMS, and declaring it retroactively lifts the `(P ...)`
-facts already present. The retroactive sweep copies what is stored, not what is believed,
+and `(not (P ...))` sentexes already present. The retroactive sweep copies what is stored, not what is believed,
 so a fact out of belief at the declaration's arrival has its copy, which rests on the fact
 and follows its label. A declaration that revives lifts the facts stored while it was OUT,
 which its arrival could not reach (`special/revived-declaration-sweeps`, run by the
@@ -925,21 +963,44 @@ in a theory before the facts would merge them at CxUniverse, and the same mark s
 after them below that theory alone. `relation_properties_test`'s
 `a-merge-mark-in-a-sibling-merges-from-every-context-in-either-order` asserts both orders.
 
-Two boundaries, both deliberate:
+### A denial is lifted as the positive is
 
-- **A negative fact is not lifted.** `(not (P a))` has functor `not`, so a declaration
-  about `P` does not reach it. The positive extent becomes universal and the negative
-  one stays in its context.
-- **Declaring is O(extent).** The retroactive sweep creates one copy per stored
-  `(P ...)` inside the declaring `assert`, so a predicate with a large extent is a long
-  assert. Declare before loading where you can.
+The lift reads the predicate of the literal, not the functor of the sentence, so
+`(not (P a))` is deduced into CxUniverse on the declaration about `P`, with the same
+justification, retraction and retroactive sweep as `(P a)` (`special/lifts-to-universe?`).
+`(decontextualized_predicate P)` says `P`'s truth does not depend on the context, and
+`(not (P a))` holds exactly where `(P a)` is false. A `(P a)` and a `(not (P a))` stated in two siblings
+therefore meet as two copies in CxUniverse, and the clash between them is decided or
+reported there for every context that sees CxUniverse, instead of only below the context
+that sees both statements. A denial's copy runs no merge and draws no argument type, since
+a denial licenses neither. It goes on the chaining agenda and re-checks the `exceptWhen`
+rules over its predicate, as a positive copy does
+(`negated_decontextualized_test`). A denial of a permuting mark (`(not (symmetric P))`)
+is not lifted: the engine lifts a permuting mark on its statement alone
+([below](#where-a-relation-property-is-read-from)), and that lift covers the positive
+statement only.
+
+**A copy holds at the weaker of its two supports' strengths.** The lift's justification
+confers `:monotonic` and `conferred-class` caps it at the weakest antecedent, so under a
+`:default` declaration every copy is `:default`, whatever its source's strength. A
+`:monotonic` `(not (P a))` against a `:default` `(P a)` stated in a sibling is then two
+`:default` copies in CxUniverse: a dilemma every context seeing CxUniverse reports, and the
+denial decides only the contexts that see the denial itself. Under a `:monotonic`
+declaration each copy keeps its source's strength, so the same denial defeats the
+positive's copy in CxUniverse and every context reads it false, and two `:monotonic`
+statements in siblings are a conflict. A KB that wants a `:monotonic` statement of `P` to
+decide every context declares `P` at `:monotonic`, as the shipped length bindings are.
+
+**Declaring is O(extent).** The retroactive sweep creates one copy per stored `(P ...)` or
+`(not (P ...))` inside the declaring `assert`, so a predicate with a large extent is a long
+assert. Declare before loading where you can.
 
 ### What the shipped ontology declares it of
 
 Every shipped declaration is a claim about a **predicate** rather than about a world.
 `functional`, `functionalInArg`, `inverse`, `reflexive`, `irreflexive`, `symmetric`, `commutative`,
 `commutativeInArgs`, `commutativeInArgAndRest`, `associative`, `idempotent`,
-`meetFunctionOf`, `anti_symmetric`, `asymmetric`, `transitive`, `anti_transitive`, `equivalence_relation`, `injection`, `surjection` and
+`meetFunctionOf`, `distinctInArgAndRest`, `anti_symmetric`, `asymmetric`, `transitive`, `anti_transitive`, `equivalence_relation`, `injection`, `surjection` and
 `bijection` carry the mark — so a `(symmetric P)` stated in one theory is the KB's
 claim about `P` and not that theory's — and `genlCx` carries the forced variant below.
 The fourteen length bindings (`sx/arity-binding-functors`: `arity`, `arityMin`, the nine
@@ -1080,6 +1141,70 @@ the property reads it where the store does:
 
 The mark asked as a sentence, `(ask? kb '(symmetric R) Ctx)`, is answered where a
 statement is visible, as any sentence is.
+
+## eternal_predicate: a fact stated in a time slice holds in what it slices
+
+A fact of an eternal predicate stated in a time slice is **deduced into the context the
+slice slices**, and from there into the context that one slices while it is a slice too
+(`special/slice-lift`). A predicate `P` is eternal at a slice when the slice sees a
+membership `(eternal_predicate P)`, or `(S P)` for a type `S` below `eternal_predicate`.
+The membership is stated or concluded in the slice or a context of its `genlCx` ancestor
+set, and the slice sees a `genl` path from `S` up to `eternal_predicate`. The read is `ask?`'s fan over
+`(eternal_predicate P)` from the slice, under the network reading
+(`special/eternal-witnesses`), and each step of a nested slice reads from its own slice.
+Both `(P …)` and `(not (P …))` are copied, asserted or concluded by a rule. A fact stored in
+a context that is not a slice is not copied.
+
+A slice is a context `provers/slice-parts` reads as one: a `(CxTimeFn C T)` written in place,
+which the store reifies with its `natFormula`, or a symbol a believed `(natFormula K
+(CxTimeFn C T))` in CxUniverse names. A slice of a slice written in place folds into one
+slice of the outer context ([context-nat.md](context-nat.md#a-slice-of-a-slice-folds-by-declaration)),
+so its fact is copied in one step. A slice of a slice named by a hand-written `natFormula`
+is copied one step per `natFormula`.
+
+The copy rests on one justification per membership the slice reads, under the informant
+`eternal_predicate`. Its antecedents are the fact, the membership, its route, the `genlCx`
+edges the slice sees the membership and the route through, and the slice's `natFormula`.
+The route is the least believed supporter of each `genl` edge on one path from the
+membership's type up to `eternal_predicate` (`provers/membership-route`). Retracting the fact,
+the membership, a `genlCx` edge or the `natFormula` withdraws that justification. A
+departing route edge or `genlCx` edge draws the copy again over a path that survives
+(`special/rederive-descended`).
+
+A reader believes the copy where it believes the antecedents. A denial that defeats the
+membership at a reader withdraws the copy there, as it withdraws any sentex resting on the
+membership. Over a path that holds a `:default` edge, a stored `(not (eternal_predicate P))`
+undercuts the edge's reading of an inherited membership
+([inference.md](inference.md#an-edges-reading)). The fan then reads the edge reading
+`(eternal_predicate P)` in place of the membership, so the copy rests on the reading, and the
+denial's guard defeat withdraws both. Retracting the denial removes the reading, and the copy
+rests on the membership again. `chain/sync-edge-readings!` brings the copies of `P` to its
+readings as they arrive and leave (`special/resync-slice-lifts`).
+
+Every arrival order stores the same copies. The fact's own write copies it
+(`special/deduce-lifts`). A membership, a `genl` edge up to an eternal type, and a
+`natFormula` naming a slice each sweep what is already stored
+(`special/eternal-arrival-sweep`): the membership sweeps its predicate's facts, the edge
+the predicates a membership under its lower type names, and the `natFormula` the literals
+stored in its slice. A `genlCx` edge that shows a context to the contexts below it sweeps
+the slices among them that store a sentex (`special/sweep-slices-under`, a row of the
+`genlCx` move families). A sweep runs for a rule's conclusion that is new and believed, and
+again for a datum the settle brings back IN (`special/revived-declaration-sweeps`).
+
+A slice sees the context it slices: `(contextArgGenlCx CxTimeFn 1)` places a slice written
+in place and a slice a hand-written `natFormula` names under it
+([context-nat.md](context-nat.md#the-structural-genlcx-producer)). So the checks at the
+slice's assert read what the copy meets there, and every other slice of that context sees
+the copy whatever time it covers.
+`decontextualized_predicate` is below `eternal_predicate`, so a decontextualized fact
+stated in a slice is copied into CxUniverse and into the sliced context.
+
+A write of a predicate no stored membership names under an eternal type reads one name
+set (`reads/as-stored-unary-predicates`) and no `natFormula`. The eternal types are read
+over every edge (`special/eternal-types`), as the candidates the slice's read narrows.
+
+`time.txt` makes the event-calculus predicates eternal, `happens`, `initiates`,
+`terminates` and `holdsAt` among them ([time.md](time.md#a-narrative-stated-in-a-slice)).
 
 ## forced_decontextualized_predicate: a canonical home in CxUniverse
 

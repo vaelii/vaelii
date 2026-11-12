@@ -36,7 +36,7 @@
   build that varies `vaelii.disk.tokens` sets it for itself rather than reading it, so no
   matrix row moves the sweep.
 
-  Cost lives in `scratch-dir`, and it is worth reading before concluding the sweep is
+  Cost lives in `temp-root`, and it is worth reading before concluding the sweep is
   expensive: on a tmpfs it is a couple of minutes rather than ten."
   (:require [clojure.set :as set]
             [clojure.string :as str]
@@ -74,9 +74,9 @@
 
 ;; ---- files -------------------------------------------------------------
 
-(def ^:private scratch-dir
-  "Where a probe's directory is built — `VAELII_TEST_TMPDIR`, or the platform temp
-  directory when it is unset.
+(defn- temp-root
+  "A new directory under `java.io.tmpdir`, which the `:test` profile sets from
+  `VAELII_TEST_TMPDIR`; each probe's directory is built inside it.
 
   **The sweep's cost is one device cache flush per offset, and nothing else.**  A probe
   opens a store over a copied directory and closes it again; the close fsyncs, and the
@@ -93,18 +93,12 @@
   concurrency to pay (2.7× measured on a RAM disk), it makes a green run print at
   `:error`.  `sweep` says what that line is and what it would take to collect the rest.
 
-  Point this at a tmpfs and the exhaustive sweep goes from ten minutes to under two:
+  Point `VAELII_TEST_TMPDIR` at a tmpfs and the sweep goes from ten minutes to under two:
   `/dev/shm` on Linux, which is what `deep.yml` uses and adds no work to arrange; on
   macOS a RAM disk is a two-line `hdiutil`/`diskutil` incantation, so a local run
   without it simply pays the ten minutes."
-  (some-> (System/getenv "VAELII_TEST_TMPDIR") str/trim not-empty))
-
-(defn- temp-root ^File []
-  (let [attrs (into-array FileAttribute [])]
-    (.toFile (if scratch-dir
-               (Files/createTempDirectory (.toPath (File. ^String scratch-dir))
-                                          "vaelii-truncfuzz-" attrs)
-               (Files/createTempDirectory "vaelii-truncfuzz-" attrs)))))
+  ^File []
+  (.toFile (Files/createTempDirectory "vaelii-truncfuzz-" (into-array FileAttribute []))))
 
 (defn- rm-rf! [^File d] (doseq [^File f (reverse (file-seq d))] (.delete f)))
 
@@ -304,7 +298,7 @@
   alongside real failures.
 
   Which is why this is a wait rather than a refusal: reclassify that one outcome and
-  sharding is available, for the last 30% after `scratch-dir` has taken the rest.  Until
+  sharding is available, for the last 30% after `temp-root` has taken the rest.  Until
   then a sweep is not worth teaching to make a clean run look dirty."
   [subject sample]
   (let [root (temp-root)
@@ -381,7 +375,7 @@
   ;; The whole space: every byte of every file, for every durable shape — 9,717 offsets
   ;; over this corpus.  A probe is a directory copied and a store opened under recovery,
   ;; so the cost tracks the number of *opens* and not the number of bytes — and, since
-  ;; an open costs a device cache flush and almost nothing else, `scratch-dir` is what
+  ;; an open costs a device cache flush and almost nothing else, `VAELII_TEST_TMPDIR` is what
   ;; decides whether that is ten minutes or under two.  The sampled sweep above
   ;; exercises this harness between the runs that name it.
   (doseq [s (subjects)]

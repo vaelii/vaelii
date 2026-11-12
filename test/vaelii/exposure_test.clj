@@ -186,7 +186,7 @@
     (v/assert kb (list dog_t Rex) CxA)
     (v/assert kb (list cat_t Rex) CxB)
     (is (empty? (v/contradictions kb)) "a dog-cat is odd but nothing separates them yet")
-    (v/assert kb (list 'genl dog_t canine_t) 'CxUniverse)
+    (v/assert kb (list 'genl dog_t canine_t) 'CxUniverse {:strength :monotonic})
     (let [cs (v/contradictions kb)]
       (is (= [:disjoint] (mapv :kind cs)))
       (is (= #{(list dog_t Rex) (list cat_t Rex)}
@@ -470,11 +470,11 @@
             "decided is not exposed")))))
 
 (tu/deftest-kb an-asymmetric-claim-written-across-an-edge-is-decided-at-the-viewer
-  (tu/with-terms [CxA CxB CxW largerThan Rex Pip]
-    (let [one (list largerThan Rex Pip)
-          two (list largerThan Pip Rex)]
+  (tu/with-terms [CxA CxB CxW typeLargerThan Rex Pip]
+    (let [one (list typeLargerThan Rex Pip)
+          two (list typeLargerThan Pip Rex)]
       (split-pair! kb {:a CxA :b CxB :w CxW :decl 'asymmetric
-                       :pred largerThan :one one :two two})
+                       :pred typeLargerThan :one one :two two})
       (is (= [:asymmetric] (mapv :kind (v/contradictions kb))))
       (is (= #{#{[one CxA] [two CxB]}} (decided-pairs kb)))
       (testing "two defaults cannot be ranked, so both claims stand"
@@ -493,7 +493,7 @@
           two (list birthYear Tom 1980)
           spec {:a CxA :b CxB :w CxW :decl 'functional :pred birthYear}
           run  (fn [first-half second-half]
-                 (tu/with-cleared-kb [k tu/fresh]
+                 (tu/with-cleared-kb [k tu/isolated-fresh]
                    (split-lattice! k spec)
                    (v/assert k first-half (if (= first-half one) CxA CxB))
                    (v/assert k second-half (if (= second-half one) CxA CxB))
@@ -555,7 +555,7 @@
   (tu/with-terms [CxA CxB CxW beats Rex]
     (let [claim (list beats Rex Rex)
           run   (fn [c1 c2]
-                  (tu/with-cleared-kb [k tu/fresh]
+                  (tu/with-cleared-kb [k tu/isolated-fresh]
                     (split-lattice! k {:a CxA :b CxB :w CxW
                                        :decl 'asymmetric :pred beats})
                     (v/assert k claim c1)
@@ -623,7 +623,7 @@
                    (v/assert k (list 'genlCx CxW CxB) 'CxUniverse))
           facts! (fn [k] (v/assert k one CxA) (v/assert k two CxB))
           run   (fn [first! second!]
-                  (tu/with-cleared-kb [k tu/fresh]
+                  (tu/with-cleared-kb [k tu/isolated-fresh]
                     (decl! k) (first! k) (second! k)
                     [(mapv :kind (v/contradictions k)) (decided-pairs k)]))
           edges-last  (run facts! edges!)
@@ -738,7 +738,7 @@
             l!    #(v/assert % loser CxU {:strength :default})   ; defeasible, must lose
             ;; the loser is stored in every order and defeated by the settle
             belief (fn [order]
-                     (tu/with-neutral-kb [k #(v/open-kb (tu/scratch-space))]
+                     (tu/with-neutral-kb [k tu/isolated-fresh]
                        (doseq [step order] (step k))
                        [(boolean (seq (v/sentexes-matching k mono CxU)))
                         (boolean (seq (v/sentexes-matching k loser CxU)))]))]
@@ -795,10 +795,10 @@
         (is (empty? (filter (comp #{:functional} :violation) (v/violations kb))))))))
 
 (tu/deftest-kb an-asymmetric-mark-descends-to-a-claim-written-across-an-edge
-  (tu/with-terms [CxA CxB CxW muchLargerThan largerThan Rex Pip]
+  (tu/with-terms [CxA CxB CxW muchLargerThan typeLargerThan Rex Pip]
     (let [one (list muchLargerThan Rex Pip)
           two (list muchLargerThan Pip Rex)]
-      (v/assert kb (list 'asymmetric largerThan) 'CxUniverse)
+      (v/assert kb (list 'asymmetric typeLargerThan) 'CxUniverse)
       (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxB 'CxUniverse) 'CxUniverse)
       (v/assert kb (list 'genlCx CxW CxA) 'CxUniverse)
@@ -806,7 +806,7 @@
       (v/assert kb one CxA)
       (v/assert kb two CxB)
       (is (empty? (v/contradictions kb)))
-      (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
+      (v/assert kb (list 'genl muchLargerThan typeLargerThan) 'CxUniverse)
       (is (= [:asymmetric] (mapv :kind (v/contradictions kb))))
       (is (= #{#{[one CxA] [two CxB]}} (decided-pairs kb)))
       (is (empty? (filter (comp #{:asymmetric} :violation) (v/violations kb)))))))
@@ -829,7 +829,7 @@
           edge!  (fn [k] (v/assert k (list 'genl birthYear measureOf) 'CxUniverse))
           facts! (fn [k] (v/assert k one CxA) (v/assert k two CxB))
           run    (fn [first! second!]
-                   (tu/with-cleared-kb [k tu/fresh]
+                   (tu/with-cleared-kb [k tu/isolated-fresh]
                      (decl! k) (first! k) (second! k)
                      [(mapv :kind (v/contradictions k)) (decided-pairs k)]))
           edge-last  (run facts! edge!)
@@ -869,7 +869,7 @@
   ;; clash was found rather than on what it is.
   (tu/with-terms [CxA CxB CxW birthYear measureOf Tom]
     (doseq [order (tu/orders [:declaration :edge :facts])]
-      (tu/with-cleared-kb [k tu/fresh]
+      (tu/with-cleared-kb [k tu/isolated-fresh]
         (v/assert k (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
         (v/assert k (list 'genlCx CxB 'CxUniverse) 'CxUniverse)
         (v/assert k (list 'genlCx CxW CxA) 'CxUniverse)

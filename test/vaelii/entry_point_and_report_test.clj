@@ -136,6 +136,7 @@
            {:trigger 'genl
             :ground  (concat (ground dog_t cat_t pup_t) [(list 'disjoint dog_t cat_t)])
             :closing (list 'genl pup_t dog_t)
+            :closing-opts {:strength :monotonic}
             :facts   [[(list cat_t Rex) 'CxUniverse] [(list pup_t Rex) 'CxUniverse]]}
            {:trigger 'genlCx
             :ground  (concat [(list 'genlCx CxLeft 'CxUniverse)
@@ -148,11 +149,12 @@
             ;; completes the joint sight
             :report-below   [(list 'genlCx CxBelow CxRight)]
             :report-closing (list 'genlCx CxBelow CxLeft)}]]
-      (doseq [{:keys [trigger ground closing facts report-below report-closing]} rows]
+      (doseq [{:keys [trigger ground closing closing-opts facts report-below report-closing]} rows]
         (testing (str trigger " arriving last")
           (let [[[held held-ctx] [arriving arriving-ctx]] facts
                 d (entry-point (fn [kb]
-                                 (doseq [s (concat ground [closing])] (v/assert kb s 'CxUniverse))
+                                 (doseq [s ground] (v/assert kb s 'CxUniverse))
+                                 (v/assert kb closing 'CxUniverse (or closing-opts {}))
                                  (v/assert kb held held-ctx))
                                arriving arriving-ctx)
                 sight [(list 'genlCx CxLeft 'CxUniverse) (list 'genlCx CxRight 'CxUniverse)]
@@ -163,7 +165,7 @@
                       (v/assert kb s 'CxUniverse))
                     (v/assert kb held CxLeft)
                     (v/assert kb arriving CxRight)
-                    (v/assert kb (or report-closing closing) 'CxUniverse)
+                    (v/assert kb (or report-closing closing) 'CxUniverse (or closing-opts {}))
                     (first (standing-pairs kb)))]
             (is (some? d) "the entry point stores the second membership and the pair is weighed")
             (is (some? c) "and the other order weighs the pair at CxBelow")
@@ -312,11 +314,9 @@
              :type    :arg-type}
             ;; the covering forms type every position a sentence has, or every one from a
             ;; start, with `arg`'s per-argument conviction, so they take its reach
-            ;; `args` read through the `argAndRest` twin core.txt's forward rule stores,
-            ;; a rule this KB does not load
+            ;; `args` reads through the twin stored by the shared interface rule
             {:row     "args, the declaration arriving last"
              :fact    (list parentOf Rock Mary)
-             :extra   [tu/args-sugar-rule]
              :closing (list 'args parentOf person_t)
              :next    (list parentOf Pebble Mary)
              :type    :arg-type}

@@ -645,8 +645,7 @@
 
 (defn- region-classes!
   "Defeat-classes for `region` under `in`, as a least fixpoint: every in-region IN node starts
-  at the lattice's bottom and the equation is iterated to stability, so the answer cannot
-  depend on visit order. `classes` is the live monotonic bitmap with the region already
+  at the lattice's bottom and the equation is iterated to stability. `classes` is the live monotonic bitmap with the region already
   cleared out of it, mutated in place; an OUT datum has no class and an IN one restarts at
   `:default` (absent from the bitmap)."
   [^DenseTms this ^RoaringBitmap region ^RoaringBitmap in ^RoaringBitmap classes]
@@ -676,10 +675,8 @@
                                       acc))))))))))))
 
 (defn- relabel-region!
-  "Recompute belief and the classes for `region`, holding everything
-  outside it fixed — equivalent to a global relabel whenever the region is the
-  affected closure of what changed, and proportional to the region rather than to the
-  graph."
+  "Recompute belief and the classes for `region`, holding everything outside it fixed
+  (docs/nmtms.md, \"Locality\")."
   [^DenseTms this ^RoaringBitmap region]
   (let [live    ^RoaringBitmap (.-jids this)
         ;; only the justifications that can conclude something in the region matter

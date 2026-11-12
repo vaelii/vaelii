@@ -7,8 +7,8 @@
 
     * upper (`kb/upper/`, every file in CxUniverse): what things *are*, always true, like
       `genl`.  Split by domain, one file each:
-        - core.txt       — the vocabulary the engine interprets and the top of the
-                                ontology.
+        - core.txt       — the vocabulary the engine interprets and the ontology's top.
+        - interface-rules.txt — the args→argAndRest twin rule, not a domain.
         - abstract.txt   — the abstract type skeleton (physical/intangible and
                                 their kinds) + the structural relations tangiblePartOf/locatedIn.
         - organism.txt   — the biological taxonomy + its disjointness.
@@ -29,6 +29,8 @@
                                 (nine + four), relative direction over a frame's own axes
                                 (nine + four, the frame being the context), and
                                 qualitative distance (seven + three).
+        - structure.txt  — the data structures (lists, multisets, finite sets, maps),
+                                the relations that read one and the corresponding predicates.
         - time.txt       — qualitative time: Allen's interval relations (thirteen
                                 base + seven derived), the point algebra over instants,
                                 the three calendar constructors and the InstantFn moment
@@ -50,9 +52,9 @@
                                  entails owning its parts.
         - CxNormalPhysicalConditions.txt — the states of matter at room temperature
                                  and pressure: stone, wood and glass are solid,
-                                 mercury is liquid, metal_stuff is solid by default.
-                                 Opt-in: it sees CxUniverse and CxWell does not
-                                 see it.
+                                 mercury is liquid, metal_stuff is solid by default. Opt-in.
+        - CxRealWorld.txt — the real world: restates monotonic the separations
+                                 a fiction may deny.
         - CxSize.txt      — comparative size: stated between kinds, computed
                                  between objects from their measures.
         - CxSocial.txt    — what acquaintance follows from; employment as one way
@@ -68,18 +70,16 @@
                                  and who may merge them, and
                                  the perception relations perceives, sees, seeImage
                                  and watchVideo, and relationship and plural-
-                                 identity vocabulary narrower than CxSocial's.
-                                 Opt-in: it sees CxUniverse and CxSocial, and
-                                 CxWell does not see it.
+                                 identity vocabulary narrower than CxSocial's. Opt-in.
 
   The topology, most general (top) to most specific (bottom): CxUniverse holds the upper
   ontology; each of the seven theories sees CxUniverse and not the other middle
-  contexts, and an opt-in theory sees the middle context its vocabulary builds on (CxTra
-  sees CxSocial); and CxWell sees every middle context but the opt-in ones.  Each middle file wires itself in
-  with its own `genlCx` edges, so the topology is data.  **No cast and no contingent facts
-  ship**: the starter is a schema, and
-  contingent data (a cast, worked examples, the Aesop fables) belongs below CxWell
-  and lives in the tests that need it.
+  contexts; CxWell sees the seven and no opt-in theory; CxRealWorld sees CxWell; and an
+  opt-in theory sees the context its vocabulary builds on (CxTra sees CxSocial,
+  CxNormalPhysicalConditions sees CxRealWorld).  Each middle file wires itself in with its
+  own `genlCx` edges, so the topology is data.  **No cast and no contingent facts
+  ship**: the starter is a schema, and contingent data (a cast, worked examples, the
+  Aesop fables) belongs below CxWell and lives in the tests that need it.
 
   The unit table is the one place individuals ship, and it applies that rule rather
   than excepting itself from it: a minute is sixty seconds by stipulation, so the
@@ -87,10 +87,10 @@
   the test it holds a unit to.
 
   What stays in code here is the *order the layers* load in — loading order is logic,
-  the definitional layer must precede the theories that reason over it — and the one
-  computed batch (every type is also a unary_predicate).  Within a layer, every file
-  present is loaded (discovered from the classpath), so adding a domain or a theory is
-  dropping a file in kb/upper/ or kb/middle/, no code change."
+  the definitional layer must precede the theories that reason over it.  Within a layer,
+  every file present is loaded (discovered from the classpath), so adding a domain or a
+  theory is dropping a file in kb/upper/ or kb/middle/, no code change.  Each file states
+  its types' unary arity beside their definitions."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [taoensso.trove :as trove]
@@ -102,7 +102,6 @@
             [vaelii.impl.disk.files :as dfiles]
             [vaelii.impl.io.text :as text]
             [vaelii.impl.kb :as kbi]
-            [vaelii.impl.naming :as nm]
             [vaelii.impl.oplog :as oplog]
             [vaelii.impl.opts :as opts]
             [vaelii.impl.progress :as progress]
@@ -140,8 +139,7 @@
   release's `:retired` set (`seed/release-renames`). Returns kb.
 
   `loaded`, when given, is called with each load's context right after it is asserted —
-  `CxUniverse` after the upper ontology, then each middle context in load order — and
-  with `:unary-predicates` after the closing batch, which no file states.
+  `CxUniverse` after the upper ontology, then each middle context in load order.
   `vaelii.host.sync` reads it to learn which load each premise came from."
   ([kb] (load-into kb nil))
   ([kb loaded]
@@ -158,21 +156,6 @@
              (seed/load-context kb c "middle")
              (loaded c)
              (progress/tick! r)))))
-     ;; The subtypes of thing are unary types. Other genl components may relate
-     ;; predicates of any arity and do not imply unary membership.  `specs` is read after the
-     ;; batch above settles, so its extent is the believed one; a second batch stores the
-     ;; marks.  A type an argument declaration names already holds its mark (docs/argtypes.md)
-     ;; and is skipped.
-     (v/with-deferred-settle kb
-       (let [ts (into [] (remove #(seq (v/sentexes-matching kb (list 'unary_predicate %)
-                                                            sx/root-context)))
-                      (nm/by-print-key (v/specs kb 'thing)))]
-         (with-open [r (progress/start ::unary-predicates "starter: mark the unary types"
-                                       (count ts))]
-           (doseq [t ts]
-             (v/assert kb (list 'unary_predicate t) sx/root-context)
-             (progress/tick! r)))))
-     (loaded :unary-predicates)
      (warn-retired kb (:retired (seed/release-renames)))
      kb)))
 

@@ -104,18 +104,20 @@
 
 (defn note!
   "Queue what the fact `sx` stored or removed (`stored?`) can move: a declaration's
-  predicate and context, a membership's term, a definition's type.  A removed fact leaves
-  `::held`."
+  predicate and context, a membership's term, a definition's type.  A term is queued under
+  the constraint-only reading alone, the one the drain reads it under
+  (`checks/refresh-argument-holds!`).  A removed fact leaves `::held`."
   [kb sx stored?]
-  (let [d (declaration-of sx)
-        x (when-not d (member-of sx))
-        k (when x (kind-of sx))
-        t (when-not (or d x) (defined-of sx))]
-    (when (or d x t (and (not stored?) (contains? (::held @(reasoning/nogood-candidates kb)) (:id sx))))
+  (let [d  (declaration-of sx)
+        x  (when-not d (member-of sx))
+        xq (when-not *assertive-arg-types?* x)
+        k  (when x (kind-of sx))
+        t  (when-not (or d x) (defined-of sx))]
+    (when (or d xq k t (and (not stored?) (contains? (::held @(reasoning/nogood-candidates kb)) (:id sx))))
       (swap! (reasoning/nogood-candidates kb)
              #(cond-> %
                 d                (update ::decls (fnil conj #{}) d)
-                x                (update ::terms (fnil conj #{}) x)
+                xq               (update ::terms (fnil conj #{}) xq)
                 k                (update ::kinds (fnil conj #{}) k)
                 t                (update ::defns (fnil conj #{}) t)
                 (not stored?)    (update ::held dissoc (:id sx)))))))
@@ -125,10 +127,10 @@
   label moved."
   [kb sxs]
   (let [ds (into #{} (keep declaration-of) sxs)
-        xs (into #{} (keep member-of) sxs)
+        xs (when-not *assertive-arg-types?* (into #{} (keep member-of) sxs))
         ks (into #{} (keep kind-of) sxs)
         ts (into #{} (keep defined-of) sxs)]
-    (when (or (seq ds) (seq xs) (seq ts))
+    (when (or (seq ds) (seq xs) (seq ks) (seq ts))
       (swap! (reasoning/nogood-candidates kb)
              #(cond-> %
                 (seq ds) (update ::decls (fnil into #{}) ds)
@@ -136,10 +138,24 @@
                 (seq ks) (update ::kinds (fnil into #{}) ks)
                 (seq ts) (update ::defns (fnil into #{}) ts))))))
 
+(defonce ^{:private true
+           :doc "`[props answer]` of the last `declares-any?` read: the answer is a function of
+  the taxonomy's `:props` value alone, which a write that marks no predicate leaves identical."}
+  declares-memo
+  (java.util.concurrent.atomic.AtomicReference. nil))
+
 (defn declares-any?
-  "Does any stored declaration name a predicate (`tax/arg-declaration-props`)?"
+  "Does any stored declaration name a predicate (`tax/arg-declaration-props`)?  Asked on
+  every write and every argument check, so it is answered off the last read while the
+  taxonomy's `:props` value stands."
   [tax]
-  (boolean (some #(seq (tax/props tax %)) (vals tax/arg-declaration-props))))
+  (let [props (:props @tax)
+        [p b] (.get ^java.util.concurrent.atomic.AtomicReference declares-memo)]
+    (if (and (some? p) (identical? p props))
+      b
+      (let [b (boolean (some #(seq (get props %)) (vals tax/arg-declaration-props)))]
+        (.set ^java.util.concurrent.atomic.AtomicReference declares-memo [props b])
+        b))))
 
 (defn installed!
   "Mark the family of a just-installed reasoning image adopted (`::adopt`) when the image
@@ -147,19 +163,39 @@
   first drain then records the generations it reads under and decides only the queued
   declarations and terms, so the open runs no whole read and every stored fact keeps the
   label the image gives it until a write reaches it, as `:recover? :trust` keeps every
-  other label (docs/storage.md, \"Trusting an image\").  `recover` reads it whole."
+  other label (docs/storage.md, \"Trusting an image\").  `recover` reads it whole.  An
+  image holding no held fact and no declaration is not adopted: its first declaration
+  reads whole, as in the writer."
   [kb]
-  (swap! (reasoning/nogood-candidates kb)
-         #(if (or (contains? % ::read-under) (::owed %)) % (assoc % ::adopt true))))
+  (let [declares? (declares-any? (reasoning/taxonomy kb))]
+    (swap! (reasoning/nogood-candidates kb)
+           #(if (or (contains? % ::read-under) (::owed %) (and (empty? (::held %)) (not declares?)))
+              %
+              (assoc % ::adopt true)))))
+
+(defn- queued?
+  "Does the state `c` hold a queued declaration, kind or definition, a queued term under
+  the constraint-only reading (the one that reads it), a recover's whole read or an
+  adopted image's first drain?"
+  [c]
+  (boolean (or (::owed c) (::adopt c) (seq (::decls c))
+               (and (not *assertive-arg-types?*) (seq (::terms c)))
+               (seq (::kinds c)) (seq (::defns c)))))
 
 (defn moved?
-  "Does the drain owe a read: a queued declaration, term or definition, a recover, an
-  adopted image's first drain, or taxonomy generations `read-under` other than the last drain's,
-  while some fact is held or some declaration is stored?"
+  "Does the drain owe a read: `queued?`, or taxonomy generations `read-under` other than
+  the last drain's while some fact is held or some declaration is stored?"
   [tax c read-under]
-  (boolean (or (::owed c) (::adopt c) (seq (::decls c)) (seq (::terms c)) (seq (::kinds c)) (seq (::defns c))
-               (and (not= read-under (::read-under c))
-                    (or (seq (::held c)) (declares-any? tax))))))
+  (boolean (or (queued? c)
+               (and (or (seq (::held c)) (declares-any? tax))
+                    (not= read-under (::read-under c))))))
+
+(defn idle?
+  "Can `moved?` answer true under no `read-under` at all: is nothing `queued?`, no fact
+  held, and no declaration stored?  A caller asks it before building the generations
+  `moved?` compares (`special/conviction-generations`)."
+  [tax c]
+  (not (or (queued? c) (seq (::held c)) (declares-any? tax))))
 
 (defn- queue-of
   "The queue the state `c` holds, as `take!` answers it under `read-under`."
@@ -202,3 +238,10 @@
        [:nogood-candidates ::kinds] [:nogood-candidates ::defns] [:nogood-candidates ::read-under] [:nogood-candidates ::owed] [:nogood-candidates ::adopt]]
   :bound "one entry per stored fact or rule held for an argument conviction, one per declaration, per membership term, per `type_relation_predicate` member and per defined type stored, removed or relabelled since the last settle pass"
   :note "the stored facts and rules held in `:out` for an argument conviction (`checks/argument-conviction`), recorded as a fact or rule is stored and at each drain; the declarations, membership terms, `type_relation_predicate` members and defined types a write or relabel queued, and the taxonomy generations the last drain read, which the settle drains (`checks/refresh-argument-holds!`); a recover owes a whole read (`::owed`), and an installed image carrying no generations is adopted as read (`::adopt`)"})
+
+(caches/register-derived
+ {:id :X4 :label "Declaration presence memo" :kind :cache :keyed-by :global :reads [:T2]
+  :holds-content? false
+  :retired-by (caches/on-every :I) :computed :read :imaged? false :var #'declares-memo
+  :value (fn [_] (.get ^java.util.concurrent.atomic.AtomicReference declares-memo))
+  :note "one slot for the process: the taxonomy's `:props` value of the last `declares-any?` read and its answer, compared by identity; another KB's read evicts it"})

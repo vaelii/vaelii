@@ -106,30 +106,30 @@
         ran      (atom 0)
         skipped  (atom 0)]
     (dotimes [w n]
-      (let [kb (tu/isolated-fresh)
-            in-reading (if (odd? w) #(tu/without-entailing (%)) #(%))]
-        (tu/load-starter! kb)
-        (in-reading
-         (fn []
-           (doseq [goal (build-world! kb r)
-                   ;; both spellings of the joint reading, which attach the witness differently
-                   ctx  ['CxInference '?home]
-                   ;; both sides of the bail: at 20 a generated world never outgrows its
-                   ;; budget, and at 1 nearly every join abandons
-                   rpr  [20 1]]
-             (let [fan  (set (binding [vantage/*strategy* :fan
-                                       vantage/*rows-per-reader* rpr]
-                               (v/query kb goal ctx)))
-                   post (set (binding [vantage/*strategy* :post-hoc
-                                       vantage/*rows-per-reader* rpr]
-                               (v/query kb goal ctx)))]
-               (swap! answered + (count fan))
-               (swap! (if (vantage/placeable? kb (if (vector? goal) goal [goal])) ran skipped) inc)
-               (is (= fan post)
-                   (str "world " w " (seed " seed "), goal " (pr-str goal) " at " ctx
-                        ", rows-per-reader " rpr
-                        "\n  fan only:      " (pr-str (sort-by str (remove post fan)))
-                        "\n  post-hoc only: " (pr-str (sort-by str (remove fan post)))))))))))
+      (tu/with-cleared-kb [kb #(tu/isolated-fresh)]
+        (let [in-reading (if (odd? w) #(tu/without-entailing (%)) #(%))]
+          (tu/load-starter! kb)
+          (in-reading
+           (fn []
+             (doseq [goal (build-world! kb r)
+                     ;; both spellings of the joint reading, which attach the witness differently
+                     ctx  ['CxInference '?home]
+                     ;; both sides of the bail: at 20 a generated world never outgrows its
+                     ;; budget, and at 1 nearly every join abandons
+                     rpr  [20 1]]
+               (let [fan  (set (binding [vantage/*strategy* :fan
+                                         vantage/*rows-per-reader* rpr]
+                                 (v/query kb goal ctx)))
+                     post (set (binding [vantage/*strategy* :post-hoc
+                                         vantage/*rows-per-reader* rpr]
+                                 (v/query kb goal ctx)))]
+                 (swap! answered + (count fan))
+                 (swap! (if (vantage/placeable? kb (if (vector? goal) goal [goal])) ran skipped) inc)
+                 (is (= fan post)
+                     (str "world " w " (seed " seed "), goal " (pr-str goal) " at " ctx
+                          ", rows-per-reader " rpr
+                          "\n  fan only:      " (pr-str (sort-by str (remove post fan)))
+                          "\n  post-hoc only: " (pr-str (sort-by str (remove fan post))))))))))))
     (testing "the generator produced worlds that actually answer"
       (is (< 20 @answered)
           (str "only " @answered " answers over " n
@@ -150,7 +150,7 @@
   ;; `(genl ta tb)` in CxG and again in CxS below it, `(ta Fido)` in CxR below CxS.  The
   ;; CxG edge's route covers the CxS edge's, and CxR excepts the CxG edge, so CxR reads
   ;; `(tb Fido)` through the CxS edge alone.  The control excepts the CxS edge instead.
-  (let [kb (tu/isolated-fresh)]
+  (tu/with-cleared-kb [kb #(tu/isolated-fresh)]
     (tu/load-starter! kb)
     (doseq [hide [:general :specific] open? [false true]]
       (tu/with-terms [CxG CxS CxR ta tb Fido]
@@ -172,7 +172,7 @@
                 (pr-str hide goal))))))))
 
 (deftest post-hoc-hands-a-rule-expanding-read-back-to-the-fan
-  (let [kb (tu/isolated-fresh)]
+  (tu/with-cleared-kb [kb #(tu/isolated-fresh)]
     (tu/load-starter! kb)
     (v/assert kb '(genlCx CxRA CxUniverse) 'CxUniverse)
     (v/assert kb '(gq_t GRex) 'CxRA)

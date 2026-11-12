@@ -257,7 +257,11 @@ conversion factor arriving *after* a rule has fired re-joins it
 
 A negative cycle goes to the `(violations kb)` ledger as `:metric-temporal-inconsistency`,
 naming the context, the unit, the instants in the network, any pair unsatisfiable as
-written, and the instants on the cycle. It is deliberately **not** a `wff` check, for the
+written, and the instants on the cycle. The first read of the closure after the write files
+the entry: a metric goal, or the settle's Allen narrowing when `:allen` is registered.
+`try-assert` stores a constraint that closes a negative cycle, because its
+`:unsatisfiable-network` refusal reads the registered calculi and the metric prover is not
+one. It is deliberately **not** a `wff` check, for the
 metric reading of the three reasons [qcn.md](qcn.md) gives:
 
 * `wff` **throws**, and the constraint it would throw on is whichever arrived last. No

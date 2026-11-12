@@ -411,7 +411,7 @@
         (doseq [[s c] facts] (v/assert kb s c))
         (let [all (mapv (fn [[s c]] (checks/constraint-entailments kb s c)) facts)]
           ;; `args` is no kind of its own: it entails through the `argAndRest` twin
-          ;; core.txt's forward rule stores (covering_arg_test)
+          ;; its shared interface rule stores (covering_arg_test)
           (is (= '#{arg genlArg interArg argAndRest argAndRestGenl interArgs
                     interArgAndRest argsGenl}
                  (into #{} (comp cat (map :kind)) all))
@@ -1877,7 +1877,7 @@
   `order`, with `(coll_t Foo)` at `strength` and `coll_t`/`rel_t`
   disjoint at `:monotonic`."
   [order strength]
-  (tu/with-neutral-kb [kb #(v/open-kb (tu/scratch-space))]
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
     (tu/with-terms [rel_t coll_t pp Foo Bar]
       (with-entailing
         (doseq [s [(list 'genl rel_t 'thing) (list 'genl coll_t 'thing) (list 'disjoint rel_t coll_t)]]
@@ -2800,6 +2800,27 @@
                 :violations #{}}}
              (tu/with-entailing (every)))
           "the entailing reading weighs the membership and holds nothing"))))
+
+(tu/deftest-kb a-separation-climbing-a-default-edge-holds-no-symbol-argument-in-either-reading
+  (doseq [[strength held?] [[:default false] [:monotonic true]]]
+    (tu/with-terms [vdog vmineral vrock vneeds Rex Tom]
+      (let [setup [(list 'genl vdog 'thing) (list 'genl vmineral 'thing) (list 'disjoint vdog vmineral)
+                   (list 'binary_predicate vneeds)]
+            fact  (list vneeds Rex Tom)
+            ss    {:decl (list 'arg vneeds 1 vdog) :fact fact :own (list vrock Rex)}
+            eh    (v/assert kb (list 'genl vrock vmineral) 'CxUniverse {:strength strength})
+            every (fn [] (into #{} (map #(held-reading kb setup ss %))
+                               (tu/permutations [:decl :fact :own])))
+            read  [(tu/without-entailing (every)) (tu/with-entailing (every))]]
+        (v/retract! kb eh)
+        (is (= [#{(if held?
+                    {:decl [true true] :fact [true false] :own [true true]
+                     :violations #{[fact :arg-type]}}
+                    {:decl [true true] :fact [true true] :own [true true] :violations #{}})}
+                #{{:decl [true true] :fact [true true] :own [true true] :violations #{}}}]
+               read)
+            (str strength " (genl vrock vmineral): at :default the (vdog Rex) the declaration"
+                 " demands undercuts the edge's reading, so the separation places no nogood"))))))
 
 (tu/deftest-kb a-declaration-draws-no-type-from-an-inert-fact
   ;; An inert sentex claims nothing, so it is no fact a declaration's sweep reads.  The

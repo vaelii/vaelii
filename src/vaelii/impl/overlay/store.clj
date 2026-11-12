@@ -7,15 +7,14 @@
   The record half of the `:overlay` backend (the index half is
   `vaelii.impl.overlay.kv`).
 
-  * **The id boundary.**  The overlay's handle counter is seeded above every handle the base
-    holds, so a newly minted handle can never collide with a base one.  A record written
+  * **The id boundary.**  The overlay mints each handle from the base's counter, so a
+    minted handle matches no base one, even one minted after the mount.  A record written
     at a handle the base *already* uses is therefore an **override** — the same handle,
     a different record — and the overlay's copy wins every read.  That is how a base
     record is edited without editing the base: `mark-premise` materializes an override
     before it writes, since the assumption strength lives on the record.  The boundary
-    holds over the base the handles were minted against, so a mount records the base's
-    watermark and refuses a base that has grown since the fork wrote against it
-    (`check-base-overlap!`).
+    holds over the base the handles were minted against, so a mount checks the base
+    against what the last one recorded (`check-base-overlap!`, `accept-growth`).
   * **Tombstones.**  Deleting a base handle cannot touch the base, so it is recorded and
     the read path filters it.  They are sticky: a base record cannot come back through
     fall-through, only by being written again into the overlay (a revival, at the same
@@ -60,6 +59,7 @@
 (def ^:private released-key     ::premise-released)
 (def ^:private watermark-key    ::base-watermark)
 (def ^:private digested-key     ::base-digested)
+(def ^:private minted-key       ::minted-ranges)
 ;; A durable fork's bookkeeping may hold the same handle set under this second key, which
 ;; the mount reads beside `digested-key` and nothing writes.
 (def ^:private digested-key-alt ::base-pinned)
@@ -138,19 +138,57 @@
         (p/kv-put meta-kv (digest-key h) d)
         (p/kv-add-to-set meta-kv digested-key h)))))
 
+(def ^:private minted-chunk
+  "How far past a handle it mints a fork's recorded range reaches, so the bookkeeping takes
+  one write per this many mints."
+  1024)
+
+(defn minted-ranges
+  "The `[lo hi)` handle ranges holding every handle the fork whose bookkeeping is
+  `meta-kv` has minted, as a vector, or nil when it has recorded none.  A base opened with
+  the fork's directory under `:fork-dirs` skips them (`vaelii.impl.overlay.mount`)."
+  [meta-kv]
+  (p/kv-get meta-kv minted-key))
+
+(defn- record-minted!
+  "Merge `ranges` into the minted ranges in the bookkeeping and in `minted`, its mirror."
+  [meta-kv minted ranges]
+  (let [m (cap/reserve-ranges @minted ranges)]
+    (when (not= m @minted)
+      (p/kv-put meta-kv minted-key (mapv vec m))
+      (reset! minted m))))
+
+(defn- note-minted!
+  "Record that the fork holds handle `id` before the handle is used.  A handle the recorded
+  ranges hold costs one lookup; one past them extends the session's range, which starts at
+  `session-lo`, to `minted-chunk` beyond `id`, in one write."
+  [meta-kv minted session-lo id]
+  (let [id (long id)]
+    (when (= id (cap/skip-reserved @minted id))
+      (let [lo (long @session-lo)]
+        (record-minted! meta-kv minted [(if (>= id lo) [lo (+ id 1 minted-chunk)] [id (inc id)])])))))
+
 (defrecord OverlayRecordStore [overlay base meta-kv counter base-top
                                hidden? sx-tombstoned jd-tombstoned pv-tombstoned released
-                               base-opts rebase-lock]
+                               minted session-lo durable? base-opts rebase-lock follow]
 
   p/RecordStore
-  ;; strictly above every handle the base holds, so a minted handle is never a base one
-  ;; and a handle at or below the watermark is unambiguously an override
-  (next-id [_] (long (swap! counter inc)))
+  ;; drawn from the base's counter past every handle the fork holds, so no base handle minted
+  ;; after the mount names a fork record; a cleared fork counts alone (`clear-records!`)
+  (next-id [_]
+    (if @hidden?
+      (long (swap! counter inc))
+      (let [id (loop [] (let [b (long (p/next-id base))] (if (> b (long @counter)) b (recur))))]
+        (swap! counter max id)
+        (note-minted! meta-kv minted session-lo id)
+        id)))
 
   (put-sentex [this sentex]
     (let [id (long (or (:id sentex) (p/next-id this)))]
       (observe/keep-before! this [:sentex id] #(p/get-sentex this id))
       (record-base-digest! base meta-kv base-top hidden? id)
+      (when (and (:id sentex) (>= id (long @base-top)) (not @hidden?))
+        (note-minted! meta-kv minted session-lo id))
       ;; an explicit handle (an import, a revival) must carry the counter with it, or the
       ;; next mint would reissue it and overwrite a record with no error
       (swap! counter max id)
@@ -193,6 +231,8 @@
     (let [id (long (or (:id justification) (p/next-id this)))]
       (observe/keep-before! this [:justification id] #(p/get-justification this id))
       (record-base-digest! base meta-kv base-top hidden? id)
+      (when (and (:id justification) (>= id (long @base-top)) (not @hidden?))
+        (note-minted! meta-kv minted session-lo id))
       (swap! counter max id)
       (let [r (p/put-justification overlay (assoc justification :id id))]
         (when (contains? @jd-tombstoned id) (unnote! jd-tombstoned meta-kv jd-tombstone-key id))
@@ -315,6 +355,7 @@
     (p/kv-clear! meta-kv)
     (p/kv-put meta-kv cleared-key true)
     (reset! counter 0)
+    (reset! minted nil)
     (reset! sx-tombstoned #{})
     (reset! jd-tombstoned #{})
     (reset! pv-tombstoned #{})
@@ -439,6 +480,46 @@
           (filter #(unlike p/get-justification %))
           (sort (p/justification-ids overlay)))))
 
+(def ^:private base-end-key    ::base-end)
+(def ^:private base-blocks-key ::base-blocks)
+
+(def ^:private summary-block
+  "How many handles one sum of a base summary's `:blocks` covers."
+  1024)
+
+(defn- base-summary
+  "One pass over `base`'s records: `:end`, one above the highest handle it holds (0 when it
+  holds none); `:blocks`, the sum of each record's content digest (`base-digest`) per
+  `summary-block` handles, below `:end`; and, given `old-end`, `:old-blocks`, the same sums
+  over the handles below it, and `:arrivals`, the handles at or above it in ascending order."
+  [base old-end]
+  (let [blocks  (java.util.HashMap.)
+        old     (java.util.HashMap.)
+        arrived (java.util.ArrayList.)
+        top     (volatile! -1)
+        add!    (fn [^java.util.HashMap m b d] (.put m b (unchecked-add (long (or (.get m b) 0)) (long d))))
+        fold    (fn [h d]
+                  (let [h (long h) b (quot h summary-block)]
+                    (vswap! top max h)
+                    (add! blocks b d)
+                    (if (and old-end (>= h (long old-end)))
+                      (.add arrived h)
+                      (add! old b d))))
+        vec-of  (fn [^java.util.HashMap m end]
+                  (mapv #(long (or (.get m %) 0)) (range (quot (+ (long end) (dec summary-block)) summary-block))))]
+    (doseq [h (p/sentex-ids base)]
+      (when-let [sx (p/get-sentex base h)] (fold h (fp/record-hash h sx))))
+    (doseq [h (p/justification-ids base)]
+      (when-let [j (p/get-justification base h)] (fold h (fp/justification-hash h j))))
+    (let [end (inc (long @top))]
+      (cond-> {:end end :blocks (vec-of blocks end)}
+        old-end (assoc :old-blocks (vec-of old old-end)
+                       :arrivals   (vec (sort arrived)))))))
+
+(defn- record-summary! [meta-kv {:keys [end blocks]}]
+  (p/kv-put meta-kv base-blocks-key blocks)
+  (p/kv-put meta-kv base-end-key end))
+
 (def ^:private overlap-shown
   "How many shared handles a `:fork-base-overlap` refusal names."
   20)
@@ -464,15 +545,17 @@
   read as an override of a base record the fork never saw; a key the fork emptied stays
   deleted, hiding what the base has since added under it; a tombstone or override at a
   handle the base now fills with another record applies to that record.  Each way, a base
-  sentence answers `unknown` through the fork.  A fork that has written nothing is a
-  fresh fork, and mounts."
-  [overlay base meta-kv {:keys [watermark base-next own-next index-cleared?]}]
+  sentence answers `unknown` through the fork.  A fork that has written nothing mounts,
+  and growth under a `summarized?` one is `accept-growth`'s."
+  [overlay base meta-kv {:keys [watermark base-next own-next index-cleared? summarized?]}]
   (let [changed (changed-base-records base meta-kv)]
     (when (seq changed)
       (refuse-overlap! (str "the base records at " (count changed) " handle(s) the fork removed"
                             " or overrode are not the ones it removed or overrode")
                        changed watermark)))
-  (if watermark
+  (cond
+    summarized? nil
+    watermark
     (when-let [grown (first-grown base watermark base-next)]
       (when (holds-state? overlay meta-kv index-cleared?)
         (let [shared (minted-shared base watermark base-next own-next)]
@@ -482,29 +565,114 @@
                                   (str ", including " (count shared)
                                        " of the handles the fork's own records use")))
                            shared watermark))))
+    :else
     (let [shared (overridden-unlike overlay base)]
       (when (seq shared)
         (refuse-overlap! (str "it now holds other records at " (count shared)
                               " of the handles the fork's own records use")
                          shared nil)))))
 
+(def ^:private follow-key
+  "A catch-up whose index ops are being applied: `{:end :blocks :ops :arrivals}`."
+  ::follow)
+
+(defn- first-changed-block
+  "The `[lo hi)` handles of the first block whose sum differs between the summaries
+  `blocks` and `now`, both over the handles below `end`; nil when none does."
+  [blocks now end]
+  (when-let [b (first (filter #(not= (nth blocks %) (nth now %)) (range (count blocks))))]
+    [(* (long b) summary-block) (min (long end) (* (inc (long b)) summary-block))]))
+
+(defn- accept-growth
+  "A durable fork's mount over its base, against the summary its index describes: the one
+  a pending catch-up (`follow-key`) records, else the last recorded one.  Over a base
+  holding a record at or above that summary's end, a fork holding state is refused when a
+  block below the end differs or an arrival lies in a range the fork minted, and else
+  gets `{:arrivals :end :blocks}`, which `begin-follow!` takes.  Otherwise the summary is
+  recorded and the answer is nil."
+  [overlay base meta-kv base-next index-cleared?]
+  (let [pending (p/kv-get meta-kv follow-key)
+        end     (or (:end pending) (p/kv-get meta-kv base-end-key))]
+    (if (and end (first-grown base end base-next) (holds-state? overlay meta-kv index-cleared?))
+      (let [{:keys [old-blocks arrivals] :as now} (base-summary base end)
+            minted (cap/reserve-ranges nil (minted-ranges meta-kv))
+            hit    (filterv #(not= (long %) (cap/skip-reserved minted %)) arrivals)]
+        (when-let [[lo hi] (first-changed-block (or (:blocks pending) (p/kv-get meta-kv base-blocks-key))
+                                                old-blocks end)]
+          (refuse-overlap! (str "its records at handles " lo " to " (dec (long hi))
+                                " are not the ones the fork was written over")
+                           [] end))
+        (when (seq hit)
+          (refuse-overlap! (str "it gained records at " (count hit) " handle(s) this fork"
+                                " minted; open the base with :fork-dirs naming the fork's"
+                                " directory, so the records it gains take handles no fork holds")
+                           hit end))
+        (select-keys now [:arrivals :end :blocks]))
+      (when-not pending
+        (when (or (nil? end) (first-grown base end base-next))
+          (record-summary! meta-kv (base-summary base nil)))
+        nil))))
+
+(defn follow-owed
+  "`{:arrivals :end :blocks}` for the base records the fork `store`'s mount accepted and its
+  index does not yet describe, or nil."
+  [store]
+  @(:follow store))
+
+(defn pending-follow
+  "The catch-up a mount of the fork `store` found unfinished, `{:end :blocks :ops :arrivals}`,
+  or nil."
+  [store]
+  (p/kv-get (:meta-kv store) follow-key))
+
+(defn begin-follow!
+  "Record in the bookkeeping that the fork `store`'s index takes `ops` (`kv-batch` ops) to
+  describe the base its mount accepted (`follow-owed`), before the ops are applied."
+  [store ops]
+  (p/kv-put (:meta-kv store) follow-key
+            (assoc (select-keys (follow-owed store) [:end :blocks :arrivals]) :ops ops))
+  (reset! (:follow store) nil))
+
+(def ^:private firings-key
+  "The arrivals of finished catch-ups whose rule firings the fork has not run."
+  ::firings-owed)
+
+(defn end-follow!
+  "Record the summary of the pending catch-up as the one the fork `store`'s index describes,
+  move its arrivals to the ones owing firings (`firings-owed`), and drop it."
+  [store]
+  (let [meta-kv (:meta-kv store)]
+    (when-let [pending (p/kv-get meta-kv follow-key)]
+      (record-summary! meta-kv pending)
+      (p/kv-put meta-kv firings-key (into (or (p/kv-get meta-kv firings-key) []) (:arrivals pending)))
+      (p/kv-delete meta-kv follow-key))))
+
+(defn firings-owed
+  "The base handles the fork `store`'s index took in whose rule firings have not run, or nil."
+  [store]
+  (p/kv-get (:meta-kv store) firings-key))
+
+(defn firings-done!
+  "Drop the fork `store`'s owed firings (`firings-owed`)."
+  [store]
+  (p/kv-delete (:meta-kv store) firings-key))
+
 (defn overlay-record-store
   "Compose a writable `overlay` `RecordStore` over a read-only `base` one, with `meta-kv`
   holding the overlay's record-level bookkeeping.
 
-  The mount reads the bookkeeping back — so a durable overlay remounted over the same
-  base serves the merged contents it was left in — and seeds the handle counter above both
-  stores' watermarks, which is what keeps a minted handle out of the base's range even
-  after a restart.  It records the base's watermark in the bookkeeping, and refuses
-  (`:fork-base-overlap`) a remount over a base that has changed since, once the fork has
-  written anything (`check-base-overlap!`).  `index-cleared?` says the fork's own index
-  half has been rebuilt (`reindex`), which is state the record half cannot see.
-  `base-opts` are the opts the base was opened from, or nil when it arrived as open
-  stores; `rebase!` replaces a base that has them."
-  ([overlay base meta-kv] (overlay-record-store overlay base meta-kv false nil))
+  The mount reads the bookkeeping back, so a durable overlay remounted over the same base
+  serves the merged contents it was left in.  It records the base's watermark, and a
+  `durable?` fork the base's summary (`base-summary`), and refuses (`:fork-base-overlap`)
+  a base changed since in a way the fork cannot follow (`check-base-overlap!`,
+  `accept-growth`).  `index-cleared?` says the fork's own index half has been rebuilt
+  (`reindex`), which is state the record half cannot see.  `base-opts` are the opts the
+  base was opened from, or nil when it arrived as open stores; `rebase!` replaces a base
+  that has them."
+  ([overlay base meta-kv] (overlay-record-store overlay base meta-kv false nil false))
   ([overlay base meta-kv index-cleared?]
-   (overlay-record-store overlay base meta-kv index-cleared? nil))
-  ([overlay base meta-kv index-cleared? base-opts]
+   (overlay-record-store overlay base meta-kv index-cleared? nil false))
+  ([overlay base meta-kv index-cleared? base-opts durable?]
    (let [base-next (long (p/next-id base))         ; allocation, not mutation (see `frozen`)
          own-next  (long (p/next-id overlay))
          hidden?   (some? (p/kv-get meta-kv cleared-key))
@@ -514,21 +682,37 @@
        (check-base-overlap! overlay base meta-kv {:watermark      watermark
                                                   :base-next      base-next
                                                   :own-next       own-next
-                                                  :index-cleared? index-cleared?}))
+                                                  :index-cleared? index-cleared?
+                                                  :summarized?    (and durable?
+                                                                       (some? (or (p/kv-get meta-kv follow-key)
+                                                                                  (p/kv-get meta-kv base-end-key))))}))
      (p/kv-put meta-kv watermark-key base-next)
-     (map->OverlayRecordStore
-      {:overlay        overlay
-       :base           base
-       :meta-kv        meta-kv
-       :counter        (atom (max base-next own-next))
-       :base-top       (atom base-next)
-       :hidden?        (atom hidden?)
-       :sx-tombstoned  (atom (set (p/kv-members meta-kv sx-tombstone-key)))
-       :jd-tombstoned  (atom (set (p/kv-members meta-kv jd-tombstone-key)))
-       :pv-tombstoned  (atom (set (p/kv-members meta-kv pv-tombstone-key)))
-       :released       (atom (set (p/kv-members meta-kv released-key)))
-       :base-opts      base-opts
-       :rebase-lock    (ReentrantReadWriteLock.)}))))
+     (let [follow (when (and durable? (not hidden?))
+                    (accept-growth overlay base meta-kv base-next index-cleared?))
+           stored (minted-ranges meta-kv)
+           minted (atom (cap/reserve-ranges nil stored))]
+       (when-not hidden?
+         (record-minted! meta-kv minted
+                         [(if (seq stored)
+                            [(second (peek stored)) own-next]
+                            [(inc (long (or watermark own-next))) own-next])]))
+       (map->OverlayRecordStore
+        {:overlay        overlay
+         :base           base
+         :meta-kv        meta-kv
+         :counter        (atom (max base-next own-next))
+         :base-top       (atom base-next)
+         :hidden?        (atom hidden?)
+         :sx-tombstoned  (atom (set (p/kv-members meta-kv sx-tombstone-key)))
+         :jd-tombstoned  (atom (set (p/kv-members meta-kv jd-tombstone-key)))
+         :pv-tombstoned  (atom (set (p/kv-members meta-kv pv-tombstone-key)))
+         :released       (atom (set (p/kv-members meta-kv released-key)))
+         :minted         minted
+         :session-lo     (atom (inc (max base-next own-next)))
+         :durable?       durable?
+         :base-opts      base-opts
+         :rebase-lock    (ReentrantReadWriteLock.)
+         :follow         (atom follow)})))))
 
 (defn rebase!
   "Empty the fork `store`'s own records and bookkeeping, call `refill!`, which replaces the
@@ -537,18 +721,22 @@
   base's `next-id`, as a mount seeds them.  Every record, tombstone, released mark and
   base digest the fork held is dropped, so nothing written against the old base is read
   against the new one.  The base reads as hidden until `refill!` returns."
-  [{:keys [overlay base meta-kv counter base-top hidden?
-           sx-tombstoned jd-tombstoned pv-tombstoned released]} refill!]
+  [{:keys [overlay base meta-kv counter base-top hidden? minted session-lo durable?
+           sx-tombstoned jd-tombstoned pv-tombstoned released follow]} refill!]
   (reset! hidden? true)
   (p/clear-records! overlay)
   (p/kv-clear! meta-kv)
+  (reset! minted nil)
+  (reset! follow nil)
   (run! #(reset! % #{}) [sx-tombstoned jd-tombstoned pv-tombstoned released])
   (let [r         (refill!)
         base-next (long (p/next-id base))
         own-next  (long (p/next-id overlay))]
     (p/kv-put meta-kv watermark-key base-next)
+    (when durable? (record-summary! meta-kv (base-summary base nil)))
     (reset! base-top base-next)
     (reset! counter (max base-next own-next))
+    (reset! session-lo (inc (max base-next own-next)))
     (reset! hidden? false)
     r))
 

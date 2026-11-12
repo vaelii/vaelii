@@ -32,7 +32,7 @@
 #   revision   the short hash the run STARTED at.  Not HEAD-at-read-time: the
 #              tree moves under a 35-minute matrix, and the verdict belongs to
 #              the tree that was compiled
-#   dirty      files under src/ or test/ uncommitted when it started.  A green
+#   dirty      files under REVISION_PATHS uncommitted when it started.  A green
 #              row over a dirty tree answers for no commit at all, and a reader
 #              cannot tell without this column
 #   subject    the revision's commit subject, so a reader placing a row in the

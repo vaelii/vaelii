@@ -101,14 +101,14 @@
 (deftest the-held-reach-answers-what-a-fresh-walk-answers
   (doseq [tms [:dense :reference]]
     (testing (str tms)
-      (let [kb (reach-kb {:tms tms} 6)]
+      (tu/with-cleared-kb [kb #(reach-kb {:tms tms} 6)]
         (is (false? (agrees kb "before any write")))
         (let [answers (mapv (fn [[label f]] (f kb) (agrees kb label)) (stream))]
           (is (= [false true false true false true false false true false false true false true] answers)
               "the stream reaches a supporter where a firing completes off a target's closure"))))))
 
 (deftest a-write-off-the-closure-reads-the-held-walk
-  (let [kb (reach-kb {} 6)]
+  (tu/with-cleared-kb [kb #(reach-kb {} 6)]
     (is (false? (reach kb true)))
     (let [walks (memo-walks kb)]
       (dotimes [i 8] (v/assert kb (list 'rsr_on (symbol (str "rsr_f" i))) C {}))
@@ -167,15 +167,15 @@
 
 (deftest a-held-reach-over-random-writes-answers-what-a-fresh-walk-answers
   (doseq [seed [9 12 13 14 30 43]]
-    (let [kb    (reach-kb {} 2)
-          held  (atom (into {} (map (juxt identity #(rule! kb %))) (keys rules)))
-          trace (mapv (fn [op] (apply-op! kb held op) [op (reach kb false) (reach kb true)])
-                      (random-ops (java.util.Random. seed) 60))
-          moves (set (map (fn [[[_ a] [_ b]]] [a b]) (partition 2 1 trace)))]
-      (is (= [] (filterv (fn [[_ fresh held]] (not= fresh held)) trace))
-          (str "seed " seed ": the writes after which the held reach differs"))
-      (is (every? moves [[false true] [true false] [true true]])
-          (str "seed " seed " makes a hit, breaks one and keeps one")))))
+    (tu/with-cleared-kb [kb #(reach-kb {} 2)]
+      (let [held  (atom (into {} (map (juxt identity #(rule! kb %))) (keys rules)))
+            trace (mapv (fn [op] (apply-op! kb held op) [op (reach kb false) (reach kb true)])
+                        (random-ops (java.util.Random. seed) 60))
+            moves (set (map (fn [[[_ a] [_ b]]] [a b]) (partition 2 1 trace)))]
+        (is (= [] (filterv (fn [[_ fresh held]] (not= fresh held)) trace))
+            (str "seed " seed ": the writes after which the held reach differs"))
+        (is (every? moves [[false true] [true false] [true true]])
+            (str "seed " seed " makes a hit, breaks one and keeps one"))))))
 
 (defn- witness-target
   "The chain term of the target the held path of the `genl` reach starts from."
@@ -185,33 +185,33 @@
     (second (:sentence (v/sentex kb (first hs))))))
 
 (deftest a-write-off-the-path-reads-the-held-true
-  (let [kb  (reach-kb {} 6)
-        on  #(list 'rsr_on %)
-        off (fn [n] (dotimes [i 8] (v/assert kb (list 'rsr_on (symbol (str "rsr_f" n i))) C {})))]
-    (v/assert kb (on 'rsr_c1) C {})
-    (v/assert kb (on 'rsr_c2) C {})
-    (is (true? (reach kb true)))
-    (let [walks (memo-walks kb)]
-      (off 0)
+  (tu/with-cleared-kb [kb #(reach-kb {} 6)]
+    (let [on  #(list 'rsr_on %)
+          off (fn [n] (dotimes [i 8] (v/assert kb (list 'rsr_on (symbol (str "rsr_f" n i))) C {})))]
+      (v/assert kb (on 'rsr_c1) C {})
+      (v/assert kb (on 'rsr_c2) C {})
       (is (true? (reach kb true)))
-      (is (= walks (memo-walks kb)) "eight settles off the path, each reading the reach, walk no more"))
-    (let [walks (memo-walks kb)]
-      (v/retract! kb (v/handle-of kb (on (witness-target kb)) C))
-      (is (true? (agrees kb "the path's last firing undone, the other chain's standing")))
-      (is (= (inc walks) (memo-walks kb)) "a path that no longer holds walks again")
-      (off 1)
-      (is (true? (reach kb true)))
-      (is (= (inc walks) (memo-walks kb)) "the walk again holds the path it met"))
-    (let [walks (memo-walks kb)]
-      (v/retract! kb (v/handle-of kb (on (witness-target kb)) C))
-      (is (false? (agrees kb "both firings undone")))
-      (is (= (inc walks) (memo-walks kb))))))
+      (let [walks (memo-walks kb)]
+        (off 0)
+        (is (true? (reach kb true)))
+        (is (= walks (memo-walks kb)) "eight settles off the path, each reading the reach, walk no more"))
+      (let [walks (memo-walks kb)]
+        (v/retract! kb (v/handle-of kb (on (witness-target kb)) C))
+        (is (true? (agrees kb "the path's last firing undone, the other chain's standing")))
+        (is (= (inc walks) (memo-walks kb)) "a path that no longer holds walks again")
+        (off 1)
+        (is (true? (reach kb true)))
+        (is (= (inc walks) (memo-walks kb)) "the walk again holds the path it met"))
+      (let [walks (memo-walks kb)]
+        (v/retract! kb (v/handle-of kb (on (witness-target kb)) C))
+        (is (false? (agrees kb "both firings undone")))
+        (is (= (inc walks) (memo-walks kb)))))))
 
 (deftest a-held-path-cut-under-a-standing-supporter-reads-false
   (doseq [[label cut!] [["the target freed" #(v/retract! % (v/handle-of % '(not (rsr_p0 rsr_c1)) C))]
                         ["the path's last firing undone" #(v/retract! % (v/handle-of % '(rsr_on rsr_c1) C))]
                         ["the chain's first link removed" #(v/retract! % (rule! % :chain))]]]
-    (let [kb (reach-kb {} 6)]
+    (tu/with-cleared-kb [kb #(reach-kb {} 6)]
       (v/assert kb '(rsr_on rsr_c1) C {})
       (is (true? (reach kb true)) label)
       ;; the supporter stays stored, a premise as well

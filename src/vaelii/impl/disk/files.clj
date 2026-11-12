@@ -61,38 +61,42 @@
   "The most an EDN manifest may hold (a dump's `meta.edn` and `index.edn`, a store's
   `format.edn`, an index directory's `layout.edn` and `records.edn`, a belief image's
   `manifest.edn`, a corpus's `report.edn`, a machine's `catalog.edn`). Each is the first
-  thing read about a directory nobody has promised anything about, so the read is bounded."
+  thing read about a directory nobody has promised anything about, so the read is bounded.
+  A text export's `digests.edn` and the argument-type pass's owed record grow with the KB,
+  so they are read whole, and only their parse is checked."
   (* 1024 1024))
 
 (defn read-edn-manifest
-  "The EDN manifest in `f`, read under `manifest-bytes`, or a refusal (`:manifest-too-large`)
-  naming the file and the bound. The bound is on the bytes read, not on `File.length`, which
-  answers 0 for a FIFO. Content the EDN reader cannot parse is refused as
-  `:malformed-manifest`; the caller decides which refusal means a broken KB."
-  [f]
-  (let [^File f (io/file f)
-        limit (long manifest-bytes)
-        out   (java.io.ByteArrayOutputStream.)
-        buf   (byte-array 8192)]
-    (with-open [^java.io.InputStream in (io/input-stream f)]
-      (loop []
-        (let [n (.read in buf)]
-          (when (pos? n)
-            (.write out buf 0 n)
-            (when (<= (.size out) limit) (recur))))))
-    (when (> (.size out) limit)
-      (throw (ex-info (str "manifest " (.getPath f) " is longer than " limit
-                           " bytes — a meta.edn / format.edn / layout.edn / catalog.edn"
-                           " is a handful of keys, and a file this size under one of"
-                           " those names is not one")
-                      {:type :manifest-too-large :file (.getPath f) :max limit})))
-    (try (edn/read-string (String. (.toByteArray out)
-                                   java.nio.charset.StandardCharsets/UTF_8))
-         (catch Exception e
-           (throw (ex-info (str "manifest " (.getPath f) " is not readable EDN: "
-                                (ex-message e) " — the file was cut mid-form, or was"
-                                " never one")
-                           {:type :malformed-manifest :file (.getPath f)} e))))))
+  "The EDN manifest in `f`, read under `limit` bytes (`manifest-bytes`; nil reads it whole),
+  or a refusal (`:manifest-too-large`) naming the file and the bound. The bound is on the
+  bytes read, not on `File.length`, which answers 0 for a FIFO. Content the EDN reader cannot
+  parse is refused as `:malformed-manifest`; the caller decides which refusal means a broken
+  KB."
+  ([f] (read-edn-manifest f manifest-bytes))
+  ([f limit]
+   (let [^File f (io/file f)
+         limit (if limit (long limit) Long/MAX_VALUE)
+         out   (java.io.ByteArrayOutputStream.)
+         buf   (byte-array 8192)]
+     (with-open [^java.io.InputStream in (io/input-stream f)]
+       (loop []
+         (let [n (.read in buf)]
+           (when (pos? n)
+             (.write out buf 0 n)
+             (when (<= (.size out) limit) (recur))))))
+     (when (> (.size out) limit)
+       (throw (ex-info (str "manifest " (.getPath f) " is longer than " limit
+                            " bytes — a meta.edn / format.edn / layout.edn / catalog.edn"
+                            " is a handful of keys, and a file this size under one of"
+                            " those names is not one")
+                       {:type :manifest-too-large :file (.getPath f) :max limit})))
+     (try (edn/read-string (String. (.toByteArray out)
+                                    java.nio.charset.StandardCharsets/UTF_8))
+          (catch Exception e
+            (throw (ex-info (str "manifest " (.getPath f) " is not readable EDN: "
+                                 (ex-message e) " — the file was cut mid-form, or was"
+                                 " never one")
+                            {:type :malformed-manifest :file (.getPath f)} e)))))))
 
 (defonce ^:private ^java.util.concurrent.atomic.AtomicBoolean dir-fsync-warned
   (java.util.concurrent.atomic.AtomicBoolean. false))
@@ -167,9 +171,10 @@
   previous manifest or the new one, never a file `read-edn-manifest` refuses as
   `:malformed-manifest`."
   [^String path m]
-  (write-atomic! path (fn [^FileOutputStream fos]
-                        (.write fos (.getBytes ^String (pr-str m)
-                                               java.nio.charset.StandardCharsets/UTF_8)))))
+  (let [^String text (binding [*print-length* nil *print-level* nil *print-meta* false]
+                       (pr-str m))]
+    (write-atomic! path (fn [^FileOutputStream fos]
+                          (.write fos (.getBytes text java.nio.charset.StandardCharsets/UTF_8))))))
 
 (defn assert-format!
   "Check the store directory `root` against its `format.edn` sentinel: a known version is
@@ -238,11 +243,19 @@
 
 (defn recorded-reasoners
   "The reasoner names recorded in the store directory `root` (`reasoners.edn`), as a set,
-  or nil when the directory records none.  Read through `read-edn-manifest`."
+  or nil when the directory records none.  Read through `read-edn-manifest`; a file that
+  is not a map, or whose `:reasoners` is neither nil nor a sequential collection or set, is
+  refused as `:malformed-manifest`."
   [root]
   (let [file (File. ^String (str root) ^String reasoners-file)]
     (when (.exists file)
-      (set (:reasoners (read-edn-manifest file))))))
+      (let [m (read-edn-manifest file)
+            r (when (map? m) (:reasoners m))]
+        (when-not (and (map? m) (or (nil? r) (and (coll? r) (not (map? r)))))
+          (throw (ex-info (str "manifest " (.getPath file) " names no reasoner collection: "
+                               (pr-str m))
+                          {:type :malformed-manifest :file (.getPath file)})))
+        (set r)))))
 
 (defn write-reasoners!
   "Record `names` as the reasoner set of the store directory `root`."

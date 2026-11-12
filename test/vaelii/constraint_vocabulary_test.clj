@@ -86,7 +86,7 @@
   ;; `:out` forced set at `:monotonic` as at `:default`.  No dilemma opens, and `conflicts`
   ;; reports the tuple grounded on the declaration.
   (is (not (contains? checks/arbitrable-kinds :arity)))
-  (tu/with-neutral-kb [kb #(v/open-kb (tu/scratch-space))]
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
     (tu/with-terms [relOf A B C]
       (let [t    (v/assert kb (list relOf A B C) 'CxUniverse {:strength :monotonic})
             decl (v/assert kb (list 'arity relOf 2) 'CxUniverse)]

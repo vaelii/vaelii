@@ -565,20 +565,46 @@
               "the loser comes back with the separation that convicted it")
           (is (:believed? (v/why-not kb (list cat_t Muffet) 'CxUniverse))))))))
 
-(tu/deftest-kb defeating-the-edge-a-separation-is-read-over-revives-the-loser
-  ;; an edge denied in its own context is a global defeat; `scoped_defeat_test` covers
-  ;; the vantage below it
+(tu/deftest-kb a-separation-read-over-a-default-edge-convicts-neither-membership-before-or-after-the-edge-s-defeat
+  ;; (cat Kit) undercuts the reading (dog Kit) the :default edge gives (chi Kit), before
+  ;; and after the edge's denial; `scoped_defeat_test` covers the vantage below it.
   (tu/with-kb [kb]
     (tu/with-terms [chi_t dog_t cat_t Kit]
       (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
       (v/assert kb (list 'genl chi_t dog_t) 'CxUniverse)
       (v/assert kb (list chi_t Kit) 'CxUniverse)
       (v/assert kb (list cat_t Kit) 'CxUniverse {:strength :monotonic})
-      (is (not (v/ask? kb (list chi_t Kit) 'CxUniverse)) "decided against the membership")
-      (v/assert kb (list 'not (list 'genl chi_t dog_t)) 'CxUniverse {:strength :monotonic})
-      (is (not (v/disjoint? kb chi_t cat_t 'CxUniverse)))
-      (is (v/ask? kb (list chi_t Kit) 'CxUniverse))
-      (is (v/ask? kb (list cat_t Kit) 'CxUniverse)))))
+      (let [held (fn [] [(mapv #(v/ask? kb (list % Kit) 'CxUniverse) [chi_t cat_t dog_t])
+                         (count (v/contradictions kb))])]
+        (is (v/disjoint? kb chi_t cat_t 'CxUniverse))
+        (is (= [[true true false] 0] (held)))
+        (v/assert kb (list 'not (list 'genl chi_t dog_t)) 'CxUniverse {:strength :monotonic})
+        (is (not (v/disjoint? kb chi_t cat_t 'CxUniverse)))
+        (is (= [[true true false] 0] (held)))))))
+
+(tu/deftest-kb a-separation-read-over-a-default-edge-into-a-forced-monotonic-type-convicts-neither-membership
+  (tu/with-kb [kb]
+    (tu/with-terms [chi_t dog_t cat_t Kit]
+      (v/assert kb (list 'forced_monotonic_predicate dog_t) 'CxUniverse)
+      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl chi_t dog_t) 'CxUniverse)
+      (v/assert kb (list chi_t Kit) 'CxUniverse)
+      (v/assert kb (list cat_t Kit) 'CxUniverse {:strength :monotonic})
+      (is (= [true true false] (mapv #(v/ask? kb (list % Kit) 'CxUniverse) [chi_t cat_t dog_t])))
+      (is (empty? (concat (v/conflicts kb) (v/contradictions kb)))))))
+
+(tu/deftest-kb a-clash-report-names-no-separation-a-member-reaches-only-over-a-default-edge
+  (tu/with-kb [kb]
+    (tu/with-terms [dog_t pet_t cat_t Kit]
+      (v/assert kb (list 'forced_monotonic_predicate dog_t) 'CxUniverse)
+      (v/assert kb (list 'disjoint cat_t dog_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'disjoint cat_t pet_t) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl dog_t pet_t) 'CxUniverse)
+      (v/assert kb (list dog_t Kit) 'CxUniverse)
+      (v/assert kb (list cat_t Kit) 'CxUniverse {:strength :monotonic})
+      (is (= [[(v/sentence-of (v/canonical-sentex kb (list 'disjoint cat_t dog_t) 'CxUniverse))]]
+             (for [r (concat (v/conflicts kb) (v/contradictions kb))]
+               (mapv :sentence (:grounds r))))))))
 
 (tu/deftest-kb retracting-a-functionality-revives-the-filler-it-convicted
   (tu/with-kb [kb]
@@ -732,7 +758,7 @@
               (str order ": both separations, and not the edge one is read over")))))))
 
 (tu/deftest-kb the-grounds-name-the-declaration-of-each-family
-  (tu/with-terms [biggerThan parentOf priceIn largerThan atOrAbove animal dog cat Ann Bob Cid Rex
+  (tu/with-terms [biggerThan parentOf priceIn typeLargerThan atOrAbove animal dog cat Ann Bob Cid Rex
                   Shop]
     (let [m {:strength :monotonic}]
       (doseq [[label decl members]
@@ -744,7 +770,7 @@
                 [(list 'not (list dog Rex)) (list 'not (list cat Rex)) (list animal Rex)]]
                ["functionalInArg" (list 'functionalInArg priceIn 3)
                 [(list priceIn Ann Shop 3) (list priceIn Ann Shop 4)]]
-               ["irreflexive" (list 'irreflexive largerThan) [(list largerThan Ann Ann)]]
+               ["irreflexive" (list 'irreflexive typeLargerThan) [(list typeLargerThan Ann Ann)]]
                ["anti_symmetric" (list 'anti_symmetric atOrAbove)
                 [(list atOrAbove 1 2) (list atOrAbove 2 1)]]]]
         (tu/with-kb [kb]
@@ -1018,6 +1044,75 @@
         (is (= [false false] (at)) "the edge retracted")
         (is (nil? (v/handle-of kb reading 'CxUniverse)) "and the reading with it")))))
 
+(defn- undercut-reading
+  "Write `writes` in `order` and read Hydra's `reading` against `held`: `[reading,
+  every held sentence, a forward firing on the reading, Hydra in a query of the reading's
+  type, the contradictions and conflicts naming Hydra]`."
+  [kb writes order reading held doomed Hydra]
+  (doseq [w order] ((writes w)))
+  (let [names? (fn [r] (some #{Hydra} (flatten (map :sentence (:sides r)))))]
+    [(v/ask? kb reading 'CxUniverse)
+     (mapv #(v/ask? kb % 'CxUniverse) held)
+     (v/ask? kb (list doomed Hydra) 'CxUniverse)
+     (boolean (some #(= Hydra (get % '?x)) (v/query kb (list (first reading) '?x) 'CxUniverse)))
+     (count (filter names? (v/contradictions kb)))
+     (count (filter names? (v/conflicts kb)))]))
+
+(deftest a-separated-membership-of-either-strength-undercuts-a-default-edge-s-reading-in-every-order
+  (doseq [other [:monotonic :default]
+          order (tu/permutations [:edge :member :other :rule])]
+    (tu/with-kb [kb]
+      (tu/with-terms [beast perishing immortal doomed Hydra]
+        (v/assert kb (list 'disjoint perishing immortal) 'CxUniverse {:strength :monotonic})
+        (let [writes {:edge   #(v/assert kb (list 'genl beast perishing) 'CxUniverse)
+                      :member #(v/assert kb (list beast Hydra) 'CxUniverse)
+                      :other  #(v/assert kb (list immortal Hydra) 'CxUniverse {:strength other})
+                      :rule   #(v/assert-rule kb [(list perishing '?x)] (list doomed '?x)
+                                              'CxUniverse {:direction :forward})}]
+          (is (= [false [true true] false false 0 0]
+                 (undercut-reading kb writes order (list perishing Hydra)
+                                   [(list beast Hydra) (list immortal Hydra)] doomed Hydra))
+              (pr-str [other order])))))))
+
+(deftest the-deniers-of-a-cover-undercut-a-default-edge-s-reading-of-its-whole-in-every-order
+  (doseq [order (tu/permutations [:cover :edge :member :deny :rule])]
+    (tu/with-kb [kb]
+      (tu/with-terms [beast creature fish bird doomed Hydra]
+        (let [m      {:strength :monotonic}
+              writes {:cover  #(v/assert kb (list 'covering creature fish bird) 'CxUniverse m)
+                      :edge   #(v/assert kb (list 'genl beast creature) 'CxUniverse)
+                      :member #(v/assert kb (list beast Hydra) 'CxUniverse)
+                      :deny   #(do (v/assert kb (list 'not (list fish Hydra)) 'CxUniverse m)
+                                   (v/assert kb (list 'not (list bird Hydra)) 'CxUniverse m))
+                      :rule   #(v/assert-rule kb [(list creature '?x)] (list doomed '?x)
+                                              'CxUniverse {:direction :forward})}]
+          (is (= [false [true true true] false false 0 0]
+                 (undercut-reading kb writes order (list creature Hydra)
+                                   [(list beast Hydra) (list 'not (list fish Hydra))
+                                    (list 'not (list bird Hydra))]
+                                   doomed Hydra))
+              (pr-str order)))))))
+
+(deftest two-readings-a-separation-convicts-are-a-dilemma-in-every-order
+  (doseq [order (tu/permutations [:edges :beast :god])]
+    (tu/with-kb [kb]
+      (tu/with-terms [beast god perishing immortal Hydra]
+        (v/assert kb (list 'disjoint perishing immortal) 'CxUniverse {:strength :monotonic})
+        (let [writes {:edges #(do (v/assert kb (list 'genl beast perishing) 'CxUniverse)
+                                  (v/assert kb (list 'genl god immortal) 'CxUniverse))
+                      :beast #(v/assert kb (list beast Hydra) 'CxUniverse)
+                      :god   #(v/assert kb (list god Hydra) 'CxUniverse)}
+              ds     (fn [] (filterv (fn [r] (some #{Hydra} (flatten (map :sentence (:sides r)))))
+                                     (v/contradictions kb)))]
+          (doseq [w order] ((writes w)))
+          (is (= [[true true true true] 1]
+                 [(mapv #(v/ask? kb (list % Hydra) 'CxUniverse) [beast god perishing immortal])
+                  (count (ds))])
+              (pr-str order))
+          (is (= #{#{(list perishing Hydra) (list immortal Hydra)}}
+                 (into #{} (map #(into #{} (map :sentence) (:sides %))) (ds)))
+              "the dilemma is the two readings"))))))
+
 ;;; ── recomputed, never accumulated ─────────────────────────────────────
 
 (tu/deftest-kb a-dilemma-goes-when-its-ingredient-does-and-comes-back-with-it
@@ -1084,7 +1179,7 @@
       (v/assert kb (list dog_t Rex) 'CxUniverse)
       (v/assert kb (list cat_t Rex) 'CxUniverse)
       (is (empty? (v/contradictions kb)) "a dog-cat is odd but nothing separates them")
-      (v/assert kb (list 'genl dog_t canine_t) 'CxUniverse)
+      (v/assert kb (list 'genl dog_t canine_t) 'CxUniverse {:strength :monotonic})
       (is (= [:disjoint] (mapv :kind (v/contradictions kb)))))))
 
 (tu/deftest-kb a-disjoint-metatype-arriving-last-is-arbitrated
@@ -1156,12 +1251,12 @@
   ;; the same sweep for the other mark: the converse probe fans down the hierarchy and
   ;; the mark is read up it, so both halves of the question descend or neither does
   (tu/with-kb [kb]
-    (tu/with-terms [muchLargerThan largerThan Rex Pip]
+    (tu/with-terms [muchLargerThan typeLargerThan Rex Pip]
       (v/assert kb (list muchLargerThan Rex Pip) 'CxUniverse)
       (v/assert kb (list muchLargerThan Pip Rex) 'CxUniverse)
-      (v/assert kb (list 'genl muchLargerThan largerThan) 'CxUniverse)
+      (v/assert kb (list 'genl muchLargerThan typeLargerThan) 'CxUniverse)
       (is (empty? (v/contradictions kb)))
-      (v/assert kb (list 'asymmetric largerThan) 'CxUniverse)
+      (v/assert kb (list 'asymmetric typeLargerThan) 'CxUniverse)
       (is (= [:asymmetric] (mapv :kind (v/contradictions kb)))))))
 
 (tu/deftest-kb a-genl-edge-carrying-a-mark-down-is-arbitrated
@@ -1334,7 +1429,7 @@
                    :believed (count (filter #(seq (v/sentexes-matching kb (list % 'Pip) 'CxUniverse))
                                             '[za zb zc]))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1344,7 +1439,7 @@
     (testing "all three pairs, and all three memberships still believed"
       (is (= 3 (count (:pairs (first os)))))
       (is (= 3 (:believed (first os)))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest an-antitransitive-triple-settles-the-same-way-in-every-arrival-order
   ;; the mark and the three tuples in all 24 orders
@@ -1361,7 +1456,7 @@
                                    (v/contradictions kb))
                    :conflicts (count (v/conflicts kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1374,7 +1469,7 @@
       (is (= [:anti-transitive] (mapv first (:clashes (first os)))))
       (is (= 3 (count (second (first (:clashes (first os)))))))
       (is (zero? (:conflicts (first os)))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 ;;; ── a refuted cover: the membership and every part denied ─────────────
 
@@ -1400,19 +1495,19 @@
              [#{:memb :n1}
               {:believed #{:decl :memb :n1} :clashes #{} :conflicts 0}]]]
       (let [os (into #{} (map (fn [ordering]
-                                (let [kb (tu/fresh)]
+                                (let [kb (tu/isolated-fresh)]
                                   (doseq [k ordering]
                                     (v/assert kb (sens k) 'CxUniverse
                                               {:strength (if (strong k) :monotonic :default)}))
                                   (observe kb))))
                      (tu/permutations (keys sens)))]
         (is (= #{expected} os) (str "known-true " (pr-str strong)))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-cover-refutation-is-stored-whatever-the-classes
   ;; the last denial, written `:default` against a membership and a denial of `content`
   ;; class; `:via` puts the membership under the whole through a `genl` edge of that
-  ;; strength.  The declaration and the edge are read through and never weighed.
+  ;; strength, whose `:default` reading the deniers undercut.  The cover is never weighed.
   (doseq [[decl content via] [[:default   :default   nil]
                               [:monotonic :default   nil]
                               [:default   :monotonic nil]
@@ -1427,9 +1522,11 @@
         (v/assert kb (list (if via mammal animal) Rex) 'CxUniverse {:strength content})
         (v/assert kb (list 'not (list dog Rex)) 'CxUniverse {:strength content})
         (is (v/assert kb (list 'not (list cat Rex)) 'CxUniverse) (pr-str [decl content via]))
-        (is (= (= :default content) (v/ask? kb (list 'not (list cat Rex)) 'CxUniverse))
+        (is (= (or (= :default content) (= :default via))
+               (v/ask? kb (list 'not (list cat Rex)) 'CxUniverse))
             (str (pr-str [decl content via])
-                 ": the default denial loses to known-true members and ties with default ones"))))))
+                 ": the default denial loses to known-true members, ties with default ones"
+                 " and undercuts a reading"))))))
 
 (tu/deftest-kb a-derived-closing-step-is-placed-and-defeated-with-a-why-not
   ;; the firing row of docs/nmtms.md's table, for the three-member nogood
@@ -1495,7 +1592,7 @@
                    :dilemmas   (count (v/contradictions kb))
                    :conflicts  (count (v/conflicts kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1504,7 +1601,7 @@
              (pr-str os)))
     (testing "and the one outcome represents the clash rather than hiding it"
       (is (= {:dog true :fish true :dilemmas 1 :conflicts 0} (first os))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-clash-across-a-visibility-edge-settles-the-same-way-in-every-arrival-order
   ;; belief and storage both agree.  120 orderings.
@@ -1520,7 +1617,7 @@
                    :dilemmas   (count (v/contradictions kb))
                    :conflicts  (count (v/conflicts kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1530,12 +1627,12 @@
     (testing "and the one outcome defeats the default rather than leaving it beside content that denies it"
       (is (= {:known-true true :default false :stored true :dilemmas 0 :conflicts 0}
              (first os))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-self-tuple-under-an-asymmetric-predicate-asserts-idempotently
   ;; `(P a a)` is its own converse, so a re-assert must not convict it against its own
   ;; stored copy.  Asymmetry does not imply irreflexivity (docs/taxonomy.md).
-  (let [kb (tu/fresh)]
+  (let [kb (tu/isolated-fresh)]
     (v/assert kb '(binary_predicate zSelfLarger) 'CxUniverse)
     (v/assert kb '(asymmetric zSelfLarger) 'CxUniverse)
     (let [h1 (v/assert kb '(zSelfLarger zrock zrock) 'CxUniverse {:strength :monotonic})
@@ -1551,7 +1648,7 @@
       (let [h1 (v/assert kb '(zSelfSmaller zpebble zpebble) 'CxUniverse {:strength :monotonic})
             h2 (v/assert kb '(zSelfSmaller zpebble zpebble) 'CxUniverse {:strength :monotonic})]
         (is (= h1 h2) "the descended mark convicts a pair, not a sentence against itself")))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest an-asymmetric-violating-set-settles-the-same-way-in-every-arrival-order
   ;; the declaration may arrive before or after either direction of the relation
@@ -1563,7 +1660,7 @@
                    :bwd      (v/ask? kb '(zTypLarger zcat zdog) 'CxUniverse)
                    :dilemmas (count (v/contradictions kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1571,12 +1668,12 @@
         (str "asymmetric pair: " (count os) " distinct outcomes across 6 orderings — "
              (pr-str os)))
     (is (= {:fwd true :bwd true :dilemmas 1} (first os)))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-report-orders-its-sides-by-content-not-by-arrival
   ;; `(first (:sides c))` follows content, as `:sentence` does
   (let [shape (fn [ops]
-                (let [kb (tu/fresh)]
+                (let [kb (tu/isolated-fresh)]
                   (doseq [op ops] (op kb))
                   (mapv (fn [r] [(:sentence r) (mapv :sentence (:sides r)) (:handles r)])
                         (v/contradictions kb))))
@@ -1596,7 +1693,7 @@
             [[_ sides' handles']] (shape [sep cat dog])]
         (is (= sides sides'))
         (is (= 2 (count handles) (count handles')))))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 (deftest a-metatype-clique-settles-the-same-way-in-every-arrival-order
   ;; the metatype mark, the two type memberships of the clique and the clashing pair.
@@ -1612,7 +1709,7 @@
                    :dilemmas  (count (v/contradictions kb))
                    :conflicts (count (v/conflicts kb))})
         os (into #{} (map (fn [ordering]
-                            (let [kb (tu/fresh)]
+                            (let [kb (tu/isolated-fresh)]
                               (doseq [op ordering] (op kb))
                               (observe kb))))
                  (tu/permutations ops))]
@@ -1620,7 +1717,7 @@
         (str "metatype clique: " (count os) " distinct outcomes across 120 orderings — "
              (pr-str os)))
     (is (= {:dog true :cat true :dilemmas 1 :conflicts 0} (first os)))
-    (tu/clear-kb! (tu/test-kb))))
+    (tu/clear-kb! (tu/isolated-test-kb))))
 
 ;;; ── one entry point, whatever arrives first ───────────────────────────
 
@@ -1731,7 +1828,7 @@
               (tu/handle-free kb [(:sentence s) (:context s)]))))
 
 (tu/deftest-kb a-membership-nogood-is-placed-and-no-reader-decides-it
-  ;;   CxUniverse  (genl mammal_t thing) (genl dog_t mammal_t) (disjoint mammal_t reptile_t)
+  ;;   CxUniverse  (genl mammal_t thing) (genl dog_t mammal_t) M (disjoint mammal_t reptile_t)
   ;;     ├─ CxL    (reptile_t Rex) default
   ;;     └─ CxR    (dog_t Rex) monotonic
   ;;   CxJ sees CxL and CxR
@@ -1739,7 +1836,7 @@
     (doseq [[c up] [[CxL 'CxUniverse] [CxR 'CxUniverse] [CxJ CxL] [CxJ CxR]]]
       (v/assert kb (list 'genlCx c up) 'CxUniverse))
     (v/assert kb (list 'genl mammal_t 'thing) 'CxUniverse)
-    (let [edge (v/assert kb (list 'genl dog_t mammal_t) 'CxUniverse)
+    (let [edge (v/assert kb (list 'genl dog_t mammal_t) 'CxUniverse {:strength :monotonic})
           decl (v/assert kb (list 'disjoint mammal_t reptile_t) 'CxUniverse)
           los  (v/assert kb (list reptile_t Rex) CxL)
           win  (v/assert kb (list dog_t Rex) CxR {:strength :monotonic})

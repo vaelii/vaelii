@@ -1,8 +1,9 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.pull-request-status-test
+(ns vaelii.pull-request-test
   "The pull-request vocabulary of CxTra.  `(PullRequestFn ?repository ?number)` names a
-  `pull_request` of a `forge_repository`, `prStatus` gives the stage it is at,
+  `pull_request` of a `forge_repository`, its status is its membership in the time-varying
+  `open_pr`, `merged_pr`, `closed_pr`, `draft_pr` and `ready_pr` kinds,
   `holdsReadyLatch` says whose call it is that a repository's drafts are ready, and a
   grant of `(MergeAccessFn ?repository)` is an access kind below `merge_access`, which
   entails write access over the same repository by default."
@@ -16,9 +17,8 @@
 (def ^:private CPT 'CxTra)
 
 (def ^:private terms
-  '[forge_repository pull_request PullRequestFn pullRequestOf pull_request_status
-    PullRequestDraft PullRequestReady PullRequestMerged PullRequestClosed
-    prStatus holdsReadyLatch merge_access MergeAccessFn mergeAccessOf])
+  '[forge_repository pull_request PullRequestFn pullRequestOf open_pr merged_pr closed_pr
+    draft_pr ready_pr holdsReadyLatch merge_access MergeAccessFn mergeAccessOf])
 
 (defn- holds-ask  [s ctx]         (boolean (v/ask? tu/*kb* s ctx)))
 (defn- holds-genl [sub super ctx] (boolean (v/genl? tu/*kb* sub super ctx)))
@@ -34,19 +34,15 @@
         (str t " carries one comment in the theory")))
   (is (holds-genl 'forge_repository 'digital_artifact CPT))
   (is (holds-genl 'pull_request 'digital_artifact CPT))
-  (is (holds-genl 'pull_request_status 'nowhere_never CPT))
   (is (holds-genl 'merge_access 'write_access CPT))
   (is (holds-genl 'merge_access 'resource_access CPT))
-  (doseq [s '[PullRequestDraft PullRequestReady PullRequestMerged PullRequestClosed]]
-    (is (holds-ask (list 'pull_request_status s) CPT) (str s)))
   (testing "every position of a relation of two or more arguments is typed"
     (is (holds-ask '(arg pullRequestOf 3 pull_request) CPT))
-    (is (holds-ask '(arg prStatus 2 pull_request_status) CPT))
     (is (holds-ask '(arg holdsReadyLatch 1 person) CPT))
     (is (holds-ask '(arg holdsReadyLatch 2 forge_repository) CPT))
     (is (holds-ask '(genlArg mergeAccessOf 2 merge_access) CPT)))
   (is (holds-ask '(functionCorrespondingPredicate PullRequestFn pullRequestOf 3) CPT))
-  (is (holds-ask '(functionCorrespondingPredicate MergeAccessFn mergeAccessOf) CPT)))
+  (is (holds-ask '(functionCorrespondingPredicate MergeAccessFn mergeAccessOf 2) CPT)))
 
 (tu/deftest-kb who-may-merge-pull-requests-of-a-repository
   (tu/with-terms [CxDesk Repo OtherRepo Maintainer Writer]
@@ -76,7 +72,7 @@
   [kb holder ctx]
   (set (map (juxt #(get % '?r) #(get % '?n))
             (v/query kb [(list 'holdsReadyLatch holder '?r)
-                         '(pullRequestOf ?r ?n ?pr) '(prStatus ?pr PullRequestDraft)]
+                         '(pullRequestOf ?r ?n ?pr) '(draft_pr ?pr)]
                      ctx))))
 
 (tu/deftest-kb which-pull-requests-wait-on-a-latch-holder
@@ -86,22 +82,38 @@
                (list 'human Holder) (list 'human Other)
                (list 'holdsReadyLatch Holder Repo)
                (list 'holdsReadyLatch Other OtherRepo)
-               (list 'prStatus (list 'PullRequestFn Repo 2) 'PullRequestReady)
-               (list 'prStatus (list 'PullRequestFn OtherRepo 3) 'PullRequestDraft)]]
+               (list 'ready_pr (list 'PullRequestFn Repo 2))
+               (list 'draft_pr (list 'PullRequestFn OtherRepo 3))]]
       (v/assert kb s CxDesk))
-    (let [draft (v/assert kb (list 'prStatus (list 'PullRequestFn Repo 1) 'PullRequestDraft) CxDesk)]
+    (let [draft (v/assert kb (list 'draft_pr (list 'PullRequestFn Repo 1)) CxDesk)]
       (is (holds-ask (list 'pull_request (list 'PullRequestFn Repo 1)) CxDesk)
           "the function's result type, not an asserted membership")
       (is (= #{[Repo 1]} (waiting-on kb Holder CxDesk))
           "the draft of the holder's repository; not the ready one, not another repository's draft")
       (is (= #{[OtherRepo 3]} (waiting-on kb Other CxDesk)))
       (v/retract! kb draft)
-      (v/assert kb (list 'prStatus (list 'PullRequestFn Repo 1) 'PullRequestReady) CxDesk)
+      (v/assert kb (list 'ready_pr (list 'PullRequestFn Repo 1)) CxDesk)
       (is (= #{} (waiting-on kb Holder CxDesk)) "marked ready, it waits on no one"))))
 
 (tu/deftest-kb a-pull-request-is-at-one-stage-at-a-time
-  (testing "prStatus is functional: a pull request has one status in a context"
-    (is (holds-ask '(functional prStatus) CPT))))
+  (testing "the status kinds partition pull_request, and open_pr into draft and ready"
+    (is (holds-ask '(partition pull_request open_pr merged_pr closed_pr) CPT))
+    (is (holds-ask '(partition open_pr draft_pr ready_pr) CPT))
+    (doseq [k '[open_pr merged_pr closed_pr]]
+      (is (holds-genl k 'pull_request CPT) (str k " is a kind of pull_request")))
+    (doseq [k '[draft_pr ready_pr]]
+      (is (holds-genl k 'open_pr CPT) (str k " is a kind of open_pr"))))
+  (testing "each status kind is time-varying: a pull request changes status and stays itself"
+    (doseq [k '[open_pr merged_pr closed_pr draft_pr ready_pr]]
+      (is (holds-ask (list 'time_varying_relation k) CPT) (str k))))
+  (tu/with-terms [CxDesk Repo]
+    (desk! kb CxDesk)
+    (v/assert kb (list 'forge_repository Repo) CxDesk)
+    (v/assert kb (list 'draft_pr (list 'PullRequestFn Repo 7)) CxDesk)
+    (testing "a draft is open, and so neither merged nor closed"
+      (is (holds-ask (list 'open_pr (list 'PullRequestFn Repo 7)) CxDesk))
+      (is (holds-ask (list 'not (list 'merged_pr (list 'PullRequestFn Repo 7))) CxDesk))
+      (is (holds-ask (list 'not (list 'ready_pr (list 'PullRequestFn Repo 7))) CxDesk)))))
 
 (tu/deftest-kb a-merge-only-role-keeps-its-push-exception
   (tu/with-terms [CxDesk Repo Merger]

@@ -325,15 +325,43 @@
                   (or (world/denial? consequent) (:defeasible? r) (seq unknowns)
                       (seq (:exceptions r)) (some #(not (forced? %)) antecedents))))))
 
+(defn- convicted?
+  "Does `prior`, the sentences a round believes, convict the edge reading `(pf … args)` of
+  a membership `(sf …)`: hold its denial, or, for one term `x` and a `pf` outside the
+  forced-monotonic set, a membership `(r x)` with `r` not `sf` whose type reaches the
+  other side of a `(disjoint pf b)` over `:monotonic` edges (`strictly?`), or for each part
+  of a `(covering pf …)` a denial of a type the part reaches so or such a membership a
+  separation holds apart from the part (docs/inference.md, \"An edge's reading\")."
+  [strictly? forced? prior sf pf args]
+  (or (contains? prior (list 'not (apply list pf args)))
+      (when (and (= 1 (count args)) (not (forced? (apply list pf args))))
+        (let [x      (first args)
+              of-x   #(and (seq? %) (= 2 (count %)) (= x (second %)) (symbol? (first %)))
+              held   (into [] (comp (filter of-x) (remove world/denial?) (map first) (remove #{sf})) prior)
+              denied (into [] (comp (filter world/denial?) (map second) (filter of-x) (map first)) prior)
+              seps   (filter #(and (seq? %) (= 'disjoint (first %)) (= 3 (count %)) (not= (nth % 1) (nth % 2)))
+                             prior)
+              apart? (fn [p r] (some (fn [[_ t1 t2]] (or (and (strictly? p t1) (strictly? r t2))
+                                                         (and (strictly? p t2) (strictly? r t1))))
+                                     seps))]
+          (or (some (fn [[_ t1 t2]] (or (and (= pf t1) (some #(strictly? % t2) held))
+                                        (and (= pf t2) (some #(strictly? % t1) held))))
+                    seps)
+              (some (fn [[_ w & parts]]
+                      (and (= w pf)
+                           (every? (fn [p] (or (some #(strictly? p %) denied) (some #(apart? p %) held)))
+                                   parts)))
+                    (filter covering? prior)))))))
+
 (defn derive-at
   "The believed sentences at `c` when `out` is taken OUT, before inheritance: `{:believed
   #{S} :justs {S #{j}} :supports {S {home strength}} :sees up(c)}`. Each stratum of the
   visible rules fires to a fixpoint before the next. No rule reads an inherited claim
   (`world/check-world`), so derivation runs before `inherit-at`. `:forced?` reads
   `world/forced?` and the predicates a forced-monotonic declaration visible at `c` names,
-  which only a forced-monotonic rule concludes (`void-at?`). A believed denial undercuts a
-  subtype match with no `:monotonic` path, and the derivation repeats until the denials it
-  reads are the ones it believes (docs/inference.md, \"An edge's reading\")."
+  which only a forced-monotonic rule concludes (`void-at?`). A believed member convicting
+  the reading (`convicted?`) undercuts a subtype match with no `:monotonic` path, and the
+  derivation repeats until the members it reads are the ones it believes."
   [prep c out]
   (let [sees     (up-with (:edges prep) c)
         vis      (fn [homes] (select-keys homes sees))
@@ -351,22 +379,24 @@
         believed (set (keys supports))
         adj      (genl-adjacency believed)
         strict?  (fn [sup] (= :monotonic (some->> (get supports sup) vals (apply strongest))))
-        derive   (fn [denied]
+        strictly? (fn [a b] (some #(every? strict? %) (genl-paths adj a b)))
+        derive   (fn [prior]
                    (let [undercut? (fn [sf pf args]
-                                     (and (not= sf pf)
-                                          (contains? denied (list 'not (apply list pf args)))
-                                          (not-any? #(every? strict? %) (genl-paths adj sf pf))))
+                                     (and (not= sf pf) (not (strictly? sf pf))
+                                          (convicted? strictly? forced? prior sf pf args)))
                          match     #(matches adj undercut? %1 %2 %3)]
                      (reduce (fn [st rs] (fire-stratum match (remove #(void-at? forced? %) rs) out st))
                              {:believed believed :justs {}}
                              (visible-rules prep sees))))
-        denials  #(into #{} (filter world/denial?) %)
-        d        (loop [denied (denials believed) n 0]
-                   (let [d (derive denied) ends (denials (:believed d))]
-                     (cond (= denied ends) d
-                           (< n 8)         (recur ends (inc n))
-                           :else           (throw (ex-info "the denials an undercut reads do not settle"
-                                                           {:type :unsupported})))))]
+        members  #(into #{} (filter (fn [s] (and (seq? s) (or (= 2 (count s))
+                                                              (contains? '#{disjoint covering} (first s))))))
+                        %)
+        d        (loop [prior (members believed) n 0]
+                   (let [d (derive prior) ends (members (:believed d))]
+                     (cond (= prior ends) d
+                           (< n 8)        (recur ends (inc n))
+                           :else          (throw (ex-info "the members an undercut reads do not settle"
+                                                          {:type :unsupported})))))]
     (assoc d :supports supports :sees sees :forced? forced?)))
 
 ;; ---- classes ------------------------------------------------------------------

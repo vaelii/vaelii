@@ -7,14 +7,14 @@
 
   **Why these protocols and not the others.**  `boundaries.md` says `vaelii.impl.*` is
   free to change, and it is — that rule is about the *require* surface, and it stands.
-  But thirteen of the nineteen protocols in the tree are named in a doc as an extension point somebody
+  But fourteen of the twenty protocols in the tree are named in a doc as an extension point somebody
   else fills: `docs/storage.md` says a new backend *is* a new `KvBackend`,
   `docs/asp.md` calls `Solver` an extension point, `docs/qcn.md` says `add-prover` takes any `Prover`, and `docs/inference.md` invites a
   prover that reads stored facts to implement `SupportingProver` beside it.  A doc that invites an
   implementation makes a promise about the structure of it, whatever the namespace is
   called.  This test is that promise written down.
 
-  The other seven are one backend's internal shape — `PTrie` is how the columnar index
+  The other six are one backend's internal shape — `PTrie` is how the columnar index
   spells its trie, `IPostings` how the dense one packs a set — and nothing outside this
   repo has a reason to implement them.  They are listed in `not-an-extension-point` with the reason
   apiece, and `every-protocol-in-the-tree-is-classified` is what keeps that list complete:
@@ -70,6 +70,8 @@
    [#'protocols/BulkLoading     "docs/storage.md"]
    [#'protocols/RecordSink      "docs/storage.md"]
    [#'protocols/BulkAnnotating  "docs/storage.md"]
+   [#'protocols/BulkDeleting    "docs/storage.md"]
+   [#'protocols/HandleReserving "docs/storage.md"]
    [#'protocols/IndexStore      "docs/storage.md"]
    [#'protocols/ImageFingerprinting   "docs/storage.md"]
    [#'protocols/KvBackend              "docs/storage.md"]

@@ -1,0 +1,18 @@
+;; What 0.33.0 renames, merges, re-means and retires, as data (docs/catalog.md, "A
+;; release's renames").  `lein lint`'s E22 holds it to the changelog's Breaking entries,
+;; the shipped KB and the API goldens.
+;;
+;; The four top-level keys are KB vocabulary, which `upgrade --sync`
+;; (`vaelii.host.sync/rename!`) rewrites in stored premises (`:renames`,
+;; `:context-merges`) or reports (`:re-meanings`, `:retired`).  `:api` holds the
+;; same kinds for the public API, koinii's vars and the daemon's ops, which a
+;; caller's code rewrites.
+{:renames        {largerThan typeLargerThan}
+ :context-merges {}
+ :re-meanings    {timeIntersectionOf
+                  "the intersection is the first argument: (timeIntersectionOf ?intersection . ?times)"
+                  functionCorrespondingPredicate
+                  "takes three arguments, the third the value position; a two-argument form is refused"}
+ :retired        #{prStatus pull_request_status PullRequestDraft PullRequestReady
+                   PullRequestMerged PullRequestClosed}
+ :api            {}}

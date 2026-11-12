@@ -54,7 +54,10 @@ The edge solver takes either backend, and both is better.
   is `clasp`, found on `PATH`, or the executable `VAELII_CLASP_BIN` (or
   `-Dvaelii.clasp.bin=…`) names. The `clingo` executable takes clasp's flags and writes
   the same JSON, so it serves in clasp's place. An in-process native crash would take the
-  JVM with it, so a long-running process wants this backend.
+  JVM with it, so a long-running process wants this backend. A solve reads the subprocess
+  on three `future` threads, which are non-daemon and idle out after 60 s, so a program
+  that solves and returns from `main` exits up to 60 s later unless it calls
+  `shutdown-agents`.
 - **The library** is `libclingo`, loaded in-process through raw JNA: no JNI, no generated
   bindings, no clingo Java library. JNA finds it on `jna.library.path`, or at the name or
   absolute path `-Dvaelii.clingo.lib=…` gives. It is the faster backend on small programs,
@@ -240,7 +243,7 @@ result would defeat every contested assumption and label every choice head false
 ### Refuse rather than degrade, whenever a backend is present
 
 `edge-solver` falls back to `local-solver` in two cases: **no backend at all**, and a
-backend's definite `:unsat` (below). With no backend the two degrade together and stay consistent for free, because `classify-program`
+backend's definite `:unsat` (below). With no backend the two degrade together and agree, because `classify-program`
 without a backend reports every contested assumption `:supportable` and claims nothing.
 
 With a backend present the fallback would be a different solver's answer, and the two

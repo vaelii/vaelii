@@ -5,8 +5,9 @@
   `scripts/test-matrix.sh` gives during the cooldown after a red run.
 
   Each test runs the shell in a scratch git repository of its own, so the lock, the
-  queue and the `red` file it writes land in that repository's `.git/vaelii-matrix`
-  and never in this checkout's, where a live matrix reads them."
+  queue and the `red` file it writes land in that repository's `.git/vaelii-matrix`, and
+  the gate slots in its `.git/box-state`, never where a live matrix or `lein gate` reads
+  them."
   (:require [clojure.java.io :as io]
             [clojure.java.shell :as shell]
             [clojure.string :as str]
@@ -26,8 +27,14 @@
          "MATRIX_YIELD" "MATRIX_JOBS" "TEST_MATRIX_OUT" "GIT_DIR" "GIT_WORK_TREE"
          "GIT_INDEX_FILE" "GATE_MAX_CONCURRENT" "GATE_NO_WAIT" "PERF_NO_WAIT"))
 
+(defn- box-state
+  "The scratch repository's `VAELII_BOX_STATE_DIR`, in place of the box's."
+  [^File dir]
+  (tu/posix-path (io/file dir ".git" "box-state")))
+
 (defn- run [^File dir extra & args]
-  (apply shell/sh (concat args [:dir dir :env (merge env extra)])))
+  (apply shell/sh (concat args [:dir dir :env (merge env {"VAELII_BOX_STATE_DIR" (box-state dir)}
+                                                     extra)])))
 
 (defn- git! [^File dir & args]
   (let [{:keys [exit err out]} (apply run dir {} "git" "-c" "user.name=t" "-c" "user.email=t@t"
@@ -115,13 +122,14 @@
 (deftest a-gate-slot-is-taken-only-while-one-is-free-or-stale
   (with-repo
     (fn [dir]
-      ;; `gate_slot_take` reads a slot as held while its pid is alive and runs gate.sh. The
-      ;; shell starts that holder itself as `$h`, so this test forks no JVM (multi_jvm_test).
+      ;; `gate_slot_take` reads a slot as held while its pid is alive and runs gate.sh or
+      ;; test-parallel.sh. The shell starts that holder itself as `$h`, so this test forks no
+      ;; JVM (multi_jvm_test).
       (let [take-slot (fn [slot-2]
                         (run dir {"GATE_NO_WAIT" "1"} tu/bash "-c"
                              (str ". " (tu/posix-path checkout) "/scripts/lib/slots.sh"
                                   " && " (live-holder dir "gate.sh")
-                                  " && d=$(matrix_state_dir)"
+                                  " && d=$(box_state_dir)"
                                   " && printf '%s\\n' \"$h abc 0 user:a lein gate\" >|\"$d/gate-lock.1\""
                                   " && printf '%s\\n' \"" slot-2 "\" >|\"$d/gate-lock.2\""
                                   " && gate_slot_take lein gate && basename \"$GATE_SLOT\"")))]
@@ -136,6 +144,31 @@
         (is (= "" (slots dir {"GATE_MAX_CONCURRENT" "0" "GATE_NO_WAIT" "1"}
                          "gate_slot_take lein gate && printf %s \"$GATE_SLOT\""))
             "a cap of 0 takes no slot")))))
+
+(deftest a-gate-slot-taken-in-one-clone-is-held-in-every-clone
+  (with-repo
+    (fn [^File a]
+      (with-repo
+        (fn [^File b]
+          ;; `a` takes the one slot from a live test-parallel.sh, as a `lein test-parallel`
+          ;; outside `lein gate` does, and writes `taken`; `b` reads the same box state.
+          (spit (io/file a "test-parallel.sh")
+                (str ". " (tu/posix-path checkout) "/scripts/lib/slots.sh\n"
+                     "gate_slot_take lein test-parallel :default && : >taken\n"
+                     "trap 'kill $! 2>/dev/null; exit' TERM\nsleep 300 &\nwait\n"))
+          (let [a-path (tu/posix-path a)
+                {:keys [exit err]}
+                (run b {"VAELII_BOX_STATE_DIR" (box-state a) "GATE_MAX_CONCURRENT" "1"
+                        "GATE_NO_WAIT" "1"}
+                     tu/bash "-c"
+                     (str ". " (tu/posix-path checkout) "/scripts/lib/slots.sh"
+                          " && { (cd " a-path " && exec \"$BASH\" test-parallel.sh) & h=$!;"
+                          " trap 'kill $h' EXIT; }"
+                          " && for _ in $(seq 200); do [[ -e " a-path "/taken ]] && break; sleep 0.1; done"
+                          " && gate_slot_take lein gate"))]
+            (is (= 75 exit) "GATE_NO_WAIT exits 75 in `b` while `a` holds the slot")
+            (is (str/includes? err "lein test-parallel :default") "the refusal names the command")
+            (is (str/includes? err (.getName a)) "and the checkout the holder runs in")))))))
 
 (deftest the-locks-take-and-restore-without-hard-links
   (with-repo
@@ -158,7 +191,7 @@
         ;; rather than waiting forever on the dead holder it keeps breaking
         (is (= "gate-lock"
                (slots dir (assoc env' "GATE_MAX_CONCURRENT" "1")
-                      (str "printf '9999999 abc 0 user:c lein gate\\n' >|\"$(matrix_state_dir)/gate-lock\""
+                      (str "printf '9999999 abc 0 user:c lein gate\\n' >|\"$(box_state_dir)/gate-lock\""
                            " && { gate_slot_take lein gate && basename \"$GATE_SLOT\"; } & p=$!"
                            "; { sleep 20; kill $p; } 2>/dev/null & w=$!"
                            "; wait $p; kill $w 2>/dev/null; true")))

@@ -83,13 +83,13 @@
 (defn- round-trip
   "Build a KB with `build!`, export it as text into `dir`, load that into a second KB,
   and answer `[before after export-summary load-summary]` — the two `content` maps and
-  the two entry points' reports.  Two KBs *sequentially*: nesting two `tu/fresh` would collide,
+  the two entry points' reports.  Two KBs *sequentially*: nesting two `tu/empty-kb` would collide,
   both taking the scratch store pair."
   [dir build!]
-  (let [[before export] (tu/with-cleared-kb [kb tu/fresh]
+  (let [[before export] (tu/with-cleared-kb [kb tu/empty-kb]
                           (build! kb)
                           [(content kb) (v/export-text! kb dir)])
-        [after load]    (tu/with-cleared-kb [kb tu/fresh]
+        [after load]    (tu/with-cleared-kb [kb tu/empty-kb]
                           (let [r (v/load-text! kb dir)] [(content kb) r]))]
     [before after export load]))
 
@@ -284,18 +284,18 @@
              @seen))))
 
   (testing "an entry refused because what it needs has not arrived yet is retried"
-    ;; the docstring's own case: `(transitiveInArgInverse largerThan 1 tangiblePartOf)` files under
-    ;; `largerThan` and `(transitive tangiblePartOf)` under `tangiblePartOf`, and `l` sorts before `t`
+    ;; the docstring's own case: `(transitiveInArgInverse typeLargerThan 1 tangiblePartOf)` files under
+    ;; `typeLargerThan` and `(transitive tangiblePartOf)` under `tangiblePartOf`, and `l` sorts before `t`
     (let [seen    (atom [])
           assert! (fn [sen _ _]
                     (when (and (= 'transitiveInArgInverse (first sen))
                                (not (some #{'(transitive tangiblePartOf)} @seen)))
                       (throw (ex-info "tangiblePartOf is not transitive yet" {:type :arg-type})))
                     (swap! seen conj sen))
-          entries '[[(transitiveInArgInverse largerThan 1 tangiblePartOf) CxA]
+          entries '[[(transitiveInArgInverse typeLargerThan 1 tangiblePartOf) CxA]
                     [(transitive tangiblePartOf) CxA]]]
       (is (= 2 (text/load-entries! assert! nil entries)) "both entries were read")
-      (is (= '[(transitive tangiblePartOf) (transitiveInArgInverse largerThan 1 tangiblePartOf)] @seen)
+      (is (= '[(transitive tangiblePartOf) (transitiveInArgInverse typeLargerThan 1 tangiblePartOf)] @seen)
           "the refused one landed on the retry round, after what it needed")))
 
   (testing "and one nothing can help still throws, carrying its own refusal"
@@ -539,7 +539,7 @@
   (tu/with-terms [solid hot hot_solid warm_solid Rock CxText]
     (with-dirs* 1 "inert-intersection"
       (fn [^File dir]
-        (tu/with-neutral-kb [kb #(doto (tu/fresh) (tu/load-core!))]
+        (tu/with-neutral-kb [kb #(doto (tu/empty-kb) (tu/load-core!))]
           (write-text-kb! dir CxText
                           [(list 'genlCx CxText 'CxUniverse)
                            (list solid Rock)

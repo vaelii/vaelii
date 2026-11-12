@@ -38,6 +38,29 @@ ns_timings() {
   done
 }
 
+# `ns_timings_rerun FILE NAMESPACE…` runs each NAMESPACE again with `lein test`, its
+# output on stdout, and on a green rerun writes the smaller of the two times into
+# FILE's row for it.  A red rerun keeps the first time and prints a GitHub
+# `::warning::` line, so the rerun decides no verdict.  .github/workflows/test.yml
+# reruns the namespaces scripts/ci-weights.sh's --list form names: one CI shard ran
+# vaelii.quote-test in 92 s against the 27 s its runner's speed predicted, on a tree
+# where it took 105 s locally against 114 s on the tree before.
+ns_timings_rerun() {
+  local out="$1" ns rerun
+  shift
+  rerun=$(mktemp) || return 1
+  for ns in "$@"; do
+    if (set -o pipefail; lein test "$ns" 2>&1 | ns_timings "$rerun"); then
+      awk -F'\t' -v OFS='\t' 'NR == FNR { if ($1 != "") r[$1] = $2 + 0; next }
+        ($1 in r) && r[$1] < $2 + 0 { $2 = sprintf("%.2f", r[$1]) } { print }' \
+        "$rerun" "$out" > "$out.new" && mv "$out.new" "$out"
+    else
+      echo "::warning::$ns failed when run again for its time; its first time stands"
+    fi
+  done
+  rm -f "$rerun"
+}
+
 # `ns_timings_average PREV NEW` writes `namespace<TAB>seconds` rows to stdout: each
 # NEW figure moved NS_TIMINGS_WEIGHT of the way from PREV's figure for the same
 # namespace, an exponential moving average.  A namespace in one file only keeps that

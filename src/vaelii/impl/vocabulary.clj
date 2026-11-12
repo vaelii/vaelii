@@ -97,8 +97,8 @@
 
   **The population is still core.txt's**, and stays a question about the ontology rather
   than about the declaration: an entry carries prose iff core.txt comments the term, so the
-  grammar terms it does not comment (the query operators other than `different`) are
-  simply not in here.  A term core.txt starts commenting and
+  grammar terms it does not comment are simply not in here.  A term core.txt starts
+  commenting and
   nobody answers for lands in `audit`'s `:unclassified`, which is the whole mechanism and
   is untouched by the move."
   (into {}

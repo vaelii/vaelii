@@ -115,7 +115,8 @@
     (throw (ex-info (str (pr-str context) " is not a context a sentex is stored in: a"
                          " stored context is a symbol, and not a query context")
                     {:type :shape :context context})))
-  (when-let [p (or (sx/connective-problem sentence) (checks/quantity-shape-problem sentence))]
+  (when-let [p (or (sx/dot-problem :sentence sentence) (sx/connective-problem sentence)
+                   (checks/term-shape-problem sentence))]
     (throw (ex-info (:message p) (dissoc p :message))))
   ;; `entry/assert-one`'s test for a rule; the shape checks run on each stored form
   ;; before the constructor, as `assert` runs them
@@ -128,9 +129,7 @@
         (throw (ex-info (:message p) (dissoc p :message)))))
     (when rule? (run! checks/check-rule-shape forms))
     ;; a nil taxonomy skips the arms that read stored content, which a later frame can hold
-    (when-let [ps (and (not rule?) (seq (special/wff-problems nil sentence context)))]
-      (throw (ex-info (str "not well-formed: " (str/join "; " ps))
-                      {:type :not-well-formed :sentence sentence})))
+    (when-not rule? (special/check-wff nil sentence context))
     (mapv (fn [form]
             (let [rec (res/kb-sentex kb form context)]
               (when-not (sx/exceptWhen-meta? form)

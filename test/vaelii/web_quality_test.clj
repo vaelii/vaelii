@@ -25,7 +25,7 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/fresh) tu/load-core!)]
+    (let [kb (doto (tu/empty-kb) tu/load-core!)]
       (doseq [i (range never-fired)]
         (v/assert kb (list 'implies (list (symbol (str "qsrc_" i)) '?x)
                            (list (symbol (str "qdst_" i)) '?x))
@@ -46,7 +46,7 @@
   "Press the run button and wait for the job it started; answer the settled job."
   []
   (POST "/quality/run")
-  (jobs/wait (:id (first (jobs/jobs))) 60000))
+  (jobs/wait (:id (first (jobs/jobs)))))
 
 (defn- reading [j] (:quality (meta (:summary j))))
 

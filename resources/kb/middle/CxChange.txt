@@ -8,7 +8,7 @@
 (genlCx CxWell CxChange)
 
 ;; ---- what ended a fluent, and when ---------------------------------------
-;; Forward, so the unknown below can read it.
+;; Forward, so a stored order between named moments leaves the reason inertia stopped.
 (set/forwardRule
  (implies (and (happens ?event ?instant)
                (terminates ?event ?fluent ?instant)
@@ -25,12 +25,22 @@
           (clippedBefore ?fluent ?instant2)))
 
 ;; ---- inertia: a state persists until something ends it -------------------
-;; Backward, and one literal of negation as failure.
+;; Backward, and one literal of negation as failure over a terminating event not known to
+;; lie outside the span, joined when the question is asked: the moment asked about may be
+;; one no stored fact names.
 (set/backwardRule
   (implies (and (happens ?event ?instant1)
                 (initiates ?event ?fluent ?instant1)
                 (instantBefore ?instant1 ?instant2)
-                (unknown (clipped ?instant1 ?fluent ?instant2)))
+                (unknown (thereExists (?ender ?instant)
+                                      (and (happens ?ender ?instant)
+                                           (terminates ?ender ?fluent ?instant)
+                                           (unknown (equals ?instant ?instant1))
+                                           (unknown (instantBefore ?instant ?instant1))
+                                           (unknown (instantNotAfter ?instant ?instant1))
+                                           (unknown (equals ?instant ?instant2))
+                                           (unknown (instantBefore ?instant2 ?instant))
+                                           (unknown (instantNotBefore ?instant ?instant2))))))
            (holdsAt ?fluent ?instant2)))
 
 ;; And the same for a fluent nobody started, because it was already the case. time_point
@@ -38,9 +48,14 @@
 ;; be bound by something positive before the unknown can run (docs/naf.md).
 (set/backwardRule
   (implies (and (initially ?fluent)
-                (time_point ?instant)
-                (unknown (clippedBefore ?fluent ?instant)))
-           (holdsAt ?fluent ?instant)))
+                (time_point ?instant2)
+                (unknown (thereExists (?ender ?instant1)
+                                      (and (happens ?ender ?instant1)
+                                           (terminates ?ender ?fluent ?instant1)
+                                           (unknown (equals ?instant1 ?instant2))
+                                           (unknown (instantBefore ?instant2 ?instant1))
+                                           (unknown (instantNotBefore ?instant1 ?instant2))))))
+           (holdsAt ?fluent ?instant2)))
 
 ;; ---- when an input and an output exist, against their event ----------------
 ;; Each rule concludes a point relation over (StartFn X) and (EndFn X), which the point
