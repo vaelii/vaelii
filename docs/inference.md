@@ -2926,7 +2926,7 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   The delegated list also drops the fact prover when every predicate in the goal's
   matching fan is symmetric at the reader: the fact read of `(pred a b)` already probed
   both orders of each, so a symmetric goal reads the store once. A sub-predicate that is
-  not symmetric there (`disjoint` under `diachronicallyDisjoint`) keeps the mirror's fact
+  not symmetric there (`originatorOf` under `relativeOf`) keeps the mirror's fact
   read, since its stored `(q b a)` answers `(pred b a)` and not `(pred a b)`.
   `InverseProver` does the same with a partner spelling, and the two compose.
   `*mirror-depth*` bounds the re-entry at two levels — the mirror of a mirror is the

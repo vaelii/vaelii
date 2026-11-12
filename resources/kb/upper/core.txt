@@ -1345,6 +1345,7 @@
 (comment disjoint
          "(disjoint ?type1 ?type2) means that the two types have no common instance. Inherited by subtypes through genl, so declaring it of dog and cat separates every breed from every breed. The declaration keeps its written strength: a :monotonic denial defeats a :default one at the denial's context and below, where the memberships it separated clash with nothing. A membership that violates it is stored, and the two memberships form a :disjoint contradiction; try-assert refuses the second instead. A clash that only becomes visible from some descendant context is reported by exposed-clashes.")
 (set/monotonic (type_relation_predicate disjoint))
+(set/monotonic (symmetric disjoint))
 (set/monotonic (time_agnostic_relation disjoint))
 (not (eternal_predicate disjoint))
 (genlArg disjoint 1 thing)
