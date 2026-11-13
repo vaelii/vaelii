@@ -721,6 +721,31 @@
                               (ask (list 'rewriteOf Duo (list PairFn '?x y)))])
             (str "the rewrite payload, mark first: " mark-first?))))))
 
+(tu/deftest-kb an-open-commuted-rewrite-pattern-binds-in-both-engines
+  ;; The stored row's application reads as its own lhs, so an open application pattern
+  ;; is answered by proposing its variables and re-reading the instance canonically.
+  (doseq [mark-first? [true false]]
+    (tu/with-terms [PairFn pairOf Ada Bea Cid Duo picked]
+      (let [[x y] (sort-by str [Ada Bea])
+            mark  #(v/assert kb (list 'commutative PairFn) 'CxUniverse)]
+        (v/assert kb (list 'binary_function PairFn) 'CxUniverse)
+        (v/assert kb (list 'reifiable_function PairFn) 'CxUniverse)
+        (when mark-first? (mark))
+        (v/assert kb (list 'functionCorrespondingPredicate PairFn pairOf 3) 'CxUniverse)
+        (v/assert kb (list picked (list PairFn y x)) 'CxUniverse)
+        (v/assert kb (list 'rewriteOf Duo (list PairFn y Cid)) 'CxUniverse)
+        (when-not mark-first? (mark))
+        (doseq [engine [:dfs :inference]]
+          (binding [v/*query-engine* engine]
+            (let [ask (fn [g] (set (map #(get % '?x) (v/prove kb g 'CxUniverse {:max-depth 1}))))
+                  why (str engine ", mark first: " mark-first?)]
+              (is (= #{Cid} (ask (list 'rewriteOf Duo (list PairFn y '?x)))) why)
+              (is (= #{Cid} (ask (list 'rewriteOf Duo (list PairFn '?x y)))) why)
+              (testing "closed endpoints keep their canonical reading"
+                (is (v/provable? kb (list 'rewriteOf Duo (list PairFn y Cid)) 'CxUniverse {:max-depth 1}) why)
+                (is (v/provable? kb (list 'rewriteOf Duo (list PairFn Cid y)) 'CxUniverse {:max-depth 1}) why)
+                (is (= #{Duo} (ask (list 'rewriteOf Duo '?x))) why)))))))))
+
 (tu/deftest-kb two-rewrite-declarations-mint-fresh-rather-than-electing-one
   (tu/with-terms [MotherFn Muffet Mary Maria]
     (v/assert kb (list 'reifiable_function MotherFn) 'CxUniverse)
@@ -1786,6 +1811,8 @@
 (tu/deftest-kb a-default-value-copies-the-uses-and-the-rules-and-merges-nothing
   (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
     (let [terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
+          merges (fn [content] (set (filter #(= 'rewriteOf (ffirst %)) (filter #(seq? (first %)) content))))
+          shipped (merges (believed-content kb))
           _     (default-value-kb! kb terms [:decl :fact :use :rules])
           k     (nat-read/dedup-constant kb (list MomFn Muffet))
           held  (believed-content kb)]
@@ -1794,7 +1821,7 @@
              (into #{} (filter #(= likes (ffirst %))) (filter #(= Tom (second (first %))) held))))
       (is (contains? held [(list momOf Muffet k) 'CxUniverse]))
       (is (v/believed? kb (v/handle-of kb (list 'implies (list likes '?x Mary) (list fond '?x)) CxStory) CxStory))
-      (is (not-any? #(= 'rewriteOf (ffirst %)) (filter #(seq? (first %)) held))))))
+      (is (= shipped (merges held)) "the default value adds no rewriteOf of its own"))))
 
 (tu/deftest-kb a-default-value-defeated-takes-every-copy-out
   (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
@@ -1998,6 +2025,40 @@
             (str "no belief but the value's rule names the value " row))
         (is (every? #(contains? (get-in % [:after :believed]) [(list 'caresFor 'Bob k) 'CxUniverse]) runs)
             (str row))))))
+
+(deftest an-observed-application-write-keeps-its-own-constant-after-the-value-merge
+  (doseq [observe? [false true]]
+    (on-own-kb
+     (fn [kb]
+       (let [events (atom [])
+             E '(MotherFn Muffet)
+             k (nat/constant-for nat-read/nat-namespace E)]
+         (binding [nat-read/*application-read* (when observe? #(swap! events conj %))]
+           (v/assert kb '(reifiable_function MotherFn) 'CxUniverse)
+           (v/assert kb '(functionCorrespondingPredicate MotherFn motherOf 2) 'CxUniverse)
+           (v/assert kb '(motherOf Muffet Mary) 'CxUniverse {:strength :monotonic})
+           (v/assert kb '(caresFor Bob (MotherFn Muffet)) 'CxUniverse)
+           ;; The first use has merged the map onto Mary; the second must still store K.
+           (let [h (v/assert kb '(fondOf Ann (MotherFn Muffet)) 'CxUniverse)]
+             (is (= (list 'fondOf 'Ann k) (:sentence (v/sentex kb h))))
+             (is (= k (nat-read/existing-term kb E nat-read/nat-namespace 'CxUniverse true)))
+             (is (= 'Mary (nat-read/existing-term kb E nat-read/nat-namespace 'CxUniverse)))
+             (is (v/ask? kb '(fondOf Ann Mary) 'CxUniverse)))
+           (when observe?
+             (is (some #(and (= E (:expression %)) (= k (:value %)) (= :map (:source %))) @events))
+             (is (some #(and (= E (:expression %)) (= 'Mary (:value %))
+                             (= :correspondence (:source %))) @events)))))))))
+
+(deftest an-observed-firing-keeps-the-value-restatement-supported-by-its-premise
+  (let [k (nat/constant-for nat-read/nat-namespace '(MotherFn Muffet))]
+    (doseq [order [[:value :use :use2] [:use :use2 :value]]]
+      (let [events (atom [])
+            run (binding [nat-read/*application-read* #(swap! events conj %)]
+                  (on-own-kb #(value-use-run % [:asserted :fired] order)))]
+        (is (seq @events))
+        (is (contains? (get-in run [:before :believed]) ['(caresFor Bob Mary) 'CxUniverse]))
+        (is (contains? (get-in run [:after :believed]) [(list 'caresFor 'Bob k) 'CxUniverse]))
+        (is (not (contains? (get-in run [:after :believed]) ['(caresFor Bob Mary) 'CxUniverse])))))))
 
 ;; ---- an application resolves under the reader's merges ---------------------
 
@@ -2267,8 +2328,8 @@
       (is (= :not-well-formed (:type (ex-data e)))))))
 
 (tu/deftest-kb the-shipped-correspondences-state-their-position
-  (is (true? (v/ask? kb '(functionCorrespondingBinaryPredicate MotherFn motherOf) 'CxUniverse)))
-  (is (true? (v/ask? kb '(functionCorrespondingPredicate MotherFn motherOf 2) 'CxUniverse)))
+  (is (true? (v/ask? kb '(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf)) 'CxUniverse)))
+  (is (true? (v/ask? kb '(functionCorrespondingPredicate MotherFn (BloodKinFn motherOf) 2) 'CxUniverse)))
   (is (true? (v/ask? kb '(functionCorrespondingPredicate QuantityFn measureInUnit 3) 'CxUniverse)))
   (is (true? (v/ask? kb '(functionCorrespondingPredicate InstantFn calendarInstant 7) 'CxUniverse)))
   (is (empty? (filter #(and (= 'functionCorrespondingPredicate (first (:sentence %)))

@@ -154,10 +154,18 @@
     ;; they answer the enumeration wherever CxUniverse is seen.  seeAlso is NOT among them — it is a directional cross-reference, not
     ;; symmetric.  The social relations (CxSocial's and CxTra's) are among them:
     ;; their marks are stated in CxUniverse like the rest, and ?ctx is open.
-    (is (= '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
-              relativeOf romanticPartnerOf coworkerOf roommateOf
-              nestingPartnerOf chosenSiblingOf headmateOf disjoint diachronicallyDisjoint negates inverse}
-           (set (map #(get % '?p) (v/ask kb '(symmetric ?p) '?ctx)))))
+    (let [qualified (set (mapcat (fn [constructor]
+                                   (map #(get % '?predicate)
+                                        (v/query kb (list 'natFormula '?predicate
+                                                          (list constructor 'siblingOf)) 'CxUniverse)))
+                                 '[BloodKinFn ChosenKinFn]))]
+      (is (= 2 (count qualified)))
+      (is (= (into '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
+                      kinOf bloodRelativeOf chosenKinOf sharesGenesWith
+                      romanticPartnerOf coworkerOf roommateOf nestingPartnerOf chosenSiblingOf
+                      headmateOf disjoint diachronicallyDisjoint negates inverse}
+                   qualified)
+             (set (map #(get % '?p) (v/ask kb '(symmetric ?p) '?ctx))))))
     ;; `genl` and `genlCx` are in the enumeration because core.txt asserts (transitive genl)
     ;; / (transitive genlCx) outright.  They *are* transitive; answering them from cached
     ;; closures instead of the generic prover is an implementation choice, not a difference

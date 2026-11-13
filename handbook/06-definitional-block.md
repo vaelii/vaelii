@@ -120,11 +120,12 @@ relation properties.
 
 ```clojure
 (comment siblingOf
-         "(siblingOf ?organism1 ?organism2) means that ?organism1 and ?organism2 share at least one biological parent, and chosen or elective kinship is not this predicate. Half-siblings count — nothing here asks that both parents match.")
+         "(siblingOf ?first ?second) means ?first and ?second are siblings, by blood or by choice. Half-siblings count.")
 (implementationNote siblingOf "Declared symmetric, so one assertion answers both orders and the two spellings store as one sentex.")
 (set/monotonic (instance_relation_predicate siblingOf))
-(arg siblingOf 1 organism)
-(arg siblingOf 2 organism)
+(arg siblingOf 1 causal)
+(arg siblingOf 2 causal)
+(generic_kinship_predicate siblingOf)
 (set/monotonic (symmetric siblingOf))
 ```
 

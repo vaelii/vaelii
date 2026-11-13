@@ -741,6 +741,12 @@ for the same reason — a justification *is* a record, and a record's home is th
 (The projection also normalizes, which is what makes the two representations store values
 equal to each other's however a caller spelled the justification.)
 
+Optional `:reading` evidence is separate from variable bindings. Graph projection,
+durable encoding and proof dedup preserve it: two source interpretations with the same
+handles need not be interchangeable. An ordinary proof has no such annotation, and
+the network's validity calculation does not infer a policy from its presence. A
+semantic reader must explicitly interpret any source roles it records.
+
 **No stored antecedent vector is in arrival order**, because belief reads it as a set and
 every *report* reads it as a list. Three of the eleven builders get there by **sorting on
 content** (`kb/antecedent-order`) — forward chaining's two placement sites and

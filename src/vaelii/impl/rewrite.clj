@@ -175,25 +175,40 @@
 (defn- rewrite-root
   "Rewrite `term` at its root with the first applicable rule, or nil when none
   applies.  `rules` is a seq of `{:lhs :rhs}` oriented pairs."
-  [rules term]
-  (some #(reduct % term) rules))
+  [rules term step]
+  (some (fn [rule]
+          (when-let [red (reduct rule term)]
+            (when step (step rule))
+            red)) rules))
 
 (defn normalize
   "The normal form of `term` under the oriented `rules`: rewrite innermost subterms to
   a fixpoint, then the root, repeating until nothing applies.  Terminates by the
   reduction order (each root rewrite strictly decreases size); the guard is a pure
-  safety net."
+  safety net. The optional internal `step` receives each actually chosen rule,
+  including recursive and second-step rewrites; the value algorithm is shared."
+  ([rules term] (normalize rules term nil))
+  ([rules term step]
+   (loop [term term, guard 0]
+     ;; `(seq term)` as well as `sequential?`: an empty list has no functor to keep, and
+     ;; rebuilding it as `(apply list (first term) …)` would hand back `(nil)` — a term the
+     ;; caller never wrote, in a form that then keys and matches as itself.
+     (let [term' (if (and (sequential? term) (seq term))
+                   (apply list (first term) (map #(normalize rules % step) (rest term)))
+                   term)]
+       (if-let [red (and (< guard normalize-guard) (rewrite-root rules term' step))]
+         (recur red (inc guard))
+         term')))))
+
+(defn normalize-with-support
+  "`[normal-form rule-handles]`, using the same reducer as `normalize`.
+  Only actually chosen rules contribute, not rules merely applicable to the initial
+  input or unrelated reader-visible equations. An unhandled pure rule contributes
+  no stored handle."
   [rules term]
-  (loop [term term, guard 0]
-    ;; `(seq term)` as well as `sequential?`: an empty list has no functor to keep, and
-    ;; rebuilding it as `(apply list (first term) …)` would hand back `(nil)` — a term the
-    ;; caller never wrote, in a form that then keys and matches as itself.
-    (let [term' (if (and (sequential? term) (seq term))
-                  (apply list (first term) (map #(normalize rules %) (rest term)))
-                  term)]
-      (if-let [red (and (< guard normalize-guard) (rewrite-root rules term'))]
-        (recur red (inc guard))
-        term'))))
+  (let [handles (volatile! #{})
+        form (normalize rules term #(when-let [h (:handle %)] (vswap! handles conj h)))]
+    [form @handles]))
 
 (def equality-relations
   "The equality relations, whose argument positions are **mentions**: `(equals A B)`
@@ -256,6 +271,19 @@
   (if (and (seq rules) (sentence-argument? sentence))
     (map-argument-terms #(normalize rules %) sentence)
     sentence))
+
+(defn normalize-sentence-with-support
+  "`normalize-sentence` with the handles of the actual term-rewrite steps."
+  [rules sentence]
+  (let [handles (volatile! #{})
+        form (if (and (seq rules) (sentence-argument? sentence))
+               (map-argument-terms
+                (fn [term]
+                  (let [[value hs] (normalize-with-support rules term)]
+                    (vswap! handles into hs)
+                    value)) sentence)
+               sentence)]
+    [form @handles]))
 
 ;; ---- schematic-equation detection ----------------------------------------
 

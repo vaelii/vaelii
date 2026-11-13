@@ -105,9 +105,12 @@ and the KB says so from four sentences none of which mentions a litre
 
 **`motherOf` / `fatherOf`, with `MotherFn` / `FatherFn` beside them.** The reified
 functions are what let a KB name somebody by their role before it knows their name, and
-the correspondence merges the constant `(MotherFn Pup)` mints with a mother already
-stored, so a read of either name finds the other's facts. Both predicates are functional,
-so a second mother merges rather than piling up.
+each written application mints its own constant. A uniquely determined monotonic blood
+parent reaches that constant through a supported `rewriteOf` merge; withdrawing its
+premise withdraws the restated uses, not the application's own constant. The shipped functions correspond to
+`(BloodKinFn motherOf)` and `(BloodKinFn fatherOf)`, not the generic family predicates.
+Several visible mothers remain distinct; without a unique admissible blood value the correspondence
+selects none and does not merge them.
 
 **The event calculus, and the fluents to run it on.** `CxChange` ships the inertia
 axioms and `time.txt` the vocabulary they are stated in, so *asleep at four* is a question

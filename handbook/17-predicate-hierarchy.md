@@ -131,23 +131,20 @@ instead":
            (sees ?x ?y)))
 ```
 
-`CxSocial.txt` relates `parentOf`, whose arguments are any two organisms, to
-`originatorOf`, whose arguments are two persons, with a rule guarded on both positions:
+**Example.** `CxSocial.txt` reads acquaintance from kinship only between persons:
 
 ```clojure
-(set/backwardRule
-  (implies (and (parentOf ?p ?c) (person ?p) (person ?c))
-           (originatorOf ?p ?c)))
+(set/defaultRule (set/forwardRule (implies (and (kinOf ?x ?y) (person ?x) (person ?y)) (knows ?x ?y))))
 ```
 
 **Why.**
 
 - *Logical.* `(genl P Q)` makes every `P` tuple a `Q` tuple, so `Q`'s argument types become
   claims about every `P` argument. Where `P`'s arguments are broader, the edge asserts
-  something false: that every organism with a parent is a person.
+  something false: that every organism with kin is a person.
 - *Engine.* Under the entailing reading of argument types, which is on by default, each
   `P` fact mints the memberships `Q`'s declarations demand: `(person Fido)` from a
-  parentage between two dogs. Depending on the contexts the declarations sit in and on
+  kinship between two dogs. Depending on the contexts the declarations sit in and on
   arrival order, the same fact may instead be refused with `:arg-type`. Neither outcome
   files a violation or a contradiction that names the edge, so nothing on the write path
   points at the cause.

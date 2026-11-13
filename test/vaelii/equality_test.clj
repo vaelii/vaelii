@@ -1054,17 +1054,16 @@
                   :open #{a b c} :prove 1 :matching 1}
                  (equation-reads kb pred a b c CxEq))))))))
 
-(tu/deftest-kb a-stated-rewrite-of-is-answered-as-a-directed-edge
-  ;; `rewriteOf` is directional: the stated edge answers every read, and neither its
-  ;; converse nor a self-edge (which `wff` refuses) is answered.  The goal is asked as
-  ;; spelled, since the spelling rename it states would otherwise rewrite the goal into
-  ;; `(rewriteOf a a)`.
+(tu/deftest-kb a-stated-rewrite-of-is-answered-through-reader-representatives
+  ;; The stored preference stays directed. Its public relation normalizes both
+  ;; endpoints before matching, so a visible edge can witness a canonical self pair.
+  ;; It does not assert that self pair or change raw record/provenance reads.
   (tu/with-terms [CxEq]
     (let [[a b c] (sort [(tu/tmp-ind "Rw") (tu/tmp-ind "Rw") (tu/tmp-ind "Rw")])]
       (v/assert kb (list 'rewriteOf a b) CxEq {:strength :monotonic})
       (v/assert kb (list 'sameAs b c) CxEq {:strength :monotonic})
-      (is (= {:stated true :symmetric false :reflexive false :chain false
-              :open #{b} :prove 1 :matching 1}
+      (is (= {:stated true :symmetric true :reflexive true :chain true
+              :open #{a} :prove 1 :matching 1}
              (equation-reads kb 'rewriteOf a b c CxEq))))))
 
 (tu/deftest-kb an-equation-is-answered-only-where-it-is-visible

@@ -58,7 +58,8 @@ is a `nat/` constant standing for the parent that exists.
 the parent is a determinate thing the author can name, and every member needs its own
 sentence. A function applied to the member names one filler per member,
 which a type with two parents per member does not have; a function belongs where the
-filler is unique, as `MotherFn` is for `motherOf` ([ch. 22](22-functions.md)). A rule with
+filler is determined. `MotherFn` uses blood-qualified `motherOf`: one visible value can
+resolve it, but ambiguous blood values select no mother and merge none ([ch. 22](22-functions.md)). A rule with
 an unmarked variable in its consequent is refused at assert.
 
 **Audit.** For each head existential, confirm that the rule is forward and that the

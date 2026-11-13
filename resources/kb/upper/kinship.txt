@@ -1,0 +1,542 @@
+;; The qualification of one common kinship vocabulary by blood or by choice.
+
+(comment BloodKinFn "(BloodKinFn ?predicate) denotes the blood-qualified reading of the unqualified kinship predicate ?predicate.")
+(unary_function BloodKinFn)
+(reifiable_function BloodKinFn)
+(arg BloodKinFn 1 generic_kinship_predicate)
+(result BloodKinFn blood_kinship_predicate)
+(functionCorrespondingBinaryPredicate BloodKinFn bloodKinPredicateOf)
+
+(comment ChosenKinFn "(ChosenKinFn ?predicate) denotes the chosen-family reading of the unqualified kinship predicate ?predicate.")
+(unary_function ChosenKinFn)
+(reifiable_function ChosenKinFn)
+(arg ChosenKinFn 1 generic_kinship_predicate)
+(result ChosenKinFn chosen_kinship_predicate)
+(functionCorrespondingBinaryPredicate ChosenKinFn chosenKinPredicateOf)
+
+(comment bloodKinPredicateOf "(bloodKinPredicateOf ?generic ?blood) means ?blood is the blood-qualified reading of ?generic.")
+(binary_predicate bloodKinPredicateOf)
+(arg bloodKinPredicateOf 1 generic_kinship_predicate)
+(arg bloodKinPredicateOf 2 blood_kinship_predicate)
+(set/monotonic (eternal_predicate bloodKinPredicateOf))
+(set/monotonic (functional bloodKinPredicateOf))
+
+(comment chosenKinPredicateOf "(chosenKinPredicateOf ?generic ?chosen) means ?chosen is the chosen-family reading of ?generic.")
+(binary_predicate chosenKinPredicateOf)
+(arg chosenKinPredicateOf 1 generic_kinship_predicate)
+(arg chosenKinPredicateOf 2 chosen_kinship_predicate)
+(set/monotonic (eternal_predicate chosenKinPredicateOf))
+(set/monotonic (functional chosenKinPredicateOf))
+
+(comment kinOf "(kinOf ?first ?second) means ?first and ?second are family, by blood or by choice. It describes the family tie that holds, rather than merely recording that a chosen tie once held.")
+(instance_relation_predicate kinOf)
+(generic_kinship_predicate kinOf)
+(arg kinOf 1 causal)
+(arg kinOf 2 causal)
+(set/monotonic (symmetric kinOf))
+(not (eternal_predicate kinOf))
+
+(comment bloodRelativeOf "(bloodRelativeOf ?first ?second) means ?first and ?second are blood kin. Genetic descent is the default reading; gestational-only parenthood is also blood kinship without licensing its genetic consequences.")
+(binary_predicate bloodRelativeOf)
+(arg bloodRelativeOf 1 organism)
+(arg bloodRelativeOf 2 organism)
+(rewriteOf bloodRelativeOf (BloodKinFn kinOf))
+
+(comment chosenKinOf "(chosenKinOf ?first ?second) means ?first and ?second are family by choice.")
+(binary_predicate chosenKinOf)
+(arg chosenKinOf 1 person)
+(arg chosenKinOf 2 person)
+(rewriteOf chosenKinOf (ChosenKinFn kinOf))
+
+(set/forwardRule
+ (implies (genl ?predicate bloodRelativeOf)
+          (blood_kinship_predicate ?predicate)))
+(set/forwardRule
+ (implies (genl ?predicate chosenKinOf)
+          (chosen_kinship_predicate ?predicate)))
+
+(covering kinOf bloodRelativeOf chosenKinOf)
+
+;; State the exact predicate classes; numeric arity alone leaves their class rules inert.
+(binary_predicate (BloodKinFn childOf))
+(binary_predicate (BloodKinFn ancestorOf))
+(binary_predicate (BloodKinFn grandparentOf))
+(binary_predicate (BloodKinFn birthDate))
+(binary_predicate (BloodKinFn birthYearOf))
+(binary_predicate (BloodKinFn olderThan))
+(binary_predicate (ChosenKinFn childOf))
+(binary_predicate (ChosenKinFn ancestorOf))
+(binary_predicate (ChosenKinFn grandparentOf))
+(binary_predicate (ChosenKinFn birthDate))
+(binary_predicate (ChosenKinFn birthYearOf))
+(binary_predicate (ChosenKinFn olderThan))
+(arg (BloodKinFn birthDate) 1 organism)
+(arg (BloodKinFn birthDate) 2 uninterrupted_time)
+(arg (BloodKinFn birthYearOf) 1 organism)
+(arg (BloodKinFn birthYearOf) 2 integer)
+(arg (BloodKinFn olderThan) 1 organism)
+(arg (BloodKinFn olderThan) 2 organism)
+(arg (ChosenKinFn birthDate) 1 organism)
+(arg (ChosenKinFn birthDate) 2 uninterrupted_time)
+(arg (ChosenKinFn birthYearOf) 1 organism)
+(arg (ChosenKinFn birthYearOf) 2 integer)
+(arg (ChosenKinFn olderThan) 1 organism)
+(arg (ChosenKinFn olderThan) 2 organism)
+(set/monotonic (symmetric bloodRelativeOf))
+(set/monotonic (symmetric chosenKinOf))
+
+(comment (BloodKinFn parentOf) "((BloodKinFn parentOf) ?parent ?child) means ?parent is a biological parent of ?child by default, the primitive of the blood kinship theory. A plant or a bacterium has a parent as an animal does. Gestational parenthood is included, while genetic consequences have their own exceptions.")
+(arg (BloodKinFn parentOf) 1 organism)
+(arg (BloodKinFn parentOf) 2 organism)
+(arg (BloodKinFn childOf) 1 organism)
+(arg (BloodKinFn childOf) 2 organism)
+(arg (BloodKinFn motherOf) 1 animal)
+(arg (BloodKinFn motherOf) 2 animal)
+(arg (BloodKinFn fatherOf) 1 animal)
+(arg (BloodKinFn fatherOf) 2 animal)
+(arg (BloodKinFn siblingOf) 1 organism)
+(arg (BloodKinFn siblingOf) 2 organism)
+(arg (BloodKinFn ancestorOf) 1 organism)
+(arg (BloodKinFn ancestorOf) 2 organism)
+(arg (BloodKinFn grandparentOf) 1 organism)
+(arg (BloodKinFn grandparentOf) 2 organism)
+(set/monotonic (symmetric (BloodKinFn siblingOf)))
+(set/monotonic (symmetric (ChosenKinFn siblingOf)))
+(arg (ChosenKinFn siblingOf) 1 person)
+(arg (ChosenKinFn siblingOf) 2 person)
+(arg (ChosenKinFn parentOf) 1 person)
+(arg (ChosenKinFn parentOf) 2 person)
+(arg (ChosenKinFn childOf) 1 person)
+(arg (ChosenKinFn childOf) 2 person)
+(arg (ChosenKinFn motherOf) 1 person)
+(arg (ChosenKinFn motherOf) 2 person)
+(arg (ChosenKinFn fatherOf) 1 person)
+(arg (ChosenKinFn fatherOf) 2 person)
+(arg (ChosenKinFn ancestorOf) 1 person)
+(arg (ChosenKinFn ancestorOf) 2 person)
+(arg (ChosenKinFn grandparentOf) 1 person)
+(arg (ChosenKinFn grandparentOf) 2 person)
+
+;; Qualification preserves argument order as well as the common hierarchy.
+(inverse (BloodKinFn parentOf) (BloodKinFn childOf))
+(inverse (ChosenKinFn parentOf) (ChosenKinFn childOf))
+(genlInverse (BloodKinFn motherOf) (BloodKinFn parentOf))
+(genlInverse (BloodKinFn fatherOf) (BloodKinFn parentOf))
+(genlInverse (ChosenKinFn motherOf) (ChosenKinFn parentOf))
+(genlInverse (ChosenKinFn fatherOf) (ChosenKinFn parentOf))
+
+(genl parentOf kinOf)
+(genl childOf kinOf)
+(genl motherOf kinOf)
+(genl fatherOf kinOf)
+(genl siblingOf kinOf)
+(genl ancestorOf kinOf)
+(genl grandparentOf kinOf)
+
+(comment surrogateMotherOf "(surrogateMotherOf ?child ?mother) means ?mother carried ?child for another intended parent. The child is first, as in motherOf. Surrogacy may involve the carrier's egg or a genetically unrelated embryo.")
+(binary_predicate surrogateMotherOf)
+(blood_kinship_predicate surrogateMotherOf)
+(arg surrogateMotherOf 1 animal)
+(arg surrogateMotherOf 2 animal)
+(genl surrogateMotherOf (BloodKinFn motherOf))
+
+(comment gestationalOnlyParentOf "(gestationalOnlyParentOf ?parent ?child) means ?parent carried ?child without contributing an egg or other germline genetic material. It records parenthood through gestation, not genetic descent.")
+(binary_predicate gestationalOnlyParentOf)
+(blood_kinship_predicate gestationalOnlyParentOf)
+(arg gestationalOnlyParentOf 1 animal)
+(arg gestationalOnlyParentOf 2 animal)
+(genl gestationalOnlyParentOf (BloodKinFn parentOf))
+
+(comment genetic_chimera "An organism containing cells from genetically distinct zygotic lineages.")
+(unary_predicate genetic_chimera)
+(genl genetic_chimera organism)
+(set/monotonic (time_varying_relation genetic_chimera))
+
+;; Chimerism is a cross-cutting condition, not a species or a disjoint folk kind.
+(orthogonal genetic_chimera amphibian)
+(comment (orthogonal genetic_chimera amphibian) "A hypothetical chimeric amphibian witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera animal)
+(comment (orthogonal genetic_chimera animal) "A hypothetical chimeric animal witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera ant)
+(comment (orthogonal genetic_chimera ant) "A hypothetical chimeric ant witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera arachnid)
+(comment (orthogonal genetic_chimera arachnid) "A hypothetical chimeric arachnid witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera bee)
+(comment (orthogonal genetic_chimera bee) "A hypothetical chimeric bee witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera bird)
+(comment (orthogonal genetic_chimera bird) "A hypothetical chimeric bird witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera butterfly)
+(comment (orthogonal genetic_chimera butterfly) "A hypothetical chimeric butterfly witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera cat)
+(comment (orthogonal genetic_chimera cat) "A hypothetical chimeric cat witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera caterpillar)
+(comment (orthogonal genetic_chimera caterpillar) "A hypothetical chimeric caterpillar witnesses the overlap without changing its taxon. The caterpillar stage ends at metamorphosis; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera cow)
+(comment (orthogonal genetic_chimera cow) "A hypothetical chimeric cow witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera crow)
+(comment (orthogonal genetic_chimera crow) "A hypothetical chimeric crow witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera dog)
+(comment (orthogonal genetic_chimera dog) "A hypothetical chimeric dog witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera duck)
+(comment (orthogonal genetic_chimera duck) "A hypothetical chimeric duck witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera eagle)
+(comment (orthogonal genetic_chimera eagle) "A hypothetical chimeric eagle witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera fish)
+(comment (orthogonal genetic_chimera fish) "A hypothetical chimeric fish witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera flower)
+(comment (orthogonal genetic_chimera flower) "A hypothetical chimeric flower witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera fox)
+(comment (orthogonal genetic_chimera fox) "A hypothetical chimeric fox witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera frog)
+(comment (orthogonal genetic_chimera frog) "A hypothetical chimeric frog witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera grass)
+(comment (orthogonal genetic_chimera grass) "A hypothetical chimeric grass witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera grasshopper)
+(comment (orthogonal genetic_chimera grasshopper) "A hypothetical chimeric grasshopper witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera hare)
+(comment (orthogonal genetic_chimera hare) "A hypothetical chimeric hare witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera horse)
+(comment (orthogonal genetic_chimera horse) "A hypothetical chimeric horse witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera human)
+(comment (orthogonal genetic_chimera human) "A hypothetical chimeric human witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera insect)
+(comment (orthogonal genetic_chimera insect) "A hypothetical chimeric insect witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera invertebrate)
+(comment (orthogonal genetic_chimera invertebrate) "A hypothetical chimeric invertebrate witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera lepidopteran)
+(comment (orthogonal genetic_chimera lepidopteran) "A hypothetical chimeric lepidopteran witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera lion)
+(comment (orthogonal genetic_chimera lion) "A hypothetical chimeric lion witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera mammal)
+(comment (orthogonal genetic_chimera mammal) "A hypothetical chimeric mammal witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera mouse)
+(comment (orthogonal genetic_chimera mouse) "A hypothetical chimeric mouse witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera oak)
+(comment (orthogonal genetic_chimera oak) "A hypothetical chimeric oak witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera owl)
+(comment (orthogonal genetic_chimera owl) "A hypothetical chimeric owl witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera penguin)
+(comment (orthogonal genetic_chimera penguin) "A hypothetical chimeric penguin witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera plant)
+(comment (orthogonal genetic_chimera plant) "A hypothetical chimeric plant witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera rabbit)
+(comment (orthogonal genetic_chimera rabbit) "A hypothetical chimeric rabbit witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera reptile)
+(comment (orthogonal genetic_chimera reptile) "A hypothetical chimeric reptile witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera rose)
+(comment (orthogonal genetic_chimera rose) "A hypothetical chimeric rose witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera sheep)
+(comment (orthogonal genetic_chimera sheep) "A hypothetical chimeric sheep witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera snake)
+(comment (orthogonal genetic_chimera snake) "A hypothetical chimeric snake witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera sparrow)
+(comment (orthogonal genetic_chimera sparrow) "A hypothetical chimeric sparrow witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera spider)
+(comment (orthogonal genetic_chimera spider) "A hypothetical chimeric spider witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera tortoise)
+(comment (orthogonal genetic_chimera tortoise) "A hypothetical chimeric tortoise witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera tree)
+(comment (orthogonal genetic_chimera tree) "A hypothetical chimeric tree witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera vertebrate)
+(comment (orthogonal genetic_chimera vertebrate) "A hypothetical chimeric vertebrate witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+(orthogonal genetic_chimera wolf)
+(comment (orthogonal genetic_chimera wolf) "A hypothetical chimeric wolf witnesses the overlap without changing its taxon. Its organism identity ends at death; chimeric membership can end if one cell lineage is lost.")
+
+(comment sharesGenesWith "(sharesGenesWith ?first ?second) means ?first and ?second share inherited genetic material through family descent, rather than merely having matching gene sequences.")
+(instance_relation_predicate sharesGenesWith)
+(arg sharesGenesWith 1 organism)
+(arg sharesGenesWith 2 organism)
+(set/monotonic (symmetric sharesGenesWith))
+(set/monotonic (eternal_predicate sharesGenesWith))
+
+(implementationNote MotherFn "A correspondence with more than one visible value resolves no function application to a selected mother. Its values remain distinct; the function does not choose a genetic mother over a gestational one.")
+
+;; A known gestational-only tie does not license a genetic consequence in either order.
+;; Chimerism also blocks the ordinary genetic reading without denying shared genes.
+(exceptWhen (gestationalOnlyParentOf ?first ?second)
+ (set/defaultRule
+  (set/forwardRule
+   (implies (bloodRelativeOf ?first ?second)
+            (sharesGenesWith ?first ?second)))))
+(exceptWhen (gestationalOnlyParentOf ?second ?first)
+ (set/defaultRule
+  (set/forwardRule
+   (implies (bloodRelativeOf ?first ?second)
+            (sharesGenesWith ?first ?second)))))
+(exceptWhen (genetic_chimera ?first)
+ (set/defaultRule
+  (set/forwardRule
+   (implies (bloodRelativeOf ?first ?second)
+            (sharesGenesWith ?first ?second)))))
+(exceptWhen (genetic_chimera ?second)
+ (set/defaultRule
+  (set/forwardRule
+   (implies (bloodRelativeOf ?first ?second)
+            (sharesGenesWith ?first ?second)))))
+
+;; Only the unqualified vocabulary is a constructor input. Result types are blood or
+;; chosen, never generic, so these rules do not qualify their own conclusions again.
+(set/forwardRule
+ (implies (generic_kinship_predicate ?predicate)
+          (blood_kinship_predicate (BloodKinFn ?predicate))))
+(set/forwardRule
+ (implies (generic_kinship_predicate ?predicate)
+          (chosen_kinship_predicate (ChosenKinFn ?predicate))))
+(set/forwardRule
+ (implies (generic_kinship_predicate ?predicate)
+          (genl (BloodKinFn ?predicate) ?predicate)))
+(set/forwardRule
+ (implies (generic_kinship_predicate ?predicate)
+          (genl (ChosenKinFn ?predicate) ?predicate)))
+
+(implementationNote BloodKinFn "Hierarchy lifting generates ground conditional rules from pairs of generic inputs. The generated antecedent is the original ground genl edge, admitted as forced-between-predicates without forcing genl between types. The finite pair schema also reads a hierarchy edge asserted later. Qualified outputs are not generic inputs, so qualification cannot nest.")
+
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (generic_kinship_predicate ?general))
+          (set/forwardRule
+           (implies (genl ?predicate ?general)
+                    (genl (BloodKinFn ?predicate) (BloodKinFn ?general))))))
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (generic_kinship_predicate ?general))
+          (set/forwardRule
+           (implies (genl ?predicate ?general)
+                    (genl (ChosenKinFn ?predicate) (ChosenKinFn ?general))))))
+
+;; Predicate arity is explicit on each reading; it is not inherited from its genl.
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity))
+          (arity (BloodKinFn ?predicate) ?arity)))
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity))
+          (arity (ChosenKinFn ?predicate) ?arity)))
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
+          (arityMin (BloodKinFn ?predicate) ?minimum)))
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
+          (arityMin (ChosenKinFn ?predicate) ?minimum)))
+
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
+          (arg (BloodKinFn ?predicate) ?position ?type)))
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
+          (arg (ChosenKinFn ?predicate) ?position ?type)))
+
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
+          (variable_arity_predicate (BloodKinFn ?predicate))))
+(set/forwardRule
+ (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
+          (variable_arity_predicate (ChosenKinFn ?predicate))))
+
+;; These content-exact review records do not except or weaken any inference rule.
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (binary_predicate ?relation) (genl ?relation actor)) (situation_predicate ?relation)))
+   (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate))))
+  "The KB puts chosen_kinship_predicate below time_varying_relation, and eternal_predicate and situation_predicate below time_invariant_relation. Its rigidity-kind partition is disjoint. The two strict rules assign incompatible kinds to one predicate under the supplied schema declarations; retain both so that metadata conflict is diagnosed.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (binary ?var2) (arity ?var2 2))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (quaternary ?var2) (arity ?var2 4))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (quinary ?var2) (arity ?var2 5))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (ternary ?var2) (arity ?var2 3))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (unary ?var2) (arity ?var2 1))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (binary ?var2) (arity ?var2 2))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (quaternary ?var2) (arity ?var2 4))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (quinary ?var2) (arity ?var2 5))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (ternary ?var2) (arity ?var2 3))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (unary ?var2) (arity ?var2 1))))
+  "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (reflexive ?var4) (symmetric ?var4) (transitive ?var4)) (equivalence_relation ?var4))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (bijection ?p) (injection ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (bijection ?p) (surjection ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (equivalence_relation ?p) (reflexive ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (equivalence_relation ?p) (symmetric ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (equivalence_relation ?p) (transitive ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (injection ?p) (functional ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (surjection ?p) (functional ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (reflexive ?var4) (symmetric ?var4) (transitive ?var4)) (equivalence_relation ?var4))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (bijection ?p) (injection ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (bijection ?p) (surjection ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (equivalence_relation ?p) (reflexive ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (equivalence_relation ?p) (symmetric ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (equivalence_relation ?p) (transitive ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (injection ?p) (functional ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (surjection ?p) (functional ?p))))
+  "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (properCounterpart ?pred ?proper) (eternal_predicate ?pred)) (eternal_predicate ?proper)))
+   (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate))))
+  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives blood_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper)) (time_agnostic_relation ?pred)))
+   (Quote (implies (genl ?predicate bloodRelativeOf) (blood_kinship_predicate ?predicate))))
+  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives blood_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper)) (time_agnostic_relation ?pred)))
+   (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate))))
+  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives blood_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (properCounterpart ?pred ?proper) (time_invariant_relation ?pred)) (time_invariant_relation ?proper)))
+   (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate))))
+  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives blood_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (genl ?predicate bloodRelativeOf) (blood_kinship_predicate ?predicate)))
+   (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate))))
+  "The KB partitions rigidity kinds, with blood_kinship_predicate below eternal_predicate/time_invariant_relation and chosen_kinship_predicate below time_varying_relation. A predicate placed under both roots conflicts with those definitions. Tuples may belong to both branches; that does not identify the predicate kinds. Both classifications remain to diagnose the schema.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate)))
+   (Quote (implies (genl ?property commutativeInArgs) (eternal_predicate ?property))))
+  "The KB puts chosen_kinship_predicate below time_varying_relation, and eternal_predicate and situation_predicate below time_invariant_relation. Its rigidity-kind partition is disjoint. The two strict rules assign incompatible kinds to one predicate under the supplied schema declarations; retain both so that metadata conflict is diagnosed.")

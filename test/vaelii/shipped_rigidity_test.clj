@@ -141,10 +141,9 @@
 (tu/deftest-kb interpretation-predicates-are-time-agnostic
   (all-of-kind kb 'time_agnostic_relation '[means denotes] 'CxUniverse))
 
-(tu/deftest-kb kinship-and-biology-are-time-invariant
+(tu/deftest-kb biology-and-parent-functions-are-time-invariant
   (all-of-kind kb 'time_invariant_relation
-               '[parentOf childOf motherOf fatherOf ancestorOf siblingOf birthYearOf mortal
-                 warm_blooded MotherFn FatherFn]
+               '[mortal warm_blooded MotherFn FatherFn]
                'CxUniverse))
 
 (tu/deftest-kb social-relations-are-time-varying
@@ -217,10 +216,10 @@
     (is (not (v/ask? kb (list 'stable_once_false r) 'CxUniverse)))))
 
 (tu/deftest-kb biological-history-is-fixed-but-current-chosen-kinship-can-change
-  (all-of-kind kb 'time_invariant_relation '[grandparentOf madeOf] 'CxUniverse)
+  (all-of-kind kb 'time_invariant_relation '[madeOf] 'CxUniverse)
   (all-of-kind kb 'time_invariant_relation '[originatorOf] 'CxSocial)
-  (all-of-kind kb 'time_agnostic_relation '[relativeOf] 'CxSocial)
-  (is (v/ask? kb '(not (eternal_predicate relativeOf)) 'CxSocial))
+  (all-of-kind kb 'time_agnostic_relation '[kinOf] 'CxSocial)
+  (is (v/ask? kb '(not (eternal_predicate kinOf)) 'CxSocial))
   (all-of-kind kb 'time_varying_relation '[breathes_air preysOn] 'CxUniverse))
 
 (tu/deftest-kb contains-and-the-durations-are-time-invariant
@@ -324,11 +323,11 @@
                  temporallyDisjoint]
                'CxUniverse))
 
-(tu/deftest-kb quantities-their-comparators-and-birth-order-are-time-invariant
+(tu/deftest-kb quantities-and-their-comparators-are-time-invariant
   (all-of-kind kb 'time_invariant_relation
                '[quantity measureInUnit measureRangeInUnit quantityGreaterThan
                  quantityGreaterThanOrEqual quantityLessThan quantityLessThanOrEqual
-                 sameQuantity olderThan]
+                 sameQuantity]
                'CxUniverse)
   (testing "each quantity function takes its predicate's kind through the correspondence"
     (all-of-kind kb 'time_invariant_relation '[QuantityFn QuantityIntervalFn] 'CxUniverse)))

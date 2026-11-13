@@ -20,6 +20,7 @@
             [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
             [vaelii.impl.io.text :as text]
+            [vaelii.impl.naming :as nm]
             [vaelii.impl.predicates :as pr]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
@@ -391,10 +392,10 @@
         excused  (set (keys undeclared-positions))]
     (is (seq arities) "the text contexts were found and read")
     (is (empty? (remove excused gaps))
-        (str "positions the shipped contexts leave undeclared: " (pr-str (sort (remove excused gaps)))))
+        (str "positions the shipped contexts leave undeclared: " (pr-str (sort-by nm/print-key (remove excused gaps)))))
     (is (empty? (remove gaps excused))
         (str "listed positions that are now declared (drop them from undeclared-positions): "
-             (pr-str (sort (remove gaps excused)))))
+             (pr-str (sort-by nm/print-key (remove gaps excused)))))
     (is (empty? (vec (for [s (of '#{arg}) :when (= 1 (arities (second s)))] s)))
         "unary predicates whose position carries an arg declaration")))
 
@@ -673,7 +674,7 @@
         (is (v/assert kb (list 'friendOf CmdrData Geordi) N))
         (is (v/ask? kb (list 'friendOf CmdrData Geordi) N)))
       (testing "while a biological predicate derives organism of the person it is told of"
-        (is (v/assert kb (list 'parentOf CmdrData Geordi) N))
+        (is (v/assert kb (list (list 'BloodKinFn 'parentOf) CmdrData Geordi) N))
         (is (v/isa? kb CmdrData 'organism N)))
       (testing "and human, the biological half, reaches mammal, animal and person alike"
         (is (v/genl? kb 'human 'mammal))

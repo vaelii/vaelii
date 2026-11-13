@@ -8,8 +8,20 @@
 ;; `:context-merges`) or reports (`:re-meanings`, `:retired`).  `:api` holds the
 ;; same kinds for the public API, koinii's vars and the daemon's ops, which a
 ;; caller's code rewrites.
-{:renames        {}
+{:renames        {relativeOf kinOf}
  :context-merges {}
- :re-meanings    {}
+ :re-meanings    {parentOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  childOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  motherOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  fatherOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  siblingOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  grandparentOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  ancestorOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  birthDate "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  birthYearOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  olderThan "Generic blood-or-chosen reading; use BloodKinFn for biological history."
+                  MotherFn "Corresponds to blood-qualified motherOf; several mothers select none."
+                  FatherFn "Corresponds to blood-qualified fatherOf."
+                  originatorOf "Causal arguments include organism parenthood, not kinship itself."}
  :retired        #{}
  :api            {}}

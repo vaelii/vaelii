@@ -1398,6 +1398,9 @@
            [time_indexed_relation "ontology, not grammar: a relation one argument of which names the time a tuple holds at, below time_invariant_relation. temporalIndexArg's first argument is typed time_indexed_relation, so a fact of it makes the relation one; no engine check names it."]
            [documentation_predicate "ontology, not grammar: a predicate documenting a term, implementation or usage example, below eternal_predicate. It classifies the annotation, not the truth or temporality of a quoted example; no engine check names it."]
            [situation_predicate "ontology, not grammar: a predicate whose first argument is a situation and whose truth that situation fixes, below eternal_predicate. No engine check names it; the arg-1 constraint is checked by test, not by rule (#273)."]
+           [generic_kinship_predicate "ontology, not grammar: an unqualified kinship predicate with blood and chosen readings. The constructor and guarded hierarchy-lifting rules read this mark; no engine check names it."]
+           [blood_kinship_predicate "ontology, not grammar: a blood-qualified kinship predicate below eternal_predicate. Constructor result typing supplies the mark; no engine check names it."]
+           [chosen_kinship_predicate "ontology, not grammar: a chosen-family predicate below time_varying_relation. Constructor result typing supplies the mark; no engine check names it."]
            [stable_once_true "ontology, not grammar: a time-varying relation that, once it holds at a time, holds at every later time. No engine check names it."]
            [stable_once_false "ontology, not grammar: a time-varying relation that, once it fails at a time, fails at every later time. No engine check names it."]])
 

@@ -74,6 +74,7 @@
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rewrite :as rewrite]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
@@ -505,6 +506,21 @@
   (when-let [answers (provers/support-answers-reading kb bfn s)]
     (rules-taking kb answers)))
 
+(defn rewrite-reading-rules
+  "Positive rewrite consumers moved by `source`: always a full rejoin.
+  A new rival can expose a fallback whose proof does not name it. Keep these rules
+  separate from ordinary supporting-delta routing; the no-consumer presence check is in memory."
+  [kb source]
+  (when-let [census (rewrite-query/affected-consumers kb source)]
+    (not-empty (into (:antecedents census) (:watched census)))))
+
+(defn recheck-rewrite-source
+  "A support-only source change owes full rewrite-consumer rechecks. Called at the
+  existing queue drain, never from inside a network mutation."
+  [kb source]
+  (when-let [rs (rewrite-reading-rules kb source)]
+    (mark-recheck kb rs ::computed)))
+
 (defn- recheck-on-computed
   "A sentence on `bfn` arrived or left and moved what a `SupportingProver` computes: queue
   every rule `computed-reading-rules` names with the `::computed` marker, so each firing
@@ -513,8 +529,10 @@
   firing's handles name neither move (docs/inference.md, \"What a computed answer rests
   on\")."
   [kb bfn s]
-  (when-let [rs (computed-reading-rules kb bfn s)]
-    (mark-recheck kb rs ::computed)))
+  (let [ordinary (computed-reading-rules kb bfn s)
+        rewrite (rewrite-reading-rules kb bfn)
+        rs (if rewrite (into (or ordinary #{}) rewrite) ordinary)]
+    (when (seq rs) (mark-recheck kb rs ::computed))))
 
 (defn recheck-on-lengths
   "The settle pass moved the length of the relations `moved` (`arity/drain!`'s `:moved`,
@@ -1017,13 +1035,17 @@
   bucket.  The record holds `:engines` and `:defeasible`; no rule index keys on them.
   This is the add half of the structural arm of `integrate-sentex`."
   [kb handle rule-sentex]
-  (let [antes (:antecedent rule-sentex)]
+  (let [antes (:antecedent rule-sentex)
+        keys (rules/antecedent-keys antes)]
     (rules/index-rule (:index kb) handle
-                      (rules/antecedent-keys antes)
+                      keys
                       (rules/consequent-index-pred rule-sentex)
                       (:context rule-sentex))
+    (rewrite-query/note-consumer! kb :antecedents handle (boolean (some #{'rewriteOf} keys)))
     (when-let [ks (rule-recheck-keys (reasoning/taxonomy kb) rule-sentex)]
       (rules/index-exception (:index kb) handle ks)
+      (when (rewrite-query/positive-query-consumer? (rules/condition-queries-of (sx/sentence-of rule-sentex)))
+        (rewrite-query/note-consumer! kb :watched handle true))
       ;; `:all`: no trigger sentence, and the rule may have fired before the drain
       (mark-recheck kb [handle] :all))))
 
@@ -1119,6 +1141,8 @@
         preds (exception-recheck-predicates (reasoning/taxonomy kb) (:sentence meta-sentex))]
     (when rh
       (rules/index-exception (:index kb) rh preds)
+      (when (rewrite-query/positive-query-consumer? (sx/exception-query-conjuncts (:sentence meta-sentex)))
+        (rewrite-query/note-consumer! kb :watched rh true))
       (mark-recheck kb [rh] :all)
       (restrength-firings! kb rh)
       (force-rule! kb rh))
@@ -1157,8 +1181,9 @@
         this-preds (exception-recheck-predicates (reasoning/taxonomy kb) (:sentence meta-sentex))]
     (when rh
       (rules/unindex-exception! (:index kb) rh this-preds)
-      (when-let [remaining (seq (rule-remaining-recheck-preds kb rh (:id meta-sentex)))]
-        (rules/index-exception (:index kb) rh remaining))
+      (let [remaining (rule-remaining-recheck-preds kb rh (:id meta-sentex))]
+        (when (seq remaining) (rules/index-exception (:index kb) rh remaining))
+        (rewrite-query/note-consumer! kb :watched rh (rewrite-query/watched-consumer? kb rh (:id meta-sentex))))
       (mark-recheck kb [rh] :all)
       (restrength-firings! kb rh (:id meta-sentex))
       (force-rule! kb rh))))
@@ -1530,6 +1555,7 @@
                               extra (reduce disj a core)]
                           (and (not= jid (:id just))
                                (= (:informant just) (:informant j))
+                               (= (:reading just) (:reading j))
                                (seq extra)
                                (= (count core) (- (count a) (count extra)))
                                (every? #(and (jtms/in? tms %) (route-edge? kb %)) extra)
@@ -2743,7 +2769,10 @@
   specifically withdraws it as it withdraws a mint it meets on arrival."
   [kb h]
   (when (and argument/*assertive-arg-types?* checks/*prune-subsumed-mints?*)
-    (swap! (reasoning/mint-queues kb) update :unpremised (fnil conj []) h)))
+    (swap! (reasoning/mint-queues kb) update :unpremised (fnil conj []) h))
+  (when (nat-read/named-values-reachable? kb)
+    (when-let [s (some-> (p/get-sentex (:records kb) h) sx/sentence-of)]
+      (nat-read/note-values kb [s] true))))
 
 (defn- drain-unpremised!
   "The handles `note-unpremised!` queued since the last drain, and the queue emptied."
@@ -4609,10 +4638,12 @@
   `integrate-rewrite-rule`, and a `(rewriteOf T E)` with a compound `E` is a NAT
   reify-to-term declaration the partition holds no part of (`equality-entry`)."
   [kb sentex handle]
-  (let [s (:sentence sentex) [_ _ b] s]
+  (let [s (:sentence sentex) [_ a b] s]
     (cond
       (rewrite/schematic-equation? s) (integrate-rewrite-rule kb sentex handle)
-      (sequential? b)                 nil   ; NAT rewriteOf-to-compound
+      (sequential? b)                 (when (= 'rewriteOf (first s))
+                                        (tax/mark-compound-rewrite (reasoning/taxonomy kb) a handle (:context sentex))
+                                        nil)
       :else                           (integrate-equality kb sentex handle))))
 
 (defn- believed-restatements
@@ -6537,10 +6568,10 @@
   "Queue the minted constants whose values the `genlCx` move `m` can place differently
   (`chain/sync-values!`): the constants each sentence stored in `:gained-below` names
   (`nat-read/note-values`), and for each declaration stored there `[:valued-facts f]`.
-  Linear in what `:gained-below` stores, behind `nat-read/values-reachable?` or
-  `nat-read/rewrites-reachable?`."
+  Linear in what `:gained-below` stores, behind the minted/named value-presence checks."
   [kb m]
-  (when (or (nat-read/values-reachable? kb) (nat-read/rewrites-reachable? kb))
+  (when (or (nat-read/values-reachable? kb) (nat-read/rewrites-reachable? kb)
+            (nat-read/named-values-reachable? kb))
     (let [idx   (:index kb)
           recs  (:records kb)
           sxs   (into [] (comp (mapcat #(reads/as-stored-in-context idx %))
@@ -6549,6 +6580,7 @@
                       (sort-by nm/name-key @(:gained-below m)))
           decl? #(and (seq? %) (= res/correspondence-predicate (first %)))]
       (nat-read/note-values kb (remove decl? sxs) true)
+      (nat-read/note-values kb (filter decl? sxs) true)
       (when-let [fs (seq (into #{} (comp (filter decl?) (map second) (filter symbol?)) sxs))]
         (swap! (reasoning/respell kb) into (map #(vector :valued-facts %)) fs)))))
 
@@ -6870,7 +6902,7 @@
   "One entry-shape for all three equality relations; whether a preferred term is named
   is read off the sentence by `kb/preferred-term` inside the arms.  Two compound shapes
   are not a symbol merge: `(rewriteOf T E)` with a compound `E` is a NAT reify-to-term
-  declaration (docs/nat.md), skipped by every arm; `(equals L R)` with a variable-bearing
+  declaration (docs/nat.md), maintained only as a supported presence guard; `(equals L R)` with a variable-bearing
   compound side is a schematic equational rule, cached in the taxonomy's rewrite-rule set
   (docs/equality.md).  `wff/equality-problems` waves both through.  The add arm is
   `integrate-equality-sentex`, which the derivation path calls too."
@@ -6882,7 +6914,9 @@
                        (rewrite/schematic-equation? s)
                        (do (tax/del-rewrite-rule! (reasoning/taxonomy kb) (:id sx))
                            (recheck-equality-edge kb))
-                       (sequential? b) nil
+                       (sequential? b) (when (= 'rewriteOf (first s))
+                                         (tax/unmark-compound-rewrite! (reasoning/taxonomy kb) a (:id sx))
+                                         nil)
                        :else
                        (do (tax/del-equality! (reasoning/taxonomy kb) a b (:id sx))
                            ;; no class to narrow by on this side: what a released
@@ -6898,7 +6932,8 @@
                        (rewrite/schematic-equation? s)
                        (when-let [[lhs rhs] (rewrite/orient a b)]
                          (tax/add-rewrite-rule tax id lhs rhs ctx))
-                       (sequential? b) nil
+                       (sequential? b) (when (= 'rewriteOf (first s))
+                                         (tax/mark-compound-rewrite tax a id ctx))
                        :else (tax/add-equality tax a b id (kb/preferred-term s)))))
    :wff          equality-wff-problems})
 
@@ -7538,6 +7573,8 @@
                                (rules/antecedent-keys (:antecedent sentex))
                                (rules/consequent-index-pred sentex)
                                (:context sentex))
+          (rewrite-query/note-consumer! kb :antecedents (:id sentex) false)
+          (rewrite-query/note-consumer! kb :watched (:id sentex) false)
           ;; Deregistration recomputes the re-check predicates from the stored sentex, so a
           ;; mismatched call cannot leave a stale posting.  An exceptWhen exception's are withdrawn
           ;; by its meta-sentex leaving.
@@ -7676,7 +7713,11 @@
             :when rebuild
             sx   (stored-declarations kb f)]
       (rebuild tax sx))
-    (tax/refresh-beliefs tax (partial jtms/in? (reasoning/tms kb)))))
+    (let [rebuilt (tax/refresh-beliefs tax (partial jtms/in? (reasoning/tms kb)))
+          census (rewrite-query/rebuild-consumers! kb)
+          consumers (into (:antecedents census) (:watched census))]
+      (when (seq consumers) (mark-recheck kb consumers :all-rejoin))
+      rebuilt)))
 
 ;; ---- derived state (docs/caches.md, "The derived-state register") ----------------
 

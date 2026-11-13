@@ -57,11 +57,11 @@ hold and the third is false; the search for one is the check.
 
 **Practice.** Declare `(symmetric R)` only when every `R` tuple's converse is true.
 
-**Example.** `CxSocial.txt` declares the family relation symmetric, and declines symmetry
+**Example.** `kinship.txt` declares the family relation symmetric, and declines symmetry
 for `knows`:
 
 ```clojure
-(set/monotonic (symmetric relativeOf))
+(set/monotonic (symmetric kinOf))
 ```
 
 The header comment reads "`knows` is deliberately not symmetric — a great many people
@@ -133,11 +133,11 @@ compared.
 **Example.** `life.txt`:
 
 ```clojure
-(set/monotonic (functional fatherOf))
+(set/monotonic (functional birthYearOf))
 ```
 
-The `comment` on `fatherOf` reads "Declared functional, one biological father to a child,
-so a second, different father is not a second fact: the two names merge."
+The `birthYearOf` contract admits one integer year per organism in a context;
+a second, different year conflicts with that constraint.
 
 **Why.**
 

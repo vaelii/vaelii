@@ -16,5 +16,7 @@
 2	src/vaelii/core.clj	P5: `:stamp-inert`, the op keyword a development build's ops.log holds
 2	src/vaelii/impl/io/import.clj	P5: `:window`, the persisted `:framing` value of a single-stream dump
 1	src/vaelii/impl/overlay/store.clj	P5: `::base-pinned`, the key a durable fork's bookkeeping may hold
+1	src/vaelii/impl/rewrite_query.clj	P6: literal `:rewrite-view-consumers` T2 storage key at consumer-key; preserves existing taxonomy/image data, not prose
+3	src/vaelii/impl/taxonomy.clj	P6: literal `:rewrite-view-consumers` T2 storage key in create-taxonomy, clear-relations!, and flat-keys; preserves existing taxonomy/image data, not prose
 2	test/vaelii/oplog_test.clj	P5: replays an ops.log holding `:stamp-inert`
 2	test/vaelii/overlay_test.clj	P5: reopens a fork whose bookkeeping holds `::base-pinned`

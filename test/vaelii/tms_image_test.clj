@@ -36,6 +36,24 @@
 
 (defn- without-touched [snap] (dissoc snap :touched :touched-in :touched-new :touched-out))
 
+(deftest proof-readings-survive-images-and-network-copies
+  (let [t (dense/create-dense-tms)
+        reading {:nonplacing #{1} :label-only #{1} :reader 'CxPrivate}
+        j (jtms/->just 10 'rule [1] 2 '{?x A} :monotonic nil reading)]
+    (jtms/add-premise t 1 :monotonic)
+    (jtms/add-justification t j)
+    (let [loaded (from-bytes (image-bytes t))
+          copied (dense/copy-into! (dense/create-dense-tms) t)]
+      (doseq [r [loaded copied]]
+        (is (= reading (:reading (jtms/justification r 10))))
+        (is (= (without-touched (jtms/snapshot t))
+               (without-touched (jtms/snapshot r))))
+        ;; Reusing an id with an unannotated record must clear the sparse column.
+        (jtms/drop-justification! r 10)
+        (jtms/add-justification r (jtms/->just 10 'rule [1] 2 nil :monotonic))
+        (is (nil? (:reading (jtms/justification r 10)))))
+      (is (= reading (:reading (jtms/justification t 10)))))))
+
 (defn- result= [a b]
   (if (map? a)
     (and (= (set (:removed-sentexes a)) (set (:removed-sentexes b)))

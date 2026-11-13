@@ -239,15 +239,17 @@
 ;; predicate is not eternal.
 
 (tu/deftest-kb an-eternal-fact-in-one-year-slice-holds-in-an-unrelated-year
-  ;; parentOf carries (set/monotonic (eternal_predicate parentOf)) in life.txt. 1800 is
+  ;; Blood-qualified parentOf is eternal. The generic predicate is agnostic. 1800 is
   ;; a sibling of 2040 under CxMonad, and sees the copy the store puts in CxMonad.
   (declare-cxtimefn! kb)
   (tu/with-terms [Ann Bob]
     (let [y2040 (slice '(DatetimeFn "2040"))
           y1800 (slice '(DatetimeFn "1800"))]
-      (v/assert kb (list 'parentOf Ann Bob) y2040)
+      (v/assert kb (list 'birthYearOf Ann 2000) 'CxUniverse)
+      (v/assert kb (list 'birthYearOf Bob 2030) 'CxUniverse)
+      (v/assert kb (list (list 'BloodKinFn 'parentOf) Ann Bob) y2040)
       (testing "an eternal fact asserted only in 2040 is seen from the unrelated 1800 slice"
-        (is (true? (v/ask? kb (list 'parentOf Ann Bob) y1800)))))))
+        (is (true? (v/ask? kb (list (list 'BloodKinFn 'parentOf) Ann Bob) y1800)))))))
 
 (defn- clashes-naming
   "The contradictions and conflicts whose sentence names `term`."
@@ -282,9 +284,11 @@
   ;; eternal_predicate mark — core.txt says a rigid type need not be eternal. 1800 is a
   ;; sibling of 2040 with no genlCx path, so the fact is unknown there, not false.
   (declare-cxtimefn! kb)
-  (tu/with-terms [Bob]
+  (tu/with-terms [Ann Bob]
     (let [y2040 (slice '(DatetimeFn "2040"))
           y1800 (slice '(DatetimeFn "1800"))]
+      (v/assert kb (list 'birthYearOf Ann 2000) 'CxUniverse)
+      (v/assert kb (list 'birthYearOf Bob 2030) 'CxUniverse)
       (v/assert kb (list 'person Bob) y2040)
       (testing "a rigid but non-eternal fact is unknown, not false, from the unrelated 1800 slice"
         (is (not (v/ask? kb (list 'person Bob) y1800)))

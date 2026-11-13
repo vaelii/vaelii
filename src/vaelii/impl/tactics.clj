@@ -29,7 +29,10 @@
   it, because a rewrite substitutes into them.  The conjunction *is* the question as it
   now stands, which is what the estimate has to cost."
   [{:keys [literals]}]
-  (mapv (fn [{:keys [sentence depth]}] [sentence (long depth)]) literals))
+  (into []
+        (comp (remove #(res/rule-head-step? (:sentence %)))
+              (map (fn [{:keys [sentence depth]}] [sentence (long depth)])))
+        literals))
 
 ;; `backchain-estimate` is genuinely recursive — a rule's antecedent is costed by the
 ;; rules concluding *it* — so it stands ahead of the base term that consults it.

@@ -95,6 +95,7 @@
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rewrite :as rewrite]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
@@ -266,7 +267,7 @@
   ;; `map`, not `mapv`: matches-visible is lazy all the way down to the store, so a
   ;; caller taking one solution pays for one record fetch.  Every solve below is
   ;; lazy for the same reason.
-  (solve           [_ kb goal context] (map second (res/matches-visible kb goal context))))
+  (solve           [_ kb goal context] (map second (rewrite-query/fact-matches kb goal context))))
 
 ;; ---- transitivity (genl / genlCx via the cached closures) ---------------
 
@@ -1471,6 +1472,15 @@
             nf    #(rewrite/normalize rules (res/representative-term kb visible? %))]
         (= (nf a) (nf b)))))
 
+(defn- public-class-spellings
+  "The scoped identity class, without exposing a spelling retired by a visible rename.
+  Nonretired sameAs/equals aliases remain distinct answers: this is not an identity
+  collapse onto one representative. Raw class/storage/provenance reads are unchanged."
+  [kb visible? term]
+  (let [tx (reasoning/taxonomy kb)]
+    (distinct (map #(tax/spelling-representative tx % visible?)
+                   (sort (scoped-equiv-class kb visible? term))))))
+
 (defrecord EqualityProver []
   Prover
   ;; A ground goal, or a symbol beside a variable; the other shapes are left to the
@@ -1497,8 +1507,8 @@
       (cond
         (and (ground? a) (ground? b))
         (if (terms-equal-in? kb vis a b) [{}] [])
-        (ground? a) (map (fn [t] {b t}) (sort (scoped-equiv-class kb vis a)))
-        :else       (map (fn [t] {a t}) (sort (scoped-equiv-class kb vis b)))))))
+        (ground? a) (map (fn [t] {b t}) (public-class-spellings kb vis a))
+        :else       (map (fn [t] {a t}) (public-class-spellings kb vis b))))))
 
 (defn- structure-kind
   "The kind `sx/structure-constructors` names for `t`, a ground application of a structure

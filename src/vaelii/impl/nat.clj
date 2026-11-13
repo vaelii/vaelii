@@ -164,7 +164,7 @@
                      (= 'natFormula (nm/functor (:sentence %)))
                      (jtms/in? (reasoning/tms kb) (:id %))))
        (keep (fn [{[_ k E] :sentence}]
-               (when (and (seq? E) (= f (first E)) (nat-read/in-namespace? nat-read/nat-namespace k)) [E k])))
+               (when (and (seq? E) (= f (first E)) (nat-read/reified-object-symbol? k)) [E k])))
        distinct))
 
 ;; ---- display / export ----------------------------------------------------

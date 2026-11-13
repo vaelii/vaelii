@@ -1398,7 +1398,9 @@ frames plus fixed-width 24-byte `.idx` slots keyed by integer id.
   `direction` / `assumption` / `constraint`, read through `sentex/fielded-rule-slots`),
   a justification frame a bare vector (one
   shape needs no tag) `[id informant antecedents consequence bindings strength]` with the
-  justification's subsumptions as a seventh element when it has some (a seven-element
+  justification's subsumptions as a seventh element when it has some, and optional
+  source-reading evidence as an eighth (with a nil seventh slot if needed). An
+  unannotated justification still writes the six- or seven-element frame (a seven-element
   frame an earlier build wrote ends in an always-empty `:out` set, which decodes as
   none), and provenance — an open application map — passes through as it
   comes.  Each decoder dispatches on the thawed frame's shape, so **frames written before

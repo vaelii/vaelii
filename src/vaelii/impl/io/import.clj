@@ -618,7 +618,7 @@
         (tick!)
         (progress/tick! r)
         (vswap! frames-n inc)
-        (let [{:keys [informant antecedents consequence bindings strength subsumptions]} frame
+        (let [{:keys [informant antecedents consequence bindings strength subsumptions reading]} frame
               conseq (get old->new consequence)
               antes  (mapv remap antecedents)
               inf    (remap informant)]
@@ -629,7 +629,8 @@
                     (vswap! orphans inc))))
             (let [jid  (or (when preserve? (:id frame)) (p/next-id records))
                   just (jtms/->just jid inf antes conseq (or bindings {})
-                                    (strength-class strength) (some->> subsumptions seq (into #{})))]
+                                    (strength-class strength) (some->> subsumptions seq (into #{}))
+                                    (jtms/remap-reading reading antecedents remap true))]
               (p/write-record! sink just)
               (jprint jid just)
               (when-let [did (:id frame)] (vswap! ids assoc did jid))

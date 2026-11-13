@@ -160,6 +160,37 @@ declared ([defenses.md](defenses.md#the-mints-natformula-fact-does-not-chain)). 
 stores synchronously, so a second occurrence of `E` in the same sentence dedups against
 the first; a `(rewriteOf T E)` declaration short-circuits the mint to the real term `T`.
 
+A named target used independently of its generated metadata takes a supported
+`natFormula` map, result and correspondence facts without minting another identity.
+`named-application/sync!` places
+them where the unique visible rewrite and the use meet. Structural result declarations
+are read globally; a correspondence declaration must also be visible there. These are
+derivations, not the mint's independent type premises: their own support can leave, and
+an alias-first asserted tuple still names `T` after the alias is withdrawn. Generated
+facts and their dependent consequences establish no new demand; a separate premise or
+finite independent proof does. Ordinary derivation admission still applies, including
+the restriction on forced-monotonic outputs. This adds no intrinsic forced-output
+producer. Its map is derived from the visible alias and independent use, not a global
+premise, and requires no result or correspondence declaration. Nested applications
+in a projection use ordinary conclusion reification. Their maps witness the meaning of
+an independently used inner value; intrinsic map/type premises are not demand roots.
+The proof read excludes those seeds, not independent justifications of the same row,
+and never changes the live premises. As in orphan detection, an identical reassertion
+of an intrinsic type premise has no separately represented origin. A premise or
+justification arriving, leaving, or becoming blocked queues demand again even when
+another derivation keeps its row believed. A network-owned, queue-only listener
+records the changed handles and departing sentences; the normal correspondence drain
+walks their dependent handles and discovers affected targets. It does not open a write
+report, inspect proof regions during a network mutation, or observe a read-copy network.
+Both ordinary writes and a deferred batch's closing settle bind the listener.
+Compound-binding presence is a counted, belief-following taxonomy mark, so a write
+beside no active compound binding does no discovery read.
+Independent proof alternatives are checked at each output reader, including the
+guard-covered justifications of a row another proof keeps believed. Distinct demand
+facts remain distinct supports even when they are `genl` edges: this producer reconciles
+its exact support sets, rather than treating those facts as alternative routes of one
+ordinary rule firing. Ordinary rule route replacement is unchanged.
+
 `K` is **named by the content of `E`**: `constant-for` hashes `E` with SHA-256, takes the
 first 96 bits, and encodes them base62 behind a one-letter scheme tag — `nat/a<17
 base62>` for an object NAT, `cx/a…` for a context one (`nat-scheme-tag`). So the same
@@ -434,11 +465,13 @@ streetCornerOf 1)` makes `(StreetCornerFn Xing North)` the `Lot` of
 `(streetCornerOf Lot Xing North)`.
 
 The common case is a binary predicate with the value second, and
-`(functionCorrespondingBinaryPredicate MotherFn motherOf)` states it. A `core.txt` rule
-concludes `(functionCorrespondingPredicate MotherFn motherOf 2)` from it, and the engine
+`(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf))` states it. A `core.txt` rule
+concludes `(functionCorrespondingPredicate MotherFn (BloodKinFn motherOf) 2)` from it, and the engine
 reads only the ternary. The example is the shipped one: `resources/kb/upper/life.txt`
-states `motherOf` and `fatherOf` with `MotherFn` and `FatherFn` beside them, so a KB that
+declares `MotherFn` and `FatherFn` beside blood-qualified `motherOf` and `fatherOf`, so a KB that
 loads the starter can name somebody by their role before it knows their name.
+Generic `motherOf` alone does not determine a `MotherFn` value. Distinct blood mothers
+remain distinct; ambiguous admissible values select none rather than choosing or merging them.
 
 Two `functionalInArg` marks constrain the ternary. A function and predicate pair has one
 position (`functionalInArg` at 3), and a predicate and position have one function
@@ -456,7 +489,7 @@ spellings can otherwise reason with only that one.
 
 - **value → term.** A write or a firing that names `(MotherFn Muffet)` stores the
   application's own constant `K`, whatever value the corresponding facts name. A believed
-  `:monotonic` `(motherOf Muffet Mary)` reaches `K` through the merge `(rewriteOf Mary
+  `:monotonic` `((BloodKinFn motherOf) Muffet Mary)` reaches `K` through the merge `(rewriteOf Mary
   K)`, which `chain/sync-values!` derives from the fact and the declaration (the table
   below). The equality migration then restates each use of `K` as `Mary` where the fact is
   visible, and the restatement rests on the fact, so a retraction of the fact's premise
@@ -469,11 +502,11 @@ spellings can otherwise reason with only that one.
   handle). A read of an application nothing minted resolves to the one value the visible
   facts name, whatever its class.
 - **term → value.** When no value is known, the mint proceeds and the constant is
-  **projected** back onto the predicate: `(motherOf Muffet K)`, derived from the
+  **projected** back onto the predicate: `((BloodKinFn motherOf) Muffet K)`, derived from the
   declaration and `K`'s `natFormula` map under the `functionCorrespondingPredicate`
   informant and placed where CxUniverse and the declaration's context meet
   (`res/exception-aware-placements`), as a firing is placed. So the placeholder answers
-  `motherOf`'s questions instead of being a term nothing says anything about. The
+  blood-qualified `motherOf` questions instead of being a term nothing says anything about. The
   alternative — minting the constant and leaving the predicate unstated — makes the
   placeholder invisible to every question the predicate answers. The projection is
   placed after the mint stores the result types, since the projected literal is
@@ -481,7 +514,10 @@ spellings can otherwise reason with only that one.
   held, as a convicted firing is, and the argument-hold refresh releases it. Each
   declaration that yields one projected sentence adds its own justification to that
   sentence, and two predicates yield two sentences. A projection is dropped with the last
-  of its supports.
+  of its supports. Correspondence maintenance also reads a stated, network-IN mint map
+  while a merge supersedes it, as `nat-read/map-rows` does. Otherwise the merge would
+  retire its map, and maintenance would withdraw that same merge for lack of the map.
+  Removing the premise still withdraws its support.
 
 A corresponding predicate marked `not_assertible` ([naf.md](naf.md)) has no stored facts,
 and a prover answers it. An application of its function resolves on a read and on a write
@@ -539,7 +575,8 @@ context's merges (`nat-read/correspondence-value`). A
 merge or a copy is placed only where the placement context reads exactly one value beside
 the placeholder, through the one correspondence the merge or copy was drawn from
 (`chain/sync-values!`), decided over the believed facts that context sees. With
-`(motherOf Muffet Mary)` in `CxStory` and a write of `(MotherFn Muffet)` in `CxUniverse`:
+a single visible `((BloodKinFn motherOf) Muffet Mary)` in `CxStory` and a write of
+`(MotherFn Muffet)` in `CxUniverse`:
 
 | The fact's class | A write in `CxStory` | The placeholder minted in `CxUniverse` | A goal in `CxStory` naming the application or `K` |
 |---|---|---|---|
@@ -596,13 +633,14 @@ or constants
 (`nat_test/a-correspondence-respells-a-rule-where-its-context-meets-the-declarations-in-every-order`). A query
 context or a variable context reads every declaration through a predicate variable, so
 each reader matches the declarations it sees. The value side reads the declarations the
-context sees as well: a write or a read reifies an application through the declarations
-its context sees (`res/correspondence-of`), and a projection, a merge or a copy is placed
-where its declaration is seen.
+context sees as well: read-mode reification looks up an application's value through the
+declarations its context sees (`res/correspondence-of`). A write names its own constant;
+correspondence maintenance reads the declarations to place a projection, merge or copy
+where the declaration is seen.
 
-The declaration is read through the **index**, not a taxonomy cache. It is consulted
-once per NAT, where the reify is already probing for a `rewriteOf` target and a dedup,
-and a KB declaring none pays one O(1) functor count per assert
+The declaration is read through the **index**, not a taxonomy cache. The read path
+consults it beside the `rewriteOf` and dedup lookups; write-side maintenance reads the
+declarations for queued constants. A KB declaring none pays one O(1) functor count per assert
 (`res/any-corresponding-predicates?`). Nothing to integrate means nothing for `recover`
 to rebuild — a correspondence works across a restart because the declaration is a
 stored fact and always has been; `recover` holds the rules below again

@@ -83,6 +83,7 @@
             [vaelii.impl.reindex :as reindex]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rete :as rete]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.scenario :as scenario]
             [vaelii.impl.seal :as seal]
@@ -2257,6 +2258,27 @@
    :bulk-load?  *bulk-load?*
    :seed-moves? (if-let [v settle/*batch-seeds-moves*] @v special/*seed-moves?*)})
 
+(defn- with-support-observer
+  "Run a write with a network-owned, queue-only named-demand listener. Dependency
+  traversal waits for the normal value-maintenance drain; departing rows are saved
+  before physical deletion. Same-network nesting reuses the listener."
+  [kb thunk]
+  (let [tms (reasoning/tms kb)
+        previous jtms/*support-observer*]
+    (if (identical? tms (:tms previous))
+      (thunk)
+      (binding [jtms/*support-observer*
+                {:tms tms :previous previous
+                 :active? #(or (nat-read/named-values-reachable? kb)
+                               (rewrite-query/possible-consumers? kb))
+                 :note (fn [hs departing?]
+                         (swap! (reasoning/respell kb) into
+                                (map (fn [h]
+                                       [:named-proof h
+                                        (when departing? (:sentence (p/get-sentex (:records kb) h)))])
+                                     hs)))}]
+        (thunk)))))
+
 (defn- closing-settle
   "The settle that closes a `with-deferred-settle` batch, under the inputs its `:settle`
   frame records (`in`, `batch-settle-inputs`), or under the batch in force when `in` is
@@ -2269,15 +2291,17 @@
   [kb in]
   (let [{:keys [bulk-load? seed-moves?]} (or in (batch-settle-inputs))
         owed chain/*batch-rejoins*]
-    (binding [special/*entail-moves?*      (not bulk-load?)
-              special/*release-withheld?* (and special/*release-withheld?* (not bulk-load?))
-              special/*seed-moves?*        seed-moves?
-              chain/*batch-rejoins*        nil
-              special/*producer-moves*     (special/producer-moves)]
-      (chain/run-batch-rejoins kb owed)
-      (let [settled (settle/settle kb)]
-        (nat-maint/reconcile-moves! kb)
-        settled))))
+    (with-support-observer
+      kb
+      #(binding [special/*entail-moves?*      (not bulk-load?)
+                 special/*release-withheld?* (and special/*release-withheld?* (not bulk-load?))
+                 special/*seed-moves?*        seed-moves?
+                 chain/*batch-rejoins*        nil
+                 special/*producer-moves*     (special/producer-moves)]
+         (chain/run-batch-rejoins kb owed)
+         (let [settled (settle/settle kb)]
+           (nat-maint/reconcile-moves! kb)
+           settled)))))
 
 (defmacro with-deferred-settle
   "Run `body`, a batch of `assert` / `assert-rule` / `ist` calls on `kb`, with belief
@@ -2638,6 +2662,7 @@
   spelling arrived.  `disjunctive-goal-problem` says why an `or` is refused."
   [goal]
   (or
+   (res/rule-head-input-problem goal)
    (disjunctive-goal-problem goal)
    (sx/dot-problem :goal goal)
    (when (vector? goal)
@@ -2661,6 +2686,7 @@
   misplaced `.` is refused as at `sentence-goal-problem`."
   [goal]
   (or
+   (res/rule-head-input-problem goal)
    (disjunctive-goal-problem goal)
    (sx/dot-problem :goal goal)
    ;; `some`, not `when-some` over the first offender: a nil conjunct is a value that
@@ -3243,6 +3269,15 @@
   (or (:max-depth opts)
       (when (map? *query-options*) (:max-depth *query-options*))))
 
+(defn- registry-leaf
+  "What a backward search from `prove` or `query` answers a literal it does not rewrite
+  with: the prover registry's bounds (`provers/registry-bounds`) and the reader of a
+  rewrite head after its body binds (`rewrite-query/head-reader`), `head-reader` where
+  the caller holds one.  Merged into the DFS's bounds and the node engine's opts alike."
+  ([kb context] (registry-leaf kb context (rewrite-query/head-reader kb context)))
+  ([kb context head-reader]
+   (assoc (provers/registry-bounds kb context) :head-reader head-reader)))
+
 (defn- backward-within
   "One bounded run of the backward chainer over `goals` in `context`, as the anytime
   partial-result contract (`vaelii.impl.budget`), on `prove`'s engine selector: the DFS
@@ -3257,10 +3292,10 @@
     (if (and (not refuse?) (inference-engine? (:max-depth budget)))
       (inference/search-within
        (inference/session kb goals context (merge (query-options (:max-depth budget))
-                                                  (provers/registry-bounds kb context)))
+                                                  (registry-leaf kb context)))
        budget)
       (let [rules-fn  (fn [g] (provers/candidate-rules kb g context))
-            leaf      (provers/registry-bounds kb context)
+            leaf      (registry-leaf kb context)
             truncated (when refuse? (atom false))
             start     (System/nanoTime)
             {:keys [solutions status]}
@@ -3297,11 +3332,11 @@
 
               (inference-engine? nil)
               (inference/solutions kb goals ctx
-                                   (cap (merge (query-options nil) (provers/registry-bounds kb ctx))))
+                                   (cap (merge (query-options nil) (registry-leaf kb ctx))))
 
               :else
               (res/prove kb (fn [g] (provers/candidate-rules kb g ctx)) goals ctx
-                         (cap (provers/registry-bounds kb ctx))))))
+                         (cap (registry-leaf kb ctx))))))
         ;; unbounded rule expansion, so an antecedent fact is not one of `goals` and its
         ;; context never reaches a placement: outside post-hoc's domain by construction
         {:expands-rules? true})))))
@@ -3437,7 +3472,7 @@
   cost model that leaf is planned by.  `query-at` and `query-status-at` both build the
   same run from it."
   [kb context d opts]
-  (merge (query-options nil) opts {:max-depth d} (provers/registry-bounds kb context)))
+  (merge (query-options nil) opts {:max-depth d} (registry-leaf kb context)))
 
 (defn- query-at
   "`query`'s answer from **one** named context, once the depth has been read and the goal
@@ -3470,7 +3505,7 @@
             ;; answers.  Lazy, like the single-literal case.
             :else
             (res/prove-seq kb #(provers/candidate-rules kb % context) goals context
-                           (assoc (provers/registry-bounds kb context) :max-depth 0))))]
+                           (assoc (registry-leaf kb context) :max-depth 0))))]
     (if (:max-ms opts) (clocked "query" opts max-results read) (read))))
 
 (defn- query-capped
@@ -4113,18 +4148,18 @@
 
 (defn- run-prove-step
   "One bounded step of the DFS prover, wrapped in the anytime contract.  The continuation
-  captures the remaining goal stack, so `resume` continues where the search stopped.  The
+  captures the remaining stack and head owner, so `resume` continues the same search. The
   bounds map is `budget/prove-bounds`, the one translation of the key set."
-  [kb context budget stack una truncated]
+  [kb context budget stack una truncated head-reader]
   (budget/check-budget! budget)
   (let [rules-fn (fn [g] (provers/candidate-rules kb g context))
-        bounds   (merge (budget/prove-bounds budget) (provers/registry-bounds kb context)
+        bounds   (merge (budget/prove-bounds budget) (registry-leaf kb context head-reader)
                         {:truncated truncated})
         start    (System/nanoTime)
         {:keys [solutions status stack]} (binding [provers/*unenumerated* una]
                                            (res/prove-from kb rules-fn context bounds stack []))]
     (budget/from-batch solutions status start
-                       (fn [b] (run-prove-step kb context b stack una truncated)))))
+                       (fn [b] (run-prove-step kb context b stack una truncated head-reader)))))
 
 (defn prove-within
   "Anytime `prove`: run the depth-first backward chainer over `goal` (a sentence or a
@@ -4150,19 +4185,20 @@
        ;; wide unproductive stretch cannot run past the deadline.
        (let [sess (inference/session kb goals context
                                      (merge (query-options (:max-depth budget))
-                                            (provers/registry-bounds kb context)
+                                            (registry-leaf kb context)
                                             {:track-truncation? true}))]
          (budget/reporting-unenumerated
           (inference/search-within sess budget)
           #(assoc (inference/unenumerated sess) :truncated? (boolean @(:truncated sess)))))
        ;; the DFS's continuation is the goal stack, so the collectors ride the closure
        (let [una       (provers/unenumerated-collector)
-             truncated (atom false)]
+             truncated (atom false)
+             leaf      (registry-leaf kb context)]
          (budget/reporting-unenumerated
           (run-prove-step kb context budget
                           (res/initial-prove-stack kb goals context
-                                                   (:est-override (provers/registry-bounds kb context)))
-                          una truncated)
+                                                   (:est-override leaf))
+                          una truncated (:head-reader leaf))
           #(assoc (provers/unenumerated-report una) :truncated? @truncated)))))))
 
 (defn resume
@@ -7379,26 +7415,29 @@
   a shutdown or the caller's bound stopped (`:shutdown-abort`, `:interrupted`) marks the
   log unusable: its frame describes a write that did not complete as logged.  The frame
   holds `args` without the caller's bound (`unbounded-args`), so a replay runs the write
-  to its end."
+  to its end. Record-only edits leave belief unread; their later rebuild is observed."
   [op class g]
   (fn [kb & args]
     (binding [observe/*route-gain-sink* (if (:reasoning kb)
                                           (special/route-gain-sink kb)
                                           observe/*route-gain-sink*)]
-      (dur/call-as-write
-       op
-       (fn []
-         (if (nil? (:oplog kb))
-           (do (seal/retire-unlogged! kb)
-               (apply g kb args))
-           (try
-             (oplog/run-op kb op class (unbounded-args args) #(op-inputs op)
-                           (fn [inputs] (with-op-inputs inputs #(apply g kb args))))
-             (catch clojure.lang.ExceptionInfo e
-               (when (and (#{:shutdown-abort :interrupted} (:type (ex-data e)))
-                          (not oplog/*in-op?*))
-                 (oplog/mark-unusable! (:oplog kb) [(:type (ex-data e)) op]))
-               (throw e)))))))))
+      (let [write (fn [] (dur/call-as-write
+                          op
+                          (fn []
+                            (if (nil? (:oplog kb))
+                              (do (seal/retire-unlogged! kb)
+                                  (apply g kb args))
+                              (try
+                                (oplog/run-op kb op class (unbounded-args args) #(op-inputs op)
+                                              (fn [inputs] (with-op-inputs inputs #(apply g kb args))))
+                                (catch clojure.lang.ExceptionInfo e
+                                  (when (and (#{:shutdown-abort :interrupted} (:type (ex-data e)))
+                                             (not oplog/*in-op?*))
+                                    (oplog/mark-unusable! (:oplog kb) [(:type (ex-data e)) op]))
+                                  (throw e)))))))]
+        (if (= op :edit-records)
+          (write)
+          (with-support-observer kb write))))))
 
 (def ^:private write-ops
   "Every public write entry point, as `name -> [op class]`.  The classes are
