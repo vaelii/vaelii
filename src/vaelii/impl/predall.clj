@@ -233,7 +233,9 @@
 
 (defn- written-terms
   "The non-variable symbols of the term-name set (`reads/stored-terms-global`) that a
-  stored sentex in a context `ctx` sees writes, by term-index posting, belief unread."
+  stored sentex in a context `ctx` sees writes, by term-index posting, belief unread.
+  The read is global because the term-name set keys no context, and the postings'
+  contexts scope it to `ctx`."
   [kb ctx]
   (let [up   (set (tax/context-up (reasoning/taxonomy kb) ctx))
         recs (:records kb)
