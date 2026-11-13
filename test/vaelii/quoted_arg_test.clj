@@ -303,3 +303,30 @@
                         (:missing-arg (v/kb-integrity kb #{} 'CxUniverse {:categories #{:missing-arg}
                                                                           :max-results 10000}))))
         "kb-integrity reports no position of termsRelated untyped")))
+
+(tu/deftest-kb a-comment-documents-a-closed-expression-and-never-an-open-one
+  ;; `(quotedArg comment 1 closed_expression)` (core.txt): the commented position takes a
+  ;; closed term, a sentex named by `(sentexHandle N)` (reflection.txt's
+  ;; sentex_handle_term) or a closed sentence, each taken as written.  The check-ground
+  ;; step of `assert` refuses a free variable in the comment as `:not-ground` before any
+  ;; argument check runs, so the open cases below are refused by that step.
+  (is (true? (v/ask? kb '(quotedArg comment 1 closed_expression) 'CxUniverse)))
+  (tu/with-terms [Muffet MotherFn]
+    (v/assert kb (list 'unreifiable_function MotherFn) 'CxUniverse)
+    (let [stored (fn [about]
+                   (let [s (list 'comment about "a note")
+                         h (v/assert kb s 'CxUniverse)]
+                     [(v/believed? kb h 'CxUniverse)
+                      (count (v/sentexes-matching kb (list 'comment about '?text) 'CxUniverse))]))
+          fact   (v/assert kb (list 'dog Muffet) 'CxUniverse)]
+      (testing "a closed sentence is commented and the comment is queryable"
+        (is (= [true 1] (stored '(genl dog animal))))
+        (is (= [true 1] (stored '(not (genl animal dog))))))
+      (testing "a closed non-atomic term is commented"
+        (is (= [true 1] (stored (list MotherFn Muffet)))))
+      (testing "a stored sentex, named by its handle, is commented"
+        (is (= [true 1] (stored (list 'sentexHandle fact)))))
+      (testing "an open sentence is refused"
+        (is (= :not-ground (refusal kb '(comment (genl ?x animal) "a note")))))
+      (testing "a bare variable is refused"
+        (is (= :not-ground (refusal kb '(comment ?x "a note"))))))))
