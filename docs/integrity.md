@@ -761,7 +761,7 @@ declaration, a membership in an exact-arity class (`unary_predicate`, `binary_pr
 in a type that reaches one through `:monotonic` `genl` edges, or a `variable_arity`,
 `variable_arity_predicate` or `variable_arity_function` membership, each stated of the
 node in any context. An arity is part of a predicate's own definition, as an `arg`
-declaration is, so a length the node would read through `genl` from a bound predicate
+declaration is. So a length the node would read through `genl` from a bound predicate
 above it does not declare the node: `below_kind` above is a finding although
 `placed_kind` is a `unary_predicate`. `arity/relation-length` reads that inherited length
 for the argument-position check and the inert-tuple test. The genl-arity-mismatch pass
