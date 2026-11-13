@@ -971,7 +971,7 @@
 ;; kb-integrity suggests (intersection nestingPartnerOf romanticPartnerOf roommateOf) for
 ;; the rule, and this keeps the rule.
 (acknowledgedFinding :rule-macro
-                     (intersection nestingPartnerOf romanticPartnerOf roommateOf)
+                     (Quote (intersection nestingPartnerOf romanticPartnerOf roommateOf))
                      "The declaration says what the rule and the two genl edges say, and is not stated in their place. Stated at default strength in CxTra, it files a :forced-conclusion violation for each of its two genl edges, since genl is forced-monotonic.")
 
 ;; ---- chosen kinship ----------------------------------------------------------
