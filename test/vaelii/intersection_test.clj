@@ -13,6 +13,7 @@
   Two and three types, over kinds and over binary predicates. See CxUniverse."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.sentex :as sx]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))
@@ -155,6 +156,171 @@
       (is (empty? (v/sentexes-matching kb (list can '?x) 'CxUniverse))
           "so it concludes no one-argument tuple")
       (is (= before (set (v/violations kb))) "and files no violation"))))
+
+;; ---- the unary rule's guard is the arity-1 class membership ---------------
+;; The unary membership generator takes a combined kind that is a member of a class
+;; relationTypeByArity maps to 1.  Each test below checks how the generated rule is
+;; justified: by a firing of a rule with no arity antecedent, resting on no rule that
+;; concludes an arity.  The lazy-forward converse concludes one, so a rule generated
+;; through it fails that check.
+
+(defn- unwrapped
+  "`rule` without its `set/…` direction wrappers."
+  [rule]
+  (if (and (seq? rule) (symbol? (first rule)) (= "set" (namespace (first rule))))
+    (recur (second rule))
+    rule))
+
+(defn- reads-arity?
+  "Is `s` a rule with an `arity` antecedent, or a rule concluding an `arity`?"
+  [s]
+  (let [r (unwrapped s)]
+    (boolean
+     (when (and (seq? r) (= 'implies (first r)))
+       (let [[_ ante conseq] r
+             lits (if (and (seq? ante) (= 'and (first ante))) (rest ante) [ante])]
+         (or (some #(and (seq? %) (= 'arity (first %))) lits)
+             (and (seq? conseq) (= 'arity (first conseq)))))))))
+
+(defn- generation
+  "How the KB holds the generated rule at handle `h`.  `:believed?` is its belief.
+  `:reads-arity?` says whether one of its justifications is a firing of a rule reading
+  an `arity`, or names a rule concluding one among its antecedents.  `:because` is the
+  antecedent handles of its justifications."
+  [kb h]
+  (if (nil? h)
+    {:believed? false :reads-arity? false :because #{}}
+    (let [{:keys [nodes]} (v/why kb h)
+          node            (get nodes h)
+          sups            (:support node)]
+      {:believed?    (boolean (:believed? node))
+       :reads-arity? (boolean (some (fn [s]
+                                      (or (reads-arity? (:rule s))
+                                          (some #(reads-arity? (:sentence (get nodes %)))
+                                                (:because s))))
+                                    sups))
+       :because      (into #{} (mapcat :because) sups)})))
+
+(defn- unary-rule
+  "The unary membership rule an intersection of `parts` into `combined` generates."
+  [combined parts]
+  (list 'implies (cons 'and (map #(list % '?x) parts)) (list combined '?x)))
+
+(defn- intersection-world!
+  "Assert two types below `thing`, their intersection into `combined` and a member of
+  each type at `:monotonic`, in CxUniverse."
+  [kb combined type-a type-b]
+  (let [mono {:strength :monotonic}]
+    (v/assert kb (list 'genl type-a 'thing) 'CxUniverse)
+    (v/assert kb (list 'genl type-b 'thing) 'CxUniverse)
+    (v/assert kb (list 'intersection combined type-a type-b) 'CxUniverse mono)
+    (v/assert kb (list type-a 'Item) 'CxUniverse mono)
+    (v/assert kb (list type-b 'Item) 'CxUniverse mono)))
+
+(tu/deftest-kb an-arity-of-one-alone-admits-a-kind-to-the-unary-membership-rule
+  ;; No unary or unary_predicate declaration: the arity fact alone makes the kind
+  ;; eligible, through the unary membership the forward class rule stores from it.
+  (tu/with-terms [combined_kind type_a type_b]
+    (v/assert kb (list 'arity combined_kind 1) 'CxUniverse {:strength :monotonic})
+    (intersection-world! kb combined_kind type_a type_b)
+    (let [g (generation kb (v/handle-of kb (unary-rule combined_kind [type_a type_b]) 'CxUniverse))]
+      (is (:believed? g) "the unary membership rule is generated")
+      (is (not (:reads-arity? g)) "from the class membership, not through an arity guard"))
+    (is (believes? kb (list combined_kind 'Item) 'CxUniverse)
+        "and concludes the membership")))
+
+(tu/deftest-kb a-class-a-kb-maps-to-one-admits-its-members-to-the-unary-membership-rule
+  ;; monadic_kind is a class of the test's own, mapped to 1 by its own mapping fact.
+  (tu/with-terms [monadic_kind combined_kind type_a type_b]
+    (v/assert kb (list 'genl monadic_kind 'fixed_arity) 'CxUniverse)
+    (v/assert kb (list 'relationTypeByArity monadic_kind 1) 'CxUniverse {:strength :monotonic})
+    (let [m (v/assert kb (list monadic_kind combined_kind) 'CxUniverse {:strength :monotonic})]
+      (intersection-world! kb combined_kind type_a type_b)
+      (let [g (generation kb (v/handle-of kb (unary-rule combined_kind [type_a type_b]) 'CxUniverse))]
+        (is (:believed? g) "the unary membership rule is generated")
+        (is (contains? (:because g) m) "resting on the membership in the mapped class")
+        (is (not (:reads-arity? g)) "and not through an arity guard")))
+    (is (believes? kb (list combined_kind 'Item) 'CxUniverse)
+        "and concludes the membership")))
+
+(tu/deftest-kb retracting-a-default-unary-premise-withdraws-the-rule-and-its-memberships
+  ;; The eligibility is a :default premise.  The generated rule takes its class, so the
+  ;; membership it concludes from :monotonic parts is :default, and retracting the
+  ;; premise withdraws the rule and the membership.
+  (tu/with-terms [combined_kind type_a type_b]
+    (let [premise (v/assert kb (list 'unary combined_kind) 'CxUniverse)
+          rule    (unary-rule combined_kind [type_a type_b])]
+      (intersection-world! kb combined_kind type_a type_b)
+      (let [g (generation kb (v/handle-of kb rule 'CxUniverse))]
+        (is (:believed? g) "the unary membership rule is generated")
+        (is (contains? (:because g) premise) "resting on the :default premise")
+        (is (not (:reads-arity? g)) "and not through an arity guard"))
+      (is (= :default (v/defeat-class kb (v/handle-of kb (list combined_kind 'Item) 'CxUniverse)))
+          "the membership is capped at the premise's :default")
+      (v/retract! kb premise)
+      (is (not (:believed? (generation kb (v/handle-of kb rule 'CxUniverse))))
+          "retracting the premise withdraws the generated rule")
+      (is (not (believes? kb (list combined_kind 'Item) 'CxUniverse))
+          "and the membership it concluded"))))
+
+(tu/deftest-kb a-binary-combined-predicate-takes-the-binary-rule-and-no-unary-one
+  (tu/with-terms [can able may]
+    (doseq [p [can able may]] (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'intersection can able may) 'CxUniverse)
+    (v/assert kb (list able 'Alice 'kayaking) 'CxUniverse)
+    (v/assert kb (list may 'Alice 'kayaking) 'CxUniverse)
+    (is (tuple? (list can 'Alice 'kayaking)) "the binary rule concludes the tuple")
+    (is (not (:believed? (generation kb (v/handle-of kb (unary-rule can [able may]) 'CxUniverse))))
+        "and no unary membership rule is generated")
+    (testing "the unary membership generator reads the class membership, not an arity"
+      (is (nil? (v/handle-of kb '(implies (and (intersection ?combined ?type1 ?type2) (arity ?combined 1))
+                                          (implies (and (?type1 ?x) (?type2 ?x)) (?combined ?x)))
+                             'CxUniverse)))
+      (is (some? (v/handle-of kb '(implies (relationTypeByArity ?class 1)
+                                           (implies (and (intersection ?combined ?type1 ?type2)
+                                                         (?class ?combined))
+                                                    (implies (and (?type1 ?x) (?type2 ?x))
+                                                             (?combined ?x))))
+                              'CxUniverse))))))
+
+(defn- membership-rule?
+  "Is `rule` the unary membership rule concluding `(combined ?x)` from the `parts`?"
+  [rule combined parts]
+  (let [r (unwrapped rule)]
+    (boolean
+     (when (and (seq? r) (= 'implies (first r)))
+       (let [[_ ante conseq] r
+             lits (if (and (seq? ante) (= 'and (first ante))) (rest ante) [ante])]
+         (and (seq? conseq) (= combined (first conseq))
+              (= (set parts) (set (map first lits)))))))))
+
+(deftest the-load-holds-the-unary-membership-firings-and-a-first-query-adds-no-record
+  ;; reflection.txt states (intersection closed_literal literal closed_expression) and the
+  ;; closed_predication one, and abstract.txt a declined_rule_macro record whose argument
+  ;; is a quoted closed predication.  The generated rules' firings over that record are
+  ;; made by the load.  A first query of the memberships stores no sentex and no
+  ;; justification.
+  (tu/with-neutral-kb [kb #(doto (tu/isolated-fresh) (tu/load-core!))]
+    (let [q       (list sx/quote-functor '(genl container hollow))
+          record  (v/handle-of kb (list 'declined_rule_macro q) 'CxUniverse)
+          kinds   '[[closed_literal [literal closed_expression]]
+                    [closed_predication [predication closed_expression]]]]
+      (is (some? record) "abstract.txt's declined record is loaded")
+      (doseq [[combined parts] kinds
+              :let [h    (v/handle-of kb (list combined q) 'CxUniverse)
+                    sups (when h
+                           (filterv #(membership-rule? (:rule %) combined parts)
+                                    (get-in (v/why kb h) [:nodes h :support])))]]
+        (is (some #(some #{record} (:because %)) sups)
+            (str "the load holds the " combined " rule's firing over the declined record"))
+        (is (not-any? #(:reads-arity? (generation kb (:informant %))) sups)
+            (str "and the " combined " rule is generated from the class membership")))
+      (let [before (tu/content-count kb)]
+        (doseq [[combined] kinds]
+          (v/ask? kb (list combined q) 'CxUniverse)
+          (v/query kb (list combined q) 'CxUniverse {:max-depth 3}))
+        (is (= before (tu/content-count kb))
+            "the first query of each membership stores no sentex and no justification")))))
 
 ;; ---- the membership's strength ------------------------------------------
 ;; The generated membership rule is bare, so it confers :monotonic and the combined
