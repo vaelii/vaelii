@@ -320,11 +320,11 @@
 
 (defn own-length
   "The length `q` itself is known to have, as `{:exact n}` or `{:min m}`, or nil, read the
-  same at every context and with no `genl` closure read: an engine term's `:shape`
-  (`shape-length`), else `q`'s own IN bindings (`reduce-own`), else, for a `variable_arity`
-  release with no single `arityMin`, the highest of its floors, zero without one.  An
-  exact-arity class membership and a `:monotonic` membership reaching one are own
-  bindings.  A length the bound predicates above `q` agree on is not `q`'s own
+  same at every context and with no `genl` closure read.  It comes from an engine term's
+  `:shape` (`shape-length`), else `q`'s own IN bindings (`reduce-own`), else, for a
+  `variable_arity` release with no single `arityMin`, the highest of its floors, zero
+  without one.  An exact-arity class membership and a `:monotonic` membership reaching one
+  are own bindings.  A length the bound predicates above `q` agree on is not `q`'s own
   (`relation-length` reads it), so the integrity pass's undeclared-arity and
   genl-arity-mismatch censuses read `own-length`."
   [kb q]
