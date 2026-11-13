@@ -256,11 +256,16 @@
   "Audit `(predAllQuotedSpecified pred qtype)` in `ctx`, `arg-pos` `:first` for
   `predSpecifiedAllQuoted`: `{:status :audited :violations #{x …}}`, each written term
   (`written-terms`) of kind `qtype` (`of-written-kind?`) with no admissible filler as
-  `specified-violations` judges one.  `{:status :gap :gap :non-syntactic-type :pred
-  :type}` when `qtype` is below no `expression`, `:missing-slot-typing` as the unquoted
-  twin gives it.  See docs/predall.md, \"Quoted Specified\"."
+  `specified-violations` judges one, kept where `eligible?` admits it.  `eligible?` is the
+  unquoted twin's defining-home eligibility.  `{:status :gap :gap :non-syntactic-type :pred
+  :type}` when `qtype` is below no `expression`, and `:missing-slot-typing` and
+  `:incomplete-defining-contexts` as the unquoted twin gives them.  See docs/predall.md,
+  \"Quoted Specified\"."
   ([kb pred qtype ctx] (quoted-specified-violations kb pred qtype ctx :second))
   ([kb pred qtype ctx arg-pos]
+   (let [eligible? (member-selector kb)]
+     (quoted-specified-violations kb pred qtype ctx arg-pos #(eligible? ctx ctx %))))
+  ([kb pred qtype ctx arg-pos eligible?]
    (let [n   (case arg-pos
                :second 2
                :first  1
@@ -274,12 +279,19 @@
        (let [typings (slot-typings kb pred n ctx)]
          (if (empty? typings)
            {:status :gap :gap :missing-slot-typing :pred pred :position n}
-           {:status :audited
-            :violations
-            (into #{}
-                  (comp (filter #(of-written-kind? tax % qtype ctx))
-                        (remove #(admissible-filler? kb pred % typings n ctx)))
-                  (written-terms kb ctx))}))))))
+           (try
+             {:status :audited
+              :violations
+              (into #{}
+                    (comp (filter #(of-written-kind? tax % qtype ctx))
+                          (remove #(admissible-filler? kb pred % typings n ctx))
+                          (filter eligible?))
+                    (written-terms kb ctx))}
+             (catch clojure.lang.ExceptionInfo e
+               (if (= :incomplete-defining-contexts (:type (ex-data e)))
+                 (merge {:status :gap :gap :incomplete-defining-contexts :pred pred}
+                        (select-keys (ex-data e) [:term :handles]))
+                 (throw e))))))))))
 
 (defn- exists-reading
   "`[subjects goal filler-type placeholder]` for the *Exists* declaration `(functor pred a
@@ -428,8 +440,8 @@
     (fn [[functor arg-pos]]
       (res/lazy-mapcat
        #(declaration-context-audits
-         kb functor (fn [pred qtype reader _eligible?]
-                      (quoted-specified-violations kb pred qtype reader arg-pos)) %)
+         kb functor (fn [pred qtype reader eligible?]
+                      (quoted-specified-violations kb pred qtype reader arg-pos eligible?)) %)
        (declaration-contexts kb functor ctx)))
     [['predAllQuotedSpecified :second] ['predSpecifiedAllQuoted :first]])
    (res/lazy-mapcat

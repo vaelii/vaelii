@@ -240,8 +240,11 @@ The filler is audited as the pair audits one: a believed, determinate filler sat
 predicate's own contract at the filler's slot, with a `:missing-slot-typing` gap where the
 slot has none. `predall/quoted-specified-violations` audits one declaration, `:first`
 selecting `predSpecifiedAllQuoted`, and `all-specified-violations` and `kb-integrity`
-sweep both twins beside the pair. A written term has no defining home, so the
-skeletal-only exemption does not apply.
+sweep both twins beside the pair. A written term is audited as the pair audits an
+instance: only in a reader under one of its ordinary defining homes, and a term with
+skeletal-only evidence is exempt. An engine-made copy, such as an arity-class sentence
+in CxUniverse, writes the term there but gives it no home, so CxUniverse does not
+audit it.
 
 The population grows with the vocabulary. Each name a write adds is one more term the
 audit asks a filler of, so `(predAllQuotedSpecified comment symbol)` asks one per name the
