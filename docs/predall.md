@@ -3,7 +3,8 @@
 - **Covers:** the eight `pred*` relations that quantify one argument position of a binary
   predicate and fix the other, in three semantic classes — the *Instance* pair that
   generates a rule, the *Exists* four that derive nothing and are audited on demand, and
-  the *Specified* pair that audits; the `indeterminate_term` determinacy category behind
+  the *Specified* pair that audits, and that pair's quoted twins, whose population is the
+  terms of an expression kind as written; the `indeterminate_term` determinacy category behind
   the audit; the identity exemption that category carries; and the entry points that run
   the audits.
 - **Not here:** the generator mechanism the *Instance* pair is built on →
@@ -215,6 +216,45 @@ member of `rigidity_kind`, where `predAllSpecified` requires a filler. A partiti
 classifier's members does not satisfy it, since the partition says what each instance is
 and the requirement says the KB must know it. `kb-integrity` audits it in its own
 `:type-specified-violations` category ([integrity.md](integrity.md#what-a-type-specified-finding-means)).
+
+## Quoted Specified: the population as written
+
+`predAllQuotedSpecified` and `predSpecifiedAllQuoted` are the quoted twins of the
+*Specified* pair. The twins quantify over the terms of an expression kind as the KB writes
+them, where the pair quantifies over the members of a collection:
+
+```clojure
+(predAllQuotedSpecified comment symbol)   ; every written symbol should have a comment
+```
+
+The population at a reader is each atomic name that a stored sentex the reader sees
+writes, at any nesting depth, whose spelling's kind (`provers/shape-kinds`) is the
+declared kind or below it. The names come from the index's term-name set
+(`reads/stored-terms-global`), and a name's term-index postings
+(`reads/as-stored-with-term`) say which contexts write it. A compound is no name, so a
+quotation such as `(Quote (genl dog animal))` is never in `symbol`'s population, though
+`dog` and `animal` are. The term-name set keys no string, number or other value, so the
+population of `string` is empty. A declared kind that is not below `expression` is a
+`{:status :gap :gap :non-syntactic-type …}` result.
+
+The filler is audited as the pair audits one: a believed, determinate filler satisfying the
+predicate's own contract at the filler's slot, with a `:missing-slot-typing` gap where the
+slot has none. `predall/quoted-specified-violations` audits one declaration, `:first`
+selecting `predSpecifiedAllQuoted`, and `all-specified-violations` and `kb-integrity`
+sweep both twins beside the pair. A written term has no defining home, so the
+skeletal-only exemption does not apply.
+
+The population grows with the vocabulary. Each name a write adds is one more term the
+audit asks a filler of, so `(predAllQuotedSpecified comment symbol)` asks one per name the
+KB writes, predicates, types, individuals and contexts alike. The audit costs one
+term-index read per name, then the filler reads per term of the kind. No shipped
+declaration uses the twins.
+
+The *Instance* pair has no quoted twin. A generated rule ranging over written terms needs
+an antecedent that binds a variable to each term of a kind, and no literal's extent is the
+vocabulary: `ExpressionKindProver` answers a kind of a ground quoted form and binds
+nothing for an open one, and `unify` reads `(Quote ?x)` as a constant whose variable
+binds nothing ([inference.md](inference.md#quoted-forms-in-unification)).
 
 ## indeterminate_term: what makes a filler determinate
 

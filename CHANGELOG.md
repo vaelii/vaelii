@@ -24,6 +24,15 @@ it — `git show v0.16.0:CHANGELOG.md`.
   as `:not-ground` before any argument check reads it. `implementationNote` keeps
   `denotational_term`.
   [argtypes.md](docs/argtypes.md#the-quoted-twin)
+- **`predAllQuotedSpecified` and `predSpecifiedAllQuoted` audit the terms of an
+  expression kind as written.** The quoted twins of `predAllSpecified` and
+  `predSpecifiedAll` take an expression kind where the pair takes a collection.
+  `(predAllQuotedSpecified comment symbol)` requires a comment of every atomic name a
+  stored sentex the reader sees writes, and a quotation is no name. The filler is audited
+  as the pair audits one. `all-specified-violations` and `kb-integrity` sweep both twins,
+  and `vaelii.impl.predall/quoted-specified-violations` audits one declaration. The
+  population grows by one term per name the KB writes. No shipped declaration uses them.
+  [predall.md](docs/predall.md#quoted-specified-the-population-as-written)
 
 ### Internal: CI
 

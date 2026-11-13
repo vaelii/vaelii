@@ -1805,6 +1805,27 @@
 (arg predSpecifiedAll 1 binary_predicate)
 (genlArg predSpecifiedAll 2 thing)
 
+;; The quoted twins of the Specified pair.  The population is the terms of an expression
+;; kind as the KB writes them, so (predAllQuotedSpecified comment symbol) asks a comment
+;; of every name the KB writes, where (predAllSpecified comment ?indep) asks one of each
+;; member of a collection.  A name is in the population while a stored sentex the reader
+;; sees writes it.  A compound is no name, so a quotation is never in symbol's population.
+(comment predAllQuotedSpecified
+         "(predAllQuotedSpecified ?pred ?qtype) declares the integrity requirement that every term of the expression kind ?qtype, taken as written, have a determinate filler at ?pred's second position: for every atomic name x a stored sentex writes, whose kind as written is ?qtype or below it, there is a believed (?pred x y) with y determinate and y satisfying ?pred's own slot-2 argument contract. The quoted twin of predAllSpecified: the population is the written terms of ?qtype, not the members of a collection, and the filler is audited exactly as predAllSpecified audits one. (predAllQuotedSpecified comment symbol) requires a comment of every symbol the KB writes. A ?qtype that is no kind of expression is a declaration-contract gap the audit reports. An audit, not an inference: kb-integrity reads the declaration and returns the written terms with no determinate filler. The declaration generates no rule and concludes nothing. See docs/predall.md.")
+(binary_predicate predAllQuotedSpecified)
+(set/monotonic (time_varying_relation predAllQuotedSpecified))
+(not (eternal_predicate predAllQuotedSpecified))
+(arg predAllQuotedSpecified 1 binary_predicate)
+(genlArg predAllQuotedSpecified 2 expression)   ;; the expression kind whose written terms are audited
+
+(comment predSpecifiedAllQuoted
+         "(predSpecifiedAllQuoted ?pred ?qtype) is the argument-swapped twin of predAllQuotedSpecified: it requires that every term of the expression kind ?qtype, taken as written, have a determinate filler at ?pred's FIRST position — for every atomic name x a stored sentex writes, of kind ?qtype or below it, there is a believed (?pred y x) with y determinate and y satisfying ?pred's slot-1 argument contract. The quoted twin of predSpecifiedAll. An audit, not a stored rule. See docs/predall.md.")
+(binary_predicate predSpecifiedAllQuoted)
+(set/monotonic (time_varying_relation predSpecifiedAllQuoted))
+(not (eternal_predicate predSpecifiedAllQuoted))
+(arg predSpecifiedAllQuoted 1 binary_predicate)
+(genlArg predSpecifiedAllQuoted 2 expression)   ;; the expression kind whose written terms are audited
+
 (comment typeAllSpecified
          "(typeAllSpecified ?classifier ?indep) declares the integrity requirement that every instance of collection ?indep have a believed membership in some member of the metatype ?classifier: for all x in ?indep there is a member K of ?classifier with (K x) believed, stated or reached through genl or argument preservation alike. predAllSpecified's counterpart for a classification rather than a filler. A partition of ?indep into ?classifier's members does not imply it: the partition says every instance IS in some member, and this requirement says the KB must KNOW which. An audit, not an inference: kb-integrity reads each visible declaration and reports the instances of ?indep no member of ?classifier is believed to hold, or a gap when ?classifier has no visible member. The declaration generates no rule and concludes nothing. e.g. (typeAllSpecified rigidity_kind relation) requires every relation to be classified time_invariant_relation, time_agnostic_relation or time_varying_relation. See docs/integrity.md.")
 (binary_predicate typeAllSpecified)
