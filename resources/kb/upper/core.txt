@@ -2154,6 +2154,8 @@
 (forced_monotonic_predicate except)
 ;; except takes one argument, the sentexHandle of the sentence it hides, and that
 ;; argument is a non-atomic term.
+(comment except
+         "(except (sentexHandle ?h)) hides the stored sentence ?h from the context where the except is stated and every context that sees it, and sweeps the firings resting on ?h placed there. It does not retract ?h.")
 (unary_predicate except)
 (set/monotonic (time_varying_relation except))
 (not (eternal_predicate except))
@@ -2472,17 +2474,37 @@
 ;; The shipped contexts.  Every genlCx edge is stored in CxUniverse, and (arg genlCx 1
 ;; context) and (arg genlCx 2 context) type both of its arguments, so the memberships are
 ;; stated here.
+(comment CxAnatomy
+         "What kinds of thing have what kinds of part (partType claims). It concludes nothing about an individual.")
 (context CxAnatomy)
+(comment CxBiology
+         "A defeasible biology theory: flight, air breathing, being alive or awake, mortality and warm-bloodedness, concluded from an organism's kind or state.")
 (context CxBiology)
+(comment CxChange
+         "A simple event calculus: a fluent that an event starts holds at later instants until an event clips it.")
 (context CxChange)
+(comment CxKinship
+         "Kinship and age: ancestry derived from parenthood, relative age from birth years.")
 (context CxKinship)
+(comment CxMereology
+         "Parts, location and ownership: a part is where its whole is, and an owner of a whole owns its parts.")
 (context CxMereology)
 (context CxNormalPhysicalConditions)
+(comment CxRealWorld
+         "The real world, as opposed to an invented setting, such as a fictional context. A context for an invented setting goes beside it, not under it.")
 (context CxRealWorld)
+(comment CxSize
+         "Comparative size: stated between kinds, computed from measures between two particular objects.")
 (context CxSize)
+(comment CxSocial
+         "Social relations between persons, including relationships and dwelling, with rules such as knowing from friendship or marriage and membership from employment.")
 (context CxSocial)
 (context CxTra)
+(comment CxUniverse
+         "The shared upper ontology: the most general vocabulary and rules, visible to every context of the starter.")
 (context CxUniverse)
+(comment CxWell
+         "The default context that sees the starter's always-on middle contexts. It does not see the opt-in contexts.")
 (context CxWell)
 
 (comment greaterThan
