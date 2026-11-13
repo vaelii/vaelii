@@ -2025,6 +2025,23 @@
                              " binary, filler type derived from ?pred's slot-1 contract.")}
                 (str "vaelii.core/specified-violations with :first — audits ?pred's"
                      " first position, the argument-swapped twin"))]
+     ['predAllQuotedSpecified
+      (enforced {:shape {:args [:predicate :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "the quoted twin of predAllSpecified: an on-demand audit whose"
+                             " population is the atomic names the KB writes of an expression"
+                             " kind, not the members of a collection; the filler is audited"
+                             " as predAllSpecified audits one.")}
+                (str "vaelii.impl.predall/quoted-specified-violations, swept by"
+                     " vaelii.core/all-specified-violations — returns the written terms of"
+                     " ?qtype with no determinate filler; generates no rule"))]
+     ['predSpecifiedAllQuoted
+      (enforced {:shape {:args [:predicate :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "the argument-swapped twin of predAllQuotedSpecified, auditing"
+                             " ?pred's first position.")}
+                (str "vaelii.impl.predall/quoted-specified-violations with :first — the"
+                     " argument-swapped twin"))]
      ['typeAllSpecified
       (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
                  :family nil :facets #{}

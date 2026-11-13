@@ -1823,6 +1823,9 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/core.clj", "term-count"),
     ("src/vaelii/core.clj", "find-terms"),
     ("src/vaelii/impl/quality.clj", "vocabulary-pass"),
+    # The term-name set keys no context, so the quoted Specified population reads every
+    # context's names and keeps those a posting in the reader's ancestor set writes.
+    ("src/vaelii/impl/predall.clj", "written-terms"),
     # A rule read keyed by predicate over the rules stated in any context: a forward firing,
     # a re-join or a lazy-forward proof places each firing from its antecedents' contexts,
     # a definitional check or a report reads every stored rule, and `direct-concluders` is

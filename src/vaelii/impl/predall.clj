@@ -231,6 +231,68 @@
                     (select-keys (ex-data e) [:term :handles]))
              (throw e))))))))
 
+(defn- written-terms
+  "The non-variable symbols of the term-name set (`reads/stored-terms-global`) that a
+  stored sentex in a context `ctx` sees writes, by term-index posting, belief unread.
+  The read is global because the term-name set keys no context, and the postings'
+  contexts scope it to `ctx`."
+  [kb ctx]
+  (let [up   (set (tax/context-up (reasoning/taxonomy kb) ctx))
+        recs (:records kb)
+        idx  (:index kb)]
+    (filter (fn [x]
+              (and (symbol? x) (not (sx/variable? x))
+                   (some #(contains? up (:context (p/get-sentex recs %)))
+                         (budget/checked-seq (reads/as-stored-with-term idx x)))))
+            (budget/checked-seq (reads/stored-terms-global idx)))))
+
+(defn- of-written-kind?
+  "Is the term `x`, taken as written, of the expression kind `qtype` in `ctx`: is one of
+  its spelling's kinds (`provers/shape-kinds`) `qtype` or below it?"
+  [tax x qtype ctx]
+  (boolean (some #(or (= % qtype) (tax/genl? tax % qtype ctx)) (provers/shape-kinds x))))
+
+(defn quoted-specified-violations
+  "Audit `(predAllQuotedSpecified pred qtype)` in `ctx`, `arg-pos` `:first` for
+  `predSpecifiedAllQuoted`: `{:status :audited :violations #{x …}}`, each written term
+  (`written-terms`) of kind `qtype` (`of-written-kind?`) with no admissible filler as
+  `specified-violations` judges one, kept where `eligible?` admits it.  `eligible?` is the
+  unquoted twin's defining-home eligibility.  `{:status :gap :gap :non-syntactic-type :pred
+  :type}` when `qtype` is below no `expression`, and `:missing-slot-typing` and
+  `:incomplete-defining-contexts` as the unquoted twin gives them.  See docs/predall.md,
+  \"Quoted Specified\"."
+  ([kb pred qtype ctx] (quoted-specified-violations kb pred qtype ctx :second))
+  ([kb pred qtype ctx arg-pos]
+   (let [eligible? (member-selector kb)]
+     (quoted-specified-violations kb pred qtype ctx arg-pos #(eligible? ctx ctx %))))
+  ([kb pred qtype ctx arg-pos eligible?]
+   (let [n   (case arg-pos
+               :second 2
+               :first  1
+               (throw (ex-info (str "arg-pos must be :second or :first, got " (pr-str arg-pos))
+                               {:type :bad-args :op 'quoted-specified-violations
+                                :arg-pos arg-pos})))
+         tax (reasoning/taxonomy kb)]
+     (if-not (and (symbol? qtype) (not (sx/variable? qtype))
+                  (or (= 'expression qtype) (tax/genl? tax qtype 'expression ctx)))
+       {:status :gap :gap :non-syntactic-type :pred pred :type qtype}
+       (let [typings (slot-typings kb pred n ctx)]
+         (if (empty? typings)
+           {:status :gap :gap :missing-slot-typing :pred pred :position n}
+           (try
+             {:status :audited
+              :violations
+              (into #{}
+                    (comp (filter #(of-written-kind? tax % qtype ctx))
+                          (remove #(admissible-filler? kb pred % typings n ctx))
+                          (filter eligible?))
+                    (written-terms kb ctx))}
+             (catch clojure.lang.ExceptionInfo e
+               (if (= :incomplete-defining-contexts (:type (ex-data e)))
+                 (merge {:status :gap :gap :incomplete-defining-contexts :pred pred}
+                        (select-keys (ex-data e) [:term :handles]))
+                 (throw e))))))))))
+
 (defn- exists-reading
   "`[subjects goal filler-type placeholder]` for the *Exists* declaration `(functor pred a
   b)`: the terms the audit asks of (the members of the universal collection, or the fixed
@@ -375,6 +437,14 @@
        (declaration-contexts kb functor ctx)))
     [['predAllSpecified :second] ['predSpecifiedAll :first]])
    (res/lazy-mapcat
+    (fn [[functor arg-pos]]
+      (res/lazy-mapcat
+       #(declaration-context-audits
+         kb functor (fn [pred qtype reader eligible?]
+                      (quoted-specified-violations kb pred qtype reader arg-pos eligible?)) %)
+       (declaration-contexts kb functor ctx)))
+    [['predAllQuotedSpecified :second] ['predSpecifiedAllQuoted :first]])
+   (res/lazy-mapcat
     (fn [functor]
       (res/lazy-mapcat
        (fn [[pred a b]]
@@ -438,7 +508,8 @@
    (declaration-contexts kb 'typeAllSpecified ctx)))
 
 (defn all-specified-violations
-  "Audit visible Specified and Exists declarations as `{declaration result …}`.
+  "Audit visible Specified, quoted Specified and Exists declarations as `{declaration
+  result …}`.
   Binary keys are `[functor pred indep]`; Exists and legacy-ternary keys keep all
   arguments. Results are `{:status :audited :violations #{…}}` or explicit `:gap`
   diagnostics. Omit satisfied declarations, never gaps; an empty map is clean.

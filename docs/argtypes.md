@@ -204,7 +204,7 @@ such positions. Their bounds stay explicit on each predicate even where inherite
 parent's revision cannot silently change a child's declared constraint. A
 `(genlArg P n thing)` declaration says position `n` holds a type, and the constraint-only
 reading convicts an individual there. A position that holds a term taken as written
-declares an expression type with `quotedArg`, as `(quotedArg comment 1 denotational_term)`
+declares an expression type with `quotedArg`, as `(quotedArg comment 1 closed_expression)`
 does.
 
 **Both readings prove the same sentences over the shipped ontology.** A membership or
@@ -1493,7 +1493,7 @@ either arrival order of the declaration and the fact
 (`quoted_arg_test/a-compound-is-held-only-where-one-of-its-kinds-is-separated-from-the-type`).
 A declared kind of `expression` decides a value or a symbol too, every value kind and
 `symbol` sitting in the lattice (`checks/syntactic-type?`): `(quotedArg except 1
-sentex_handle_term)` convicts `(except 212)`, and `(quotedArg comment 1 denotational_term)`
+sentex_handle_term)` convicts `(except 212)`, and `(quotedArg comment 1 closed_expression)`
 admits a symbol or a value.
 
 ## Scope

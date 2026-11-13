@@ -229,7 +229,8 @@
 
 (tu/deftest-kb the-integrity-requirements-placeholders-and-contradicts-are-classified
   (all-of-kind kb 'time_varying_relation
-               '[typeAllSpecified predAllSpecified predSpecifiedAll]
+               '[typeAllSpecified predAllSpecified predSpecifiedAll
+                 predAllQuotedSpecified predSpecifiedAllQuoted]
                'CxUniverse)
   (all-of-kind kb 'time_invariant_relation
                '[predAllExistsPlaceholder predExistsAllPlaceholder
