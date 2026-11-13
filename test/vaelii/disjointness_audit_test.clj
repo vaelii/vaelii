@@ -42,6 +42,19 @@
     (v/assert kb (list 'disjoint plant mineral) 'CxUniverse)
     (is (= :disjoint (v/subsumption-status kb plant mineral)))))
 
+(tu/deftest-kb disjoint-names-one-pair-in-either-order
+  (is (v/ask? kb '(symmetric disjoint) 'CxUniverse)
+      "core.txt declares disjoint symmetric, so the store keeps one row for both spellings")
+  (tu/with-terms [plant mineral]
+    (v/assert kb (list 'genl plant 'thing) 'CxUniverse)
+    (v/assert kb (list 'genl mineral 'thing) 'CxUniverse)
+    (let [h (v/assert kb (list 'disjoint plant mineral) 'CxUniverse)]
+      (is (= h (v/handle-of kb (list 'disjoint mineral plant) 'CxUniverse))
+          "the mirror spelling names the same sentex")
+      (is (= 1 (count (v/sentexes-matching kb (list 'disjoint mineral '?x) 'CxUniverse)))
+          "a pattern bound on either side finds the one stored row")
+      (is (= :disjoint (v/subsumption-status kb mineral plant))))))
+
 (tu/deftest-kb orthogonal-needs-a-shared-instance-without-subsumption
   (tu/with-terms [striped aquatic Nemo]
     (v/assert kb (list 'genl striped 'thing) 'CxUniverse)

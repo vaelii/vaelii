@@ -1057,6 +1057,16 @@ marks that hold.
   goes to the row its written spelling reifies to (`chain/reconcile-recorded-fact!`,
   `split-row!`). A row left holding no piece is retracted, and its conclusions are drawn
   again from the rows its pieces moved to.
+- **A membership moved onto a constant withdraws the mints it makes redundant.** Each
+  unary row on the constant is asked the withdrawal question
+  (`chain/note-moved-memberships!`), as `recover` asks of every stored mint, so the mark
+  arriving after the facts leaves the store a recover leaves
+  ([argtypes.md](argtypes.md#pruning-what-the-kb-says-more-specifically--vaelii_prune_subsumed_mints-on)).
+- **A firing's stored bindings are read re-spelled.** A firing records its bindings as
+  they matched, so one placed before the mark arrived binds the application. The
+  re-check that decides whether a firing is blocked reads each such binding as its
+  constant (`chain/settled-bindings`), as it reads a merged term at its representative.
+  A `recover` re-checks every firing, so it keeps the ones the running KB holds.
 - **The constants the moved rows stop naming are collected** by the orphan rule of
   [Rename and remove](#rename-and-remove--keeping-the-11-invariant), over the spellings
   the rows moved off. A settle has no teardown entry point, so each bookkeeping handle is

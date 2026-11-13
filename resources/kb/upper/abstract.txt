@@ -78,7 +78,7 @@
 ;; follows from container by a default rule rather than a genl edge, and a stated denial
 ;; overrides it.  The rule-macro suggestion to make it an edge is declined.
 (set/defaultRule (set/forwardRule (implies (and (container ?x)) (hollow ?x))))
-(declined_rule_macro (genl container hollow))
+(declined_rule_macro (Quote (genl container hollow)))
 
 (comment context "A context: the second half of a sentex, and what a sentence holds in.")
 (set/monotonic (time_invariant_relation context))

@@ -574,9 +574,15 @@
   what matched when it fired, so a re-check that substituted the stored bindings would ask
   under a retired spelling and read an empty answer as *not excepted*.  One visibility
   predicate for the whole map; the bindings come back unchanged when the partition is
-  empty and no schematic equation is declared."
+  empty and no schematic equation is declared.  A minted application is read as its
+  constant (`nat-read/reify-existing`), as the store re-spelled it (docs/nat.md)."
   [kb bindings pctx]
-  (let [tx (reasoning/taxonomy kb)]
+  (let [tx       (reasoning/taxonomy kb)
+        bindings (if (some #(nat/names-reifiable-nat? kb %) (vals bindings))
+                   (binding [nat-read/*withheld*  (nat-read/withheld-at kb pctx)
+                             nat-read/*sorted-by* (nat-read/sorted-by-at kb pctx)]
+                     (update-vals bindings #(nat-read/reify-existing kb % pctx true)))
+                   bindings)]
     (if (and (nil? (tax/merged-term-pred tx)) (empty? (tax/rewrite-rules tx)))
       bindings
       (let [visible? (res/visible-supporter-fn kb pctx)]
@@ -1157,12 +1163,15 @@
           :let [[_ a b] (res/substitute ante bindings)]
           [{ks :keys links :links} bnd] (routes a b)
           sups (route-supporters kb ks)
-          ;; a route over the stated sentence the literal names, with no edge climbed, is
-          ;; the matcher's own hit, which the arrival filter already admits or declines
+          ;; a stated route climbing no edge is the matcher's own hit, the mirror's while
+          ;; a mark licenses it (`read-marks`); the arrival filter admits or declines it
           :when (not (and (empty? links)
-                          (every? #(= (res/substitute ante (merge bindings bnd))
-                                      (:sentence (p/get-sentex (:records kb) (first %))))
-                                  sups)))]
+                          (let [g (res/substitute ante (merge bindings bnd))]
+                            (every? #(let [s (:sentence (p/get-sentex (:records kb) (first %)))]
+                                       (or (= g s)
+                                           (some? (inherit/permuted-read-supports
+                                                   kb s (vec (rest g)) '?ctx))))
+                                    sups))))]
       {:bindings (merge bindings bnd)
        :handles  (into handles (map first) sups)
        :matched  (into matched (map #(vector ak nil %)) links)})))
@@ -5578,6 +5587,25 @@
   [kb f]
   (integrate/witness-among kb (tax/prop-supporters (reasoning/taxonomy kb) :reifiable f)))
 
+(defn- note-moved-memberships!
+  "Queue for the settle's mint withdrawal (`special/note-unpremised!`) each stored unary row
+  on a constant that a row of `hs` now holds as a membership `(t k)`.  A row moved onto `k`
+  arrives in `k`'s memberships with no relabel, so the settle would not ask whether it
+  makes a mint on `k` redundant, as `recover` asks of every stored mint."
+  [kb hs]
+  (let [recs (:records kb)
+        ks   (into (sorted-set)
+                   (keep (fn [h]
+                           (let [s (:sentence (p/get-sentex recs h))]
+                             (when (and (seq? s) (symbol? (nm/functor s)) (= 1 (nm/arity s))
+                                        (symbol? (first (nm/args s))))
+                               (first (nm/args s))))))
+                   hs)]
+    (doseq [k ks
+            sx (kb/find-sentexes kb k)
+            :when (and (nil? (:antecedent sx)) (= 1 (nm/arity (:sentence sx))))]
+      (special/note-unpremised! kb (:id sx)))))
+
 (defn- reconcile-regions!
   "Reconcile the rows `region-of` answers for each function of `fns`
   (`reconcile-reified-row!`, content order), collect the orphans the moved rows leave, and
@@ -5597,6 +5625,7 @@
                                             #(vector (sx/sentence-of %) (:context %)) (region-of f))))))))
                       (sort fns)))]
     (collect-respelled-orphans! kb @moved)
+    (note-moved-memberships! kb new)
     new))
 
 (defn reconcile-reified!

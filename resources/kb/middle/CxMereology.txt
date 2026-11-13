@@ -12,7 +12,7 @@
                           (owns ?p ?part)))
 
 ;; kb-integrity suggests a transitiveInArgInverse declaration for each rule.
-(acknowledgedFinding :rule-macro (transitiveInArgInverse locatedIn 1 tangiblePartOf)
+(acknowledgedFinding :rule-macro (Quote (transitiveInArgInverse locatedIn 1 tangiblePartOf))
                      "An open locatedIn query reads the stored conclusions; the declaration answers no goal open at the part.")
-(acknowledgedFinding :rule-macro (transitiveInArgInverse owns 2 tangiblePartOf)
+(acknowledgedFinding :rule-macro (Quote (transitiveInArgInverse owns 2 tangiblePartOf))
                      "An open owns query reads the stored conclusions; the declaration answers no goal open at the part.")

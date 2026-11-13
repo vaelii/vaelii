@@ -656,15 +656,15 @@ A reviewer records a decision on any suggestion with an
 
 ```clojure
 ;; (set/defaultRule (set/forwardRule (implies (livesIn ?a ?p) (locatedIn ?a ?p))))
-(acknowledgedFinding :rule-macro (genl livesIn locatedIn) "livesIn is meant as a default")
-(declined_rule_macro (genl livesIn locatedIn))
+(acknowledgedFinding :rule-macro (Quote (genl livesIn locatedIn)) "livesIn is meant as a default")
+(declined_rule_macro (Quote (genl livesIn locatedIn)))
 ```
 
 A suggestion the rule's context sees acknowledged moves from `:rule-macro` to the
 review-only `:rule-macro-review`, marked with the reason as `:acknowledged`. A forward
-rule in `core.txt` concludes `(acknowledgedFinding :rule-macro D "Acknowledged via
-declined_rule_macro; no reason supplied.")` from a `(declined_rule_macro D)` record, and
-the pass reads only the acknowledgment. The record quotes the suggestion rather than
+rule in `core.txt` concludes `(acknowledgedFinding :rule-macro (Quote D) "Acknowledged via
+declined_rule_macro; no reason supplied.")` from a `(declined_rule_macro (Quote D))` record,
+and the pass reads only the acknowledgment. The record quotes the suggestion rather than
 naming the rule by `(sentexHandle H)`: a handle belongs
 to one store, and `export-text!` skips a sentence that names one, so a handle-based record
 would not survive a reload. The suggestion is a function of the rule's sentence, so the
@@ -1257,9 +1257,9 @@ stays visible with the reason beside it and no longer makes a default sweep `:ga
 
 | category | subject | review bucket | read from |
 |---|---|---|---|
-| `:rule-macro` | the suggested declaration, `(genl livesIn locatedIn)` | `:rule-macro-review` | the rule's context |
+| `:rule-macro` | the suggested declaration, quoted: `(Quote (genl livesIn locatedIn))` | `:rule-macro-review` | the rule's context |
 | `:rule-clash` | the pair, `(RulePairFn (Quote R1) (Quote R2))` | `:rule-clash-review` | the audit context |
-| `:derivable-stated-edge` | the stated sentence, `(genl plant organism)` | `:derivable-stated-edge`, already review-only | the audit context |
+| `:derivable-stated-edge` | the stated sentence, quoted: `(Quote (genl plant organism))` | `:derivable-stated-edge`, already review-only | the audit context |
 
 `acknowledgedFinding` and its `declined_rule_macro` sugar are `eternal_predicate`s:
 their tuples hold independently of time within the theory, not only at a time slice.
@@ -1372,11 +1372,19 @@ Each rule is quoted on its own. A quoted term is opaque, so no inference or
 canonicalization reaches inside either one, and what the pair needs inferred — that
 `(RulePairFn R1 R2)` and `(RulePairFn R2 R1)` name the same pair — belongs to
 `RulePairFn`, outside both quotes. `core.txt` states `(commutative RulePairFn)`. The
-subject position is a mention, `(quotedArg acknowledgedFinding 2 expression)`, which the
-store keeps as written, so the two orders store as two sentexes
+subject position is a use, `(arg acknowledgedFinding 2 expression)`, so the store sorts
+`RulePairFn`'s two quoted arguments and enters neither quote
 ([canonicalization.md](canonicalization.md#compounds-below-the-literal-sorted)). The sweep
 reads the subject as a bag of rules (`integrity/acknowledged-pair`), so either order names
 the pair.
+
+A `:rule-macro` or `:derivable-stated-edge` subject is one sentence, written `(Quote S)`.
+The store does not enter the quote, so the sweep takes S out of it. It reads S as the KB
+would store it in the context the record is read from (`kb/canonical-sentence`), and
+compares the finding's sentence the same way. Under the symmetric `inverse` and
+`disjoint`, `(Quote (inverse P Q))` and `(Quote (inverse Q P))` name one suggestion, and
+`(Quote (disjoint A B))` and `(Quote (disjoint B A))` one stated edge. A subject not
+written `(Quote S)` names no finding of these two categories.
 
 ```clojure
 ;; (acknowledgedFinding :rule-clash

@@ -104,7 +104,7 @@
 
 (set/defaultRule (set/forwardRule (implies (and (organism ?x)) (mortal ?x))))
 ;; kb-integrity suggests (genl organism mortal) for the rule, and this keeps the rule.
-(acknowledgedFinding :rule-macro (genl organism mortal)
+(acknowledgedFinding :rule-macro (Quote (genl organism mortal))
                      "The rule is a default on purpose (life.txt's mortal comment): something known not to die defeats it, and the edge beside life.txt's (genl mortal organism) makes the two types one.")
 
 ;; ---- warm-bloodedness, read off the class --------------------------------

@@ -1017,7 +1017,12 @@ forward chaining agree about the rule.
   the `sibling_disjoint` mark) are antecedents, one believed supporter per declaration.
   The `genl` subsumptions the route climbs are closure links, placed and named as the
   closure arm's are. Retracting the cover declaration or an edge of the named path withdraws the
-  firing, and the re-join below re-derives it over a second path.
+  firing, and the re-join below re-derives it over a second path. A route over the stated
+  sentence that climbs no subsumption is left to the matcher. That covers the sentence read
+  mirrored while a mark licenses the read, and the matcher's firing names the mark.
+  Withdrawing that mark respells the row as stated, and the matcher fires on it directly
+  with no mark among the antecedents
+  (`withdrawing-the-symmetric-mark-respells-the-pair-and-the-firing-stays-in`).
 - **An exception or a `genl` edge blocks at the conclusion's context.** The join reads
   no `siblingDisjointException`, and a mark spares two types one of which is a `genl` of
   the other. A firing whose conclusion's context reads the pair not separated, with no
@@ -2926,7 +2931,7 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   The delegated list also drops the fact prover when every predicate in the goal's
   matching fan is symmetric at the reader: the fact read of `(pred a b)` already probed
   both orders of each, so a symmetric goal reads the store once. A sub-predicate that is
-  not symmetric there (`disjoint` under `diachronicallyDisjoint`) keeps the mirror's fact
+  not symmetric there (`originatorOf` under `relativeOf`) keeps the mirror's fact
   read, since its stored `(q b a)` answers `(pred b a)` and not `(pred a b)`.
   `InverseProver` does the same with a partner spelling, and the two compose.
   `*mirror-depth*` bounds the re-entry at two levels — the mirror of a mirror is the

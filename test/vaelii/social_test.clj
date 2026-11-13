@@ -70,7 +70,7 @@
   ;; Kinship holds of two relatives who never met, so knows follows from relativeOf by
   ;; a default rule a stated denial overrides, and the rule-macro suggestion to make it
   ;; a genl edge is recorded declined.
-  (is (tu/holds-ask '(declined_rule_macro (genl relativeOf knows)) 'CxSocial))
+  (is (tu/holds-ask '(declined_rule_macro (Quote (genl relativeOf knows))) 'CxSocial))
   (is (seq (v/ask tu/*kb* '(implementationNote relativeOf ?note) 'CxSocial)))
   (tu/with-terms [Aunt Niece Cousin1 Cousin2]
     (doseq [p [Aunt Niece Cousin1 Cousin2]]

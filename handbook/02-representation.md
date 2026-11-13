@@ -223,7 +223,7 @@ finding back. core.txt's own example of the form, for a default rule carrying `l
 to `locatedIn`, is:
 
 ```clojure
-(declined_rule_macro (genl livesIn locatedIn))
+(declined_rule_macro (Quote (genl livesIn locatedIn)))
 ```
 
 `acknowledgedFinding` records the same decision with its reason

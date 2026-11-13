@@ -1345,6 +1345,7 @@
 (comment disjoint
          "(disjoint ?type1 ?type2) means that the two types have no common instance. Inherited by subtypes through genl, so declaring it of dog and cat separates every breed from every breed. The declaration keeps its written strength: a :monotonic denial defeats a :default one at the denial's context and below, where the memberships it separated clash with nothing. A membership that violates it is stored, and the two memberships form a :disjoint contradiction; try-assert refuses the second instead. A clash that only becomes visible from some descendant context is reported by exposed-clashes.")
 (set/monotonic (type_relation_predicate disjoint))
+(set/monotonic (symmetric disjoint))
 (set/monotonic (time_agnostic_relation disjoint))
 (not (eternal_predicate disjoint))
 (genlArg disjoint 1 thing)
@@ -3155,26 +3156,27 @@
 ;; one, so the record would not survive a reload.  This is the one record kb-integrity
 ;; reads; any other spelling of an acknowledgment is a rule concluding this one.
 (comment acknowledgedFinding
-         "(acknowledgedFinding ?category ?subject ?reason) means that a kb-integrity check flagged ?subject under ?category, someone looked, and ?reason says why it stays. ?category is the sweep's category keyword. ?subject names the finding by its content, taken as written: for :rule-macro the suggested declaration as the sweep reports it, for :derivable-stated-edge the stated genl or disjoint sentence, its ?reason naming the exception of state it once that keeps the edge, and for :rule-clash the pair of rules as (RulePairFn (Quote ?rule1) (Quote ?rule2)), the two rule sentences in either order and under any variable names — each rule quoted on its own, since a quoted term is opaque, and RulePairFn, outside both quotes, naming the pair, so that the two orders name one pair (see RulePairFn). The sweep reads the record from the context the finding is read in — the rule's for :rule-macro, the audit context's for the others — and moves a :rule-macro or :rule-clash finding to that category's review-only bucket with ?reason beside it, so it stays visible and no longer turns a default sweep :gap; a :derivable-stated-edge finding, review-only already, carries ?reason where it is. Nothing else reads it and it draws no inference. See docs/integrity.md.")
-(positiveExampleComment acknowledgedFinding "(acknowledgedFinding :rule-macro (genl livesIn locatedIn) \"livesIn is meant as a default\")")
+         "(acknowledgedFinding ?category ?subject ?reason) means that a kb-integrity check flagged ?subject under ?category, someone looked, and ?reason says why it stays. ?category is the sweep's category keyword. ?subject names the finding by its content: for :rule-macro the suggested declaration as the sweep reports it, written (Quote ?declaration), for :derivable-stated-edge the stated genl or disjoint sentence, written (Quote ?sentence), its ?reason naming the exception of state it once that keeps the edge, and for :rule-clash the pair of rules as (RulePairFn (Quote ?rule1) (Quote ?rule2)), the two rule sentences in either order and under any variable names — each rule quoted on its own, since a quoted term is opaque, and RulePairFn, outside both quotes, naming the pair, so that the two orders name one pair (see RulePairFn). A quoted sentence is opaque, so the sweep reads a symmetric or commuting functor's arguments in it in either order itself. The sweep reads the record from the context the finding is read in — the rule's for :rule-macro, the audit context's for the others — and moves a :rule-macro or :rule-clash finding to that category's review-only bucket with ?reason beside it, so it stays visible and no longer turns a default sweep :gap; a :derivable-stated-edge finding, review-only already, carries ?reason where it is. Nothing else reads it and it draws no inference. See docs/integrity.md.")
+(positiveExampleComment acknowledgedFinding "(acknowledgedFinding :rule-macro (Quote (genl livesIn locatedIn)) \"livesIn is meant as a default\")")
 (positiveExampleComment acknowledgedFinding "(acknowledgedFinding :rule-clash (RulePairFn (Quote (implies (penguin_kind ?x) (not (flies ?x)))) (Quote (implies (bird_kind ?x) (flies ?x)))) \"penguins are birds that do not fly\")")
 (ternary_predicate acknowledgedFinding)
 (set/monotonic (eternal_predicate acknowledgedFinding))
 (implementationNote acknowledgedFinding "The KB contains the findings the theory acknowledges, not an immutable review history. Revise an acknowledgment by assertion or retraction, not by temporal slicing; eternal_predicate states that distinction without changing the revision machinery.")
 (arg acknowledgedFinding 1 keyword)                    ;; the category, as the sweep keys it
-;; expression, the most general type: a :rule-macro subject is a bare declaration
-;; (formula-shaped), a :rule-clash subject a RulePairFn application (non_atomic_term-
-;; shaped), and an atomic expression is admitted too, so a future category may name a
-;; finding by a single symbol.
-(quotedArg acknowledgedFinding 2 expression) ;; the finding's content, taken as written
+;; expression, the most general type: a :rule-macro or :derivable-stated-edge subject is
+;; a quoted sentence, (Quote ?sentence), which denotes that expression, and a :rule-clash
+;; subject a RulePairFn application over two quoted rules, which declares no result and
+;; so is not convicted.  The position is a use: canonicalization reaches RulePairFn,
+;; outside the quotes, and stops at each Quote.
+(arg acknowledgedFinding 2 expression)                 ;; the finding's content
 (arg acknowledgedFinding 3 string)                     ;; why the finding stays
 
 ;; RulePairFn: the unordered pair a :rule-clash acknowledgment's subject names two rules
 ;; under.  Each rule is written (Quote ?ruleN), and a quoted term is opaque, so the one
 ;; piece of inference the pair needs — the two orders are one pair — is stated outside
 ;; both quotes, of the function holding them, by (commutative RulePairFn).  The subject
-;; position is a mention, which the store keeps as written, so kb-integrity reads the
-;; pair as a bag of rules.
+;; position is a use, so the store sorts the pair, and kb-integrity reads it as a bag of
+;; rules, which either order gives.
 (comment RulePairFn
          "(RulePairFn ?rule1 ?rule2) names the unordered pair of ?rule1 and ?rule2: an acknowledgedFinding :rule-clash subject names a rule-clash pair this way, each rule written (Quote ?ruleN) so the pair is about the rules' syntax and not their truth. (RulePairFn ?rule1 ?rule2) and (RulePairFn ?rule2 ?rule1) name the same pair: RulePairFn is commutative. See docs/integrity.md.")
 (binary_function RulePairFn)
@@ -3194,13 +3196,15 @@
 
 ;; A reviewer's record on a kb-integrity rule-macro suggestion, and sugar for
 ;; acknowledgedFinding: the rule below concludes the acknowledgment kb-integrity reads,
-;; and no code reads this record.  It quotes the suggested declaration rather than naming
-;; the rule by handle, as acknowledgedFinding does, and carries no reason.
+;; and no code reads this record.  It quotes the suggested declaration, (Quote ?declaration),
+;; rather than naming the rule by handle, as acknowledgedFinding does, and carries no reason.
 (comment declined_rule_macro
-         "(declined_rule_macro ?declaration) means that a reviewer read the kb-integrity rule-macro suggestion ?declaration and keeps the rule it was suggested for as written — most often a set/defaultRule that is meant to be a default. ?declaration is the suggested declaration as the sweep reports it, written as a quoted argument. Sugar for acknowledgedFinding: a forward rule concludes (acknowledgedFinding :rule-macro ?declaration \"Acknowledged via declined_rule_macro; no reason supplied.\") in the record's context, and the rule-macro pass reads that. See docs/integrity.md.")
-(positiveExampleComment declined_rule_macro "(declined_rule_macro (genl livesIn locatedIn))")
+         "(declined_rule_macro ?declaration) means that a reviewer read the kb-integrity rule-macro suggestion ?declaration and keeps the rule it was suggested for as written — most often a set/defaultRule that is meant to be a default. ?declaration is the suggested declaration as the sweep reports it, quoted: (declined_rule_macro (Quote (genl livesIn locatedIn))). Sugar for acknowledgedFinding: a forward rule concludes (acknowledgedFinding :rule-macro ?declaration \"Acknowledged via declined_rule_macro; no reason supplied.\") in the record's context, and the rule-macro pass reads that. See docs/integrity.md.")
+(positiveExampleComment declined_rule_macro "(declined_rule_macro (Quote (genl livesIn locatedIn)))")
 (unary_predicate declined_rule_macro)
-;; What a record declines is a suggested declaration, a ground atomic sentence.
+;; What a record declines is a suggested declaration, a ground atomic sentence, written
+;; (Quote ?declaration), which denotes it.  The genl edge is the argument's type, as a
+;; unary predicate's is, so the record declares no arg.
 (set/monotonic (genl declined_rule_macro closed_predication))
 (set/monotonic (eternal_predicate declined_rule_macro))
 (set/forwardRule

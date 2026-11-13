@@ -149,14 +149,14 @@
     (is (v/ask? kb '(functional birthYearOf)))
     (is (not (v/ask? kb '(symmetric parentOf)))))
   (testing "and enumerated"
-    ;; the domain relations, orthogonal, negates, inverse and diachronicallyDisjoint are the
-    ;; symmetric marks, decontextualized like the other algebraic marks, so they answer the
-    ;; enumeration wherever CxUniverse is seen.  seeAlso is NOT among them — it is a directional cross-reference, not
+    ;; the domain relations, orthogonal, negates, inverse, disjoint and diachronicallyDisjoint
+    ;; are the symmetric marks.  They are decontextualized like the other algebraic marks, so
+    ;; they answer the enumeration wherever CxUniverse is seen.  seeAlso is NOT among them — it is a directional cross-reference, not
     ;; symmetric.  The social relations (CxSocial's and CxTra's) are among them:
     ;; their marks are stated in CxUniverse like the rest, and ?ctx is open.
     (is (= '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
               relativeOf romanticPartnerOf coworkerOf roommateOf
-              nestingPartnerOf chosenSiblingOf headmateOf diachronicallyDisjoint negates inverse}
+              nestingPartnerOf chosenSiblingOf headmateOf disjoint diachronicallyDisjoint negates inverse}
            (set (map #(get % '?p) (v/ask kb '(symmetric ?p) '?ctx)))))
     ;; `genl` and `genlCx` are in the enumeration because core.txt asserts (transitive genl)
     ;; / (transitive genlCx) outright.  They *are* transitive; answering them from cached

@@ -577,6 +577,31 @@
                  (when (string? r) [(get b '?subject) r]))))
        (sort-by (fn [[subject r]] [(nm/print-key subject) r]))))
 
+(defn- canonical-subject
+  "`subject` as the KB would store the sentence in `context` (`kb/canonical-sentence`),
+  for comparing an acknowledgment's subject with a finding's sentence.  An
+  acknowledgment writes its sentence `(Quote S)`, and the store does not enter a quoted
+  form (docs/canonicalization.md, \"Held as written\"), so the reader takes S out of the
+  quote and sorts a symmetric or commuting functor's arguments itself.  A subject that
+  is not a list, or that the canonicalizer refuses, is compared as written."
+  [kb subject context]
+  (if (seq? subject)
+    (try (kb/canonical-sentence kb subject context)
+         (catch Exception _ subject))
+    subject))
+
+(defn- canonical-acknowledgements
+  "`acknowledgements` of `category` in `context` whose subject is a quoted sentence
+  `(Quote S)`, each as S read through `canonical-subject` in the same context, so a
+  finding's sentence compared under `canonical-subject` matches an acknowledgment
+  written in any of its spellings.  A subject not written `(Quote S)` names no finding
+  of a category whose subject is a sentence."
+  [kb category context]
+  (into [] (keep (fn [[subject r]]
+                   (when (sx/quote-form? subject)
+                     [(canonical-subject kb (second subject) context) r])))
+        (acknowledgements kb category context)))
+
 ;; ---- twin-genls: sibling types with one direct genl set, a missing common parent ----
 
 (defn- twin-groups
@@ -672,19 +697,13 @@
   (let [tx        (reasoning/taxonomy kb)
         genls     (stated-pairs kb 'genl context)
         disjoints (stated-pairs kb 'disjoint context)
-        acks      (acknowledgements kb :derivable-stated-edge context)
-        ;; a stored subject is a term, which no canonicalization reorders, so a `disjoint`
-        ;; subject matches in either argument order
-        names?    (fn [sentence subject]
-                    (or (= sentence subject)
-                        (and (= 'disjoint (first sentence)) (sequential? subject)
-                             (= 3 (count subject)) (= 'disjoint (first subject))
-                             (= (set (rest sentence)) (set (rest subject))))))
-        ack       (fn [f] (if-let [r (some (fn [[subject r]]
-                                             (when (names? (:sentence (:stated f)) subject) r))
-                                           acks)]
-                            (assoc f :acknowledged r)
-                            f))]
+        ;; both sides read through `canonical-subject` in the audit context, so the
+        ;; symmetric `disjoint` names its pair in either argument order
+        acks      (canonical-acknowledgements kb :derivable-stated-edge context)
+        ack       (fn [f] (let [s (canonical-subject kb (:sentence (:stated f)) context)]
+                            (if-let [r (some (fn [[subject r]] (when (= s subject) r)) acks)]
+                              (assoc f :acknowledged r)
+                              f)))]
     (with-open [r (progress/start ::derivable-stated-edge "integrity: find the derivable stated edges"
                                   (+ (count genls) (count disjoints)))]
       (bounded-findings
@@ -1307,11 +1326,13 @@
               (sort (reads/as-stored-rules-by-consequent-global (:index kb) sx/not-functor))))))
 
 (defn- acknowledged-declaration
-  "The reason of the first acknowledgment of the rule-macro suggestion `decl` the rule's
-  context sees, or nil."
-  [kb rsx decl]
-  (some (fn [[subject r]] (when (= decl subject) r))
-        (acknowledgements kb :rule-macro (:context rsx))))
+  "The reason of the first of the `canonical-acknowledgements` `acks` read from the rule
+  `rsx`'s context that names the rule-macro suggestion `decl`, or nil.  `decl` is
+  compared as `canonical-subject` reads it in the rule's context, so `(inverse P Q)`
+  and `(inverse Q P)` under the symmetric `inverse` name one suggestion."
+  [kb rsx acks decl]
+  (let [d (canonical-subject kb decl (:context rsx))]
+    (some (fn [[subject r]] (when (= d subject) r)) acks)))
 
 (defn- rule-macro-units
   "The findings for one rule `rsx` at handle `h`: one per macro shape the rule is, with
@@ -1326,7 +1347,8 @@
         n      (nm/arity conseq)
         dflt?  (boolean (:defeasible rsx))
         ok?    #(macro-candidate? kb context %1 %2)
-        excused (delay (known-exception? kb rsx))]
+        excused (delay (known-exception? kb rsx))
+        acks   (delay (canonical-acknowledgements kb :rule-macro (:context rsx)))]
     (when (and (seq? conseq) (integer? n) (not (sx/negation? conseq)))
       (for [shape (macro-shapes n (when (= 1 (count antes)) (nm/arity (first antes))))
             :let  [shaped? (and dflt? (not (:defeasible shape)))]
@@ -1338,7 +1360,7 @@
             :when (or partner (not= 'inverse (:macro shape)))
             :let  [decl ((:declaration shape) b)]
             :when (not (and shaped? @excused))
-            :let  [ack (acknowledged-declaration kb rsx decl)]]
+            :let  [ack (acknowledged-declaration kb rsx @acks decl)]]
         (cond-> {:rule h
                  :sentence (sx/authored-sentence rsx)
                  :context (:context rsx)

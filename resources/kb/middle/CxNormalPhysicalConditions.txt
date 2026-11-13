@@ -29,13 +29,13 @@
 (set/defaultRule (set/forwardRule (implies (and (stone ?x)) (solid ?x))))
 (set/defaultRule (set/forwardRule (implies (and (wood ?x)) (solid ?x))))
 (set/defaultRule (set/forwardRule (implies (and (glass_stuff ?x)) (solid ?x))))
-(declined_rule_macro (genl stone solid))
-(declined_rule_macro (genl wood solid))
-(declined_rule_macro (genl glass_stuff solid))
+(declined_rule_macro (Quote (genl stone solid)))
+(declined_rule_macro (Quote (genl wood solid)))
+(declined_rule_macro (Quote (genl glass_stuff solid)))
 
 ;; ---- the liquid metal ---------------------------------------------------
 (set/defaultRule (set/forwardRule (implies (and (mercury ?x)) (liquid ?x))))
-(declined_rule_macro (genl mercury liquid))
+(declined_rule_macro (Quote (genl mercury liquid)))
 (implementationNote stuff_type_by_state_of_matter "The phases this theory gives stone, wood, glass_stuff and mercury are default rules, not genl edges, since a phase is a state a portion of stuff is in, not a kind it is. The rule-macro suggestion of each edge is recorded declined.")
 
 ;; ---- metal_stuff is solid, by default -----------------------------------

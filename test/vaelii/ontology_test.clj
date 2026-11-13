@@ -1209,7 +1209,7 @@
   (is (true? (v/genl? kb 'building 'made 'CxUniverse)) "building genl made through container")
   (testing "a container is made to be hollow: hollow by a default rule, not a genl edge"
     (is (not (true? (v/genl? kb 'container 'hollow 'CxUniverse))))
-    (is (true? (v/ask? kb '(declined_rule_macro (genl container hollow)) 'CxUniverse)))
+    (is (true? (v/ask? kb '(declined_rule_macro (Quote (genl container hollow))) 'CxUniverse)))
     (tu/with-terms [Cup1]
       (v/assert kb (list 'container Cup1) 'CxUniverse)
       (is (true? (v/ask? kb (list 'hollow Cup1) 'CxUniverse)))

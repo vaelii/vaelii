@@ -445,10 +445,11 @@
                   r   (binding [*err* err] (cli/upgrade! a {:sync true}))]
               (is (= {:added 1 :removed 1 :refused []} (select-keys (:sync r) [:added :removed :refused])))
               (is (= ["sync 0/2 add (disjoint animal vehicle) in CxUniverse"
-                      "sync 1/2 remove (disjoint vertebrate vehicle) in CxUniverse"
+                      "sync 1/2 remove (disjoint vehicle vertebrate) in CxUniverse"
                       "sync 2/2"]
                      (str/split-lines (str err)))
-                  "a progress line per change on stderr")
+                  "a progress line per change on stderr, naming the stored sentence: disjoint is
+                   symmetric, so the store sorts `stale`'s arguments")
               (is (= :current (:reasoning r)))
               (is (= {:add 0 :remove 0} (plan-size a)))))
           (testing "--verify --sync compares the images before the sync moves the records"

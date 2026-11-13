@@ -1275,7 +1275,10 @@
 (tu/deftest-kb an-acknowledged-derivable-edge-carries-its-reason
   ;; Handbook ch. 14 asks that a stated edge a cover also installs say which exception of
   ;; state it once applies; the record is that note, and the sweep reads it.
+  ;; Core.txt declares disjoint symmetric.  This KB holds the interface rules alone, so
+  ;; the test states the mark the reader canonicalizes both spellings under.
   (tu/with-terms [whole_kind left_part right_part]
+    (v/assert kb (list 'symmetric 'disjoint) 'CxUniverse)
     (v/assert kb (list 'partition whole_kind left_part right_part) 'CxUniverse)
     (v/assert kb (list 'genl left_part whole_kind) 'CxUniverse)
     (v/assert kb (list 'disjoint right_part left_part) 'CxUniverse)
@@ -1284,9 +1287,11 @@
                         (:derivable-stated-edge
                          (v/kb-integrity kb #{} 'CxUniverse {:categories #{:derivable-stated-edge}})))
           hs     [(v/assert kb (list 'acknowledgedFinding :derivable-stated-edge
-                                     (list 'genl left_part whole_kind) reason) 'CxUniverse)
+                                     (list 'Quote (list 'genl left_part whole_kind)) reason)
+                            'CxUniverse)
                   (v/assert kb (list 'acknowledgedFinding :derivable-stated-edge
-                                     (list 'disjoint left_part right_part) reason) 'CxUniverse)]]
+                                     (list 'Quote (list 'disjoint left_part right_part)) reason)
+                            'CxUniverse)]]
       (is (= {'genl reason 'disjoint reason} (run))
           "each finding its stated sentence names carries the reason, in either argument
            order of a disjoint")
@@ -1789,7 +1794,7 @@
       (let [decl (list 'genl livesInX locatedInX)]
         (is (= [[decl true]] (own decl (shaped-of kb))))
         (is (= [] (own decl (acknowledged-macros kb))))
-        (let [h (v/assert kb (list 'declined_rule_macro decl) 'CxUniverse)]
+        (let [h (v/assert kb (list 'declined_rule_macro (list 'Quote decl)) 'CxUniverse)]
           (is (= [] (own decl (shaped-of kb))) "a declined suggestion is not a :rule-macro finding")
           (is (= [[decl sugar-reason]] (own decl (acknowledged-macros kb)))
               "it is a :rule-macro-review finding, with the sugar's reason")
@@ -1807,12 +1812,13 @@
     (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
     (let [decl   (list 'genl livesInX locatedInX)
           reason "living somewhere is usually being there, and the default is meant"
-          h      (v/assert kb (list 'acknowledgedFinding :rule-macro decl reason) 'CxUniverse)]
+          h      (v/assert kb (list 'acknowledgedFinding :rule-macro (list 'Quote decl) reason)
+                           'CxUniverse)]
       (is (= [] (shaped-of kb)))
       (is (= [[decl reason]] (acknowledged-macros kb)))
       (testing "an acknowledgment under another category acknowledges nothing here"
         (v/retract! kb h)
-        (v/assert kb (list 'acknowledgedFinding :rule-clash decl reason) 'CxUniverse)
+        (v/assert kb (list 'acknowledgedFinding :rule-clash (list 'Quote decl) reason) 'CxUniverse)
         (is (= [[decl true]] (shaped-of kb)))
         (is (= [] (acknowledged-macros kb)))))))
 
@@ -1824,10 +1830,43 @@
       (v/assert kb (list 'genlCx CxTheory 'CxUniverse) 'CxUniverse)
       (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
       (let [decl (list 'genl livesInX locatedInX)]
-        (v/assert kb (list 'declined_rule_macro decl) CxTheory)
+        (v/assert kb (list 'declined_rule_macro (list 'Quote decl)) CxTheory)
         (is (= 1 (count (own decl (shaped-of kb))))
             "a record below the rule's context does not decline it")
         (is (= [] (own decl (acknowledged-macros kb))))))))
+
+(tu/deftest-kb acknowledged-finding-matches-either-spelling-of-a-commutative-sentence
+  ;; Two converse rules over childX and parentX are each the inverse macro's shape.  Each
+  ;; finding suggests the declaration with its own rule's antecedent predicate first:
+  ;; (inverse childX parentX) for one, (inverse parentX childX) for the other.  inverse is
+  ;; symmetric (core.txt), so the two suggestions are one sentence.  An acknowledgment
+  ;; naming that sentence in either argument order moves both findings to review.
+  (tu/with-terms [childX parentX]
+    (doseq [spelling [(list 'inverse childX parentX) (list 'inverse parentX childX)]]
+      (tu/with-cleared-kb [kb core-kb]
+        (doseq [p [childX parentX]]
+          (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+        (let [rules  (mapv (fn [r] (v/assert kb r 'CxUniverse) (v/handle-of kb r 'CxUniverse))
+                           [(list 'implies (list childX '?x '?y) (list parentX '?y '?x))
+                            (list 'implies (list parentX '?x '?y) (list childX '?y '?x))])
+              reason "the converse rules are kept as written"
+              ours   (fn [category]
+                       (->> (get (v/kb-integrity kb #{} 'CxUniverse {:categories #{category}})
+                                 category)
+                            (filter #(some #{(:rule %)} rules))
+                            (map (juxt :rule :macro :acknowledged))
+                            set))]
+          (is (= #{[(first rules) 'inverse nil] [(second rules) 'inverse nil]}
+                 (ours :rule-macro))
+              "before the acknowledgment each rule is an inverse finding")
+          (is (= #{} (ours :rule-macro-review)))
+          (v/assert kb (list 'acknowledgedFinding :rule-macro (list 'Quote spelling) reason)
+                    'CxUniverse)
+          (is (= #{} (ours :rule-macro))
+              (str "acknowledging " spelling " leaves no inverse finding under :rule-macro"))
+          (is (= #{[(first rules) 'inverse reason] [(second rules) 'inverse reason]}
+                 (ours :rule-macro-review))
+              (str "acknowledging " spelling " moves both findings to review with its reason")))))))
 
 (defn- with-temp-dirs
   "`(f dir-a dir-b)` on two new temp directory paths, removed afterwards."
@@ -1850,16 +1889,18 @@
             (v/assert src (list 'binary_predicate p) 'CxUniverse))
           (v/assert src (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p))
                     'CxUniverse)
-          (v/assert src (list 'declined_rule_macro (list 'genl livesInX locatedInX)) 'CxUniverse)
+          (v/assert src (list 'declined_rule_macro (list 'Quote (list 'genl livesInX locatedInX)))
+                    'CxUniverse)
           (is (zero? (:skipped (v/export-text! src dir)))))
         (tu/with-cleared-kb [reloaded core-kb]
           (v/load-text! reloaded dir)
-          (let [record (list 'declined_rule_macro (list 'genl livesInX locatedInX))]
+          (let [decl   (list 'genl livesInX locatedInX)
+                record (list 'declined_rule_macro (list 'Quote decl))]
             (is (seq (v/sentexes-matching reloaded record 'CxUniverse)))
-            (is (= [] (own (second record) (shaped-of reloaded)))
+            (is (= [] (own decl (shaped-of reloaded)))
                 "the reloaded record still declines the suggestion")
             (v/retract! reloaded (v/handle-of reloaded record 'CxUniverse))
-            (is (= 1 (count (own (second record) (shaped-of reloaded))))
+            (is (= 1 (count (own decl (shaped-of reloaded))))
                 "the reloaded rule is the one the record named")))))))
 
 (tu/deftest-kb a-monotonic-generator-shape-is-not-reported

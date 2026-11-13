@@ -76,7 +76,7 @@ the KB separates when the position must refuse the other one.
 ```clojure
 (quotedArg comment 1 denotational_term)
 (quotedArg argN 3 formula)
-(quotedArg acknowledgedFinding 2 expression)
+(quotedArg argN 1 expression)
 (set/monotonic (disjoint formula non_atomic_term))
 ```
 

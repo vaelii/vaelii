@@ -372,22 +372,42 @@
   (doseq [edges [[:near-far] [:near :far]]
           order (oi/permutations (into [:rule :disjoint] edges))]
     (testing (str order)
-      (tu/with-terms [lo mid hi clashes]
+      (tu/with-terms [narrow mid broad clashes]
         (let [step {:rule     #(v/assert kb (list 'set/forwardRule
                                                   (list 'implies (list 'and (list 'disjoint '?a '?b)
                                                                        (list 'genl '?a '?b))
                                                         (list clashes '?a '?b)))
                                          U)
-                    :disjoint #(v/assert kb (list 'disjoint lo hi) U)
-                    :near-far #(v/assert kb (list 'genl lo hi) U)
-                    :near     #(v/assert kb (list 'genl lo mid) U)
-                    :far      #(v/assert kb (list 'genl mid hi) U)}]
+                    :disjoint #(v/assert kb (list 'disjoint narrow broad) U)
+                    :near-far #(v/assert kb (list 'genl narrow broad) U)
+                    :near     #(v/assert kb (list 'genl narrow mid) U)
+                    :far      #(v/assert kb (list 'genl mid broad) U)}]
           (doseq [k order] ((step k)))
-          (is (= [#{[lo hi]}]
-                 (some->> (v/handle-of kb (list clashes lo hi) U)
+          (is (= [#{[narrow broad]}]
+                 (some->> (v/handle-of kb (list clashes narrow broad) U)
                           (v/supporting-justifications kb)
                           (map :subsumptions)))
               "one justification, reading the pair as the closure's"))))))
+
+(deftest withdrawing-the-symmetric-mark-respells-the-pair-and-the-firing-stays-in
+  ;; The store sorts the pair, so the rule's literal reads it mirrored and the firing
+  ;; names the mark.  Withdrawing the mark respells the row as stated, and the matcher
+  ;; then fires on it directly, with no mark among the antecedents.
+  (tu/with-cleared-kb [kb tu/isolated-fresh]
+    (tu/with-terms [narrow broad clashes]
+      (let [mark (v/assert kb '(symmetric disjoint) U)
+            supports #(mapcat :antecedents (v/supporting-justifications
+                                            kb (v/handle-of kb (list clashes narrow broad) U)))]
+        (v/assert kb (list 'set/forwardRule
+                           (list 'implies (list 'and (list 'disjoint '?a '?b) (list 'genl '?a '?b))
+                                 (list clashes '?a '?b)))
+                  U)
+        (v/assert kb (list 'disjoint narrow broad) U)
+        (v/assert kb (list 'genl narrow broad) U)
+        (is (some #{mark} (supports)) "the mirrored read names the mark")
+        (v/retract! kb mark)
+        (is (holds? kb (list clashes narrow broad) U) "the firing stays IN")
+        (is (not-any? #{mark} (supports)) "and rests on the respelled pair alone")))))
 
 (defn- fired-pairs
   "The pairs over `types` that `p` holds in CxUniverse."
@@ -396,6 +416,9 @@
         (v/sentexes-matching kb (list p '?x '?y) U)))
 
 (tu/deftest-kb a-disjoint-antecedent-no-other-literal-names-fires-on-the-stated-pair-in-every-order
+  ;; `disjoint` is declared symmetric, so the matcher reads the stored pair in both
+  ;; argument orders (docs/inference.md) and the rule fires on each.  The specialized
+  ;; pair the query answers is not stored, so nothing fires on it.
   (doseq [order (oi/permutations [:rule :disjoint :edge])]
     (testing (str order)
       (tu/with-terms [fish_ mammal_ whale_ keptApart]
@@ -407,7 +430,27 @@
                     :edge     #(v/assert kb (list 'genl whale_ mammal_) U)}]
           (doseq [k order] ((step k)))
           (is (holds? kb (list 'disjoint fish_ whale_) U) "the query answers the specialized pair")
-          (is (= #{[fish_ mammal_]} (fired-pairs kb keptApart [fish_ mammal_ whale_]))))))))
+          (is (= #{[fish_ mammal_] [mammal_ fish_]} (fired-pairs kb keptApart [fish_ mammal_ whale_]))))))))
+
+(tu/deftest-kb a-disjoint-antecedent-with-a-constant-matches-it-in-either-position
+  ;; The rule names the constant second and the stated pair names it first, so only
+  ;; the symmetric read binds ?x for the first rule.  Without `(symmetric disjoint)` only
+  ;; the rule naming the constant first fires.
+  (doseq [order (oi/permutations [:second :first :disjoint])]
+    (testing (str order)
+      (tu/with-terms [fish_ mammal_ apartFromFish apartFromFish2]
+        (let [step {:second   #(v/assert kb (list 'set/forwardRule
+                                                  (list 'implies (list 'disjoint '?x fish_)
+                                                        (list apartFromFish '?x)))
+                                         U)
+                    :first    #(v/assert kb (list 'set/forwardRule
+                                                  (list 'implies (list 'disjoint fish_ '?x)
+                                                        (list apartFromFish2 '?x)))
+                                         U)
+                    :disjoint #(v/assert kb (list 'disjoint fish_ mammal_) U)}]
+          (doseq [k order] ((step k)))
+          (is (holds? kb (list apartFromFish mammal_) U) "the constant read in second position")
+          (is (holds? kb (list apartFromFish2 mammal_) U) "the constant read in first position"))))))
 
 (tu/deftest-kb a-disjoint-antecedent-another-literal-names-fires-on-every-separated-pair-in-every-order
   ;; `(genl ?a animal)` names ?a alone.  The edge arriving last moves `whale`, so only a
