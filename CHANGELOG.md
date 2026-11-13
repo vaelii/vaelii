@@ -14,6 +14,17 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Additive: shipped ontology
+
+- **A `comment` documents any closed expression.** `core.txt` declares
+  `(quotedArg comment 1 closed_expression)`, so the commented position takes a closed
+  term, a `(sentexHandle N)` or a closed sentence, each taken as written. A compound
+  with a free variable there is an `open_expression`, which `reflection.txt` separates
+  from `closed_expression`. `assert` refuses a comment on one, or on a bare variable,
+  as `:not-ground` before any argument check reads it. `implementationNote` keeps
+  `denotational_term`.
+  [argtypes.md](docs/argtypes.md#the-quoted-twin)
+
 ### Internal: CI
 
 - **A CI shard runs its recurring failures first**

@@ -1307,7 +1307,7 @@
 (set/monotonic (instance_relation_predicate comment))
 (set/monotonic (documentation_predicate comment))
 (arg comment 2 string)
-(quotedArg comment 1 denotational_term)   ;; the commented term as written: a type, a predicate, an individual or a context
+(quotedArg comment 1 closed_expression)   ;; the commented expression as written: a closed term (a type, a predicate, an individual, a context, a sentex handle) or a closed sentence
 
 (comment implementationNote
          "(implementationNote ?term ?text) means that ?text records how the engine or this KB's own text implements ?term, or a limit of that implementation, e.g. a rule stated only for some arities. A comment says what ?term means, and an implementation note says how the meaning is carried out. A note can go stale when the engine changes, and a comment cannot. Ordinary sentexes, queried like any fact. Nothing in the engine reads one and it draws no inference.")
@@ -1315,7 +1315,7 @@
 (instance_relation_predicate implementationNote)
 (set/monotonic (documentation_predicate implementationNote))
 (arg implementationNote 2 string)
-(quotedArg implementationNote 1 denotational_term)   ;; the noted term as written, as comment's is
+(quotedArg implementationNote 1 denotational_term)   ;; the noted term as written
 (termsRelated comment implementationNote)
 
 (comment contradicts
