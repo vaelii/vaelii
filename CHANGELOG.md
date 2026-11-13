@@ -45,10 +45,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
 ### Breaking: integrity
 
 - **The undeclared-arity sweep reports a `genl` node whose only length is inherited.** A
-  node passes when the node itself is known to have an exact length, from an engine
-  `:shape`, an `(arity P n)`, an exact-arity class membership such as `unary_predicate` or
-  a `:monotonic` membership reaching one, or when a `variable_arity` membership releases
-  it. Under `(unary_predicate placed_kind)` and `(genl below_kind placed_kind)`,
+  node passes when the node itself is known to have an exact length, or when a
+  `variable_arity` membership releases it. The node's own exact length comes from an
+  engine `:shape`, an `(arity P n)`, an exact-arity class membership such as
+  `unary_predicate`, or a `:monotonic` membership reaching one. Under `(unary_predicate placed_kind)` and `(genl below_kind placed_kind)`,
   `below_kind` is an `:undeclared-arity` finding, and a default `kb-integrity` sweep of
   such a KB answers `:gap`. The upper and middle files declare `(unary_predicate X)` beside
   each type's definition, so neither the upper ontology alone nor the starter has a
@@ -82,7 +82,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
 - **life.txt ships `may` and `can` beside `able`.** `(may ?doer ?kind)` is deontic
   permission to be the doer of a happening of kind `?kind`, and `(can ?doer ?kind)` is
   ability and permission together. Both take `able`'s positions: `(arg … 1 causal)`,
-  `(genlArg … 2 happening)`, `transitiveInArg` along `genl` on the second and
+  `(genlArg … 2 happening)` and `transitiveInArg` along `genl` on the second. Both are
   `time_varying_relation`, since an ability or a permission can be gained and lost. life.txt
   states `(intersection can able may)`, so `able` and `may` together conclude `can`, and
   `can` is `genl` each half. Ability without permission, or permission without ability,
@@ -105,7 +105,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
   rule `(A ?x)`, `(B ?x)` ⇒ `(P ?x)`, or the same over two arguments or with a third
   component, is a `:rule-macro` finding suggesting `(intersection P A B)`, where `P` and the
   components are distinct, uninterpreted and of the rule's arity. CxTra's
-  `nestingPartnerOf` rule is one, and CxTra acknowledges it: the unary membership rule an
+  `nestingPartnerOf` rule is one, and CxTra acknowledges it. The unary membership rule an
   intersection generates would spell its camelCase relations with one argument, which the
   naming check refuses. [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means)
   *Migration:* acknowledge or replace a conjunction rule the sweep now reports.
@@ -126,8 +126,8 @@ it — `git show v0.16.0:CHANGELOG.md`.
 - **A forced arity-class store in CxUniverse does not move a type's defining context.**
   `arity`, `arityMin` and the arity classes are `forced_decontextualized_predicate`s, so a
   middle theory's `(unary_predicate T)` is stored in CxUniverse. `defining-contexts` reads
-  such a record as a home only when no other leaf gives the term one, so a type or
-  relation a middle theory defines keeps that theory as its home, and its rigidity class
+  such a record as a home only when no other leaf gives the term one. A type or relation
+  a middle theory defines therefore keeps that theory as its home. Its rigidity class
   stated there satisfies `(typeAllSpecified rigidity_kind relation)`.
   [api.md](docs/api.md)
   *Migration:* to define a relation in CxUniverse, state something other than its arity
