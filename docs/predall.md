@@ -3,8 +3,7 @@
 - **Covers:** the eight `pred*` relations that quantify one argument position of a binary
   predicate and fix the other, in three semantic classes — the *Instance* pair that
   generates a rule, the *Exists* four that derive nothing and are audited on demand, and
-  the *Specified* pair that audits, and that pair's quoted twins, whose population is the
-  terms of an expression kind as written; the `indeterminate_term` determinacy category behind
+  the *Specified* pair and its quoted twins, which audit; the `indeterminate_term` determinacy category behind
   the audit; the identity exemption that category carries; and the entry points that run
   the audits.
 - **Not here:** the generator mechanism the *Instance* pair is built on →
@@ -251,10 +250,10 @@ term-index read per name, then the filler reads per term of the kind. No shipped
 declaration uses the twins.
 
 The *Instance* pair has no quoted twin. A generated rule ranging over written terms needs
-an antecedent that binds a variable to each term of a kind, and no literal's extent is the
-vocabulary: `ExpressionKindProver` answers a kind of a ground quoted form and binds
-nothing for an open one, and `unify` reads `(Quote ?x)` as a constant whose variable
-binds nothing ([inference.md](inference.md#quoted-forms-in-unification)).
+an antecedent that binds a variable to each term of a kind. No literal's extent is the
+vocabulary. `ExpressionKindProver` answers a kind of a ground quoted form and binds
+nothing for an open one. `unify` reads `(Quote ?x)` as a constant whose variable binds
+nothing ([inference.md](inference.md#quoted-forms-in-unification)).
 
 ## indeterminate_term: what makes a filler determinate
 
