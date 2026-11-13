@@ -13,6 +13,7 @@
             [vaelii.host.starter :as starter]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.decide.argument :as argument]
+            [vaelii.impl.defining :as defining]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
@@ -215,11 +216,13 @@
 
 (tu/deftest-kb a-unary-mark-is-a-premise-of-the-context-whose-edges-reach-the-type
   (is (empty? (for [s (v/sentexes-matching kb '(unary_predicate ?t) 'CxUniverse)
-                    :when (and (= 'CxUniverse (:context s)) (v/premise? kb (:id s)))
+                    :when (and (= 'CxUniverse (:context s)) (v/premise? kb (:id s))
+                               (not (#'defining/forced-arity-store? kb s)))
                     :let [t (second (:sentence s))]
                     :when (not (contains? (v/specs kb 'thing 'CxUniverse) t))]
                 t))
-      "CxUniverse states no mark for a type only a middle context's edges reach")
+      (str "CxUniverse states no mark for a type only a middle context's edges reach, past"
+           " a forced arity-class store, which is scaffolding and not a definition"))
   (let [h (v/handle-of kb '(unary_predicate command_line_tool) 'CxTra)]
     (is (and h (v/premise? kb h)) "CxTra states the mark of its own type")
     (is (v/ask? kb '(unary_predicate command_line_tool) 'CxUniverse)
