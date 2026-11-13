@@ -1354,3 +1354,89 @@
         (v/assert kb (list 'arg notes slot 'string) CxChild)
         (is (= {:status :gap :gap :missing-slot-typing :pred notes :position slot}
                (specified-result kb functor notes item_kind CxChild)))))))
+
+;; ==== the quoted twins: the population as written ============================
+;; predAllQuotedSpecified / predSpecifiedAllQuoted quantify over the atomic names a stored
+;; sentex the reader sees writes, of an expression kind (docs/predall.md, "Quoted
+;; Specified").  The KB below writes two members of a fresh collection, one commented, and
+;; a quotation of a sentence.
+
+(defn- quoted-fixture
+  "Assert the shared quoted-twin fixture in `CxTest`, below CxUniverse."
+  [kb CxTest fictional_defined Commented Uncommented JimboMcFallible]
+  (v/assert kb (list 'genlCx CxTest 'CxUniverse) 'CxUniverse)
+  (doseq [sentence [(list 'unary_predicate fictional_defined)
+                    (list 'genl fictional_defined 'thing)
+                    (list fictional_defined Commented)
+                    (list fictional_defined Uncommented)
+                    (list 'comment Commented "a note")
+                    (list 'believes JimboMcFallible '(Quote (genl dog animal)))]]
+    (v/assert kb sentence CxTest)))
+
+(tu/deftest-kb pred-all-quoted-specified-reports-written-symbols-and-not-a-quotation
+  (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible]
+    (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
+    (v/assert kb '(predAllQuotedSpecified comment symbol) CxTest)
+    (let [r  (predall/quoted-specified-violations kb 'comment 'symbol CxTest)
+          vs (:violations r)]
+      (is (= :audited (:status r)))
+      (is (contains? vs Uncommented) "a written symbol with no comment is reported")
+      (is (contains? vs JimboMcFallible) "an individual is a written symbol as much as a member is")
+      (is (not (contains? vs Commented)) "a commented symbol is not")
+      (is (not (contains? vs 'comment)) "nor is a core predicate core.txt comments")
+      (is (not (contains? vs '(Quote (genl dog animal))))
+          "a quotation is a compound, no name, so it is outside symbol's population"))
+    (testing "the sweep reports the declaration"
+      (is (contains? (:violations (get (v/all-specified-violations kb CxTest)
+                                       ['predAllQuotedSpecified 'comment 'symbol]))
+                     Uncommented)))
+    (testing "a name written only in CxTest is outside CxUniverse's population"
+      (is (not (contains? (:violations (predall/quoted-specified-violations
+                                        kb 'comment 'symbol 'CxUniverse))
+                          Uncommented))))))
+
+(tu/deftest-kb pred-specified-all-quoted-audits-the-first-position
+  (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible documents]
+    (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
+    (doseq [sentence [(list 'binary_predicate documents)
+                      (list 'arg documents 1 'string)
+                      (list 'quotedArg documents 2 'symbol)
+                      (list documents "a note" Commented)
+                      (list 'predSpecifiedAllQuoted documents 'symbol)]]
+      (v/assert kb sentence CxTest))
+    (let [vs (:violations (predall/quoted-specified-violations kb documents 'symbol CxTest :first))]
+      (is (not (contains? vs Commented)) "Commented has a string bearing documents to it")
+      (is (contains? vs Uncommented) "Uncommented has none"))))
+
+(tu/deftest-kb the-unquoted-twin-still-audits-the-members-of-a-collection
+  ;; the same KB under predAllSpecified: the population is fictional_defined's members,
+  ;; so the collection's own name and the other written symbols are outside it
+  (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible]
+    (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
+    (v/assert kb (list 'predAllSpecified 'comment fictional_defined) CxTest)
+    (v/assert kb '(predAllQuotedSpecified comment symbol) CxTest)
+    (is (= {:status :audited :violations #{Uncommented}}
+           (get (v/all-specified-violations kb CxTest)
+                ['predAllSpecified 'comment fictional_defined])))
+    (is (contains? (:violations (predall/quoted-specified-violations kb 'comment 'symbol CxTest))
+                   fictional_defined)
+        "the quoted twin asks a comment of the collection's own name")))
+
+(tu/deftest-kb the-quoted-population-grows-with-each-written-name
+  ;; the cost: every name a write adds joins the population, one more term the audit
+  ;; asks a filler of
+  (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible Later]
+    (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
+    (is (not (contains? (:violations (predall/quoted-specified-violations kb 'comment 'symbol CxTest))
+                        Later))
+        "a name no sentex writes is outside the population")
+    (v/assert kb (list fictional_defined Later) CxTest)
+    (is (contains? (:violations (predall/quoted-specified-violations kb 'comment 'symbol CxTest))
+                   Later)
+        "one write adds it")))
+
+(tu/deftest-kb a-quoted-declaration-over-a-non-syntactic-type-is-a-reported-gap
+  (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible]
+    (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
+    (is (= {:status :gap :gap :non-syntactic-type :pred 'comment :type fictional_defined}
+           (predall/quoted-specified-violations kb 'comment fictional_defined CxTest)))))
