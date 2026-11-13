@@ -1355,14 +1355,10 @@
         (is (= {:status :gap :gap :missing-slot-typing :pred notes :position slot}
                (specified-result kb functor notes item_kind CxChild)))))))
 
-;; ==== the quoted twins: the population as written ============================
-;; predAllQuotedSpecified / predSpecifiedAllQuoted quantify over the atomic names a stored
-;; sentex the reader sees writes, of an expression kind (docs/predall.md, "Quoted
-;; Specified").  The KB below writes two members of a fresh collection, one commented, and
-;; a quotation of a sentence.
-
 (defn- quoted-fixture
-  "Assert the shared quoted-twin fixture in `CxTest`, below CxUniverse."
+  "Assert in `CxTest`, below CxUniverse, the KB the quoted Specified twins audit
+  (docs/predall.md, \"Quoted Specified\"): two members of a fresh collection, one
+  commented, and a quotation of a sentence."
   [kb CxTest fictional_defined Commented Uncommented JimboMcFallible]
   (v/assert kb (list 'genlCx CxTest 'CxUniverse) 'CxUniverse)
   (doseq [sentence [(list 'unary_predicate fictional_defined)
@@ -1409,8 +1405,6 @@
       (is (contains? vs Uncommented) "Uncommented has none"))))
 
 (tu/deftest-kb the-unquoted-twin-still-audits-the-members-of-a-collection
-  ;; the same KB under predAllSpecified: the population is fictional_defined's members,
-  ;; so the collection's own name and the other written symbols are outside it
   (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible]
     (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
     (v/assert kb (list 'predAllSpecified 'comment fictional_defined) CxTest)
@@ -1423,17 +1417,16 @@
         "the quoted twin asks a comment of the collection's own name")))
 
 (tu/deftest-kb the-quoted-population-grows-with-each-written-name
-  ;; the cost: every name a write adds joins the population, one more term the audit
-  ;; asks a filler of
   (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible Later]
     (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
-    (is (not (contains? (:violations (predall/quoted-specified-violations kb 'comment 'symbol CxTest))
-                        Later))
-        "a name no sentex writes is outside the population")
-    (v/assert kb (list fictional_defined Later) CxTest)
-    (is (contains? (:violations (predall/quoted-specified-violations kb 'comment 'symbol CxTest))
-                   Later)
-        "one write adds it")))
+    (testing "the cost: each name a write adds is one more term the audit asks a filler of"
+      (is (not (contains? (:violations (predall/quoted-specified-violations kb 'comment 'symbol CxTest))
+                          Later))
+          "a name no sentex writes is outside the population")
+      (v/assert kb (list fictional_defined Later) CxTest)
+      (is (contains? (:violations (predall/quoted-specified-violations kb 'comment 'symbol CxTest))
+                     Later)
+          "one write adds it"))))
 
 (tu/deftest-kb a-quoted-declaration-over-a-non-syntactic-type-is-a-reported-gap
   (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible]

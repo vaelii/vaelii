@@ -305,11 +305,6 @@
         "kb-integrity reports no position of termsRelated untyped")))
 
 (tu/deftest-kb a-comment-documents-a-closed-expression-and-never-an-open-one
-  ;; `(quotedArg comment 1 closed_expression)` (core.txt): the commented position takes a
-  ;; closed term, a sentex named by `(sentexHandle N)` (reflection.txt's
-  ;; sentex_handle_term) or a closed sentence, each taken as written.  The check-ground
-  ;; step of `assert` refuses a free variable in the comment as `:not-ground` before any
-  ;; argument check runs, so the open cases below are refused by that step.
   (is (true? (v/ask? kb '(quotedArg comment 1 closed_expression) 'CxUniverse)))
   (tu/with-terms [Muffet MotherFn]
     (v/assert kb (list 'unreifiable_function MotherFn) 'CxUniverse)
@@ -326,7 +321,7 @@
         (is (= [true 1] (stored (list MotherFn Muffet)))))
       (testing "a stored sentex, named by its handle, is commented"
         (is (= [true 1] (stored (list 'sentexHandle fact)))))
-      (testing "an open sentence is refused"
+      (testing "an open sentence is refused, by the ground check before any argument check"
         (is (= :not-ground (refusal kb '(comment (genl ?x animal) "a note")))))
-      (testing "a bare variable is refused"
+      (testing "a bare variable is refused, by the same ground check"
         (is (= :not-ground (refusal kb '(comment ?x "a note"))))))))

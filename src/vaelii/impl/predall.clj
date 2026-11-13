@@ -23,10 +23,6 @@
   stored rule and concludes nothing — it reads the declaration and the beliefs and hands
   back the violations, the way a solve-time report does.
 
-  `predAllQuotedSpecified` / `predSpecifiedAllQuoted` are the quoted twins of the pair
-  (`quoted-specified-violations`): the population is the terms of an expression kind as
-  the KB writes them, not the members of a collection.
-
   `typeAllSpecified` is the counterpart for a classification: `type-specified-violations`
   reports the instances of a collection no member of a classifier is believed to hold,
   and `kb-integrity` folds its declaration stream as its own category (docs/integrity.md).
@@ -236,13 +232,8 @@
              (throw e))))))))
 
 (defn- written-terms
-  "The atomic names written in a stored sentex that `ctx` sees, belief unread: each
-  non-variable symbol of the index's term-name set (`reads/stored-terms-global`) with a
-  term-index posting (`reads/as-stored-with-term`) whose record sits in a context of
-  `tax/context-up`.  A name written only inside a `(Quote …)` counts, since the index
-  keys a name at any nesting depth.  A compound is no name, so a quotation such as
-  `(Quote (genl dog animal))` is never among them, and the term-name set keys no
-  string, number or other value."
+  "The non-variable symbols of the term-name set (`reads/stored-terms-global`) that a
+  stored sentex in a context `ctx` sees writes, by term-index posting, belief unread."
   [kb ctx]
   (let [up   (set (tax/context-up (reasoning/taxonomy kb) ctx))
         recs (:records kb)
@@ -260,27 +251,12 @@
   (boolean (some #(or (= % qtype) (tax/genl? tax % qtype ctx)) (provers/shape-kinds x))))
 
 (defn quoted-specified-violations
-  "Audit one `(predAllQuotedSpecified pred qtype)` declaration in `ctx`, the quoted twin of
-  `specified-violations`, and return a result map with a `:status`.
-
-  The population is the written terms of the expression kind `qtype`: each atomic name a
-  sentex `ctx` sees is written with (`written-terms`) whose spelling's kind is `qtype` or
-  below it (`of-written-kind?`).  Under `(predAllQuotedSpecified comment symbol)` the
-  population is every name the reader's KB writes, a predicate, a type, an individual
-  and a context alike.  The filler is audited exactly as `specified-violations` audits
-  one: a believed, determinate filler satisfying `pred`'s own slot contract.
-
-  `{:status :audited :violations #{x …}}` where the audit ran.  `{:status :gap :gap
-  :non-syntactic-type :pred pred :type qtype}` where `qtype` is no kind of `expression`,
-  since no written term is judged against a type outside the expression lattice.  `{:status
-  :gap :gap :missing-slot-typing :pred pred :position n}` where the filler's slot carries
-  no denotation-typing, as for the unquoted twin.
-
-  `arg-pos` selects the twin: `:second` for `predAllQuotedSpecified`, the filler at
-  `pred`'s second position, and `:first` for `predSpecifiedAllQuoted`, the filler at the
-  first.  A written term has no defining home, so the skeletal-only exemption of
-  `specified-violations` does not apply.  The cost is one term-index read per name in the
-  vocabulary, then the filler reads per term of the kind."
+  "Audit `(predAllQuotedSpecified pred qtype)` in `ctx`, `arg-pos` `:first` for
+  `predSpecifiedAllQuoted`: `{:status :audited :violations #{x …}}`, each written term
+  (`written-terms`) of kind `qtype` (`of-written-kind?`) with no admissible filler as
+  `specified-violations` judges one.  `{:status :gap :gap :non-syntactic-type :pred
+  :type}` when `qtype` is below no `expression`, `:missing-slot-typing` as the unquoted
+  twin gives it.  See docs/predall.md, \"Quoted Specified\"."
   ([kb pred qtype ctx] (quoted-specified-violations kb pred qtype ctx :second))
   ([kb pred qtype ctx arg-pos]
    (let [n   (case arg-pos
