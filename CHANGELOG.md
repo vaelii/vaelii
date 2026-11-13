@@ -92,10 +92,12 @@ it — `git show v0.16.0:CHANGELOG.md`.
 - **`intersection` relates binary predicates as well as kinds.** `(intersection P A B)`
   and `(intersection P A B C)` over binary predicates derive `(genl P A)` and the other
   edges as over kinds, and a generated membership rule concludes `(P x y)` from `(A x y)`,
-  `(B x y)` and, for three, `(C x y)`. The binary rule is generated where `P` has arity 2;
-  the unary rule is generated for every intersection and concludes nothing of a binary
-  predicate. The membership is strict, and a `genl` edge between predicates is
-  forced-monotonic, so a binary intersection is stated `set/monotonic`.
+  `(B x y)` and, for three, `(C x y)`. The binary rule is generated where `P` has arity 2.
+  The unary rule is generated where `P` is a member of a class `relationTypeByArity` maps
+  to 1: `unary`, which holds a kind declared `unary_predicate` or given `(arity P 1)`, or a
+  KB's own class. A binary predicate generates no unary rule. The membership is strict,
+  and a `genl` edge between predicates is forced-monotonic, so a binary intersection is
+  stated `set/monotonic`.
   [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means)
   *Migration:* none.
 

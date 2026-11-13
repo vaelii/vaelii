@@ -1583,17 +1583,32 @@
 ;; is each type is the combined kind without exception, so the rule adds no
 ;; defeasibility of its own.
 ;;
-;; Each membership rule is guarded by the combined predicate's arity.  (arity ?combined 1)
-;; holds of a kind declared unary or unary_predicate, or entailed unary_predicate by an
-;; argument declaration naming it, through the lazy-forward converse relationTypeByArity
-;; generates from (relationTypeByArity unary 1).  (arity ?combined 2) holds of a predicate
-;; declared binary_predicate or given arity 2, the same way.  So an intersection generates
-;; at most one membership rule, the one of its combined predicate's arity, and none for a
-;; combined kind of no known arity.
-(implies (and (intersection ?combined ?type1 ?type2) (arity ?combined 1))
-         (implies (and (?type1 ?x) (?type2 ?x)) (?combined ?x)))
-(implies (and (intersection ?combined ?type1 ?type2 ?type3) (arity ?combined 1))
-         (implies (and (?type1 ?x) (?type2 ?x) (?type3 ?x)) (?combined ?x)))
+;; Each membership rule is guarded by the combined predicate's arity, so an intersection
+;; generates at most one membership rule, the one of its combined predicate's arity, and
+;; none for a combined kind of no known arity.
+;;
+;; The unary rule's guard is the membership an arity of one is read from: the outer level
+;; ranges over the classes relationTypeByArity maps to 1 (unary, and any class a KB maps
+;; to 1), and the generator it generates takes a ?combined that is a member of one.  That
+;; is a kind declared unary or unary_predicate, one entailed unary_predicate by an
+;; argument declaration naming it, or one given (arity ?combined 1), which the forward
+;; rule relationTypeByArity generates classifies unary.  These are the kinds the
+;; lazy-forward converse proves (arity ?combined 1) of, from the same membership at the
+;; same strength.  Read as the stored membership rather than proved through the converse,
+;; the guard is met in the chaining run that stores the membership, so the rule's firings
+;; over the members already stored are made in that run too.  Nothing is stored for the
+;; arity: the generated rule rests on the membership, and withdrawing a :default one
+;; withdraws the rule and what it concluded.
+;;
+;; (arity ?combined 2) holds of a predicate declared binary_predicate or given arity 2,
+;; through the lazy-forward converse relationTypeByArity generates from
+;; (relationTypeByArity binary 2).
+(implies (relationTypeByArity ?class 1)
+         (implies (and (intersection ?combined ?type1 ?type2) (?class ?combined))
+                  (implies (and (?type1 ?x) (?type2 ?x)) (?combined ?x))))
+(implies (relationTypeByArity ?class 1)
+         (implies (and (intersection ?combined ?type1 ?type2 ?type3) (?class ?combined))
+                  (implies (and (?type1 ?x) (?type2 ?x) (?type3 ?x)) (?combined ?x))))
 (implies (and (intersection ?combined ?type1 ?type2) (arity ?combined 2))
          (implies (and (?type1 ?x ?y) (?type2 ?x ?y)) (?combined ?x ?y)))
 (implies (and (intersection ?combined ?type1 ?type2 ?type3) (arity ?combined 2))
