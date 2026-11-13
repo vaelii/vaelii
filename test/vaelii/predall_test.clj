@@ -1428,6 +1428,45 @@
                      Later)
           "one write adds it"))))
 
+(defn- quoted-copy-fixture
+  "Assert in `CxMiddle`, below CxUniverse, a kind below `binary_predicate` and its member
+  `rel`, so the engine stores the arity-class copy `(binary_predicate rel)` in CxUniverse,
+  and assert `(predAllQuotedSpecified comment symbol)` in CxUniverse."
+  [kb CxMiddle relation_kind rel]
+  (v/assert kb (list 'genlCx CxMiddle 'CxUniverse) 'CxUniverse)
+  (v/assert kb (list 'genl relation_kind 'binary_predicate) CxMiddle {:strength :monotonic})
+  (v/assert kb (list relation_kind rel) CxMiddle {:strength :monotonic})
+  (v/assert kb '(predAllQuotedSpecified comment symbol) 'CxUniverse))
+
+(defn- quoted-sweep-violations [kb ctx]
+  (:violations (get (v/all-specified-violations kb ctx)
+                    ['predAllQuotedSpecified 'comment 'symbol])))
+
+(tu/deftest-kb a-quoted-audit-reads-a-term-at-its-defining-home-not-at-an-engine-copy
+  (tu/with-terms [CxMiddle relation_kind nearbyRel]
+    (quoted-copy-fixture kb CxMiddle relation_kind nearbyRel)
+    (v/assert kb (list 'comment nearbyRel "A fictional relation commented in its home.") CxMiddle)
+    (is (v/ask? kb (list 'binary_predicate nearbyRel) 'CxUniverse)
+        "the engine's arity-class copy writes the term in CxUniverse")
+    (is (= #{CxMiddle} (v/defining-contexts kb nearbyRel))
+        "the copy is skeletal, so CxMiddle is the term's one defining home")
+    (is (not (contains? (:violations (predall/quoted-specified-violations
+                                      kb 'comment 'symbol 'CxUniverse))
+                        nearbyRel))
+        "CxUniverse is no defining home of the term, so its audit skips the term")
+    (is (not (contains? (quoted-sweep-violations kb 'CxUniverse) nearbyRel))
+        "the sweep audits the term in CxMiddle, where its comment is visible")))
+
+(tu/deftest-kb a-quoted-audit-still-reports-a-term-with-no-comment-anywhere
+  (tu/with-terms [CxMiddle relation_kind bareRel]
+    (quoted-copy-fixture kb CxMiddle relation_kind bareRel)
+    (is (contains? (:violations (predall/quoted-specified-violations
+                                 kb 'comment 'symbol CxMiddle))
+                   bareRel)
+        "the term's defining home audits it and finds no comment")
+    (is (contains? (quoted-sweep-violations kb 'CxUniverse) bareRel)
+        "the sweep reports it")))
+
 (tu/deftest-kb a-quoted-declaration-over-a-non-syntactic-type-is-a-reported-gap
   (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible]
     (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
