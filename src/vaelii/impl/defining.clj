@@ -232,9 +232,9 @@
                       {:type :incomplete-defining-contexts :term term :handles unresolved})))
     ;; a premise an equality merge superseded stays the leaf its respelled twin reads.  A
     ;; forced arity-kind store (`forced-arity-store?`) is a home only when no other leaf
-    ;; gives one: a type stated in a middle theory keeps that theory as its home although
-    ;; its `unary_predicate` record lives in CxUniverse, and a relation known by nothing
-    ;; but its arity is still defined where that record is
+    ;; gives one.  A type stated in a middle theory keeps that theory as its home although
+    ;; its `unary_predicate` record lives in CxUniverse.  A relation known by nothing but
+    ;; its arity is still defined where that record is
     (let [forced? #(forced-arity-store? kb %)
           kept (into [] (filter #(or (live? %) (jtms/superseded? tms %)))
                      (budget/checked-seq leaves))
