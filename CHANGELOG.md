@@ -14,7 +14,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
-### Breaking: ontology
+### Breaking: shipped ontology
 
 - **Kinship shares one generic hierarchy with blood and chosen readings.** `relativeOf`
   becomes `kinOf`; `BloodKinFn` qualifies eternal blood history and `ChosenKinFn`
@@ -30,6 +30,33 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Breaks:* `relativeOf`, `parentOf`, `childOf`, `motherOf`, `fatherOf`, `siblingOf`,
   `grandparentOf`, `ancestorOf`, `birthDate`, `birthYearOf`, `olderThan`, `MotherFn`,
   `FatherFn`, `originatorOf`
+
+- **`hasCapability` is `able`, `capabilityType` is `abilityType` and
+  `toolEnablesCapability` is `toolEnablesAbility`.** The three relations keep their
+  declarations, comments and rules under the new names, in `life.txt`, `CxBiology` and
+  `CxTra`. `able` names dynamic ability, the reading `may` and `can` sit beside.
+  `resources/renames/unreleased.edn` records the three renames, so `upgrade --sync`
+  rewrites a stored premise that names an old spelling.
+  [inherit.md](docs/inherit.md#six-predicates-ship-with-one)
+  *Migration:* rename `hasCapability` to `able`, `capabilityType` to `abilityType` and
+  `toolEnablesCapability` to `toolEnablesAbility` in KB text, rules and queries.
+  *Breaks:* `hasCapability`, `capabilityType`, `toolEnablesCapability`
+
+### Breaking: integrity
+
+- **The undeclared-arity sweep reports a `genl` node whose only length is inherited.** A
+  node passes when the node itself is known to have an exact length, or when a
+  `variable_arity` membership releases it. The node's own exact length comes from an
+  engine `:shape`, an `(arity P n)`, an exact-arity class membership such as
+  `unary_predicate`, or a `:monotonic` membership reaching one. Under `(unary_predicate placed_kind)` and `(genl below_kind placed_kind)`,
+  `below_kind` is an `:undeclared-arity` finding, and a default `kb-integrity` sweep of
+  such a KB answers `:gap`. The upper and middle files declare `(unary_predicate X)` beside
+  each type's definition, so neither the upper ontology alone nor the starter has a
+  finding. The new `arity/own-length` reads the node's own length with no
+  `genl` closure read; `arity/relation-length` and its callers keep the inherited length.
+  [integrity.md](docs/integrity.md#what-an-undeclared-arity-finding-means)
+  *Migration:* state an arity of each `genl` node, such as `(unary_predicate below_kind)`.
+  *Breaks:* `kb-integrity`
 
 ### Additive: shipped ontology
 
@@ -52,6 +79,61 @@ it — `git show v0.16.0:CHANGELOG.md`.
   and `vaelii.impl.predall/quoted-specified-violations` audits one declaration. The
   population grows by one term per name the KB writes. No shipped declaration uses them.
   [predall.md](docs/predall.md#quoted-specified-the-population-as-written)
+- **life.txt ships `may` and `can` beside `able`.** `(may ?doer ?kind)` is deontic
+  permission to be the doer of a happening of kind `?kind`, and `(can ?doer ?kind)` is
+  ability and permission together. Both take `able`'s positions: `(arg … 1 causal)`,
+  `(genlArg … 2 happening)` and `transitiveInArg` along `genl` on the second. Both are
+  `time_varying_relation`, since an ability or a permission can be gained and lost. life.txt
+  states `(intersection can able may)`, so `able` and `may` together conclude `can`, and
+  `can` is `genl` each half. Ability without permission, or permission without ability,
+  concludes no `can`.
+  [inherit.md](docs/inherit.md#six-predicates-ship-with-one)
+  *Migration:* none; `may` and `can` are new.
+- **`intersection` relates binary predicates as well as kinds.** `(intersection P A B)`
+  and `(intersection P A B C)` over binary predicates derive `(genl P A)` and the other
+  edges as over kinds, and a generated membership rule concludes `(P x y)` from `(A x y)`,
+  `(B x y)` and, for three, `(C x y)`. The binary rule is generated where `P` has arity 2.
+  The unary rule is generated where `P` is a member of a class `relationTypeByArity` maps
+  to 1: `unary`, which holds a kind declared `unary_predicate` or given `(arity P 1)`, or a
+  KB's own class. A binary predicate generates no unary rule. The membership is strict,
+  and a `genl` edge between predicates is forced-monotonic, so a binary intersection is
+  stated `set/monotonic`.
+  [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means)
+  *Migration:* none.
+
+### Additive: integrity
+
+- **The rule-macro sweep reports a conjunction rule as the `intersection` it spells.** A
+  rule `(A ?x)`, `(B ?x)` ⇒ `(P ?x)`, or the same over two arguments or with a third
+  component, is a `:rule-macro` finding suggesting `(intersection P A B)`, where `P` and the
+  components are distinct, uninterpreted and of the rule's arity. CxTra's
+  `nestingPartnerOf` rule is one, and CxTra acknowledges it. The unary membership rule an
+  intersection generates would spell its camelCase relations with one argument, which the
+  naming check refuses. [integrity.md](docs/integrity.md#what-a-rule-macro-finding-means)
+  *Migration:* acknowledge or replace a conjunction rule the sweep now reports.
+- **`kb-integrity` reports a `genl` edge whose spec admits a length its genl does not.**
+  The default sweep adds `:genl-arity-mismatch`, one `{:spec a :genl b :spec-arity …
+  :genl-arity …}` per visible `(genl a b)` whose ends each have an arity of their own
+  (`arity/own-length`) and where `a` admits a length `b` does not
+  (`arity/admits-length?`). An exact length admits itself alone, and a `variable_arity`
+  release every length at or above its `arityMin`. `(genl <unary> <variable_arity>)` is
+  not a finding, and `(genl <variable_arity> <unary>)` is one; a floor of 2 under a floor
+  of 3 is one, and a floor of 3 under a floor of 2 is not. An end with no arity of its
+  own is an `:undeclared-arity` finding instead. The shipped starter has no finding.
+  [integrity.md](docs/integrity.md#what-a-genl-arity-mismatch-finding-means)
+  *Migration:* state agreeing arities at both ends of a reported edge, or drop the edge.
+
+### Fix: contextual type definitions
+
+- **A forced arity-class store in CxUniverse does not move a type's defining context.**
+  `arity`, `arityMin` and the arity classes are `forced_decontextualized_predicate`s, so a
+  middle theory's `(unary_predicate T)` is stored in CxUniverse. `defining-contexts` reads
+  such a record as a home only when no other leaf gives the term one. A type or relation
+  a middle theory defines therefore keeps that theory as its home. Its rigidity class
+  stated there satisfies `(typeAllSpecified rigidity_kind relation)`.
+  [api.md](docs/api.md)
+  *Migration:* to define a relation in CxUniverse, state something other than its arity
+  there, such as its `comment`.
 
 ### Fix: order independence
 

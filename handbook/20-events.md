@@ -111,25 +111,25 @@ naming the dimension that forced two encodings.
 the event hierarchy for the hierarchy of abilities. Do not mint a separate type of ability.
 
 **Example.** `abstract.txt` places flying under travelling, and `life.txt` types the second
-argument of `hasCapability` as a kind of happening and carries the claim up that
+argument of `able` as a kind of happening and carries the claim up that
 hierarchy:
 
 ```clojure
 (genl flying travelling)
 (genl travelling causal_event)
-(genlArg hasCapability 2 happening)
-(transitiveInArg hasCapability 2 genl)
+(genlArg able 2 happening)
+(transitiveInArg able 2 genl)
 ```
 
-`CxBiology.txt` states the consequence in a note: "(transitiveInArg hasCapability 2 genl)
-with (genl flying travelling) answers (hasCapability ?x travelling) at retrieval for
+`CxBiology.txt` states the consequence in a note: "(transitiveInArg able 2 genl)
+with (genl flying travelling) answers (able ?x travelling) at retrieval for
 anything believed to fly, and stores no record."
 
 **Why.**
 
 - *Logical.* An ability is an ability to take part in a kind of event as its doer, so the
   structure abilities need is the structure of the event kinds.
-- *Engine.* The preservation declaration carries a stored `hasCapability` claim up the
+- *Engine.* The preservation declaration carries a stored `able` claim up the
   `genl` hierarchy of happening kinds at query time and stores nothing. When the flying
   claim is defeated, as for a penguin, the travelling answer has no believed claim to
   reach from and is not answered.
@@ -137,8 +137,8 @@ anything believed to fly, and stores no record."
   and `travelling` being a `causal_event` is stated once for both. A separate ability type
   would need a parallel hierarchy kept in step with the events by hand.
 
-**Why not the other ways.** `oe-defenses.md` weighs a `capability` type whose instances are
-abilities, related to their holders by `hasCapability`, and rejects it: every "can fly
+**Why not the other ways.** `oe-defenses.md` weighs an `ability` type whose instances are
+abilities, related to their holders by `able`, and rejects it: every "can fly
 implies can travel" would need a second edge in the ability hierarchy that copies the
 event edge.
 

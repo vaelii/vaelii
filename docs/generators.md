@@ -78,32 +78,32 @@ once. So these two say the same join and only one of them can be stored:
 ;; refused :not-indexable — ?type is bound by the antecedent next to it, so the rule
 ;; that gets stored still has a variable in functor position
 (implies (typeVersion ?ipred ?tpred)
-         (implies (and (?tpred ?type ?cap) (?type ?instance))
-                  (?ipred ?instance ?cap)))
+         (implies (and (?tpred ?type ?ability) (?type ?instance))
+                  (?ipred ?instance ?ability)))
 
 ;; accepted — ?type is a hole of the middle level, so it is filled before the rule
 ;; using it as a functor is stored
 (implies (typeVersion ?ipred ?tpred)
-         (implies (?tpred ?type ?cap)
+         (implies (?tpred ?type ?ability)
                   (implies (?type ?instance)
-                           (?ipred ?instance ?cap))))
+                           (?ipred ?instance ?ability))))
 ```
 
 The second is a type-level/instance-level bridge stated once rather than once per pair.
-`(typeVersion hasCapability capabilityType)` generates a generator:
+`(typeVersion able abilityType)` generates a generator:
 
 ```clojure
-(implies (capabilityType ?type ?cap)
-         (implies (?type ?instance) (hasCapability ?instance ?cap)))
+(implies (abilityType ?type ?ability)
+         (implies (?type ?instance) (able ?instance ?ability)))
 ```
 
-`(capabilityType bird flying)` generates that generator's rule:
+`(abilityType bird flying)` generates that generator's rule:
 
 ```clojure
-(implies (bird ?instance) (hasCapability ?instance flying))
+(implies (bird ?instance) (able ?instance flying))
 ```
 
-and `(bird Tweety)` concludes `(hasCapability Tweety flying)`. Three levels, three
+and `(bird Tweety)` concludes `(able Tweety flying)`. Three levels, three
 firings, and the only thing ever keyed by the index is the concrete rule at the bottom
 and the two generators above it — filed under `implies`, which is where every generator
 is filed at every depth.

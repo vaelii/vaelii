@@ -77,8 +77,8 @@ below, concludes that a penguin cannot fly:
 
 ```clojure
 (exceptWhen (penguin ?x)
-  (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (hasCapability ?x flying)))))
-(set/forwardRule (implies (and (penguin ?x)) (not (hasCapability ?x flying))))
+  (set/defaultRule (set/forwardRule (implies (and (bird ?x)) (able ?x flying)))))
+(set/forwardRule (implies (and (penguin ?x)) (not (able ?x flying))))
 ```
 
 **Why.** The excepted rule declines to conclude for a penguin; the second rule concludes
@@ -95,7 +95,7 @@ default instead of undercutting it. For a penguin known true, the negative is mo
 and defeats the flight conclusion, so the KB stores a conclusion and its defeat. For a
 penguin stated at the default strength, the two conclusions tie, and the pair is a
 dilemma in `contradictions`. The exception alone leaves the KB unable to
-answer `(not (hasCapability X flying))` for a penguin.
+answer `(not (able X flying))` for a penguin.
 
 **Audit.** For each `exceptWhen`, decide whether the excepted case has a contrary worth
 concluding, and state it or say in a `;;` note why not.
@@ -169,11 +169,11 @@ an `exceptWhen`.
 nearer kind:
 
 ```clojure
-(capabilityType bird flying)
-(not (capabilityType penguin flying))
+(abilityType bird flying)
+(not (abilityType penguin flying))
 ```
 
-`(transitiveInArgInverse capabilityType 1 genl)` carries the first claim to every kind of
+`(transitiveInArgInverse abilityType 1 genl)` carries the first claim to every kind of
 bird. The second claim stops it at `penguin` and leaves the siblings of `penguin`
 flying.
 

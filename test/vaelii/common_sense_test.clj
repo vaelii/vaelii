@@ -182,15 +182,15 @@
 
 (tu/deftest-kb a-default-conclusion-feeds-a-further-rule
   ;; flying ⇒ can travel via the event-kind hierarchy: (genl flying travelling) +
-  ;; (transitiveInArg hasCapability 2 genl).  An eagle flies by default, so it
+  ;; (transitiveInArg able 2 genl).  An eagle flies by default, so it
   ;; can travel; a penguin's flight is defeated, so the downstream query returns nothing.
   ;; No stored forward-rule conclusion — the hierarchy answers at retrieval.
   (testing "the eagle inherits can-travel through the flight default"
-    (is (v/ask? kb '(hasCapability Sam flying)))
-    (is (v/ask? kb '(hasCapability Sam travelling))))
+    (is (v/ask? kb '(able Sam flying)))
+    (is (v/ask? kb '(able Sam travelling))))
   (testing "the penguin, defeated on flight, does not get can-travel"
-    (is (not (v/ask? kb '(hasCapability Tweety flying))))
-    (is (not (v/ask? kb '(hasCapability Tweety travelling))))))
+    (is (not (v/ask? kb '(able Tweety flying))))
+    (is (not (v/ask? kb '(able Tweety travelling))))))
 
 (tu/deftest-kb being-told-an-animal-is-asleep-takes-back-what-was-assumed
   ;; Every animal is awake by default, which is the reading a story assumes without
@@ -347,7 +347,7 @@
         (is (nil? (v/handle-of kb (list 'asleep Rex) (:context r))))
         (is (not (v/provable? kb (list 'not (list 'awake Rex)) N)))))
     (testing "a dead end nothing grants is reported, not assumed"
-      (let [r (v/abduce kb (list 'hasCapability Rex 'flying) N)]
+      (let [r (v/abduce kb (list 'able Rex 'flying) N)]
         (is (empty? (:hypotheses r)))
         (is (= [(list 'bird Rex)] (:refused r)))))))
 

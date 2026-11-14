@@ -254,9 +254,9 @@
   (all-of-kind kb 'time_varying_relation '[solid liquid gas plasma] 'CxUniverse)
   (all-of-kind kb 'time_invariant_relation '[software_tool] 'CxTra))
 
-(tu/deftest-kb acquaintance-place-eating-capability-and-sleep-are-time-varying
+(tu/deftest-kb acquaintance-place-eating-ability-and-sleep-are-time-varying
   (all-of-kind kb 'time_varying_relation
-               '[knows livesIn locatedIn eats hasCapability asleep awake]
+               '[knows livesIn locatedIn eats able asleep awake]
                'CxUniverse)
   (all-of-kind kb 'time_varying_relation '[chosenSiblingOf nestingPartnerOf]
                'CxTra))
@@ -336,8 +336,8 @@
   (all-of-kind kb 'time_varying_relation '[heightOf weightOf tallerThan heavierThan]
                'CxUniverse))
 
-(tu/deftest-kb kind-level-parts-and-capabilities-allow-slice-dependent-profiles
-  (all-of-kind kb 'time_agnostic_relation '[partType capabilityType] 'CxUniverse))
+(tu/deftest-kb kind-level-parts-and-abilities-allow-slice-dependent-profiles
+  (all-of-kind kb 'time_agnostic_relation '[partType abilityType] 'CxUniverse))
 
 (tu/deftest-kb parthood-is-time-agnostic-tangible-parthood-time-varying-and-situation-parthood-time-invariant
   ;; A wheel can come off a car and both go on existing, while a part of an event or a
@@ -475,7 +475,7 @@
 
 (tu/deftest-kb cxtra-placement-naming-and-custody-are-time-varying-and-content-relations-classified
   (all-of-kind kb 'time_varying_relation
-               '[toolEnablesCapability runsOn clusterNode onNetwork hasSeat hostnameOf
+               '[toolEnablesAbility runsOn clusterNode onNetwork hasSeat hostnameOf
                  discordChannelName nameString custodianOf holdsReadyLatch discordAccountId
                  agentClaims]
                'CxTra)

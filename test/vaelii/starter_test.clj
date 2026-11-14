@@ -13,6 +13,7 @@
             [vaelii.host.starter :as starter]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.decide.argument :as argument]
+            [vaelii.impl.defining :as defining]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
@@ -113,7 +114,7 @@
   ;; ontology can go wrong quietly.  `seed/load-sentences` asserts in file order and
   ;; retries, so a sentence is judged against whatever had arrived when its turn came —
   ;; and the argument checks are open-world, abstaining on a term the KB cannot yet place.
-  ;; `(hasCapability bird flying)` was admitted exactly that way: `arg … 1 animal` had
+  ;; `(able bird flying)` was admitted exactly that way: `arg … 1 animal` had
   ;; nothing to say about `bird` before `(genl bird animal)` landed, and once it landed
   ;; nothing went back to look.  There is no retroactive `:arg-type` report, so
   ;; `violations` stayed empty and the KB shipped seven facts its own checker convicts.
@@ -215,11 +216,13 @@
 
 (tu/deftest-kb a-unary-mark-is-a-premise-of-the-context-whose-edges-reach-the-type
   (is (empty? (for [s (v/sentexes-matching kb '(unary_predicate ?t) 'CxUniverse)
-                    :when (and (= 'CxUniverse (:context s)) (v/premise? kb (:id s)))
+                    :when (and (= 'CxUniverse (:context s)) (v/premise? kb (:id s))
+                               (not (#'defining/forced-arity-store? kb s)))
                     :let [t (second (:sentence s))]
                     :when (not (contains? (v/specs kb 'thing 'CxUniverse) t))]
                 t))
-      "CxUniverse states no mark for a type only a middle context's edges reach")
+      (str "CxUniverse states no mark for a type only a middle context's edges reach, past"
+           " a forced arity-class store, which is scaffolding and not a definition"))
   (let [h (v/handle-of kb '(unary_predicate command_line_tool) 'CxTra)]
     (is (and h (v/premise? kb h)) "CxTra states the mark of its own type")
     (is (v/ask? kb '(unary_predicate command_line_tool) 'CxUniverse)
@@ -261,9 +264,9 @@
 
 (tu/deftest-kb starter-common-sense-reasoning
   (testing "defeasible flight: eagles fly by default, penguins (flightless birds) do not"
-    (is (seq   (v/sentexes-matching kb '(hasCapability Sam flying) 'CxNaturalWorld)))
-    (is (empty? (v/sentexes-matching kb '(hasCapability Tweety flying) 'CxNaturalWorld)))
-    (is (seq   (v/sentexes-matching kb '(not (hasCapability Tweety flying)) 'CxNaturalWorld)))
+    (is (seq   (v/sentexes-matching kb '(able Sam flying) 'CxNaturalWorld)))
+    (is (empty? (v/sentexes-matching kb '(able Tweety flying) 'CxNaturalWorld)))
+    (is (seq   (v/sentexes-matching kb '(not (able Tweety flying)) 'CxNaturalWorld)))
     (is (empty? (v/conflicts kb))))                   ; the strict exception resolves cleanly
   (testing "the mortality default reaches every living individual"
     (is (seq (v/sentexes-matching kb '(mortal Tom) 'CxNaturalWorld)))
@@ -312,7 +315,7 @@
   (testing "every domain relation is documented"
     (doseq [p '[parentOf grandparentOf childOf ancestorOf siblingOf marriedTo
                 motherOf fatherOf
-                likes eats owns tangiblePartOf locatedIn hasCapability capabilityType
+                likes eats owns tangiblePartOf locatedIn able abilityType
                 mortal birthYearOf olderThan
                 weightOf heightOf heavierThan tallerThan
                 signOf trendOf derivativeOf greaterInMagnitudeThan

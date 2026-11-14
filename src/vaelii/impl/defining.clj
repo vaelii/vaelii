@@ -12,6 +12,7 @@
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.special :as special]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
 
@@ -194,6 +195,25 @@
   (let [{:keys [leaves marks]} (defining-walk kb (if (coll? h-or-hs) h-or-hs [h-or-hs]))]
     {:leaves leaves :computed? (contains? marks :computed)}))
 
+(def ^:private arity-kind-functors
+  "The functors of a relation's length, floor and arity class: `sx/arity-binding-functors`
+  and the three `unbounded_arity` kinds.  core.txt declares each a
+  `forced_decontextualized_predicate`."
+  (into sx/arity-binding-functors
+        '#{unbounded_arity unbounded_arity_predicate unbounded_arity_function}))
+
+(defn- forced-arity-store?
+  "Is `record` an arity-kind statement (`arity-kind-functors`, of either polarity) that
+  `special/storage-context` places in CxUniverse whatever context states it, its functor
+  a `forced_decontextualized_predicate`?  The store keeps no record of the stating
+  context, so that placement is scaffolding rather than a definition in CxUniverse.  The
+  placement is read KB-wide, as the store that holds the record reads it."
+  [kb record]
+  (let [body (some-> record sx/sentence-of sx/underlying-body)
+        f    (when (sequential? body) (first body))]
+    (boolean (and (contains? arity-kind-functors f)
+                  (= sx/root-context (special/storage-context kb f nil))))))
+
 (defn- definition-evidence*
   [kb term]
   (let [term (sx/canon term)
@@ -210,10 +230,17 @@
     (when (seq unresolved)
       (throw (ex-info "Defining-context support is incomplete."
                       {:type :incomplete-defining-contexts :term term :handles unresolved})))
-    ;; a premise an equality merge superseded stays the leaf its respelled twin reads
-    (let [homes (into #{} (keep #(when (or (live? %) (jtms/superseded? tms %))
-                                   (:context (get mentions %))))
-                      (budget/checked-seq leaves))]
+    ;; a premise an equality merge superseded stays the leaf its respelled twin reads.  A
+    ;; forced arity-kind store (`forced-arity-store?`) is a home only when no other leaf
+    ;; gives one.  A type stated in a middle theory keeps that theory as its home although
+    ;; its `unary_predicate` record lives in CxUniverse.  A relation known by nothing but
+    ;; its arity is still defined where that record is
+    (let [forced? #(forced-arity-store? kb %)
+          kept (into [] (filter #(or (live? %) (jtms/superseded? tms %)))
+                     (budget/checked-seq leaves))
+          home-of #(:context (get mentions %))
+          ordinary (into #{} (comp (remove #(forced? (get mentions %))) (keep home-of)) kept)
+          homes (if (seq ordinary) ordinary (into #{} (keep home-of) kept))]
       {:contexts (budget/checked-call
                   #(tax/max-cxs (reasoning/taxonomy kb) homes))
        :skeletal-only? (boolean (and (seq relevant) (empty? homes)))})))
@@ -222,7 +249,8 @@
   "`{:contexts #{c} :skeletal-only? b}`: the maximal contexts of the ordinary asserted
   leaves that mention `term`, read in one walk (`asserted-defining-leaves`) down from all
   its believed mentions, and whether it has such mentions but no such leaf, every way in
-  being skeletal.  A believed derived mention with no supporting justification throws
+  being skeletal.  A forced arity-kind store in CxUniverse (`forced-arity-store?`) gives a
+  home only when no other leaf does.  A believed derived mention with no supporting justification throws
   :incomplete-defining-contexts.  An absent assertion is not evidence of skeletal-only
   definition.  An unrepresented term (`sx/indexable-term?` false) is defined in CxUniverse."
   [kb term]
