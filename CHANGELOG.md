@@ -65,6 +65,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [naf.md](docs/naf.md#stratification-from-both-arrival-orders)
   *Migration:* none.
 
+- **A rule stored before a derived correspondence is respelled through it**
+  ([#271](https://github.com/vaelii/vaelii/issues/271)). With `(implies (tagged (FruitFn
+  ?t)) (ripe ?t))` stored before `(functionCorrespondingBinaryPredicate FruitFn fruitOf)`,
+  the rule stayed held and `(ripe ?t)` answered nothing. It now answers `AppleTree` from
+  `(fruitOf AppleTree Gala)` and `(tagged Gala)` in every arrival order, and the
+  respelling goes when the declaration does. A `preview` adding a correspondence no longer
+  leaves a held rule respelled after its rollback.
+  [nat.md](docs/nat.md#a-rule-or-a-goal-that-names-an-open-application)
+  *Migration:* none.
+
 ### Internal: CI
 
 - **A CI shard runs its recurring failures first**

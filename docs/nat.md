@@ -751,8 +751,10 @@ the record a permuting mark keeps), and the move back restores it. A row holding
 assertions in two spellings splits, each assertion returning to its own spelling. The rows
 are found as a reifiable mark's are (`chain/reconcile-reified!`), and through the antecedent
 index of each predicate a declaration of the function names (`nat/corresponded-rules`).
-A declaration arriving runs the move from `nat-maintenance/reconcile-assert`, and one
-leaving runs it from `collect-orphans!`, so both arrival orders store the same rule.
+A declaration stored or removed, asserted or concluded by a rule, queues the move on
+`:respell` at the integration and removal choke points (`special/note-correspondence-move!`),
+and the settle runs it, so every arrival order stores the same rule
+(`nat_test/a-binary-correspondence-respells-a-rule-in-every-order`).
 A move that changes a rule's antecedents or its hold drops the firings the rule made in
 the spelling it left, with the drops it filed in `violations`, and a rule left believed
 fires again. A rule whose consequent names an open application is dropped and fired again
@@ -1166,11 +1168,10 @@ comes first (`nat/reconcile-nats!`).
   (`respell-applications`, which `kb-sentex` runs).
 - `vaelii.impl.nat-maintenance` — the sequencing the write paths run around that:
   `reconcile-assert` once a sentence is stored (`reconcile-nats!`, the correspondence
-  derivations it moves, the rules a correspondence declaration respells, then the
-  structural `genlCx` edges the fact entails and the merges those edges license) and
-  `collect-orphans!` on the `retract!` and `edit!` sweeps, which respells the rules a
-  removed declaration respelled, re-places the derivations the removal moved, and loops
-  `remove-orphaned-nats!` to a fixpoint. The teardown entry point is an argument, so the
+  derivations it moves, then the structural `genlCx` edges the fact entails and the merges
+  those edges license) and `collect-orphans!` on the `retract!` and `edit!` sweeps, which
+  re-places the derivations the removal moved and loops `remove-orphaned-nats!` to a
+  fixpoint. The teardown entry point is an argument, so the
   engine requires nothing above it.
 - `vaelii.core` — the reify call sites: the write-path reify at the head of `assert`,
   the read-path reify at the query entries, and one call into
@@ -1185,7 +1186,8 @@ comes first (`nat/reconcile-nats!`).
 - `vaelii.impl.special` — the two function-kind prop marks, the correspondence's
   wff-only entry, the equality-arm skip for a compound-arg `rewriteOf`, `derive-merge`,
   which a merge is stored through, and `note-moved-values`, the constants a `genlCx` move
-  queues.
+  queues. `note-correspondence-move!` queues the function of a declaration stored or
+  removed.
 - `vaelii.impl.checks` — `convicting-result-type`, the arm `args-problem` and
   `genls-problem` read a compound argument through ([argtypes.md](argtypes.md)), and the
   `force-sentex!` arm that writes the `:held` set from `nat/held-application?`.
@@ -1218,14 +1220,10 @@ comes first (`nat/reconcile-nats!`).
   An application inside an `unknown`, `thereExists`, `forall`, `exists`, `ist` or
   aggregate condition is held with one too. One inside a `modal_predicate`'s proposition
   is matched as written, and only a stored belief spelled the same way answers it.
-- **A rule moves between its spellings when a declaration is stored or torn down, or a
-  `genlCx` edge moves.** A declaration derived by a rule, or hidden from a reader by an
-  `except`, moves no rule. The ternary a `functionCorrespondingBinaryPredicate` concludes
-  is derived, so a rule stored before the binary declaration keeps its written spelling
-  and fires nothing through it; a rule stored after it is respelled as usual. This
-  accepted limit is tracked in [#271](https://github.com/vaelii/vaelii/issues/271).
-  The respell reads the reifiable mark unscoped, so a reader that does not believe the
-  mark reads the rule respelled.
+- **A rule moves between its spellings when a declaration is stored or removed, or a
+  `genlCx` edge moves.** A declaration hidden from a reader by an `except`, or one whose
+  belief moves while it stays stored, moves no rule. The respell reads the reifiable mark
+  unscoped, so a reader that does not believe the mark reads the rule respelled.
 - **No rule reads a variable-functor application in an antecedent.** A rule whose
   antecedents hold `(?fn a…)` outside a sentence position is held inert and fires nothing;
   only a goal expands one.

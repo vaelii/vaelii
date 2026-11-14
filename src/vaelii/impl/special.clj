@@ -6607,6 +6607,20 @@
       (when (seq fs)
         (swap! (reasoning/respell kb) into (map #(vector :corresponded %)) fs)))))
 
+(defn- note-correspondence-move!
+  "Queue `[:correspondence F P]` on `:respell` when `sentex` is a declaration
+  `(functionCorrespondingPredicate F P n)` of two symbols on a KB declaring a reifiable
+  function.  The integration choke points and the removal one call it, so a declaration
+  asserted, derived or removed re-spells the rules applying `F` and the rules a
+  correspondence of `F` respelled (`chain/reconcile-reified!`, docs/nat.md, The
+  corresponding predicate).  Every other sentex costs a field read and a compare."
+  [kb sentex]
+  (let [s (:sentence sentex)]
+    (when (and (seq? s) (= res/correspondence-predicate (first s)))
+      (let [[_ f pred] s]
+        (when (and (symbol? f) (symbol? pred) (nat-read/any-reifiable-functions? kb))
+          (swap! (reasoning/respell kb) conj [:correspondence f pred]))))))
+
 (def ^:private move-families
   "Every family a `genlCx` move re-checks, read by `drain-context-moves!` with the move's
   `context-move` value.  `:on` names the kinds of move a row reads: `:shown` an edge
@@ -7523,6 +7537,7 @@
   path) and `integrate-twin` (migration), so the dispatch lives in one place."
   [kb sentex handle]
   (store-declared-mint-rule! kb sentex)
+  (note-correspondence-move! kb sentex)
   (if-let [e (get table (nm/functor (sx/sentence-of sentex)))]
     (when-let [g (:integrate e)] (g kb sentex handle))
     (structural-integrate kb sentex handle)))
@@ -7555,6 +7570,7 @@
   reference-counted on the departing sentex's id, so an entry survives while
   another sentex still asserts the same claim."
   [kb sentex]
+  (note-correspondence-move! kb sentex)
   (let [sentence (sx/sentence-of sentex)
         f        (nm/functor sentence)]
     (cond
@@ -7617,6 +7633,7 @@
   entailment and `derive-equality`.  See docs/taxonomy.md and docs/exceptions.md."
   [kb sentex handle]
   (store-declared-mint-rule! kb sentex)
+  (note-correspondence-move! kb sentex)
   (let [sentence (sx/sentence-of sentex)]
     (note-derived-move! (nm/functor sentence) handle)
     (if (contains? table (nm/functor sentence))
