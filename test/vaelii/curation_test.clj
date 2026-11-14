@@ -348,7 +348,9 @@
   ;; public sweep composes the declared-population audit with the bounded query-only
   ;; definition check.  These are known ground candidates exercised by CxUniverse's numeric
   ;; definitions, not a request for the query engine to enumerate a domain.
-  (every-believed-example-holds-as-stated)
+  (let [before (tu/baseline kb)]
+    (every-believed-example-holds-as-stated)
+    (tu/assert-neutral! kb before))
   ;; Every upper-ontology relation is classified by rigidity_kind, so core.txt's
   ;; (typeAllSpecified rigidity_kind relation) is met and every pass is clean.
   (let [report (v/kb-integrity kb #{-212 0 212} 'CxUniverse)]
