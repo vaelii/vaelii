@@ -4888,15 +4888,15 @@
 ;; rules, which is the rule index's job — `reads/as-stored-rules-by-consequent-in`
 ;; answers "what could conclude P?" whatever a rule's direction, so no scan is needed.
 ;;
-;; **Two things can close a cycle**, because both kinds of edge fan out over the genl
-;; **spec** closure: a *rule* arriving, and a *taxonomy edge* arriving underneath
-;; rules that are already stored.  An exception on `flightless` is reached by a
-;; stored `(penguin Opus)` the moment `(genl penguin flightless)` holds, whichever of
-;; the two arrived last.  So the walk runs on both paths:
+;; **Three things can close a cycle**: a *rule* arriving, a *taxonomy edge* arriving
+;; underneath stored rules (both kinds of edge fan out over the genl **spec** closure),
+;; and a *closed-extent grant* making a stored rule's closed `(not (P …))` NAF.  An
+;; exception on `flightless` is reached by a stored `(penguin Opus)` the moment
+;; `(genl penguin flightless)` holds, whichever of the two arrived last.  So:
 ;;
-;;   `check-stratified`        a rule is being asserted   -> throw
-;;   `check-edge-stratified`   an edge is being asserted  -> throw
-;;   `edge-stratification-violation`   an edge is being *derived* -> report
+;;   `check-stratified`               a rule is being asserted              -> throw
+;;   `check-fact-stratified`          an edge or a grant is being asserted  -> throw
+;;   `fact-stratification-violation`  an edge or a grant is being *derived* -> report
 ;;
 ;; Only *additions* can close a cycle: `specs` grows monotonically with the edge set,
 ;; so removing an edge only removes graph edges and a retraction needs no check.
@@ -5514,8 +5514,8 @@
   "The functors that grant a closed extent on their first argument's predicate, each with
   the length of its sentence: the whole-predicate grant, the per-argument grant, and the
   per-argument grant's binary spellings, which CxUniverse's forward rules turn into the
-  ternary.  The binary spellings are checked here as well, because a derived ternary
-  reaches no assert-time check."
+  ternary.  A binary spelling is checked as the ternary is, so it is refused or dropped
+  before the forward rule derives the ternary."
   '{closed_extent_predicate 2
     closedExtentForArg      4
     closedExtentForArg1     3
@@ -5523,48 +5523,6 @@
     closedExtentForArg3     3
     closedExtentForArg4     3
     closedExtentForArg5     3})
-
-(defn check-closed-extent-stratified
-  "Throw `:not-stratified` unless declaring `(closed_extent_predicate P)`,
-  `(closedExtentForArg P n v)` or a binary spelling of the second leaves the rule set
-  stratified; nil for any other sentence.  The walk starts at each stored rule the grant
-  governs (`provers/closed-extent-rules`: a closed `(not (P …))` antecedent, or one inside
-  an `unknown` antecedent, an aggregate body or an `exceptWhen` query), in content
-  order, so two rules that each close a cycle give one refusal.  It runs before anything
-  is written (docs/naf.md, \"Stratification, from both arrival orders\")."
-  [kb sentence context]
-  (when (and (sequential? sentence)
-             (= (get closed-extent-grant-arities (nm/functor sentence)) (count sentence)))
-    (let [pred (second sentence)]
-      (when-let [[node cycle]
-                 (->> (provers/closed-extent-rules kb pred)
-                      (keep (fn [rh] (some->> (p/get-sentex (:records kb) rh) (vector rh))))
-                      (nm/sort-by-content-key (fn [[_ rsx]] [(sx/sentence-of rsx) (:context rsx)]))
-                      (keep (fn [[rh rsx]]
-                              (let [base    (rule-graph-node kb rh rsx)
-                                    pending (assoc base
-                                                   :label (str "rule#" rh
-                                                               " (under the closed extent)")
-                                                   :exception-preds
-                                                   (concat (:exception-preds base)
-                                                           (negative-predicates
-                                                            (:antecedent-preds base) [pred]))
-                                                   :closure-only
-                                                   (disj (:closure-only base) pred))]
-                                (when-let [c (wff/negation-cycle
-                                              (reasoning/taxonomy kb)
-                                              (stratification-readers kb pending)
-                                              pending)]
-                                  [pending c]))))
-                      first)]
-        (throw (ex-info (str "not stratified: " (pr-str sentence)
-                             " would close a cycle through negation: "
-                             (wff/cycle-description cycle)
-                             " — the grant reads every closed (not …) antecedent on that"
-                             " path as negation as failure, so leave the predicate open,"
-                             " or break the cycle at one of the rules named")
-                        {:type :not-stratified :sentence sentence :context context
-                         :rule (:id node) :cycle cycle}))))))
 
 (defn- edge-negation-cycle
   "The cycle through negation that adding this `genl` sentence would create among the
@@ -5596,48 +5554,76 @@
           (tax/add-genl probe a b ::probe)
           (wff/genl-negation-cycle probe (:readers graph) (:starts graph) a b))))))
 
-(defn check-edge-stratified
-  "Throw unless adding this taxonomy edge leaves the stored rule set stratified.
+(defn- fact-negation-cycle
+  "`{:cycle :rule :message}` for the cycle through negation that storing the fact `sentence`
+  would close among the stored rules, or nil.  A `genl` edge is walked by
+  `edge-negation-cycle`.  A grant `closed-extent-grant-arities` names is walked from each
+  stored rule it governs (`provers/closed-extent-rules`) in content order, and `:rule` is
+  the handle of the first rule whose walk closes a cycle, so two such rules give one
+  answer.  Nil for any other sentence (docs/naf.md, \"Stratification, from both arrival
+  orders\")."
+  [kb sentence]
+  (let [found (if-let [c (edge-negation-cycle kb sentence)]
+                [c nil (str "the edge fans each rule's negative dependencies over the specs"
+                            " below it, so break the cycle at one of the rules named, or"
+                            " place the edge under a type off that path")]
+                (when (and (sequential? sentence)
+                           (= (get closed-extent-grant-arities (nm/functor sentence))
+                              (count sentence)))
+                  (let [pred (second sentence)]
+                    (->> (provers/closed-extent-rules kb pred)
+                         (keep (fn [rh] (some->> (p/get-sentex (:records kb) rh) (vector rh))))
+                         (nm/sort-by-content-key (fn [[_ rsx]] [(sx/sentence-of rsx) (:context rsx)]))
+                         (keep (fn [[rh rsx]]
+                                 (let [base    (rule-graph-node kb rh rsx)
+                                       pending (assoc base
+                                                      :label (str "rule#" rh " (under the closed extent)")
+                                                      :exception-preds
+                                                      (concat (:exception-preds base)
+                                                              (negative-predicates
+                                                               (:antecedent-preds base) [pred]))
+                                                      :closure-only (disj (:closure-only base) pred))]
+                                   (when-let [c (wff/negation-cycle (reasoning/taxonomy kb)
+                                                                    (stratification-readers kb pending)
+                                                                    pending)]
+                                     [c rh (str "the grant reads every closed (not …) antecedent"
+                                                " on that path as negation as failure, so leave"
+                                                " the predicate open, or break the cycle at one"
+                                                " of the rules named")]))))
+                         first))))]
+    (when-let [[cycle rule remedy] found]
+      {:cycle   cycle
+       :rule    rule
+       :message (str "not stratified: " (pr-str sentence) " would close a cycle through"
+                     " negation: " (wff/cycle-description cycle) " — " remedy)})))
 
-  The `genl` assert is the operation at fault, so refusing the *edge* is the
-  consistent answer: it is what `wff` already does to an edge that would make the
-  taxonomy cyclic, and it keeps the invariant that stored state is always stratified
-  — which is what lets `check-stratified` look only for cycles through the rule being
-  added.  Runs before the sentex is created and before the taxonomy is touched."
+(defn check-fact-stratified
+  "Throw `:not-stratified` when storing the fact `sentence` would close a cycle through
+  negation among the stored rules (`fact-negation-cycle`): a `genl` edge or a closed-extent
+  grant.  `:rule` names the governed rule a grant's walk closed at.  The assert entry point
+  runs it before the sentex is created and the taxonomy touched, so a refusal leaves
+  nothing behind.  The refusal keeps stored state stratified, and `check-stratified` relies
+  on that state to look only for cycles through the rule being added."
   [kb sentence context]
-  (when-let [cycle (edge-negation-cycle kb sentence)]
-    (throw (ex-info (str "not stratified: " (pr-str sentence)
-                         " would close a cycle through negation: "
-                         (wff/cycle-description cycle)
-                         " — the edge fans each rule's negative dependencies over the"
-                         " specs below it, so break the cycle at one of the rules named,"
-                         " or place the edge under a type off that path")
-                    {:type :not-stratified :sentence sentence :context context
-                     :cycle cycle}))))
+  (when-let [{:keys [cycle rule message]} (fact-negation-cycle kb sentence)]
+    (throw (ex-info message {:type :not-stratified :sentence sentence :context context
+                             :rule rule :cycle cycle}))))
 
 ;; (`wff-violation` — structural well-formedness as a value, for derived content —
 ;; lives in `vaelii.impl.special` now: the per-functor wff dispatch is a column of
 ;; the special-predicate table, which sits a layer above this namespace.)
 
-(defn edge-stratification-violation
-  "The same check as a **value**, for a `genl` edge a rule *derived*
-  rather than one a caller asserted: nil when the edge is admissible, else a
-  violation map in the shape `constraint-violation` returns.
-
-  A derived edge reaches the taxonomy through `integrate-transitive`, so a rule
-  concluding `(genl a b)` can close a cycle with no caller asserting anything.
-  Throwing there is the wrong shape — chaining is a fixpoint and must not abort
-  halfway through one — so this joins the definitional constraints on the derivation
-  path: the conclusion is dropped and reported in `(core/violations kb)`.  Dropping
-  it is what keeps the invariant intact, since an unstratified edge that was merely
-  *reported* would still be in the taxonomy."
+(defn fact-stratification-violation
+  "`check-fact-stratified` as a value, for an edge or a grant the engine derives: nil when
+  storing `sentence` closes no cycle, else a violation map in `constraint-violation`'s
+  shape.  The derivation path (`chain/fact-violation`, `special/inadmissible`) drops such a
+  conclusion and reports it in `(core/violations kb)`, so no edge reaches the taxonomy and
+  no grant marks its predicate.  It does not throw, since an exception escaping a firing
+  would leave the fixpoint half-run."
   [kb sentence]
-  (when-let [cycle (edge-negation-cycle kb sentence)]
+  (when-let [{:keys [cycle message]} (fact-negation-cycle kb sentence)]
     {:violation :not-stratified
-     :detail    {:cycle   cycle
-                 :message (str "not stratified: deriving " (pr-str sentence)
-                               " would give the rule set a cycle through negation: "
-                               (wff/cycle-description cycle))}}))
+     :detail    {:cycle cycle :message message}}))
 
 ;; Negation is *not* a hard check.  `(not S)` and `S` co-existing is a soft,
 ;; prioritized contradiction resolved at settle time (`vaelii.impl.settle`):

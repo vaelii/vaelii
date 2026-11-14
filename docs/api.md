@@ -1818,7 +1818,7 @@ not be admitted: no sentex, no justification, and `why-not` reduced to `:not-sto
 | `:arg-type` / `:arg-genl` | an argument fails a declared constraint — `arg`'s type, or `genlArg`'s subtype floor.  A rule's conclusion convicted at its own argument is stored and held instead, as `:inert-argument`; one convicted at a function application's input is dropped here | `:arg` `:expected` `:position` `:message` |
 | `:inter-arg-type` | an `interArg` conditional constraint, or an `interArgs` / `interArgAndRest` homogeneity constraint, whose trigger argument holds and whose target argument does not | `:arg` `:expected` `:position` `:trigger` `:trigger-type` `:trigger-position` `:message` |
 | `:disjoint` | an application whose result type is disjoint from a type its argument position demands, before its constant is minted, so no second sentex stands for the pair | the check's problem map |
-| `:not-stratified` | a derived `genl` / `genlCx` edge would put a cycle through negation in the rule set, or a minted generator would close a generator cycle | `:cycle` `:message` |
+| `:not-stratified` | a derived `genl` edge or closed-extent grant would put a cycle through negation in the rule set, or a minted generator would close a generator cycle | `:cycle` `:message` |
 | `:not-well-formed` | a minted sentence a special predicate's own structure check refuses | `:problems` `:message` |
 | `:naming` | a minted sentence breaking a naming invariant — the spellings in docs/naming.md | `:message` |
 | `:no-placement` | the join completed and no context sees the rule, every antecedent fact, and the `genl` edges the match climbed | `:rule-context` `:fact-contexts` `:subsumed` `:would-place` `:message` |

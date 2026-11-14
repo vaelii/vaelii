@@ -946,7 +946,7 @@ rule fired first.
 
 So this joins the **`violations`** mechanism, which exists for exactly the same
 situation one layer over: a derived conclusion that breaks a definitional constraint.
-`chain/place-conclusion` asks `edge-stratification-violation` alongside
+`chain/place-conclusion` asks `fact-stratification-violation` alongside
 `checks/constraint-admission` and `special/wff-violation`, and a bad edge is **dropped** — no sentex, no justification,
 nothing in the closures — and reported in `(violations kb)` as
 `{:violation :not-stratified :detail {:cycle …}}`. Dropping rather than merely

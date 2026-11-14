@@ -1475,19 +1475,20 @@
      :detail    {:message (str "naming invariant: " (str/join "; " ps))}}))
 
 (defn inadmissible
-  "The violation that stops `sentence` from being stored in `context`, or nil: naming,
-  the definitional constraints, well-formedness and edge stratification.  Returns a
-  value and never throws, since its callers run after their triggering sentex is stored
-  (argument-type entailment, the computed `genlCx` edge of `context-nat`) or must refuse a
-  hypothesis without failing the query (abduction).
-  `constraint-arm` is `checks/constraint-violation` by default; a nil arm omits the
-  definitional-constraint check for a caller that already ran it.  See docs/argtypes.md."
+  "The violation that stops `sentence` from being stored in `context`, or nil: naming, the
+  definitional constraints, well-formedness, and the stratification of an edge or a grant
+  (`checks/fact-stratification-violation`).  Returns a value and never throws, since its
+  callers run after their triggering sentex is stored (argument-type entailment, the
+  computed `genlCx` edge of `context-nat`) or must refuse a hypothesis without failing the
+  query (abduction).  `constraint-arm` is `checks/constraint-violation` by default; a nil
+  arm omits the definitional-constraint check for a caller that already ran it.  See
+  docs/argtypes.md."
   ([kb sentence context] (inadmissible kb sentence context checks/constraint-violation))
   ([kb sentence context constraint-arm]
    (or (naming-violation kb sentence context)
        (when constraint-arm (constraint-arm kb sentence context))
        (wff-violation kb sentence context)
-       (checks/edge-stratification-violation kb sentence))))
+       (checks/fact-stratification-violation kb sentence))))
 
 (def ^:private empty-entailment-result
   "What an entailment step that minted nothing returns, and the seed of every reduce that

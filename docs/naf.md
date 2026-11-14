@@ -512,12 +512,19 @@ A closed-extent negative is a **negative edge** on `P`, as an antecedent and ins
 rule concluding `P` whose body reads `(not (P …))` under the grant is a cycle through
 negation and is refused (`:type :not-stratified`). Inside a query the edge is on `P` as well as on `not`
 (`rules/closed-extent-query-predicates`, the keys the re-check index posts it under). The
-edge is conditional on the grant, so the *grant* can close a cycle too:
-`checks/check-closed-extent-stratified` walks from each stored rule the grant governs
-(`provers/closed-extent-rules`: the `[:not P]` antecedent-index lookup and the rules
-posted under `not`, no scan) and **refuses the declaration**, as `check-edge-stratified`
-refuses a `genl` edge that closes one, so stored state is always stratified. A refused
-grant leaves no mark and no posting.
+edge is conditional on the grant, so the *grant* can close a cycle too.
+`checks/check-fact-stratified`, the check a `genl` edge takes, walks from each stored rule
+the grant governs (`provers/closed-extent-rules`: the `[:not P]` antecedent-index lookup
+and the rules posted under `not`, no scan). It **refuses the declaration** when a walk
+closes a cycle, so stored state is always stratified. A grant a forward rule concludes or an argument-type mint
+entails takes the same walk as a value (`checks/fact-stratification-violation`), and is
+dropped and reported in `(violations kb)` as `:not-stratified`, as a derived `genl` edge
+is ([exceptions.md](exceptions.md#a-derived-edge-is-dropped-not-thrown)). A refused or
+dropped grant leaves no record, no mark and no posting. A rule arriving after a derived
+grant it would close a cycle with is refused, so whichever of the two arrives second goes
+(`naf_test/a-derived-closed-extent-grant-keeps-the-rule-set-stratified-in-both-arrival-orders`).
+Only a stored grant marks its predicate, so a backward or lazy-forward rule concluding a
+grant closes no extent.
 
 A per-argument grant adds the same negative edge on `P`, whatever value it names, so
 `(closedExtentForArg P n v)` and its binary spellings are refused where
@@ -683,8 +690,8 @@ deferred antecedent (`unknown`, `different`, `evaluate`) through the registry
 - **Belief maintenance:** `justification-excepted?`; `index-rule-sentex` /
   `disintegrate-sentex!` with `rules/recheck-predicates`; a closed-extent refusal in the
   refusal record ([exceptions.md](exceptions.md#a-refused-firing-is-remembered-as-bindings)).
-- **Stratification:** `checks/negative-predicates`, `check-stratified` and
-  `check-closed-extent-stratified`.
+- **Stratification:** `checks/negative-predicates`, `check-stratified`,
+  `check-fact-stratified` and `fact-stratification-violation`.
 - **The closed extent:** `rules/closed-negative-antecedents` /
   `closed-extent-antecedents` / `closed-extent-predicates-of` /
   `closed-extent-query-predicates` / `closed-extent-recheck-predicates-of`,

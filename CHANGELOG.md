@@ -53,6 +53,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
   population grows by one term per name the KB writes. No shipped declaration uses them.
   [predall.md](docs/predall.md#quoted-specified-the-population-as-written)
 
+### Fix: order independence
+
+- **A derived closed-extent grant that would close a cycle through negation is dropped**
+  ([#275](https://github.com/vaelii/vaelii/issues/275)). The grant is a
+  `closed_extent_predicate`, `closedExtentForArg` or binary-spelling grant that a forward
+  rule concludes or an argument-type mint entails. When it would close a cycle with a
+  stored rule, it is dropped and reported in `violations` as `:not-stratified`, as a
+  derived `genl` edge is. It leaves no record and closes no extent. `assert` refuses a
+  stated grant in the same case.
+  [naf.md](docs/naf.md#stratification-from-both-arrival-orders)
+  *Migration:* none.
+
 ### Internal: CI
 
 - **A CI shard runs its recurring failures first**

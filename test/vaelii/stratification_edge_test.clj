@@ -216,7 +216,7 @@
     (concluded! kb penguin CxPass)
     (binding [vr/*stratification-memo* (volatile! nil)]
       (let [edge  (list 'genl penguin flightless)
-            check #(checks/edge-stratification-violation kb edge)]
+            check #(checks/fact-stratification-violation kb edge)]
         (testing "with R2 not stored, the edge closes nothing"
           (is (nil? (check))))
         (testing "a second check of the pass builds no node"

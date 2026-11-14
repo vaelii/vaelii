@@ -626,16 +626,11 @@
               (checks/check-ground kb sentence context)
               (special/check-wff (reasoning/taxonomy kb) sentence context)
               (checks/check-except-target kb sentence)
-              ;; the rule-set half of well-formedness, for the *other* thing that can
-              ;; close a cycle through negation: a genl / genlCx edge arriving
-              ;; underneath rules already stored (docs/exceptions.md).  Before anything
-              ;; is written and before the taxonomy is touched, so a refusal leaves
-              ;; nothing behind.
-              (checks/check-edge-stratified kb sentence context)
-              ;; ...and the third thing that can: a `closed_extent_predicate` grant
-              ;; arriving underneath rules that read the predicate negatively, which
-              ;; is what turns those reads into negation as failure (docs/naf.md)
-              (checks/check-closed-extent-stratified kb sentence context)
+              ;; the rule-set half of well-formedness, for the facts that can close a
+              ;; cycle through negation among rules already stored: a `genl` edge and a
+              ;; closed-extent grant (docs/exceptions.md, docs/naf.md).  Before anything
+              ;; is written and before the taxonomy is touched.
+              (checks/check-fact-stratified kb sentence context)
               (checks/check-exact-present kb sentence context)
               (checks/constraint-checks kb sentence context strength))
             ;; Bulk load skips the dedup trie-walk: a distinct corpus never hits an

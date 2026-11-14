@@ -1963,8 +1963,7 @@
        #(for [p (special/wff-problems (reasoning/taxonomy kb) sentence context)]
           {:type :not-well-formed :sentence sentence :message (str "not well-formed: " p)})
        #(some-> (problem (fn [] (checks/check-except-target kb sentence))) vector)
-       #(some-> (problem (fn [] (checks/check-edge-stratified kb sentence context))) vector)
-       #(some-> (problem (fn [] (checks/check-closed-extent-stratified kb sentence context))) vector)
+       #(some-> (problem (fn [] (checks/check-fact-stratified kb sentence context))) vector)
        #(some-> (problem (fn [] (checks/check-exact-present kb sentence context))) vector)
        #(some-> (problem (fn [] (checks/constraint-checks kb sentence context))) vector)]))))
 

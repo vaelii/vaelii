@@ -1998,13 +1998,13 @@
   it is admissible: a naming violation where the rule's consequent has a variable functor
   (`special/naming-violation`), `adm`'s (`checks/constraint-admission` of the same
   sentence), the structural well-formedness of a special predicate the rule concluded,
-  or a derived `genl` edge closing a taxonomy cycle through negation."
+  or a derived `genl` edge or closed-extent grant closing a cycle through negation."
   [kb rule conseq pctx adm]
   (or (when (variable-functor-consequent? (:consequent rule))
         (special/naming-violation kb conseq pctx))
       (:violation adm)
       (special/wff-violation kb conseq pctx)
-      (checks/edge-stratification-violation kb conseq)))
+      (checks/fact-stratification-violation kb conseq)))
 
 (defn- drop-fact-conclusion!
   "Drop the fact conclusion `conseq` for violation `v` and report it.  Returns the empty
@@ -3507,8 +3507,8 @@
   (let [existing (kb/find-sentex-handle kb conseq pctx)
         ;; The checks run only when the conclusion is new: a re-derivation adds a justification,
         ;; not content, and `args-problem` walks a type's spec closure per subtype (paying it per
-        ;; firing made the starter's load ten times slower).  A derived `genl` edge can close a
-        ;; cycle through negation, so the rule-set constraint runs too; violations are dropped and
+        ;; firing made the starter's load ten times slower).  A derived `genl` edge or grant can close
+        ;; a cycle through negation, so the rule-set constraint runs too; violations are dropped and
         ;; reported.  One pass over the definitional checks answers both the violation and what the
         ;; argument constraints entail, materialized once the conclusion has a handle.
         adm      (when-not existing (checks/constraint-admission kb conseq pctx))
