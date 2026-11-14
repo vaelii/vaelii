@@ -249,8 +249,8 @@ audit it.
 The population grows with the vocabulary. Each name a write adds is one more term the
 audit asks a filler of, so `(predAllQuotedSpecified comment symbol)` asks one per name the
 KB writes, predicates, types, individuals and contexts alike. The audit costs one
-term-index read per name, then the filler reads per term of the kind. No shipped
-declaration uses the twins.
+term-index read per name, then the filler reads per term of the kind. core.txt states
+`(predAllQuotedSpecified comment symbol)`, so every name the KB writes owes a comment.
 
 The *Instance* pair has no quoted twin. A generated rule ranging over written terms needs
 an antecedent that binds a variable to each term of a kind. No literal's extent is the
