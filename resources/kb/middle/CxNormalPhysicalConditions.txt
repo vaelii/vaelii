@@ -17,7 +17,6 @@
 ;; after this file, and a CxUniverse rule firing on a fact below would have no context
 ;; that sees both.
 (genlCx CxNormalPhysicalConditions CxUniverse)
-(comment CxNormalPhysicalConditions "The physical conditions of an average temperate region on Earth's surface: gravity, temperature, pressure, etc.")
 
 ;; A phase is a state a portion of stuff is in, not a kind it is: ice melts and the
 ;; water goes on existing.  So each room-temperature phase is a default rule rather than

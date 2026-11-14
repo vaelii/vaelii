@@ -23,8 +23,8 @@
   (testing "CxUniverse states the context membership of CxTra as a premise"
     (is (some #(v/premise? kb (:id %))
               (v/sentexes-matching kb '(context CxTra) 'CxUniverse))))
-  (testing "CxTra carries one comment"
-    (is (= 1 (count (v/sentexes-matching kb '(comment CxTra ?c) 'CxTra))))))
+  (testing "CxUniverse carries CxTra's one comment, beside its context membership"
+    (is (= 1 (count (v/sentexes-matching kb '(comment CxTra ?c) 'CxUniverse))))))
 
 (tu/deftest-kb cxtra-sees-cxuniverse-and-cxwell-does-not-see-cxtra
   (is (tu/holds-sees 'CxTra 'CxUniverse))

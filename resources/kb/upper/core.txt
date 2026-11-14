@@ -2489,6 +2489,8 @@
 (comment CxMereology
          "Parts, location and ownership: a part is where its whole is, and an owner of a whole owns its parts.")
 (context CxMereology)
+(comment CxNormalPhysicalConditions
+         "Opt-in: the states of matter of substances at ordinary room temperature and pressure in the real world.")
 (context CxNormalPhysicalConditions)
 (comment CxRealWorld
          "The real world, as opposed to an invented setting, such as a fictional context. A context for an invented setting goes beside it, not under it.")
@@ -2499,6 +2501,8 @@
 (comment CxSocial
          "Social relations between persons, including relationships and dwelling, with rules such as knowing from friendship or marriage and membership from employment.")
 (context CxSocial)
+(comment CxTra
+         "The opt-in middle context for vocabulary that is generally useful but specific to one domain, such as computing, perception and narrow relationship terms, and so is not in a starter context that CxWell sees. CxTra sees CxUniverse and CxSocial. CxWell does not see CxTra, so a context reads the vocabulary only by placing itself under CxTra.")
 (context CxTra)
 (comment CxUniverse
          "The shared upper ontology: the most general vocabulary and rules, visible to every context of the starter.")
