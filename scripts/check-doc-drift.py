@@ -2338,6 +2338,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/integrate.clj", "mark-witness"),
     ("src/vaelii/impl/nat_read.clj", "withheld-at"),
     ("src/vaelii/impl/nat_read.clj", "sorted-by-at"),
+    ("src/vaelii/impl/chain.clj", "binding-readers"),
     ("src/vaelii/impl/special.clj", "reifiable-moves"),
     ("src/vaelii/impl/resolution.clj", "reified-reading"),
     ("src/vaelii/impl/resolution.clj", "constraining-predicates"),

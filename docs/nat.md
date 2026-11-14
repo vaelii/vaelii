@@ -1106,7 +1106,10 @@ marks that hold.
   they matched, so one placed before the mark arrived binds the application. The
   re-check that decides whether a firing is blocked reads each such binding as its
   constant (`chain/settled-bindings`), as it reads a merged term at its representative.
-  A `recover` re-checks every firing, so it keeps the ones the running KB holds.
+  A `recover` re-checks every firing, so it keeps the ones the running KB holds. A guard
+  is asked at each reader with the bindings as that reader spells them
+  (`chain/reader-bindings`, at the readers `chain/binding-readers` finds), so a reader
+  that does not believe the mark reads the application its rows hold.
 - **The constants the moved rows stop naming are collected** by the orphan rule of
   [Rename and remove](#rename-and-remove--keeping-the-11-invariant), over the spellings
   the rows moved off. A settle has no teardown entry point, so each bookkeeping handle is

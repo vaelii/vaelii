@@ -1750,10 +1750,13 @@
 
 (defn entries-at
   "The entries of `entries` some supporter of which `reader` believes
-  (`supporter-believed?`), as a set."
+  (`supporter-believed?`), as a set.  The placed defeats are read under the network reading
+  too (`tax/*network-belief*`): the store spells a fact by the marks its readers believe
+  with the defeats applied, so a reading that sets them aside reads spellings no row holds."
   [kb entries reader]
-  (into #{} (keep (fn [[k sup]] (when (some #(supporter-believed? kb % reader) (keys sup)) k)))
-        entries))
+  (binding [tax/*network-belief* false]
+    (into #{} (keep (fn [[k sup]] (when (some #(supporter-believed? kb % reader) (keys sup)) k)))
+          entries)))
 
 (defn goal-alternatives
   "Conjunction `goals` read through the correspondence declarations `context` sees, as the

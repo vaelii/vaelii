@@ -3048,6 +3048,31 @@
     (is (= (second never) (second split)) "the context below it reads the application"))
   (tu/clear-kb! (tu/test-kb)))
 
+(deftest a-guard-defeat-lands-at-a-reader-hiding-a-reifiable-mark-as-with-no-mark
+  (let [h        (atom nil)
+        base     [#(v/assert % '(genlCx CxGd CxGa) 'CxUniverse {:strength :monotonic})
+                  #(v/assert % '(exceptWhen (gd_blocked ?q)
+                                            (set/forwardRule (implies (gdSaid ?a ?q) (gd_asserter ?a))))
+                             'CxGa)
+                  #(v/assert % '(gdSaid Tom (Quote Muffet)) 'CxGa)
+                  #(v/assert % '(gd_blocked (Quote Muffet)) 'CxGd)]
+        mark     #(reset! h (v/assert % '(reifiable_function Quote) 'CxGa))
+        read2    (fn [kb] (mapv #(v/ask? kb '(gd_asserter Tom) %) '[CxGa CxGd]))
+        never    (one-outcome! "never stated" base read2)
+        denied   (one-outcome! "denied below"
+                               (conj base mark #(v/assert % '(not (reifiable_function Quote)) 'CxGd
+                                                          {:strength :monotonic}))
+                               read2 ordering-sample)
+        excepted (one-outcome-under! "excepted below"
+                                     (conj (mapv vector base)
+                                           [mark #(v/assert % (list 'except (list 'sentexHandle @h)) 'CxGd)])
+                                     read2 ordering-sample)]
+    (testing "CxGa binds the constant and CxGd reads the blocker as written"
+      (is (= [true false] never) "the blocker at CxGd defeats the firing there")
+      (is (= never denied) "a denial of the mark at CxGd leaves the defeat there")
+      (is (= never excepted) "an except of the mark at CxGd leaves the defeat there")))
+  (tu/clear-kb! (tu/test-kb)))
+
 (deftest a-genlcx-edge-bringing-a-defeat-under-the-facts-splits-their-spellings
   ;; The denial and its defeat sit in CxSwD, the fact in CxSwF, both under CxUniverse
   ;; where the mark is: CxSwD reads the fact only once `(genlCx CxSwD CxSwF)` arrives, and

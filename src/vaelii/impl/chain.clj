@@ -591,6 +591,36 @@
       (let [visible? (res/visible-supporter-fn kb pctx)]
         (reduce-kv (fn [m v t] (assoc m v (kb/rewrite-term* kb t visible?))) {} bindings)))))
 
+(defn- reader-bindings
+  "Rewrites `b`, the bindings `settled-bindings` gave at a placement, as the reader `ctx`
+  reads them: each minted constant is written as its application (`nat/expand-expression`)
+  and the map is settled at `ctx`.  A reader that does not believe a function reifiable,
+  or sorts its applications by other marks, then reads the application its rows hold."
+  [kb b ctx]
+  (settled-bindings kb (update-vals b #(nat/expand-expression kb % nat-read/reified-object-symbol?)) ctx))
+
+(defn- binding-readers
+  "Answers the readers whose spellings of the terms `b` binds can differ
+  (`res/spelling-readers` from `pctx`), or nil.  The marks read are the reifiable and
+  permuting marks some reader does not believe (`nat-read/split-reifiable?`,
+  `res/split-mark-entries`) of each function applied in those terms or their constants.
+  The `reifiable_function` mark is read unscoped, a superset the supporter reads narrow."
+  [kb b pctx]
+  (when (nat-read/any-reifiable-functions? kb)
+    (let [tax (reasoning/taxonomy kb)
+          hs  (into []
+                    (comp (map #(nat/expand-expression kb % nat-read/reified-object-symbol?))
+                          (mapcat #(tree-seq sequential? seq %))
+                          (keep #(when (and (sequential? %) (seq %)) (first %)))
+                          (filter #(and (symbol? %) (tax/has-prop? tax :reifiable %)))
+                          (distinct)
+                          (mapcat #(concat (when (nat-read/split-reifiable? kb %)
+                                             (nat-read/reifiable-entries kb %))
+                                           (res/split-mark-entries kb %)))
+                          (mapcat (comp keys val)))
+                    (vals b))]
+      (when (seq hs) (res/spelling-readers kb pctx hs)))))
+
 (defn- antecedent-hidden?
   "Does a believed visibility `except` hide one of `antes` from `pctx`: name it, or name a
   handle every justification route of it rests on (`exc/except-closure-hidden-fn`)?  The
@@ -1924,10 +1954,10 @@
   where, what it rests on, and the bindings the block condition was asked under, less the
   join's `?ctx`.  `antes` is every antecedent, the rule included, in content order, and
   `:handles` every one but the rule, so a firing refused by either join or swept is one
-  entry.  `:max-depth` is the refusing run's derivation-depth bound, which
-  `release-refusal!` reads in a settle with no run config; two bounds keep the wider, nil
-  (none) over a number.  The term-nesting bound is not kept.  `extra` (a subsumed firing's
-  `:subsumptions`) joins the entry's identity."
+  entry.  A refusal over the same `antes` whose bindings settle at `pctx` to the same terms
+  (`settled-bindings`) replaces the entry.  `:max-depth` is the refusing run's depth bound, which
+  `release-refusal!` reads; two keep the wider, nil (none) over a number.  The term-nesting
+  bound is not kept.  `extra` (a subsumed firing's `:subsumptions`) joins the entry's identity."
   [kb rule conseq pctx antes bindings max-depth extra]
   (let [rh    (:rule-handle rule)
         entry (merge {:conseq conseq :pctx pctx :antes antes :handles (into [] (remove #{rh}) antes)
@@ -1935,8 +1965,15 @@
                      (when-let [reading (:source-reading rule)] {:reading reading})
                      extra)
         id    (dissoc entry :max-depth)
+        core  (dissoc id :conseq :bindings)
         h     (hash conseq)
-        same  (fn [cur] (some #(when (and (== h (hash (:conseq %))) (= id (dissoc % :max-depth))) %) cur))
+        b     (delay (settled-bindings kb (:bindings entry) pctx))
+        same  (fn [cur]
+                (or (some #(when (and (== h (hash (:conseq %))) (= id (dissoc % :max-depth))) %) cur)
+                    (some #(when (and (= antes (:antes %)) (= core (dissoc % :max-depth :conseq :bindings))
+                                      (= @b (settled-bindings kb (:bindings %) pctx)))
+                             %)
+                          cur)))
         wider #(and (some? %2) (or (nil? %1) (> (long %1) (long %2))))]
     (swap! (reasoning/refused kb)
            (fn [m]
@@ -1948,7 +1985,9 @@
                  m
                  :else
                  (if-let [old (same cur)]
-                   (cond-> m (wider max-depth (:max-depth old)) (assoc rh (conj (disj cur old) entry)))
+                   (let [kept (cond-> entry
+                                (not (wider max-depth (:max-depth old))) (assoc :max-depth (:max-depth old)))]
+                     (cond-> m (not= kept old) (assoc rh (conj (disj cur old) kept))))
                    (if (and cur (>= (count cur) max-refusals-per-rule))
                      (assoc m rh :overflow)
                      (assoc m rh (conj (or cur #{}) entry))))))))))
@@ -2774,22 +2813,24 @@
 
 (defn- guard-solution-placements
   "`[[q blockers] …]` for the block conditions `conds` (`block-conditions`' shape) of a
-  firing whose conclusion F is placed in `pctx`, under the settled bindings `b`.  For each
-  solution read with no context (`guard-solutions`), each context `placements-over` gives for
-  the handles it read, with the `genl` pairs its match climbed (`subsumption-links`, a negated
-  one witnessed at `:monotonic` only, `negated-links`), where the condition holds through the
-  excepts (`provers/exception-holds?` under `tax/*network-belief*`).  A placement at `pctx` is
-  kept whatever class its blockers take.  `blockers` is the
-  solution's handles, the `exceptWhen`'s own handle and the edges `placements-over` names.
-  Each except or defeat that can take a blocker's defeat out of force
-  (`blocker-support-hiders`) is one more supporter.  A condition `pctx` sees that holds with no
-  placement it sees is placed at `pctx` on the condition's own handle
+  firing whose conclusion F is placed in `pctx`, under the settled bindings `b` as each reader
+  reads them (`binding-readers`, `reader-bindings`).  For each solution read with no context
+  (`guard-solutions`), each context `placements-over` gives for the handles it read, with the
+  `genl` pairs its match climbed (`subsumption-links`, a negated one witnessed at `:monotonic`
+  only, `negated-links`), where the condition holds through the excepts
+  (`provers/exception-holds?` under `tax/*network-belief*`).  A placement at `pctx` is kept
+  whatever class its blockers take.  `blockers` is the solution's handles, the `exceptWhen`'s
+  own handle and the edges `placements-over` names, and each except or defeat that can take a
+  blocker's defeat out of force (`blocker-support-hiders`).  A condition `pctx` sees that holds
+  with no placement it sees is placed at `pctx` on the condition's own handle
   (`place-guard-defeats!`).  `cpred` is the rule's consequent functor."
   [kb conds b pctx f cpred]
   (let [rec    #(p/get-sentex (:records kb) %)
         tax    (reasoning/taxonomy kb)
+        rdrs   (binding-readers kb b pctx)
+        at     (if rdrs (memoize #(reader-bindings kb b %)) (constantly b))
         holds? (fn [conds q] (binding [tax/*network-belief* true]
-                               (provers/exception-holds? kb conds b q)))
+                               (provers/exception-holds? kb conds (at q) q)))
         placed (fn [conds links strict blk reading]
                  (let [phs (if (seq (:nonplacing reading)) (remove (:nonplacing reading) blk) blk)
                        ctxs (into (into [pctx] (:readers reading))
@@ -2805,7 +2846,8 @@
     (mapcat
      (fn [[cs hs]]
        (let [solutions (distinct (map #(select-keys % [:handles :matched :reading])
-                                      (guard-solutions kb cs b pctx cpred)))
+                                      (mapcat #(guard-solutions kb cs % pctx cpred)
+                                              (distinct (map at (or rdrs [pctx]))))))
              pls (for [{sup :handles matched :matched reading :reading} solutions
                        :let [blk    (into hs sup)
                              reading (prover-types/merge-source-roles sup reading hs nil)

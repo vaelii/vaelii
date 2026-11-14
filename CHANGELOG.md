@@ -75,6 +75,23 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [nat.md](docs/nat.md#a-rule-or-a-goal-that-names-an-open-application)
   *Migration:* none.
 
+- **A guard defeat lands at a reader that hides a `reifiable_function` mark**
+  ([#289](https://github.com/vaelii/vaelii/issues/289)). CxA states
+  `(reifiable_function Quote)` and `(exceptWhen (blocked ?q) R)`, and `R` fires over
+  `(said Tom (Quote Muffet))`. CxB, below CxA, hides the mark and states
+  `(blocked (Quote Muffet))`. CxB believed R's conclusion in some arrival orders when it
+  denies the mark, and in all when an `except` hides the mark. CxB now reads the
+  conclusion defeated, as when no context states the mark.
+  [nat.md](docs/nat.md#a-reifiable-mark-moving)
+  *Migration:* none.
+
+- **A refusal recorded before a `reifiable_function` mark stays one refusal after it**
+  ([#289](https://github.com/vaelii/vaelii/issues/289)). A closed-extent refusal recorded
+  with `(Quote RM1)` bound counted twice in `rule-firing-report` once the mark arrived. It
+  now reads as one refusal, as when the mark arrives first.
+  [exceptions.md](docs/exceptions.md#a-refused-firing-is-remembered-as-bindings)
+  *Migration:* none.
+
 ### Internal: CI
 
 - **A CI shard runs its recurring failures first**
