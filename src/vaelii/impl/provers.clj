@@ -3989,6 +3989,24 @@
               ests (map #(est-bindings % kb goal '?ctx) ps)]
           (when (seq ests) (est-under (reduce max ests) ps kb goal '?ctx bound)))))))
 
+(defn open-kind-unanswered?
+  "Is `goal` `(k ?v)`, `k` an expression kind and `?v` a variable, that no registered
+  prover answers with support at `contexts`?  `ExpressionKindProver` must be registered,
+  and no other `SupportingProver` applicable at one of `contexts` (`applicable-provers`).
+  `ExpressionKindProver` gives none, as `quoted-form` is nil for a variable.  Any other
+  prover's answer carries an empty support it does not report
+  (`solve-goal-reporting-support`), which a forward join drops (`chain/solve-computed`)."
+  [kb goal contexts]
+  (and (sequential? goal) (= 2 (count goal))
+       (contains? expression-kind-predicates (first goal))
+       (sx/variable? (second goal))
+       (let [ps (:provers (support-summary kb))]
+         (and (some #(instance? ExpressionKindProver %) ps)
+              (every? (fn [p]
+                        (or (instance? ExpressionKindProver p)
+                            (not-any? #(applicable? p kb goal %) contexts)))
+                      ps)))))
+
 (defn separation-est-override
   "An `:est-override` for `vaelii.impl.plan/order` that costs a `disjoint` literal by
   `DisjointnessProver`'s `est-bindings`, and returns nil for every other goal.  Forward

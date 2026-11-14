@@ -2648,6 +2648,18 @@ queues the rules over a kind a length moves for a re-check of every firing and a
 memberships beside those of the sources (`provers/stated-kind-handles`), so a membership
 stated in a context of its own classifies the form for that context's readers.
 
+**A block of open kind literals is joined once per lead.** A rule such as the unary
+intersection rule `(implies (and (closed_expression ?x) (predication ?x)) (C ?x))` has
+two kind antecedents on one variable and nothing else to bind it. A join runs one of them
+first with `?x` open, where `ExpressionKindProver` answers nothing, so that literal reads
+only its stored memberships, and a member it holds only by the form's spelling is lost
+to that join. A block can have every literal such an open kind literal, one no other
+`SupportingProver` applicable at the source contexts answers
+(`provers/open-kind-unanswered?`). `chain/planned-join` then runs one join led by each
+literal (`chain/computed-leads`). It unions the rows on their bindings, handles, pairing
+and reading. The firings are then the same whichever literal a plan would run
+first.
+
 **`NonemptyProver` reads every membership.** It answers `(nonempty C)`, C a type, when a
 membership of C, or of a type S below C, is believed in a context the asking context
 sees. The support is the content-least such membership and, for a member of S, one

@@ -135,6 +135,15 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Migration:* to define a relation in CxUniverse, state something other than its arity
   there, such as its `comment`.
 
+### Fix: inference
+
+- **A rule over two open expression kinds of one variable joins once per kind.** Each
+  kind antecedent leads a join of its own and the rows are unioned, so a member that
+  holds a kind only by its spelling is joined whichever kind a plan runs first. The
+  unary intersection rule over `predication` and `closed_expression` holds the same
+  firings over a quoted member in every arrival order.
+  [inference.md](docs/inference.md#what-a-computed-answer-rests-on)
+
 ### Internal: CI
 
 - **A CI shard runs its recurring failures first**

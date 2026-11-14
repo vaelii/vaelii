@@ -1562,7 +1562,7 @@
   registered evaluatable is placed by cost (`:est-override`).  A closure or separation
   antecedent with both ends open waits for a binder (`open-ends`).  Post-join literals
   (`rules/post-join-literals`), closed-extent negative literals (docs/naf.md) and `different`
-  literals are withheld (`refusal-reason`).  A held `disjoint` literal `lead` runs first."
+  literals are withheld (`refusal-reason`).  A `lead` runs first, once."
   ([kb antecedents b0 consequent-pred] (join-order kb antecedents b0 consequent-pred nil))
   ([kb antecedents b0 consequent-pred lead]
    (let [subbed (mapv #(res/substitute % b0) antecedents)
@@ -1575,6 +1575,10 @@
          bound-by (into #{} (comp (remove sep?) (mapcat sx/form-variables)) subbed)
          held   (filterv #(and (sep? %) (every? bound-by (sx/form-variables %))) subbed)
          subbed (if (seq held) (filterv (complement (set held)) subbed) subbed)
+         subbed (if lead
+                  (let [[before [_ & after]] (split-with #(not= lead %) subbed)]
+                    (into (vec before) after))
+                  subbed)
          held   (if lead (filterv #(not= lead %) held) held)
          ;; ...and a closed-extent negative literal, which is a test on what the conclusion's
          ;; context believes; it is decided in `derive-conclusion`, where `unknown` is.
@@ -1626,15 +1630,48 @@
         ord (into [] (comp (keep by) (distinct)) (join-order kb more b cpred))]
     (into ord (remove (set ord)) more)))
 
+(defn- computed-leads
+  "The literals of the one block of `antecedents` under `b0` that each lead a join: two
+  or more `(k ?v)` on one open `?v`, joined by the computed arm (`computed-antecedent?`,
+  not `deferred-antecedent?`).  No prover answers one while `?v` is open
+  (`provers/open-kind-unanswered?`, at the contexts `solve-computed` reads).  The lead reads
+  its stored rows alone and binds `?v` for the rest.  So a row holding a literal only by
+  its prover is joined only under another lead.  Nil when no block, or more than one, has
+  that shape."
+  [kb antecedents b0]
+  (let [subbed (mapv #(res/substitute % b0) antecedents)
+        ctxs   (delay (provers/source-contexts kb (provers/support-source-preds kb)))
+        lone?  (fn [l v] (and (sequential? l) (= 2 (count l)) (= v (second l))))
+        block  (fn [v]
+                 (let [ls (into [] (comp (filter #(some #{v} (sx/form-variables %))) (distinct))
+                                subbed)]
+                   (when (and (next ls)
+                              (every? #(and (lone? % v)
+                                            (computed-antecedent? kb %)
+                                            (not (deferred-antecedent? kb %))
+                                            (provers/open-kind-unanswered? kb % @ctxs))
+                                      ls))
+                     ls)))
+        blocks (delay (keep block (distinct (mapcat sx/form-variables subbed))))]
+    (when (and (next (filter #(computed-antecedent? kb %) subbed)) (= 1 (count @blocks)))
+      (first @blocks))))
+
+(defn- distinct-rows
+  "`rows` with one row per bindings, handle set, `:matched` pairing set and reading, the
+  first in `rows`'s order: two rows that agree on all four are one justification."
+  [rows]
+  (nm/distinct-by (fn [r] [(:bindings r) (set (:handles r)) (set (:matched r)) (:reading r)])
+                  rows))
+
 (defn- planned-join
   "Join `antecedents` left to right from `seed`, in `join-order` under `b0`.  `admit` is
   the arrival filter (`join-antecedent`), per handle.  A row with no handle is dropped when
-  the rule has an antecedent `solve-computed` answers.  `stop` is the bound of the run
-  (`*stop*`), or nil for a join that tests a condition (`cut`).  `delta`, a set of source
-  datum handles or nil, keeps past the last computed or lazy-forward antecedent only the
-  rows holding one (`run-owed-rejoin`).  A `separation-lead` joins a second time from that
-  literal, and a first-join row matching its stored sentence yields to the second join's.
-  Otherwise a step that leaves one row re-orders the literals left (`replanned`)."
+  the rule has an antecedent `solve-computed` answers.  `stop` bounds the run (`*stop*`),
+  nil for a condition test (`cut`).  `delta`, source datum handles or nil, keeps past the
+  last computed or lazy-forward antecedent only the rows holding one (`run-owed-rejoin`).
+  A `separation-lead` joins again, and a first-join row matching its stored sentence
+  yields to the second's.  Each `computed-leads` literal leads a join (`distinct-rows`).
+  Else a step leaving one row re-plans the rest (`replanned`)."
   ([kb antecedents b0 consequent-pred seed admit stop]
    (planned-join kb antecedents b0 consequent-pred seed admit stop nil))
   ([kb antecedents b0 consequent-pred seed admit stop delta]
@@ -1671,7 +1708,10 @@
                            k       (rules/antecedent-key lead)
                            stated? (fn [row] (some (fn [[mk h]] (and (= k mk) (some? h))) (:matched row)))]
                        (concat led (remove #(and (stated? %) (led-at (pair %))) (run order false))))
-                     (run order (and plan/*enabled* (nil? delta))))]
+                     (if-let [leads (computed-leads kb antecedents b0)]
+                       (distinct-rows
+                        (mapcat #(run (join-order kb antecedents b0 consequent-pred %) false) leads))
+                       (run order (and plan/*enabled* (nil? delta)))))]
      (remove #(and (empty? (:handles %)) @computed?) rows))))
 
 (defn- matched-only-antecedent?
