@@ -1600,6 +1600,40 @@
         (is (= [true true] (sees? kb (list tookPlace Ann Bob) inner CxStory))
             (str "membership first: " membership-first?))))))
 
+(tu/deftest-kb an-eternal-fact-answers-throughout-its-monad-and-nowhere-else-until-retracted
+  (tu/with-terms [CxStory CxOther]
+    (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxOther 'CxWell) 'CxUniverse)
+    (doseq [{:keys [label at member]}
+            [{:label  "stated in a year slice, the predicate a member"
+              :at     (year-slice CxStory 2000)
+              :member (fn [P _] [(list 'eternal_predicate P)])}
+             {:label  "stated in a year slice, the predicate a member of a type below eternal_predicate"
+              :at     (year-slice CxStory 2000)
+              :member (fn [P k] [(list 'genl k 'eternal_predicate) (list k P)])}
+             {:label  "stated in a slice of a slice"
+              :at     (year-slice (year-slice CxStory 2000) 2000)
+              :member (fn [P _] [(list 'eternal_predicate P)])}
+             {:label  "stated in the monad"
+              :at     CxStory
+              :member (fn [P _] [(list 'eternal_predicate P)])}]
+            membership-first? [true false]]
+      (tu/with-terms [tookPlace Ann Bob review_kind]
+        (let [member! #(doseq [s (member tookPlace review_kind)] (v/assert kb s 'CxUniverse))
+              _       (when membership-first? (member!))
+              h       (v/assert kb (list tookPlace Ann Bob) at)
+              _       (when-not membership-first? (member!))
+              inside  [at CxStory (year-slice CxStory 1900) (year-slice CxStory 2100)]
+              outside ['CxUniverse CxOther (year-slice CxOther 2000)]
+              answers (fn [contexts]
+                        (mapv #(set (map (fn [b] (get b '?x)) (v/ask kb (list tookPlace Ann '?x) %)))
+                              contexts))]
+          (testing (str label ", membership first: " membership-first?)
+            (is (= [[#{Bob} #{Bob} #{Bob} #{Bob}] [#{} #{} #{}]] [(answers inside) (answers outside)]))
+            (v/retract! kb h)
+            (is (= [[#{} #{} #{} #{}] [#{} #{} #{}]] [(answers inside) (answers outside)])
+                "retracting the fact withdraws every answer")))))))
+
 (tu/deftest-kb a-slice-of-a-named-slice-copies-up-each-step-in-either-order
   (doseq [natformula-first? [true false]]
     (tu/with-terms [tookPlace Ann Bob CxStory CxNamed]
