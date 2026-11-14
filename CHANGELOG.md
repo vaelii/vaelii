@@ -50,7 +50,8 @@ it — `git show v0.16.0:CHANGELOG.md`.
   defining homes, as the pair audits an instance, so an engine-made copy in CxUniverse
   adds no reader. `all-specified-violations` and `kb-integrity` sweep both twins,
   and `vaelii.impl.predall/quoted-specified-violations` audits one declaration. The
-  population grows by one term per name the KB writes. No shipped declaration uses them.
+  population grows by one term per name the KB writes. core.txt states
+  `(predAllQuotedSpecified comment symbol)`: every name the KB writes has a comment.
   [predall.md](docs/predall.md#quoted-specified-the-population-as-written)
 
 ### Fix: order independence

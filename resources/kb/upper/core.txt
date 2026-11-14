@@ -1844,6 +1844,9 @@
 (not (eternal_predicate predSpecifiedAllQuoted))
 (arg predSpecifiedAllQuoted 1 binary_predicate)
 (genlArg predSpecifiedAllQuoted 2 expression)   ;; the expression kind whose written terms are audited
+;; Every name the KB writes has a comment.  A quotation is not a name, so a quoted
+;; sentence owes none.
+(predAllQuotedSpecified comment symbol)
 
 (comment typeAllSpecified
          "(typeAllSpecified ?classifier ?indep) declares the integrity requirement that every instance of collection ?indep have a believed membership in some member of the metatype ?classifier: for all x in ?indep there is a member K of ?classifier with (K x) believed, stated or reached through genl or argument preservation alike. predAllSpecified's counterpart for a classification rather than a filler. A partition of ?indep into ?classifier's members does not imply it: the partition says every instance IS in some member, and this requirement says the KB must KNOW which. An audit, not an inference: kb-integrity reads each visible declaration and reports the instances of ?indep no member of ?classifier is believed to hold, or a gap when ?classifier has no visible member. The declaration generates no rule and concludes nothing. e.g. (typeAllSpecified rigidity_kind relation) requires every relation to be classified time_invariant_relation, time_agnostic_relation or time_varying_relation. See docs/integrity.md.")
