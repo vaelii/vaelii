@@ -11,7 +11,8 @@
       membership consequent's predicate is a variable).
 
   Two and three types, over kinds and over binary predicates. See CxUniverse."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.sentex :as sx]
             [vaelii.order-independence-test :as oi]
@@ -354,6 +355,170 @@
       (is (every? (comp seq second) readings) "the membership is concluded in every order")
       (is (= 1 (count (distinct (map second readings))))
           (pr-str (into {} (map (fn [[sup rs]] [sup (map first rs)])) (group-by second readings)))))))
+
+(defn- member-steps
+  "The fixture's four statements: the kind's edge, the quoted member, the intersection and
+  the combined kind's unary membership."
+  [gadget q sealed]
+  [(list 'genl gadget 'closed_predication)
+   (list gadget q)
+   (list 'intersection sealed 'predication 'closed_expression)
+   (list 'unary sealed)])
+
+(defn- member-routes
+  "The antecedent sentences each route to a conjunct of the quoted member `q` rests on.
+  `:stored` routes reach `closed_expression` through a stored membership.  `:spelled` is
+  the route through the spelling alone, which `ExpressionKindProver` answers with no
+  handle.  `:predication` routes reach `predication`.  A proof takes one route per conjunct."
+  [gadget q]
+  {:stored      [#{(list 'closed_predication q) '(genl closed_predication closed_expression)}
+                 #{(list 'closed_literal q) '(genl closed_literal closed_expression)}
+                 #{(list 'sentence q) '(genl sentence closed_expression)}
+                 #{(list gadget q) (list 'genl gadget 'closed_predication)
+                   '(genl closed_predication closed_expression)}]
+   :spelled     [#{}]
+   :predication [#{(list 'closed_predication q) '(genl closed_predication predication)}
+                 #{(list gadget q) (list 'genl gadget 'closed_predication)
+                   '(genl closed_predication predication)}]})
+
+(defn- proofs-over
+  "The antecedent sets of proofs taking one route of `ce` and one of `pr`."
+  [ce pr]
+  (set (for [a ce b pr] (into a b))))
+
+(defn- membership-supports
+  "The antecedent sets, by content, of `goal`'s justifications under the unary membership
+  rule of `sealed`."
+  [kb goal sealed]
+  (into #{} (keep (fn [[rule antes]]
+                    (when (membership-rule? rule sealed '[predication closed_expression]) antes)))
+        (support-of kb goal)))
+
+(defn- core-kb
+  "A fresh KB holding the upper layer."
+  []
+  (doto (tu/isolated-fresh) (tu/load-core!)))
+
+(defn- assert-steps!
+  "Assert `steps` in that order in CxUniverse at `:monotonic`; their handles."
+  [kb steps]
+  (mapv #(v/assert kb % 'CxUniverse {:strength :monotonic}) steps))
+
+(deftest every-order-holds-the-spelled-closed-expression-proofs-and-the-stored-ones
+  (tu/with-terms [gadget_kind fits Peg sealed_kind]
+    (let [q        (list sx/quote-functor (list fits Peg))
+          goal     (list sealed_kind q)
+          routes   (member-routes gadget_kind q)
+          spelled  (proofs-over (:spelled routes) (:predication routes))
+          stored   (proofs-over (:stored routes) (:predication routes))
+          readings (for [order (oi/permutations (member-steps gadget_kind q sealed_kind))]
+                     (tu/with-neutral-kb [kb core-kb]
+                       (assert-steps! kb order)
+                       [order (membership-supports kb goal sealed_kind)]))]
+      (is (= 24 (count readings)))
+      (doseq [[order sups] readings]
+        (is (set/subset? spelled sups)
+            (str "the spelled proofs, missing " (pr-str (set/difference spelled sups))
+                 " in " (pr-str order)))
+        (is (set/subset? stored sups)
+            (str "the stored proofs, missing " (pr-str (set/difference stored sups))
+                 " in " (pr-str order)))))))
+
+(deftest withdrawing-the-member-withdraws-the-spelled-proofs-with-the-rest
+  (tu/with-terms [gadget_kind fits Peg sealed_kind]
+    (let [q        (list sx/quote-functor (list fits Peg))
+          goal     (list sealed_kind q)
+          routes   (member-routes gadget_kind q)
+          spelled  (proofs-over (:spelled routes) (:predication routes))
+          steps    (member-steps gadget_kind q sealed_kind)]
+      (tu/with-neutral-kb [kb core-kb]
+        (let [hs (assert-steps! kb steps)
+              h  (v/handle-of kb goal 'CxUniverse)]
+          (is (set/subset? spelled (membership-supports kb goal sealed_kind))
+              "the rule's join holds the spelled proofs")
+          (v/retract! kb (nth hs 1))
+          (is (not (believes? kb goal 'CxUniverse)) "the membership is withdrawn")
+          (is (not-any? #{:supports} (vals (v/justification-verdicts kb h 'CxUniverse)))
+              "and no justification of it still supports it"))))))
+
+(deftest re-asserting-the-member-restores-the-same-proofs
+  (tu/with-terms [gadget_kind fits Peg sealed_kind]
+    (let [q        (list sx/quote-functor (list fits Peg))
+          goal     (list sealed_kind q)
+          routes   (member-routes gadget_kind q)
+          spelled  (proofs-over (:spelled routes) (:predication routes))
+          steps    (member-steps gadget_kind q sealed_kind)]
+      (tu/with-neutral-kb [kb core-kb]
+        (let [hs     (assert-steps! kb steps)
+              before (membership-supports kb goal sealed_kind)]
+          (is (set/subset? spelled before) "the rule's join holds the spelled proofs")
+          (v/retract! kb (nth hs 1))
+          (v/assert kb (list gadget_kind q) 'CxUniverse {:strength :monotonic})
+          (is (believes? kb goal 'CxUniverse))
+          (is (= before (membership-supports kb goal sealed_kind))
+              "the re-asserted member restores the proofs it had"))))))
+
+(deftest the-spelled-proofs-confer-the-strength-and-context-the-stored-ones-do
+  (tu/with-terms [gadget_kind fits Peg sealed_kind]
+    (let [q        (list sx/quote-functor (list fits Peg))
+          goal     (list sealed_kind q)
+          routes   (member-routes gadget_kind q)
+          spelled  (proofs-over (:spelled routes) (:predication routes))
+          stored   (proofs-over (:stored routes) (:predication routes))
+          steps    (member-steps gadget_kind q sealed_kind)]
+      (tu/with-neutral-kb [kb core-kb]
+        (let [_       (assert-steps! kb steps)
+              h       (v/handle-of kb goal 'CxUniverse)
+              content #(some-> (v/sentex kb %) v/sentence-of)
+              by-sup  (group-by #(into #{} (map content) (:antecedents %))
+                                (v/supporting-justifications kb h))
+              node    (get-in (v/why kb h) [:nodes h])]
+          (is (= 'CxUniverse (:context node)) "the membership is placed in CxUniverse")
+          (doseq [sup (concat stored spelled)]
+            (is (seq (by-sup sup)) (str "a proof over " (pr-str sup)))
+            (is (= #{:monotonic} (set (map :strength (by-sup sup))))
+                (str "confers :monotonic over " (pr-str sup)))
+            (is (every? #(= q (val (first (:bindings %)))) (by-sup sup))
+                (str "binds the member over " (pr-str sup))))
+          (is (= :monotonic (v/defeat-class kb h)) "the aggregate stays :monotonic"))))))
+
+(deftest two-routes-to-one-proof-make-one-justification-and-distinct-proofs-stay-distinct
+  (tu/with-terms [gadget_kind fits Peg Bolt sealed_kind]
+    (let [q1       (list sx/quote-functor (list fits Peg))
+          q2       (list sx/quote-functor (list fits Bolt))
+          spelled  #(proofs-over (:spelled (member-routes gadget_kind %))
+                                 (:predication (member-routes gadget_kind %)))
+          steps    (conj (member-steps gadget_kind q1 sealed_kind) (list gadget_kind q2))]
+      (tu/with-neutral-kb [kb core-kb]
+        (let [_       (assert-steps! kb steps)
+              js      (fn [q] (v/supporting-justifications kb (v/handle-of kb (list sealed_kind q)
+                                                                         'CxUniverse)))
+              jkey    (fn [j] [(:informant j) (into #{} (:antecedents j)) (:subsumptions j)])]
+          (doseq [q [q1 q2]]
+            (is (= (count (js q)) (count (distinct (map jkey (js q)))))
+                (str "no proof of " (pr-str q) " is held twice"))
+            (is (set/subset? (spelled q) (membership-supports kb (list sealed_kind q) sealed_kind))
+                (str "the spelled proofs of " (pr-str q)))
+            (is (every? #(= q (val (first (:bindings %)))) (js q))
+                (str "each proof of " (pr-str q) " binds it")))
+          (is (empty? (set/intersection (set (map :id (js q1))) (set (map :id (js q2)))))
+              "the two members' proofs are distinct justifications")
+          (is (not= (membership-supports kb (list sealed_kind q1) sealed_kind)
+                    (membership-supports kb (list sealed_kind q2) sealed_kind))
+              "resting on distinct supports"))))))
+
+(deftest a-join-row-is-keyed-on-its-bindings-handles-pairing-and-reading
+  (let [rows! (some-> (resolve 'vaelii.impl.chain/distinct-rows) deref)
+        row   {:bindings '{?x (Quote (fits Peg))} :handles [1 2] :matched [[:a 1] [:b 2]]}]
+    (is (some? rows!) "the join unions its led rows on the row key")
+    (when rows!
+      (is (= [row] (vec (rows! [row (assoc row :handles [2 1] :matched [[:b 2] [:a 1]])])))
+          "a row found twice is one")
+      (doseq [[what other] [["bindings" (assoc row :bindings '{?x (Quote (fits Bolt))})]
+                            ["handles"  (assoc row :handles [1 3])]
+                            ["pairing"  (assoc row :matched [[:a 2] [:b 1]])]
+                            ["reading"  (assoc row :reading {:computed #{1}})]]]
+        (is (= [row other] (vec (rows! [row other]))) (str "rows of distinct " what " are kept"))))))
 
 ;; ---- the membership's strength ------------------------------------------
 ;; The generated membership rule is bare, so it confers :monotonic and the combined
