@@ -14,6 +14,7 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.sentex :as sx]
+            [vaelii.order-independence-test :as oi]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))
@@ -321,6 +322,38 @@
           (v/query kb (list combined q) 'CxUniverse {:max-depth 3}))
         (is (= before (tu/content-count kb))
             "the first query of each membership stores no sentex and no justification")))))
+
+(defn- support-of
+  "The justifications of `goal` in CxUniverse as a set of `[informant antecedents]`, by
+  content.  A rule informant reads as its sentence."
+  [kb goal]
+  (let [content #(some-> (v/sentex kb %) v/sentence-of)]
+    (into #{}
+          (map (fn [j]
+                 [(if (integer? (:informant j)) (content (:informant j)) (:informant j))
+                  (into #{} (map content) (:antecedents j))]))
+          (some->> (v/handle-of kb goal 'CxUniverse) (v/supporting-justifications kb)))))
+
+(deftest a-quoted-member-of-a-unary-intersection-holds-one-support-set-in-every-order
+  ;; A quoted member of a kind below closed_predication is a member of the intersection of
+  ;; predication and closed_expression, under the rule the generator mints from the
+  ;; combined kind's unary membership.  The membership holds the same justifications in
+  ;; every order of the kind's edge, the member, the intersection and the unary membership.
+  (tu/with-terms [gadget_kind fits Peg sealed_kind]
+    (let [q        (list sx/quote-functor (list fits Peg))
+          goal     (list sealed_kind q)
+          steps    [(list 'genl gadget_kind 'closed_predication)
+                    (list gadget_kind q)
+                    (list 'intersection sealed_kind 'predication 'closed_expression)
+                    (list 'unary sealed_kind)]
+          readings (for [order (oi/permutations steps)]
+                     (tu/with-neutral-kb [kb #(doto (tu/isolated-fresh) (tu/load-core!))]
+                       (doseq [s order] (v/assert kb s 'CxUniverse {:strength :monotonic}))
+                       [order (support-of kb goal)]))]
+      (is (= 24 (count readings)))
+      (is (every? (comp seq second) readings) "the membership is concluded in every order")
+      (is (= 1 (count (distinct (map second readings))))
+          (pr-str (into {} (map (fn [[sup rs]] [sup (map first rs)])) (group-by second readings)))))))
 
 ;; ---- the membership's strength ------------------------------------------
 ;; The generated membership rule is bare, so it confers :monotonic and the combined
