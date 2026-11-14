@@ -135,7 +135,10 @@ consequent — the shipped `predAllInstance` generator writes the first, and
 lazy-forward and the two would otherwise be a backward cycle. The lazy-forward converse
 `(binary ?r) ⇒ (arity ?r 2)` lets a forward rule guarded on `(arity ?r ?n)` fire for a
 relation its exact-arity class declares, and stores no arity
-([inference.md](inference.md#a-lazy-forward-rule)).
+([inference.md](inference.md#a-lazy-forward-rule)). The unary `intersection` generator
+reads the combined kind's membership in a class `relationTypeByArity` maps to 1, not an
+`(arity ?combined 1)` guard, so the rule it generates rests on no rule concluding an
+arity, the lazy-forward converse included.
 
 The **generator itself defaults to forward**, even bare. Its conclusion is a rule, and no
 backward goal asks for one — `res/concluding-rule-handles` reads a goal's predicate, and a

@@ -1,16 +1,13 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.intersection-test
-  "The `intersection` definitional collection relation: (intersection ?combined . ?types)
-  declares ?combined as the intersection of ?types. Two defining directions, each proven
-  to *fire* into materialized, justified facts:
+  "The `intersection` relation: (intersection ?combined . ?types) declares ?combined the
+  intersection of ?types. Each direction fires into justified facts:
 
     * intersection -> genl: the combined kind is a subtype of each type it intersects.
-    * membership: a thing that is each type is concluded a member of the combined kind
-      (a generator generates a concrete-functor rule per intersection fact, since the
-      membership consequent's predicate is a variable).
+    * membership: a thing that is each type is a member of the combined kind.
 
-  Two and three types, over kinds and over binary predicates. See CxUniverse."
+  Two and three types, over kinds and over binary predicates, in CxUniverse."
   (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
@@ -30,8 +27,7 @@
 (tu/deftest-kb one-type-intersection-is-out-below-the-arity-floor
   (tu/with-terms [combined_kind type_a]
     (v/assert kb (list 'genl type_a 'thing) 'CxUniverse)
-    ;; arityMin is three (the combined kind plus at least two types); the intersection
-    ;; of a single type is that type, and the tuple is held inert and read OUT.
+    ;; arityMin is three: the combined kind and at least two types.
     (is (tu/stored-in-clash? kb (list 'intersection combined_kind type_a) 'CxUniverse)
         "(intersection combined one-type) is one argument below the floor")))
 
@@ -160,11 +156,7 @@
       (is (= before (set (v/violations kb))) "and files no violation"))))
 
 ;; ---- the unary rule's guard is the arity-1 class membership ---------------
-;; The unary membership generator takes a combined kind that is a member of a class
-;; relationTypeByArity maps to 1.  Each test below checks how the generated rule is
-;; justified: by a firing of a rule with no arity antecedent, resting on no rule that
-;; concludes an arity.  The lazy-forward converse concludes one, so a rule generated
-;; through it fails that check.
+;; Each test checks that the generated rule rests on no rule reading or concluding an arity.
 
 (defn- unwrapped
   "`rule` without its `set/…` direction wrappers."
@@ -220,8 +212,7 @@
     (v/assert kb (list type-b 'Item) 'CxUniverse mono)))
 
 (tu/deftest-kb an-arity-of-one-alone-admits-a-kind-to-the-unary-membership-rule
-  ;; No unary or unary_predicate declaration: the arity fact alone makes the kind
-  ;; eligible, through the unary membership the forward class rule stores from it.
+  ;; No unary or unary_predicate declaration: the arity fact alone.
   (tu/with-terms [combined_kind type_a type_b]
     (v/assert kb (list 'arity combined_kind 1) 'CxUniverse {:strength :monotonic})
     (intersection-world! kb combined_kind type_a type_b)
@@ -246,9 +237,7 @@
         "and concludes the membership")))
 
 (tu/deftest-kb retracting-a-default-unary-premise-withdraws-the-rule-and-its-memberships
-  ;; The eligibility is a :default premise.  The generated rule takes its class, so the
-  ;; membership it concludes from :monotonic parts is :default, and retracting the
-  ;; premise withdraws the rule and the membership.
+  ;; The eligibility is a :default premise, so the membership is :default.
   (tu/with-terms [combined_kind type_a type_b]
     (let [premise (v/assert kb (list 'unary combined_kind) 'CxUniverse)
           rule    (unary-rule combined_kind [type_a type_b])]
@@ -297,11 +286,8 @@
               (= (set parts) (set (map first lits)))))))))
 
 (deftest the-load-holds-the-unary-membership-firings-and-a-first-query-adds-no-record
-  ;; reflection.txt states (intersection closed_literal literal closed_expression) and the
-  ;; closed_predication one, and abstract.txt a declined_rule_macro record whose argument
-  ;; is a quoted closed predication.  The generated rules' firings over that record are
-  ;; made by the load.  A first query of the memberships stores no sentex and no
-  ;; justification.
+  ;; The record is abstract.txt's declined_rule_macro of a quoted closed predication; the
+  ;; intersections are reflection.txt's closed_literal and closed_predication ones.
   (tu/with-neutral-kb [kb #(doto (tu/isolated-fresh) (tu/load-core!))]
     (let [q       (list sx/quote-functor '(genl container hollow))
           record  (v/handle-of kb (list 'declined_rule_macro q) 'CxUniverse)
@@ -336,10 +322,7 @@
           (some->> (v/handle-of kb goal 'CxUniverse) (v/supporting-justifications kb)))))
 
 (deftest a-quoted-member-of-a-unary-intersection-holds-one-support-set-in-every-order
-  ;; A quoted member of a kind below closed_predication is a member of the intersection of
-  ;; predication and closed_expression, under the rule the generator mints from the
-  ;; combined kind's unary membership.  The membership holds the same justifications in
-  ;; every order of the kind's edge, the member, the intersection and the unary membership.
+  ;; The same justifications in every order of the kind's edge, member, intersection and unary.
   (tu/with-terms [gadget_kind fits Peg sealed_kind]
     (let [q        (list sx/quote-functor (list fits Peg))
           goal     (list sealed_kind q)
@@ -492,7 +475,7 @@
       (tu/with-neutral-kb [kb core-kb]
         (let [_       (assert-steps! kb steps)
               js      (fn [q] (v/supporting-justifications kb (v/handle-of kb (list sealed_kind q)
-                                                                         'CxUniverse)))
+                                                                           'CxUniverse)))
               jkey    (fn [j] [(:informant j) (into #{} (:antecedents j)) (:subsumptions j)])]
           (doseq [q [q1 q2]]
             (is (= (count (js q)) (count (distinct (map jkey (js q)))))
@@ -521,8 +504,6 @@
         (is (= [row other] (vec (rows! [row other]))) (str "rows of distinct " what " are kept"))))))
 
 ;; ---- the membership's strength ------------------------------------------
-;; The generated membership rule is bare, so it confers :monotonic and the combined
-;; membership is capped at the weakest conjunct.
 
 (tu/deftest-kb the-combined-membership-is-capped-at-the-weakest-conjunct
   (tu/with-terms [combined_kind type_a type_b]
@@ -540,9 +521,7 @@
       (is (= :monotonic (v/defeat-class kb (v/handle-of kb (list combined_kind 'Other) 'CxUniverse)))))))
 
 (tu/deftest-kb a-forced-monotonic-combined-kind-is-concluded-from-forced-monotonic-conjuncts
-  ;; A firing concluding a forced-monotonic literal is void unless its rule adds no defeasibility
-  ;; and every antecedent is forced-monotonic.  The bare membership rule adds none, so a
-  ;; forced-monotonic combined kind is concluded from two forced-monotonic parts.
+  ;; The bare membership rule adds no defeasibility, so its firing is not void.
   (tu/with-terms [combined_kind type_a type_b]
     (doseq [t [combined_kind type_a type_b]]
       (v/assert kb (list 'genl t 'thing) 'CxUniverse)
@@ -559,23 +538,12 @@
         "and its firing is not void")))
 
 ;; ---- the forward reading, at every reader and in every arrival order ------
-;;
-;; These tests read belief alone, through `ask?` at each reader, so they hold whether a
-;; membership firing is stored or answered by the closure.  A change to how the engine
-;; stores the membership rule's firings is held to them.
-;;
-;; The world gives the combined kind two kinds of member.  `only_kind` reaches the two
-;; parts through the combined kind alone; `both_kind` reaches them through the combined
-;; kind and also around it, through `side_a` and `side_b`.  `CxExcept` excepts
-;; `both_kind`'s edge to the combined kind, so a member of `both_kind` is a member of the
-;; two parts there by the other route, and the forward reading makes it a member of the
-;; combined kind.  `CxDenial` denies `only_kind`'s edge at `:monotonic`, so a member of
-;; `only_kind` is a member of neither part there.  `probe_kind` is declared disjoint from
-;; the combined kind, and `Probe` is stated in both parts at `:monotonic` and in
-;; `probe_kind` at `:default`.  The intersection is asserted `:monotonic` and the membership
-;; rule is bare, so the combined membership of a thing stated in both parts at
-;; `:monotonic` is `:monotonic`, and the clash takes the `:default` `probe_kind`
-;; membership OUT.
+;; These tests read belief through `ask?` alone, whether a firing is stored or not.
+;; `only_kind` reaches the two parts through the combined kind alone; `both_kind` also
+;; around it, through `side_a` and `side_b`.  `CxExcept` excepts `both_kind`'s edge to the
+;; combined kind, and `CxDenial` denies `only_kind`'s at `:monotonic`.  `probe_kind` is
+;; disjoint from the combined kind; `Probe` is in both parts at `:monotonic` and in
+;; `probe_kind` at `:default`, so the clash takes the `probe_kind` membership OUT.
 
 (defn- ix-world
   "The content steps of the world above over the terms `t`, `{step [[sentence context
