@@ -301,8 +301,8 @@
                :genetic-same-as '(sameAs geneticRelativeOf ?p)
                :chosen-specs '(genl ?p chosenKinOf)
                :genetic-specs '(genl ?p geneticRelativeOf)
-               :chosen-correspondence '(chosenKinPredicateOf kinOf ?p)
-               :genetic-correspondence '(geneticKinPredicateOf kinOf ?p)}]
+               :chosen-correspondence '(chosenVersionOf kinOf ?p)
+               :genetic-correspondence '(geneticVersionOf kinOf ?p)}]
     {:answers (into {}
                     (for [reader ['CxUniverse 'CxKinship]
                           [label goal] goals]

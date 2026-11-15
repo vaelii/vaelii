@@ -41,6 +41,12 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Additive: shipped ontology
 
+- **`geneticVersionOf` and `chosenVersionOf` relate an unqualified kinship predicate to
+  its genetic and chosen versions.** `kinship.txt` declares each the binary predicate
+  corresponding to `GeneticKinFn` or `ChosenKinFn`, taking an
+  `unqualified_kinship_predicate` first and a `genetic_kinship_predicate` or
+  `chosen_kinship_predicate` second, functional and eternal.
+  `(geneticVersionOf siblingOf (GeneticKinFn siblingOf))` holds.
 - **An `injection` that is a `surjection` is a `bijection`, and `folk_biological_class` is
   forced-monotonic.** A forward-only `core.txt` rule concludes `(bijection P)` from
   `(injection P)` and `(surjection P)`, and retracting either withdraws it. `organism.txt`

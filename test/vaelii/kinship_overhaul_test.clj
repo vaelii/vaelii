@@ -70,13 +70,13 @@
   (is (not (v/ask? kb '(unqualified_kinship_predicate testChosenLeafOf) U))))
 
 (tu/deftest-kb constructors-have-corresponding-predicates-and-named-roots
-  (is (true? (v/ask? kb '(functionCorrespondingPredicate GeneticKinFn geneticKinPredicateOf 2) U)))
-  (is (true? (v/ask? kb '(functionCorrespondingPredicate ChosenKinFn chosenKinPredicateOf 2) U)))
+  (is (true? (v/ask? kb '(functionCorrespondingPredicate GeneticKinFn geneticVersionOf 2) U)))
+  (is (true? (v/ask? kb '(functionCorrespondingPredicate ChosenKinFn chosenVersionOf 2) U)))
   (is (true? (v/ask? kb '(rewriteOf geneticRelativeOf (GeneticKinFn kinOf)) U)))
   (is (true? (v/ask? kb '(rewriteOf chosenKinOf (ChosenKinFn kinOf)) U)))
   (is (true? (v/ask? kb '(covering kinOf geneticRelativeOf chosenKinOf) U)))
-  (is (true? (v/ask? kb '(geneticKinPredicateOf siblingOf (GeneticKinFn siblingOf)) U)))
-  (is (true? (v/ask? kb '(chosenKinPredicateOf siblingOf (ChosenKinFn siblingOf)) U))))
+  (is (true? (v/ask? kb '(geneticVersionOf siblingOf (GeneticKinFn siblingOf)) U)))
+  (is (true? (v/ask? kb '(chosenVersionOf siblingOf (ChosenKinFn siblingOf)) U))))
 
 (tu/deftest-kb constructor-lifting-stays-on-the-unqualified-hierarchy
   (doseq [constructor [genetic chosen]]
