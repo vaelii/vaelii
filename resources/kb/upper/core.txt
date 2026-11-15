@@ -2593,6 +2593,52 @@
 ;; marks stated of one function are a conflict rather than a defeat.
 (forced_monotonic_predicate reifiable_function)
 (forced_monotonic_predicate unreifiable_function)
+;; Eager reification, Cyc's reifyForward: an eagerly_reify function's applications are
+;; reified as soon as their arguments meet its argument constraints, so a term exists for
+;; an argument declared after the rule as for one declared before it.
+(comment eagerly_reify
+         "(eagerly_reify ?function) means that the KB reifies every application of ?function whose arguments meet ?function's argument constraints, whether or not any sentence names the application: (eagerly_reify GeneticKinFn) makes (GeneticKinFn siblingOf) a term of the KB once siblingOf is an unqualified_kinship_predicate. Only an object-denoting function's applications are reified, so every eagerly_reify function is a reifiable_function.")
+(unary_predicate eagerly_reify)
+(set/monotonic (genl eagerly_reify reifiable_function))
+(set/monotonic (time_invariant_relation eagerly_reify))
+
+(comment meetsArgConstraints
+         "(meetsArgConstraints ?function . ?args) means that ?args, in order, meet every argument constraint ?function declares: their number is one ?function's arity admits, and each is an instance of every type an arg declaration states at its position and a spec of every type an argGenl declaration states there.")
+(variable_arity_predicate meetsArgConstraints)
+(unbounded_arity_predicate meetsArgConstraints)
+(arityMin meetsArgConstraints 1)
+(arg meetsArgConstraints 1 function)
+(argAndRest meetsArgConstraints 2 thing)
+(set/monotonic (time_agnostic_relation meetsArgConstraints))
+
+(comment reify
+         "(reify ?term) means that ?term is a term of the KB: an application ?term is written as is reified to the constant it denotes, as it is when a sentence names it.")
+(unary_predicate reify)
+(set/monotonic (time_invariant_relation reify))
+
+(set/forwardRule
+ (implies
+  (and
+   (eagerly_reify ?function)
+   (meetsArgConstraints ?function . ?args))
+  (reify (?function . ?args))))
+
+(set/forwardRule
+ (implies
+  (reify ?term)
+  (comment ?term "@hack: temporary implementation of `reify` until it has engine support")))
+
+;; TEMPORARY: no generator answers meetsArgConstraints over a whole argument list, so the
+;; rule below reads only a unary function's one position, ignores argGenl, and concludes
+;; the literal from each arg declaration at that position alone rather than from all of
+;; them together.
+(set/forwardRule
+ (implies
+  (and
+   (unary_function ?function)
+   (arg ?function 1 ?type))
+  (set/lazyForwardRule
+   (implies (?type ?argument) (meetsArgConstraints ?function ?argument)))))
 
 (comment contextArgSubrelation
          "(contextArgSubrelation ?function ?position ?subrelation) means that ?subrelation orders the contexts denoted by ?function at argument ?position. Two such contexts that agree at every argument no declaration names are ordered by the product of the declared orders: the context whose argument at each position where the two differ is below the other's by a subrelation declared there is a spec (sub)context of it, and the producer materializes the genlCx edge. So (contextArgSubrelation CxTimeFn 2 subintervalOf) makes (CxTimeFn CxMonad (DatetimeFn \"2000-01\")) a subcontext of (CxTimeFn CxMonad (DatetimeFn \"2000\")) because January 2000 is a subinterval of 2000 — with nobody asserting that genlCx edge — and with (contextArgSubrelation CxTimeFn 1 genlMonad) also stated, (CxTimeFn CxSubMonad (DatetimeFn \"2000-01\")) is a subcontext of it when CxSubMonad is genlMonad-below CxMonad. Two contexts that differ at a position no declaration names are not ordered. ?position is 1-based over ?function's arguments. See docs/context-nat.md.")

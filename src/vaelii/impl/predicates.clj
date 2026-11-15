@@ -1917,6 +1917,25 @@
                           " rule concludes (acknowledgedFinding :rule-macro ...) from it.")}
              (str "sugar the engine does not read: core.txt's forward rule concludes"
                   " acknowledgedFinding from it, and the integrity sweep reads that"))]
+     ['eagerly_reify
+      (inert {:shape {:args [:term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes "an ordinary mark on a function, read by core.txt's general reify rule."}
+             "a premise of core.txt's general reify rule; no engine check names it")]
+     ['meetsArgConstraints
+      (inert {:shape {:args [:term] :variadic :term} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "an ordinary fact over a function and its arguments; core.txt's"
+                          " TEMPORARY lazy rules conclude it for a unary function.")}
+             "a premise of core.txt's general reify rule; no engine check names it")]
+     ['reify
+      (inert {:shape {:args [:term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "@hack: an ordinary fact whose firing reifies the application it"
+                          " names through conclusion reification, until reify has engine"
+                          " support.")}
+             (str "no engine check names it: a derived (reify ?term) mints ?term as any"
+                  " conclusion naming an application does"))]
      ;; A rule-clash acknowledgment's subject: the two quoted rules of the pair, which
      ;; core.txt's (commutative RulePairFn) stores in one order.
      ['RulePairFn

@@ -48,6 +48,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `chosen_kinship_predicate` second, functional, eternal and forced-monotonic, so a rule
   reading one may conclude a forced-monotonic declaration of the version.
   `(geneticVersionOf siblingOf (GeneticKinFn siblingOf))` holds.
+- **`eagerly_reify` reifies a function's applications as soon as their arguments meet its
+  argument constraints.** `core.txt` declares three terms. `eagerly_reify` marks a
+  `reifiable_function`. `meetsArgConstraints` holds of a function and arguments that meet
+  its `arg` and `argGenl` declarations. `reify` holds of a term of the KB. One general
+  rule concludes `(reify (?f . ?args))` from `(eagerly_reify ?f)` and
+  `(meetsArgConstraints ?f . ?args)`, and its firing mints the application. `kinship.txt`
+  declares `(eagerly_reify GeneticKinFn)` and `(eagerly_reify ChosenKinFn)`, so every
+  unqualified kinship predicate, one declared later included, has both readings reified.
+  *@hack:* `reify` has no engine support yet, so a rule comments each reified term as a
+  temporary implementation. `meetsArgConstraints` is concluded only for a unary function,
+  from each `arg` declaration alone and without `argGenl`. `eager_reify_test`'s `^:red`
+  tests state the general reading.
 - **An `injection` that is a `surjection` is a `bijection`, and `folk_biological_class` is
   forced-monotonic.** A forward-only `core.txt` rule concludes `(bijection P)` from
   `(injection P)` and `(surjection P)`, and retracting either withdraws it. `organism.txt`
