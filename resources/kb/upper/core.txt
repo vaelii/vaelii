@@ -1159,6 +1159,70 @@
 (set/monotonic (time_invariant_relation documentation_predicate))
 (not (decontextualized_predicate documentation_predicate))
 
+(comment definitional_predicate
+         "(definitional_predicate ?predicate) means that a (?predicate …) sentence about a term is part of that term's definitional block, the sentences a new term ships with (handbook/06-definitional-block.md): its comment and example annotations, its genl, its separations from its siblings, its order, arity class and arity, its argument declarations, its relation properties and its termsRelated and seeAlso links. vocabulary-audit reads the members as its population: a member the engine's classification answers neither as enforced nor as inert is reported unclassified. The syncategorematic constants are the audit's second population, since they are syntax the engine reads and not predicates of a block. A membership says where a sentence belongs and not how it is believed: comment is a member and is not forced-monotonic. See docs/predicates.md.")
+(positiveExampleComment definitional_predicate "genl, since (genl dog mammal) is part of dog's block")
+(negativeExampleComment definitional_predicate "genlCx, since a context's ancestor edge belongs to no term's block")
+(unary_predicate definitional_predicate)
+(set/monotonic (genl definitional_predicate predicate))
+(set/monotonic (time_invariant_relation definitional_predicate))
+(set/monotonic (orthogonal definitional_predicate forced_monotonic_predicate))
+(comment (orthogonal definitional_predicate forced_monotonic_predicate) "arg and arity are both, comment is a definitional predicate and not forced-monotonic, and genlCx is forced-monotonic and in no term's block.")
+;; A kinship tuple is a fact about two people, never a sentence about a term.
+(set/monotonic (disjoint definitional_predicate generic_kinship_predicate))
+(set/monotonic (disjoint definitional_predicate chosen_kinship_predicate))
+;; meaning and examples
+(definitional_predicate comment)
+(definitional_predicate positiveExampleComment)
+(definitional_predicate negativeExampleComment)
+(definitional_predicate positiveExample)
+(definitional_predicate negativeExample)
+;; parent and separations
+(definitional_predicate genl)
+(definitional_predicate disjoint)
+(definitional_predicate separating)
+(definitional_predicate partition)
+(definitional_predicate orthogonal)
+;; order
+(definitional_predicate type)
+(definitional_predicate metatype)
+;; arity: the binding and the arity classes describe lists under :arity-class
+(definitional_predicate arity)
+(definitional_predicate unary)
+(definitional_predicate binary)
+(definitional_predicate ternary)
+(definitional_predicate quaternary)
+(definitional_predicate quinary)
+(definitional_predicate unary_predicate)
+(definitional_predicate binary_predicate)
+(definitional_predicate ternary_predicate)
+(definitional_predicate quaternary_predicate)
+(definitional_predicate quinary_predicate)
+(definitional_predicate unary_function)
+(definitional_predicate binary_function)
+(definitional_predicate ternary_function)
+(definitional_predicate quaternary_function)
+(definitional_predicate quinary_function)
+(definitional_predicate variable_arity)
+(definitional_predicate variable_arity_predicate)
+(definitional_predicate variable_arity_function)
+;; argument declarations: the kinds describe lists under :arg-declarations
+(definitional_predicate arg)
+(definitional_predicate genlArg)
+(definitional_predicate quotedArg)
+(definitional_predicate interArg)
+(definitional_predicate interArgEqual)
+(definitional_predicate argArg)
+;; relation properties: the ones describe lists under :props
+(definitional_predicate transitive)
+(definitional_predicate symmetric)
+(definitional_predicate asymmetric)
+(definitional_predicate reflexive)
+(definitional_predicate functional)
+;; links
+(definitional_predicate termsRelated)
+(definitional_predicate seeAlso)
+
 (comment situation_predicate "A predicate whose first argument is a situation and whose truth is fixed by that situation: a participant of an event, a part of a situation, an argument a call passed. A situation is a whole that timeOf places in time, so such a tuple records that whole and not what holds now, and every situation_predicate is an eternal_predicate. Taking a situation first does not by itself make a predicate one.")
 (unary_predicate situation_predicate)
 (set/monotonic (genl situation_predicate eternal_predicate))
@@ -1908,7 +1972,8 @@
 ;; relation's stored sentences has no not_assertible member: abduction stores the sentence
 ;; it assumes, the forced and decontextualized marks place stored sentences, a
 ;; target_following_predicate's meta-sentex is retracted with the sentex it names, a
-;; documentation predicate's sentences are the documentation the KB stores, and a
+;; documentation predicate's sentences are the documentation the KB stores, a
+;; definitional predicate's sentences are the blocks the KB stores, and a
 ;; kinship predicate's tuples, generic, blood or chosen, are stored when asserted.
 (set/monotonic (disjoint not_assertible abducible_predicate))
 (set/monotonic (disjoint not_assertible decontextualized_predicate))
@@ -1917,6 +1982,7 @@
 (set/monotonic (disjoint not_assertible forced_monotonic_between_predicates))
 (set/monotonic (disjoint not_assertible target_following_predicate))
 (set/monotonic (disjoint not_assertible documentation_predicate))
+(set/monotonic (disjoint not_assertible definitional_predicate))
 (set/monotonic (disjoint not_assertible generic_kinship_predicate))
 (set/monotonic (disjoint not_assertible blood_kinship_predicate))
 (set/monotonic (disjoint not_assertible chosen_kinship_predicate))

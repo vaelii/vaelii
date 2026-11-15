@@ -1724,6 +1724,14 @@
                                       " population of vocabulary/audit is read off them.")}
                          (str "gloss, core-context/comment-of, and the browser's term pages —"
                               " ordinary sentexes, queried like any fact"))]
+     ['definitional_predicate
+      (enforced (collection :notes (str "a predicate whose sentences about a term make up that term's"
+                                        " definitional block (handbook/06-definitional-block.md)."
+                                        " Its believed CxUniverse members are vocabulary/audit's"
+                                        " population, beside the syncategorematic constants."))
+                (str "vocabulary/audit — its believed CxUniverse members are the population the"
+                     " audit classifies, so a member with no :enforced or :inert answer is"
+                     " :unclassified"))]
 
      ;; ---- engine-derived meta-sentexes ---------------------------------------
      ['defeat (enforced {:shape {:args [:term]} :storage [:none] :checked false
