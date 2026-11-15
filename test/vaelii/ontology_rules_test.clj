@@ -6,7 +6,8 @@
   clash in neither direction.  The KB is `ontology-test`'s, the starter and the
   test-world.  The tests are a namespace apart from `ontology-test` so that
   scripts/ci-shard.sh can put them on a different CI shard."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.integrity :as integrity]
             [vaelii.test-util :as tu]
@@ -156,14 +157,16 @@
         definitions (remove #(or (rigidity? %) (arity-copy? %) (policy-copy? %) (class-copy? %)) acked)]
     (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
-    (is (= {:negation 13 :disjoint 106 :functional 10} kinds)
+    (is (= {:negation 13 :disjoint 111 :functional 10} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
     (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
         "negation clashes are excepted or acknowledged")
     (is (every? :excepted (remove #(or (rigidity? %) (policy-copy? %) (class-copy? %) (:inert %))
                                   (filter #(= :disjoint (:kind %)) pairs)))
         "the one other disjoint pair with a live rule, a metal solid and mercury liquid, is excepted")
-    (is (= 7 (count (filter #(and (:inert %) (some (fn [s] (#{'fixed_arity_predicate 'fixed_arity_function 'variable_arity_predicate 'variable_arity_function} (first (nth s 2)))) (:sentences %))) pairs)))
+    (is (= 7 (count (filter #(and (:inert %) (some (fn [s] (and (#{'fixed_arity_predicate 'fixed_arity_function 'variable_arity_predicate 'variable_arity_function} (first (nth s 2)))
+                                                                         (symbol? (second (nth s 2)))))
+                                                          (:sentences %))) pairs)))
         "the four inert arity-policy intersections pair, review-only, with the variable-policy copies, the exact-class and symmetry copies and the associative meet rule")
     (is (= 14 (count (filter rigidity? acked)))
         "the seven existing transfers and seven kinship branch contracts are acknowledged")
@@ -191,16 +194,20 @@
     (let [class-copies (filter class-copy? pairs)
           concluded    (fn [pair] (let [{:keys [sentence constructor kind]} (copy-rule pair)]
                                     [constructor kind (first (nth (first (remove #{sentence} (:sentences pair))) 2))]))]
-      (is (= (set (for [constructor '[GeneticKinFn ChosenKinFn]
-                        kind '[binary_predicate symmetric]
-                        consequence '[at_least_ternary at_least_quaternary at_least_quinary
-                                      unary ternary quaternary quinary empty unbounded_arity_predicate
-                                      unary_predicate ternary_predicate quaternary_predicate
-                                      quinary_predicate variable_arity_predicate]]
-                    [constructor kind consequence]))
-             (set (map concluded class-copies)))
-          "the exact-class and symmetry copies meet every rule that concludes another arity class of a reading")
-      (is (= 68 (count class-copies)))
+      (let [concluded-set (set (map concluded class-copies))
+            arity-classes (set (for [constructor '[GeneticKinFn ChosenKinFn]
+                                     kind '[binary_predicate symmetric]
+                                     consequence '[at_least_ternary at_least_quaternary at_least_quinary
+                                                   unary ternary quaternary quinary empty
+                                                   unbounded_arity_predicate unary_predicate
+                                                   ternary_predicate quaternary_predicate
+                                                   quinary_predicate variable_arity_predicate]]
+                                 [constructor kind consequence]))]
+        (is (set/subset? arity-classes concluded-set)
+            "the exact-class and symmetry copies meet every rule that concludes another arity class of a reading")
+        (is (every? #(= 'asymmetric (nth % 2)) (remove arity-classes concluded-set))
+            "and otherwise only the inert definition of asymmetric"))
+      (is (= 70 (count class-copies)))
       (is (= 48 (count (filter :acknowledged class-copies))))
       (is (every? #(or (:acknowledged %) (:inert %)) class-copies)
           "each is acknowledged, or pairs with an inert classification rule and is review-only"))
@@ -258,7 +265,11 @@
                              (symmetric (GeneticKinFn ?predicate)))
                     (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate))
                              (symmetric (ChosenKinFn ?predicate)))}
-          other-pairs (remove #(some copies (:sentences %)) (about 'arity))]
+          ;; The inert definition of asymmetric pairs, review-only, with the rule concluding
+          ;; symmetric from commutative and an arity of two.
+          asymmetry   '(implies (and (anti_symmetric ?p) (irreflexive ?p)) (asymmetric ?p))
+          other-pairs (remove #(or (some copies (:sentences %)) (some #{asymmetry} (:sentences %)))
+                              (about 'arity))]
       (is (empty? other-pairs)
           (str "the arity table has no other pairs: " (pr-str (mapv :sentences other-pairs))))
       (is (empty? (remove #(some copies (:sentences %)) (about 'unary_predicate)))

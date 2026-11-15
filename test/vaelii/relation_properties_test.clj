@@ -58,6 +58,21 @@
             (run! #(v/retract! kb %) (rseq hs))
             r))))
 
+(tu/deftest-kb asymmetric-is-stated-as-the-intersection-of-irreflexive-and-anti-symmetric
+  ;; The definition is a believed inert rule: neither engine runs it, so the two marks
+  ;; together do not turn on the asymmetric nogood.
+  (let [h (v/handle-of kb '(set/inertRule (implies (and (irreflexive ?p) (anti_symmetric ?p))
+                                                   (asymmetric ?p)))
+                       U)]
+    (is (some? h))
+    (when h
+      (is (v/in? kb h))
+      (is (= #{} (:engines (v/sentex kb h))))))
+  (tu/with-terms [orderedBefore]
+    (v/assert kb (list 'irreflexive orderedBefore) U)
+    (v/assert kb (list 'anti_symmetric orderedBefore) U)
+    (is (empty? (v/query kb (list 'asymmetric orderedBefore) U {:max-depth 3})))))
+
 ;;; ── irreflexive: a self tuple is a one-member nogood ─────────────────────────
 
 (defn- placed

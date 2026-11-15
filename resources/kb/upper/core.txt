@@ -3289,6 +3289,11 @@
 ;; predicate still admits its self tuple).
 (set/monotonic (genl asymmetric irreflexive))
 (set/monotonic (genl asymmetric anti_symmetric))
+;; The converse holds too: asymmetric is irreflexive and anti_symmetric together.  The rule
+;; is inert.  Run backward, it reaches its own antecedents through the two genl edges
+;; above, and a firing would store an asymmetric mark, which turns on the asymmetric
+;; nogood for a predicate stated only irreflexive and anti_symmetric.
+(set/inertRule (implies (and (irreflexive ?p) (anti_symmetric ?p)) (asymmetric ?p)))
 
 ;; and the incompatible pairs: no predicate is both symmetric and asymmetric, both
 ;; reflexive and irreflexive, or both transitive and antitransitive.  (disjoint symmetric
