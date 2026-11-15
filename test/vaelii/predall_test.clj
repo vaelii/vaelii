@@ -1161,9 +1161,20 @@
     (list pred member "A determinate fixture description.")
     (list pred "A determinate fixture description." member)))
 
-(defn- specified-result [kb functor pred kind context]
-  (get (v/all-specified-violations kb context) [functor pred kind]
-       {:status :audited :violations #{}}))
+(defn- specified-result
+  "The sweep's result for the Specified declaration `[functor pred kind]` in `context`,
+  `{:status :audited :violations #{}}` where it holds, as `all-specified-violations`
+  reports it.  Read off `specified-declaration-audits`' Specified section, whose last
+  entry for a key is its combined result, and stop there: the quoted audits that follow
+  sweep every written symbol (core's `(predAllQuotedSpecified comment symbol)`) and
+  answer nothing these tests ask."
+  [kb functor pred kind context]
+  (or (->> (predall/specified-declaration-audits kb context)
+           (take-while #(contains? '#{predAllSpecified predSpecifiedAll} (ffirst %)))
+           (filter #(= [functor pred kind] (first %)))
+           last
+           second)
+      {:status :audited :violations #{}}))
 
 (defn- specified-contexts [kb functor pred kind parent child nested sibling]
   (doseq [[sub super] [[parent 'CxUniverse] [child parent] [nested child] [sibling parent]]]
@@ -1222,8 +1233,9 @@
       (v/assert kb (list item_kind Child) CxChild)
       (v/assert kb (specified-note functor notes Base) CxChild)
       (let [key [functor notes item_kind]
-            entries (filter #(= key (first %))
-                            (predall/specified-declaration-audits kb CxChild))]
+            entries (->> (predall/specified-declaration-audits kb CxChild)
+                         (take-while #(contains? '#{predAllSpecified predSpecifiedAll} (ffirst %)))
+                         (filter #(= key (first %))))]
         (is (= 4 (count entries)) "the stored requirement has four readers, not a native duplicate")
         (is (= {:status :audited :violations #{Base Child}} (second (last entries)))
             "the stored source selects the readers; a native answer adds no duplicate")))))
