@@ -12,6 +12,25 @@ call; 0.8.0 through 0.13.0 keep a subset. The full entry prose for a
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+### Breaking: shipped ontology
+
+- **Kinship shares one unqualified hierarchy with blood and chosen readings.** `relativeOf`
+  becomes `kinOf`; `BloodKinFn` qualifies eternal blood history and `ChosenKinFn`
+  qualifies time-varying chosen ties. Unqualified kinship is time-agnostic. Gestational-only
+  parenthood is blood kin without a genetic or shared-carrier sibling inference.
+  Mothers are not unique; `MotherFn` does not choose between several known mothers.
+  Named blood/chosen predicates keep separately justified constructor results and
+  correspondences; removing a use removes only the proofs that depend on it.
+  `originatorOf` admits organisms and no longer specializes kinship.
+  *Migration:* rename `relativeOf` to `kinOf`; rewrite biological family/history facts
+  with `BloodKinFn`. Unqualified facts no longer assert blood descent or eternity.
+  `MotherFn` and `FatherFn` correspond to their blood-qualified predicates.
+  *Breaks:* `relativeOf`, `parentOf`, `childOf`, `motherOf`, `fatherOf`, `siblingOf`,
+  `grandparentOf`, `ancestorOf`, `birthDate`, `birthYearOf`, `olderThan`, `MotherFn`,
+  `FatherFn`, `originatorOf`
+
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
 | Area | Change |

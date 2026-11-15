@@ -495,7 +495,7 @@ concludes `(functionCorrespondingPredicate MotherFn (BloodKinFn motherOf) 2)` fr
 reads only the ternary. The example is the shipped one: `resources/kb/upper/life.txt`
 declares `MotherFn` and `FatherFn` beside blood-qualified `motherOf` and `fatherOf`, so a KB that
 loads the starter can name somebody by their role before it knows their name.
-Generic `motherOf` alone does not determine a `MotherFn` value. Distinct blood mothers
+Unqualified `motherOf` alone does not determine a `MotherFn` value. Distinct blood mothers
 remain distinct; ambiguous admissible values select none rather than choosing or merging them.
 
 Two `functionalInArg` marks constrain the ternary. A function and predicate pair has one

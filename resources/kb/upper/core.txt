@@ -1169,7 +1169,7 @@
 (set/monotonic (orthogonal definitional_predicate forced_monotonic_predicate))
 (comment (orthogonal definitional_predicate forced_monotonic_predicate) "arg and arity are both, comment is a definitional predicate and not forced-monotonic, and equals is forced-monotonic and in no term's block.")
 ;; A kinship tuple is a fact about two people, never a sentence about a term.
-(set/monotonic (disjoint definitional_predicate generic_kinship_predicate))
+(set/monotonic (disjoint definitional_predicate unqualified_kinship_predicate))
 (set/monotonic (disjoint definitional_predicate chosen_kinship_predicate))
 ;; The KB states or derives every predicate a block is written in (below), so a predicate
 ;; it does not make a member is in no term's block.
@@ -1359,13 +1359,13 @@
 (set/monotonic (time_invariant_relation situation_predicate))
 (not (decontextualized_predicate situation_predicate))
 
-(comment generic_kinship_predicate "An unqualified kinship predicate whose meaning admits both a blood reading and a chosen-family reading. It does not itself choose either reading for a tuple.")
-(unary_predicate generic_kinship_predicate)
-(genl generic_kinship_predicate predicate)
-(set/monotonic (genl generic_kinship_predicate time_agnostic_relation))
-(set/monotonic (time_invariant_relation generic_kinship_predicate))
-(forced_monotonic_predicate generic_kinship_predicate)
-(implementationNote generic_kinship_predicate "Constructor inputs are structural declarations. Their mark is forced-monotonic so the guarded rules may conclude the forced-monotonic arity and argument declarations of their qualified readings.")
+(comment unqualified_kinship_predicate "An unqualified kinship predicate whose meaning admits both a blood reading and a chosen-family reading. It does not itself choose either reading for a tuple.")
+(unary_predicate unqualified_kinship_predicate)
+(genl unqualified_kinship_predicate predicate)
+(set/monotonic (genl unqualified_kinship_predicate time_agnostic_relation))
+(set/monotonic (time_invariant_relation unqualified_kinship_predicate))
+(forced_monotonic_predicate unqualified_kinship_predicate)
+(implementationNote unqualified_kinship_predicate "Constructor inputs are structural declarations. Their mark is forced-monotonic so the guarded rules may conclude the forced-monotonic arity and argument declarations of their qualified readings.")
 
 (comment blood_kinship_predicate "The blood-qualified reading of a kinship predicate. It describes ancestry or birth history, with genetic consequences defeasible for gestational-only parenthood and other known exceptions.")
 (unary_predicate blood_kinship_predicate)
@@ -2106,7 +2106,7 @@
 ;; target_following_predicate's meta-sentex is retracted with the sentex it names, a
 ;; documentation predicate's sentences are the documentation the KB stores, a
 ;; definitional predicate's sentences are the blocks the KB stores, and a
-;; kinship predicate's tuples, generic, blood or chosen, are stored when asserted.
+;; kinship predicate's tuples, unqualified, blood or chosen, are stored when asserted.
 (set/monotonic (disjoint not_assertible abducible_predicate))
 (set/monotonic (disjoint not_assertible decontextualized_predicate))
 (set/monotonic (disjoint not_assertible forced_decontextualized_predicate))
@@ -2115,7 +2115,7 @@
 (set/monotonic (disjoint not_assertible target_following_predicate))
 (set/monotonic (disjoint not_assertible documentation_predicate))
 (set/monotonic (disjoint not_assertible definitional_predicate))
-(set/monotonic (disjoint not_assertible generic_kinship_predicate))
+(set/monotonic (disjoint not_assertible unqualified_kinship_predicate))
 (set/monotonic (disjoint not_assertible blood_kinship_predicate))
 (set/monotonic (disjoint not_assertible chosen_kinship_predicate))
 ;; A classifier whose members are stated content has no not_assertible member: the arity

@@ -3,34 +3,34 @@
 (comment BloodKinFn "(BloodKinFn ?predicate) denotes the blood-qualified reading of the unqualified kinship predicate ?predicate.")
 (unary_function BloodKinFn)
 (reifiable_function BloodKinFn)
-(arg BloodKinFn 1 generic_kinship_predicate)
+(arg BloodKinFn 1 unqualified_kinship_predicate)
 (result BloodKinFn blood_kinship_predicate)
 (functionCorrespondingBinaryPredicate BloodKinFn bloodKinPredicateOf)
 
 (comment ChosenKinFn "(ChosenKinFn ?predicate) denotes the chosen-family reading of the unqualified kinship predicate ?predicate.")
 (unary_function ChosenKinFn)
 (reifiable_function ChosenKinFn)
-(arg ChosenKinFn 1 generic_kinship_predicate)
+(arg ChosenKinFn 1 unqualified_kinship_predicate)
 (result ChosenKinFn chosen_kinship_predicate)
 (functionCorrespondingBinaryPredicate ChosenKinFn chosenKinPredicateOf)
 
-(comment bloodKinPredicateOf "(bloodKinPredicateOf ?generic ?blood) means ?blood is the blood-qualified reading of ?generic.")
+(comment bloodKinPredicateOf "(bloodKinPredicateOf ?unqualified ?blood) means ?blood is the blood-qualified reading of ?unqualified.")
 (binary_predicate bloodKinPredicateOf)
-(arg bloodKinPredicateOf 1 generic_kinship_predicate)
+(arg bloodKinPredicateOf 1 unqualified_kinship_predicate)
 (arg bloodKinPredicateOf 2 blood_kinship_predicate)
 (set/monotonic (eternal_predicate bloodKinPredicateOf))
 (set/monotonic (functional bloodKinPredicateOf))
 
-(comment chosenKinPredicateOf "(chosenKinPredicateOf ?generic ?chosen) means ?chosen is the chosen-family reading of ?generic.")
+(comment chosenKinPredicateOf "(chosenKinPredicateOf ?unqualified ?chosen) means ?chosen is the chosen-family reading of ?unqualified.")
 (binary_predicate chosenKinPredicateOf)
-(arg chosenKinPredicateOf 1 generic_kinship_predicate)
+(arg chosenKinPredicateOf 1 unqualified_kinship_predicate)
 (arg chosenKinPredicateOf 2 chosen_kinship_predicate)
 (set/monotonic (eternal_predicate chosenKinPredicateOf))
 (set/monotonic (functional chosenKinPredicateOf))
 
 (comment kinOf "(kinOf ?first ?second) means ?first and ?second are family, by blood or by choice. It describes the family tie that holds, rather than merely recording that a chosen tie once held.")
 (instance_relation_predicate kinOf)
-(generic_kinship_predicate kinOf)
+(unqualified_kinship_predicate kinOf)
 (arg kinOf 1 causal)
 (arg kinOf 2 causal)
 (set/monotonic (symmetric kinOf))
@@ -283,59 +283,59 @@
             (sharesGenesWith ?first ?second)))))
 
 ;; Only the unqualified vocabulary is a constructor input. Result types are blood or
-;; chosen, never generic, so these rules do not qualify their own conclusions again.
+;; chosen, never unqualified, so these rules do not qualify their own conclusions again.
 (set/forwardRule
- (implies (generic_kinship_predicate ?predicate)
+ (implies (unqualified_kinship_predicate ?predicate)
           (blood_kinship_predicate (BloodKinFn ?predicate))))
 (set/forwardRule
- (implies (generic_kinship_predicate ?predicate)
+ (implies (unqualified_kinship_predicate ?predicate)
           (chosen_kinship_predicate (ChosenKinFn ?predicate))))
 (set/forwardRule
- (implies (generic_kinship_predicate ?predicate)
+ (implies (unqualified_kinship_predicate ?predicate)
           (genl (BloodKinFn ?predicate) ?predicate)))
 (set/forwardRule
- (implies (generic_kinship_predicate ?predicate)
+ (implies (unqualified_kinship_predicate ?predicate)
           (genl (ChosenKinFn ?predicate) ?predicate)))
 
-(implementationNote BloodKinFn "Hierarchy lifting generates ground conditional rules from pairs of generic inputs. The generated antecedent is the original ground genl edge, admitted as forced-between-predicates without forcing genl between types. The finite pair schema also reads a hierarchy edge asserted later. Qualified outputs are not generic inputs, so qualification cannot nest.")
+(implementationNote BloodKinFn "Hierarchy lifting generates ground conditional rules from pairs of unqualified inputs. The generated antecedent is the original ground genl edge, admitted as forced-between-predicates without forcing genl between types. The finite pair schema also reads a hierarchy edge asserted later. Qualified outputs are not unqualified inputs, so qualification cannot nest.")
 
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (generic_kinship_predicate ?general))
+ (implies (and (unqualified_kinship_predicate ?predicate) (unqualified_kinship_predicate ?general))
           (set/forwardRule
            (implies (genl ?predicate ?general)
                     (genl (BloodKinFn ?predicate) (BloodKinFn ?general))))))
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (generic_kinship_predicate ?general))
+ (implies (and (unqualified_kinship_predicate ?predicate) (unqualified_kinship_predicate ?general))
           (set/forwardRule
            (implies (genl ?predicate ?general)
                     (genl (ChosenKinFn ?predicate) (ChosenKinFn ?general))))))
 
 ;; Predicate arity is explicit on each reading; it is not inherited from its genl.
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity))
+ (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
           (arity (BloodKinFn ?predicate) ?arity)))
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity))
+ (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
           (arity (ChosenKinFn ?predicate) ?arity)))
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
+ (implies (and (unqualified_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
           (arityMin (BloodKinFn ?predicate) ?minimum)))
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
+ (implies (and (unqualified_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
           (arityMin (ChosenKinFn ?predicate) ?minimum)))
 
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
+ (implies (and (unqualified_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
           (arg (BloodKinFn ?predicate) ?position ?type)))
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
+ (implies (and (unqualified_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
           (arg (ChosenKinFn ?predicate) ?position ?type)))
 
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
+ (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
           (variable_arity_predicate (BloodKinFn ?predicate))))
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
+ (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
           (variable_arity_predicate (ChosenKinFn ?predicate))))
 
 ;; These content-exact review records do not except or weaken any inference rule.
@@ -347,169 +347,169 @@
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
    (Quote (implies (binary ?var2) (arity ?var2 2))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
    (Quote (implies (quaternary ?var2) (arity ?var2 4))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
    (Quote (implies (quinary ?var2) (arity ?var2 5))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
    (Quote (implies (ternary ?var2) (arity ?var2 3))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
    (Quote (implies (unary ?var2) (arity ?var2 1))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
    (Quote (implies (binary ?var2) (arity ?var2 2))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
    (Quote (implies (quaternary ?var2) (arity ?var2 4))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
    (Quote (implies (quinary ?var2) (arity ?var2 5))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
    (Quote (implies (ternary ?var2) (arity ?var2 3))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
    (Quote (implies (unary ?var2) (arity ?var2 1))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
    (Quote (implies (and (reflexive ?var4) (symmetric ?var4) (transitive ?var4)) (equivalence_relation ?var4))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
    (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
    (Quote (implies (bijection ?p) (injection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
    (Quote (implies (bijection ?p) (surjection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
    (Quote (implies (equivalence_relation ?p) (reflexive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
    (Quote (implies (equivalence_relation ?p) (symmetric ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
    (Quote (implies (equivalence_relation ?p) (transitive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
    (Quote (implies (injection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
    (Quote (implies (surjection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
    (Quote (implies (and (reflexive ?var4) (symmetric ?var4) (transitive ?var4)) (equivalence_relation ?var4))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
    (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
    (Quote (implies (bijection ?p) (injection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
    (Quote (implies (bijection ?p) (surjection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
    (Quote (implies (equivalence_relation ?p) (reflexive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
    (Quote (implies (equivalence_relation ?p) (symmetric ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
    (Quote (implies (equivalence_relation ?p) (transitive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
    (Quote (implies (injection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (generic_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
    (Quote (implies (surjection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 

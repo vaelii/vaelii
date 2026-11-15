@@ -8,12 +8,12 @@
 
 (defn- load-kinship-fixture! [kb]
   (tu/load-starter! kb)
-  (doseq [sentence '[(generic_kinship_predicate testKinshipSequenceOf)
+  (doseq [sentence '[(unqualified_kinship_predicate testKinshipSequenceOf)
                      (variable_arity_predicate testKinshipSequenceOf)
                      (arityMin testKinshipSequenceOf 3)
-                     (generic_kinship_predicate testNarrowKinshipOf)
+                     (unqualified_kinship_predicate testNarrowKinshipOf)
                      (binary_predicate testNarrowKinshipOf)
-                     (generic_kinship_predicate testBroadKinshipOf)
+                     (unqualified_kinship_predicate testBroadKinshipOf)
                      (binary_predicate testBroadKinshipOf)
                      (binary_predicate testBloodLeafOf)
                      (genl testBloodLeafOf bloodRelativeOf)
@@ -42,7 +42,7 @@
   (doseq [predicate '[kinOf parentOf childOf motherOf fatherOf siblingOf
                       grandparentOf ancestorOf birthDate birthYearOf olderThan]]
     (testing (str predicate)
-      (is (true? (v/ask? kb (list 'generic_kinship_predicate predicate) U)))
+      (is (true? (v/ask? kb (list 'unqualified_kinship_predicate predicate) U)))
       (is (= #{'time_agnostic_relation} (kinds-of kb predicate)))
       (is (not (v/ask? kb (list 'eternal_predicate predicate) U))))
     (testing (str "blood " predicate)
@@ -52,16 +52,16 @@
     (testing (str "chosen " predicate)
       (is (true? (v/ask? kb (list 'chosen_kinship_predicate (chosen predicate)) U)))
       (is (= #{'time_varying_relation} (kinds-of kb (chosen predicate)))))
-    (is (not (v/ask? kb (list 'generic_kinship_predicate (blood predicate)) U)))
-    (is (not (v/ask? kb (list 'generic_kinship_predicate (chosen predicate)) U)))))
+    (is (not (v/ask? kb (list 'unqualified_kinship_predicate (blood predicate)) U)))
+    (is (not (v/ask? kb (list 'unqualified_kinship_predicate (chosen predicate)) U)))))
 
 (tu/deftest-kb branch-specializations-get-their-stronger-classification
   (is (true? (v/ask? kb '(blood_kinship_predicate testBloodLeafOf) U)))
   (is (true? (v/ask? kb '(eternal_predicate testBloodLeafOf) U)))
   (is (true? (v/ask? kb '(chosen_kinship_predicate testChosenLeafOf) U)))
   (is (true? (v/ask? kb '(time_varying_relation testChosenLeafOf) U)))
-  (is (not (v/ask? kb '(generic_kinship_predicate testBloodLeafOf) U)))
-  (is (not (v/ask? kb '(generic_kinship_predicate testChosenLeafOf) U))))
+  (is (not (v/ask? kb '(unqualified_kinship_predicate testBloodLeafOf) U)))
+  (is (not (v/ask? kb '(unqualified_kinship_predicate testChosenLeafOf) U))))
 
 (tu/deftest-kb constructors-have-corresponding-predicates-and-named-roots
   (is (true? (v/ask? kb '(functionCorrespondingPredicate BloodKinFn bloodKinPredicateOf 2) U)))

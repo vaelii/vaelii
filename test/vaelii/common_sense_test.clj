@@ -373,7 +373,7 @@
       (is (v/ask? kb '(parentOf Tom Bob))))))
 
 (tu/deftest-kb one-child-can-have-two-distinct-mothers
-  ;; Generic motherhood is not a uniqueness constraint. Two mothers can stay distinct,
+  ;; Unqualified motherhood is not a uniqueness constraint. Two mothers can stay distinct,
   ;; rather than being treated as two names for one animal. The numerical birth-year
   ;; constraint still reports a different year as a clash.
   (tu/with-terms [Pup Dam Mum]

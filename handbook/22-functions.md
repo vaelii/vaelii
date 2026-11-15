@@ -38,11 +38,11 @@ file says so in a `;;` note when it is made.
 (set/monotonic (instance_relation_predicate motherOf))
 (arg motherOf 1 causal)
 (arg motherOf 2 causal)
-(generic_kinship_predicate motherOf)
+(unqualified_kinship_predicate motherOf)
 ```
 
 `functionCorrespondingBinaryPredicate` puts the value at the second argument of
-blood-qualified `motherOf`. The child comes first. Generic motherOf and its blood
+blood-qualified `motherOf`. The child comes first. Unqualified motherOf and its blood
 reading need not be functional: if several mothers are visible the correspondence
 selects none and does not merge them.
 
@@ -68,7 +68,7 @@ selects none and does not merge them.
   antecedents. A rule whose antecedents apply a reifiable function its context sees no
   correspondence for is stored as written and held: it is not believed and fires nothing.
   Nothing on the write path refuses the rule.
-- *Maintenance.* Keep the correspondence on the qualified predicate: a generic parent
+- *Maintenance.* Keep the correspondence on the qualified predicate: an unqualified parent
   fact alone does not choose blood descent.
 
 **Why not the other ways.** A function with no predicate forces every statement about

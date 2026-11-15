@@ -106,7 +106,7 @@ blocks in natural sort order by term. In a middle file, put the `genlCx` edges f
 (set/monotonic (instance_relation_predicate motherOf))
 (arg motherOf 1 causal)
 (arg motherOf 2 causal)
-(generic_kinship_predicate motherOf)
+(unqualified_kinship_predicate motherOf)
 ```
 
 **Why.**

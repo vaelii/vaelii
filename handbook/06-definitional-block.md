@@ -127,7 +127,7 @@ relation properties.
 (set/monotonic (instance_relation_predicate siblingOf))
 (arg siblingOf 1 causal)
 (arg siblingOf 2 causal)
-(generic_kinship_predicate siblingOf)
+(unqualified_kinship_predicate siblingOf)
 (set/monotonic (symmetric siblingOf))
 ```
 

@@ -17,7 +17,7 @@
 (arg ancestorOf 1 causal)
 (arg ancestorOf 2 causal)
 (set/monotonic (transitive ancestorOf))
-(generic_kinship_predicate ancestorOf)
+(unqualified_kinship_predicate ancestorOf)
 
 (comment asleep
          "(asleep ?animal) means that ?animal is sleeping. Stated rather than derived, and what blocks the awake default; a rule concludes (not (awake ?x)) from it, so the two cannot both be believed of one animal and neither has to be retracted for the other to be told.")
@@ -36,7 +36,7 @@
 (implementationNote birthDate "Each rule below concludes the next coarser birthDate, from an InstantFn to its DayFn, a DayFn to its MonthFn and a MonthFn to its YearFn, and one rule concludes birthYearOf from the YearFn, so one rule alone concludes the functional birthYearOf. Two birth dates in different years clash on birthYearOf; two different days in one year clash with nothing, since birthDate is not functional. No rule reads the year out of a DatetimeFn or DatetimeRangeFn term, whose year is inside a string. The converse rule, from birthYearOf to the YearFn, is inert, so the clash on birthYearOf runs through the facts and not through a pair of rules concluding each other.")
 (positiveExampleComment birthDate "(birthDate Tom (DayFn 1970 3 14)) beside (birthDate Tom (YearFn 1970))")
 (set/monotonic (instance_relation_predicate birthDate))
-(generic_kinship_predicate birthDate)
+(unqualified_kinship_predicate birthDate)
 (arg birthDate 1 organism)
 (arg birthDate 2 uninterrupted_time)
 ;; Not functional: a birth stated to the day and to the year has two true birthDate
@@ -60,7 +60,7 @@
 (arg birthYearOf 1 organism)
 (arg birthYearOf 2 integer)
 (set/monotonic (functional birthYearOf))
-(generic_kinship_predicate birthYearOf)
+(unqualified_kinship_predicate birthYearOf)
 
 (comment breathes_air
          "(breathes_air ?animal) means that ?animal takes its oxygen from the air. True by default of an animal and blocked for a fish. The exception names a whole CLASS rather than one awkward species, so it reaches every kind of fish ever added and needs no upkeep.")
@@ -73,7 +73,7 @@
          "(childOf ?child ?parent) means ?child is a child of ?parent, by blood or by choice.")
 (implementationNote childOf "The inverse prover answers (childOf Tom Ann) from (parentOf Ann Tom), and retracting the one withdraws the other.")
 (set/monotonic (instance_relation_predicate childOf))
-(generic_kinship_predicate childOf)
+(unqualified_kinship_predicate childOf)
 (arg childOf 1 causal)
 (arg childOf 2 causal)
 
@@ -92,7 +92,7 @@
 
 (comment FatherFn
          "(FatherFn ?animal) denotes the blood father of ?animal when its blood-parentage reading determines one.")
-(implementationNote FatherFn "A written application names its own opaque constant. The correspondence is to blood-qualified fatherOf, not generic fatherOf. One visible monotonic blood father reaches the constant through a supported rewriteOf merge; withdrawing its premise withdraws the restated uses. With several visible values the correspondence selects none and does not merge them. See docs/nat.md.")
+(implementationNote FatherFn "A written application names its own opaque constant. The correspondence is to blood-qualified fatherOf, not unqualified fatherOf. One visible monotonic blood father reaches the constant through a supported rewriteOf merge; withdrawing its premise withdraws the restated uses. With several visible values the correspondence selects none and does not merge them. See docs/nat.md.")
 (reifiable_function FatherFn)
 (unary_function FatherFn)
 (set/monotonic (time_invariant_relation FatherFn))
@@ -105,12 +105,12 @@
 (set/monotonic (instance_relation_predicate fatherOf))
 (arg fatherOf 1 causal)
 (arg fatherOf 2 causal)
-(generic_kinship_predicate fatherOf)
+(unqualified_kinship_predicate fatherOf)
 
 (comment grandparentOf
          "(grandparentOf ?grandparent ?grandchild) means that ?grandparent is a parent of a parent of ?grandchild. Derived by a joined rule over two parentOf facts rather than asserted, so it is believed exactly as long as both links are.")
 (set/monotonic (instance_relation_predicate grandparentOf))
-(generic_kinship_predicate grandparentOf)
+(unqualified_kinship_predicate grandparentOf)
 (arg grandparentOf 1 causal)
 (arg grandparentOf 2 causal)
 
@@ -191,13 +191,13 @@
 (set/monotonic (instance_relation_predicate motherOf))
 (arg motherOf 1 causal)
 (arg motherOf 2 causal)
-(generic_kinship_predicate motherOf)
+(unqualified_kinship_predicate motherOf)
 
 (comment olderThan
          "(olderThan ?organism1 ?organism2) means that ?organism1 was born before ?organism2. CxKinship concludes it from two birthYearOf values in order, so it holds whenever both birth years are known and ordered. Declared transitive, the same instance-level strict order heavierThan and tallerThan are: born-before composes, so two stated comparisons carry the third with no birth year written down.")
 (implementationNote olderThan "The CxKinship rule is a backward rule, and it compares the two years with the evaluable lessThan. The transitive prover answers a chain of olderThan facts at query time.")
 (set/monotonic (instance_relation_predicate olderThan))
-(generic_kinship_predicate olderThan)
+(unqualified_kinship_predicate olderThan)
 (arg olderThan 1 organism)
 (arg olderThan 2 organism)
 (set/monotonic (transitive olderThan))
@@ -205,7 +205,7 @@
 (comment parentOf
          "(parentOf ?parent ?child) means ?parent is a parent of ?child, by blood or by choice.")
 (set/monotonic (instance_relation_predicate parentOf))
-(generic_kinship_predicate parentOf)
+(unqualified_kinship_predicate parentOf)
 (arg parentOf 1 causal)
 (arg parentOf 2 causal)
 (inverse parentOf childOf)
@@ -225,7 +225,7 @@
 (arg siblingOf 1 causal)
 (arg siblingOf 2 causal)
 (set/monotonic (symmetric siblingOf))
-(generic_kinship_predicate siblingOf)
+(unqualified_kinship_predicate siblingOf)
 
 (comment warm_blooded
          "(warm_blooded ?animal) means that ?animal holds its own body temperature rather than taking the temperature around it. Derived of the mammals and the birds and denied of the three cold-blooded classes, so it is never asserted of any particular animal — which is what makes it a worked example of a claim inherited from a kind rather than stated of a thing.")

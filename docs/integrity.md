@@ -1368,7 +1368,7 @@ not an expiring grant.
 
 Whole-event participation (`actor` and all its binary specializations), causes,
 sub-situations, provenance and biological genealogy describe fixed history and are
-eternal. Generic kinship predicates, including `kinOf`, are time-agnostic and
+eternal. Unqualified kinship predicates, including `kinOf`, are time-agnostic and
 non-eternal. `BloodKinFn` qualifies their eternal blood readings; `ChosenKinFn`
 qualifies their time-varying chosen readings. Qualification does not transfer eternity
 back to the common predicate. These marks do not implement cross-slice projection (#272). The current RCC region relations describe

@@ -249,7 +249,7 @@
 ;; predicate is not eternal.
 
 (tu/deftest-kb an-eternal-fact-in-one-year-slice-holds-in-an-unrelated-year
-  ;; Blood-qualified parentOf is eternal. The generic predicate is agnostic. 1800 is
+  ;; Blood-qualified parentOf is eternal. The unqualified predicate is agnostic. 1800 is
   ;; a sibling of 2040 under CxMonad, and sees the copy the store puts in CxMonad.
   (declare-cxtimefn! kb)
   (tu/with-terms [Ann Bob]

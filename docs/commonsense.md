@@ -108,7 +108,7 @@ functions are what let a KB name somebody by their role before it knows their na
 each written application mints its own constant. A uniquely determined monotonic blood
 parent reaches that constant through a supported `rewriteOf` merge; withdrawing its
 premise withdraws the restated uses, not the application's own constant. The shipped functions correspond to
-`(BloodKinFn motherOf)` and `(BloodKinFn fatherOf)`, not the generic family predicates.
+`(BloodKinFn motherOf)` and `(BloodKinFn fatherOf)`, not the unqualified family predicates.
 Several visible mothers remain distinct; without a unique admissible blood value the correspondence
 selects none and does not merge them.
 

@@ -10,6 +10,15 @@
 ;; caller's code rewrites.
 {:renames        {}
  :context-merges {}
- :re-meanings    {}
+ :re-meanings    {parentOf "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."
+                  childOf "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."
+                  motherOf "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."
+                  fatherOf "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."
+                  siblingOf "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."
+                  grandparentOf "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."
+                  ancestorOf "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."
+                  birthDate "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."
+                  birthYearOf "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."
+                  olderThan "Unqualified blood-or-chosen reading; use BloodKinFn for biological history."}
  :retired        #{}
  :api            {}}

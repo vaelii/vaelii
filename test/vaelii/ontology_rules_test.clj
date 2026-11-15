@@ -225,9 +225,9 @@
   (let [pairs   (rule-clashes-everywhere kb #{:rule-clash :rule-clash-review})
         about   (fn [f] (filter (fn [p] (some #(some #{f} (flatten %)) (:sentences p)))
                                 pairs))]
-    (let [copies '#{(implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity))
+    (let [copies '#{(implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
                              (arity (BloodKinFn ?predicate) ?arity))
-                    (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity))
+                    (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
                              (arity (ChosenKinFn ?predicate) ?arity))}
           other-pairs (remove #(some copies (:sentences %)) (about 'arity))]
       (is (empty? other-pairs)
