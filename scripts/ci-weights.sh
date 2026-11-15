@@ -124,7 +124,9 @@ HDR
 # namespace finding skips each shard's first row, because the first namespace in a
 # JVM also pays the JVM's and the KB's start-up, about 70 s on CI.  On CI,
 # vaelii.query-context-test read 76 s against 6 s expected when it ran first, and
-# 75 s when rerun alone.  The insertion sort keeps to POSIX awk, which
+# 75 s when rerun alone.  Every shard now runs vaelii.shared-dumps-test first
+# (scripts/ci-shard.sh), so that first row is the build of the starter and
+# upper-ontology dumps.  The insertion sort keeps to POSIX awk, which
 # has no asort.
 check_leg() {
   awk -F'\t' -v leg="$1" -v baseline="$3" -v list="${4:-}" -v speed_floor="$SPEED_FLOOR" \

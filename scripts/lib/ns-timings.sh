@@ -15,6 +15,13 @@
 # .github/workflows/test.yml packs its CI shards from them (scripts/ci-weights.sh
 # turns a run's rows into the weights the next run reads).
 
+# NS_TIMINGS_FIRST is the namespace scripts/ci-shard.sh prints first in every
+# shard.  It builds the starter and upper-ontology dumps, which the test JVM
+# builds once each, in whichever namespace loads each first; the starter's takes
+# about 70 s on CI.  Its row then takes those builds, and no other row does.
+# shellcheck disable=SC2034  # read by scripts/ci-shard.sh, which sources this file
+NS_TIMINGS_FIRST=vaelii.shared-dumps-test
+
 # The clock is in microseconds: bash 5's EPOCHREALTIME, else perl's Time::HiRes for
 # bash 3.2 (macOS's /bin/bash), else whole SECONDS.  Most namespaces take under a
 # second, and at whole seconds they all read 0 and pack into one shard.
