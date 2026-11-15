@@ -218,7 +218,7 @@
     (let [d (v/describe kb kin_a 'CxUniverse)
           b (block d)]
       (is (= [:comment :positive-examples :negative-examples :parents :siblings :kind
-              :arity-class]
+              :arity-class :links]
              (mapv :part (:definitional-block d))))
       (is (= :missing (:kind b)) "the arity class is not a kind")
       (is (= ['unary_predicate] (:terms (:arity-class b))))
@@ -243,12 +243,84 @@
 (tu/deftest-kb a-predicates-block-holds-its-arity-declarations-and-properties
   (let [d (v/describe kb 'parentOf W)
         b (block d)]
-    (is (= [:comment :kind :arity-class :arity :arg-declarations :parents :props]
+    (is (= [:comment :parents :kind :arity-class :arity :arg-declarations :props :links]
            (mapv :part (:definitional-block d))))
     (is (= 2 (:arity b)))
     (is (= (:arg-declarations d) (:arg-declarations b)))
-    (is (= :missing (:props b)) "parentOf is neither transitive nor symmetric"))
-  (is (= #{:symmetric} (:props (block (v/describe kb 'siblingOf W))))))
+    (is (= :missing (:props b)) "parentOf states no algebraic property"))
+  (is (= '[(symmetric siblingOf)] (mapv :sentence (:props (block (v/describe kb 'siblingOf W)))))
+      "a property row is the sentence that states it"))
+
+(defn- block-sentences
+  "The sentences the block `b` shows as sentence rows: its well-formedness declarations,
+  its properties and its links."
+  [b]
+  (into #{} (comp (mapcat #(let [v (get b %)] (when (vector? v) v))) (map :sentence))
+        [:arg-declarations :props :links]))
+
+(tu/deftest-kb a-predicates-block-reads-the-kbs-classification-of-its-sentences
+  ;; The parts are read off the KB's block collections, not off fixed tables: a
+  ;; per-position property, an algebraic property outside the five `describe` lists under
+  ;; :props, a well-formedness declaration outside arg's family and a link each land in
+  ;; their part, and a sentence whose predicate is not definitional lands in none.
+  (tu/with-terms [relP relQ kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'binary_predicate relQ) (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'irreflexive relP) (list 'functionalInArg relP 2)
+               (list 'argsGenl relP kindT) (list 'seeAlso relP relQ)
+               (list 'implementationNote relP "a note no block part shows")]]
+      (v/assert kb s 'CxUniverse))
+    (let [d (v/describe kb relP 'CxUniverse)
+          b (block d)]
+      (is (= #{(list 'irreflexive relP) (list 'functionalInArg relP 2)}
+             (set (map :sentence (:props b))))
+          "irreflexive and the per-position functionalInArg are algebraic properties")
+      (is (contains? (set (map :sentence (:arg-declarations b))) (list 'argsGenl relP kindT))
+          "argsGenl is a wff_constraint")
+      (is (= [(list 'seeAlso relP relQ)] (mapv :sentence (:links b))))
+      (is (not (contains? (block-sentences b)
+                          (list 'implementationNote relP "a note no block part shows")))
+          "implementationNote is not definitional")
+      (is (= (set (:arg-declarations d)) (set (:arg-declarations b)))))))
+
+(tu/deftest-kb the-blocks-rows-follow-the-kbs-display-order
+  ;; core.txt's predicateDisplayOrder names transitive among the algebraic properties and
+  ;; neither irreflexive nor functionalInArg, so content order puts functionalInArg first.
+  ;; A second fact naming irreflexive before functionalInArg reverses the two rows.
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'irreflexive relP) (list 'functionalInArg relP 2)]]
+      (v/assert kb s 'CxUniverse))
+    (let [props #(mapv :sentence (:props (block (v/describe kb relP 'CxUniverse))))]
+      (is (= [(list 'functionalInArg relP 2) (list 'irreflexive relP)] (props))
+          "unnamed predicates are shown in content order")
+      (let [h (v/assert kb '(predicateDisplayOrder irreflexive functionalInArg) 'CxUniverse)]
+        (try
+          (is (= [(list 'irreflexive relP) (list 'functionalInArg relP 2)] (props))
+              "a named predicate is shown in the order named")
+          (finally (v/retract! kb h)))))))
+
+(tu/deftest-kb a-types-kind-shows-only-definitional-memberships
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing) (list 'type kindT)
+               (list 'closed_extent_predicate kindT) (list 'not_assertible kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [kinds (set (:terms (:kind (block (v/describe kb kindT 'CxUniverse)))))]
+      (is (contains? kinds 'type) "an order is part of the block")
+      (is (not (contains? kinds 'closed_extent_predicate)) "a grant is not")
+      (is (not (contains? kinds 'not_assertible)) "nor is a refusal mark"))))
+
+(tu/deftest-kb a-cluster-link-is-in-the-block-of-each-term-it-names
+  (tu/with-terms [kindA kindB kindC]
+    (doseq [t [kindA kindB kindC]]
+      (v/assert kb (list 'unary_predicate t) 'CxUniverse)
+      (v/assert kb (list 'genl t 'thing) 'CxUniverse))
+    (v/assert kb (list 'termsRelated kindA kindB kindC) 'CxUniverse)
+    (doseq [t [kindA kindB kindC]]
+      (is (= [(list 'termsRelated kindA kindB kindC)]
+             (mapv :sentence (:links (block (v/describe kb t 'CxUniverse)))))
+          (str t)))))
 
 (tu/deftest-kb an-individual-is-described-by-its-types-and-where-it-is-mentioned
   (let [d (v/describe kb 'Muffet N)]

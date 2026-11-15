@@ -125,6 +125,27 @@ it — `git show v0.16.0:CHANGELOG.md`.
   heads the same way. [equality.md](docs/equality.md#choosing-the-representative)
   *Breaks:* `representative`, `ask`
 
+### Breaking: describe and the term page
+
+- **The definitional block reads the KB's classification.** A sentence about the term is in
+  `describe`'s `:definitional-block` when its predicate is a `definitional_predicate`,
+  read with the vocabulary audit's reader (`vocabulary/members`). `:kind` and
+  `:arity-class` keep only definitional memberships, so `not_assertible`,
+  `closed_extent_predicate` and the other grants and marks no longer show as a kind.
+  `:arg-declarations` is every `wff_predicate` sentence, `argsGenl` and `result` among them.
+  The block's `:props` part is every `algebraic_predicate_property` sentence as a
+  `{:kind :sentence :context}` row, so `irreflexive` and the per-position
+  `functionalInArg` show. A new `:links` part lists `seeAlso` and each `termsRelated`
+  cluster naming the term. core.txt declares `predicateDisplayOrder`, and the block's parts
+  and rows follow its order; a predicate's parents now follow its comment.
+  The term page's index groups leave out the sentences the block shows, so each assertion
+  about the term is shown once.
+  `seeAlso` and `termsRelated` are classified enforced, since the block reads them.
+  *Migration:* read the block's `:props` rows' `:sentence` in place of a keyword set; the
+  top-level `:props` keyword set is unchanged.
+  *Breaks:* `describe`'s `:definitional-block`
+  [web.md](docs/web.md#a-term-page-lists-its-definitional-block)
+
 ### Refusal: inference
 
 - **A generator whose conclusion arrives as a predicate it reads by `genl` or a swap edge
