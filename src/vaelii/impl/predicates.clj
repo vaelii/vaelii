@@ -63,7 +63,7 @@
               facet vocabulary does not reach yet.
     :enforced prose naming the code path that reads the term — what a KB author is told
               by `core/interpreted` when they ask whether a declaration does anything.
-              Carried by grammar terms core.txt comments, and owed by every term of
+              Carried by grammar terms an upper file comments, and owed by every term of
               `vocabulary/audit`'s population; an entry without it outside the population
               is not a defect.
     :inert    prose recording that nothing reads the term **and that this is a
@@ -575,6 +575,14 @@
                                      " believed converse forces equal, and chain/place-tuples! placing a"
                                      " converse no merge reconciles; also a"
                                      " binary_predicate type"))]
+     ['functional_at_instant
+      (enforced (collection :notes (str "declared in time.txt.  Read on demand by the fluent audit,"
+                                        " not at assert: whether two fluents overlap at an instant"
+                                        " follows from the clipping closure."))
+                (str "fluent/functional-at-instant-violations and"
+                     " fluent/all-functional-at-instant-violations, through"
+                     " core/functional-at-instant-violations — the per-instant clashes of each"
+                     " declared function"))]
      ['anti_transitive (enforced (assoc
                                   (prop :anti-transitive :facets #{:reach :convicts :arbitrable}
                                         :notes (str "the one nogood whose members are three rather"
@@ -1775,7 +1783,7 @@
      ['diachronicallyDisjoint
       (inert {:shape {:args [:term :term]} :storage [:none] :checked false
               :family nil :facets #{}
-              :notes (str "(diachronicallyDisjoint ?type1 ?type2): nothing is an instance of both"
+              :notes (str "declared in time.txt. (diachronicallyDisjoint ?type1 ?type2): nothing is an instance of both"
                           " at the same time, though one thing can be each in turn. disjoint is a"
                           " genl of it. Stated and queryable; memberships are checked without time,"
                           " so no clash check can read it yet.")}

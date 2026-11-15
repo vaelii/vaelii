@@ -47,7 +47,8 @@ it — `git show v0.16.0:CHANGELOG.md`.
 - **`vocabulary-audit` reads its population from the KB.** core.txt declares
   `definitional_predicate`. Its members are the predicates a term's definitional block is
   written in. They are `comment` and the example annotations, `genl`, the separations,
-  the orders, `arity` and the arity classes, and the argument declarations. The
+  the orders, the relation and rigidity kinds, `eternal_predicate`, `arity` and the arity
+  classes, and the argument declarations. The
   algebraic relation properties, `termsRelated` and `seeAlso` are members too. The audit
   classifies those members and the `syncategorematic` constants
   (`Quote` and the `set/*` wrappers), answered in CxUniverse, where it classified every
@@ -67,7 +68,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
   answers true of an undeclared `P`. `decontextualized_predicate` is now a `genl` of
   `forced_decontextualized_predicate`. A grammar term in neither, such as `except` or `equals`, is no
   longer listed under `:enforced` or `:inert`; `interpreted` still answers for it.
-  `:retired` still names a classification entry for a term core.txt no longer comments.
+  `:retired` names a classification entry for a term no believed `comment` in the KB names,
+  so a term commented in any upper file, such as time.txt's `functional_at_instant`, can be
+  classified.
+  `diachronicallyDisjoint` is declared in time.txt, which loads into CxUniverse beside core.txt.
   *Migration:* ask `interpreted` of a grammar term outside the population, or mark a
   block predicate a KB adds `definitional_predicate` so the audit asks it to be answered for.
   *Breaks:* `vocabulary-audit`

@@ -62,7 +62,7 @@ caterpillar and later a butterfly."
   the metatype: no separation reaches it, its pairs with the other classes read `:unknown`
   in `disjointness-audit`, and an organism stated a member of it and of another class is
   stored with no clash. A stage stated `diachronicallyDisjoint` from its sibling is never a
-  clash: core.txt's comment on `diachronicallyDisjoint` says the relation is "Stated and
+  clash: time.txt's comment on `diachronicallyDisjoint` says the relation is "Stated and
   queryable, not enforced: memberships are checked without time". The comment on
   `caterpillar` tells a reader why the stage has no `folk_species` membership and no
   `disjoint` separation.

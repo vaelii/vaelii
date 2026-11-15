@@ -31,7 +31,7 @@
     (is (empty? (:unclassified a))
         "a definitional_predicate or syncategorematic term vocabulary/classification says nothing about")
     (is (empty? (:retired a))
-        "a classification entry naming a term core.txt no longer declares")
+        "a classification entry naming a term no upper file comments")
     (is (empty? (:contradicted a))
         "a term the special-predicate table gives an arm to and the classification calls inert")
     (is (seq (:enforced a)))
@@ -84,7 +84,7 @@
   (derived-definitional kb '[genl disjoint separating partition orthogonal covering intersection
                              typeGenl typeOrthogonal diachronicallyDisjoint disjoint_metatype
                              sibling_disjoint siblingDisjointException inverse genlInverse
-                             genlCx orthogonalMetatypes partitionedByType]
+                             genlCx orthogonalMetatypes partitionedByType negates]
                         "through ontology_predicate"))
 
 (tu/deftest-kb the-argument-declarations-are-definitional-through-wff_constraint
@@ -101,7 +101,8 @@
   (derived-definitional kb '[transitive symmetric asymmetric reflexive functional irreflexive
                              anti_symmetric anti_transitive equivalence_relation functionalInArg
                              commutativeInArgs commutativeInArgAndRest distinctInArgAndRest
-                             injection surjection bijection associative commutative idempotent]
+                             injection surjection bijection associative commutative idempotent
+                             transitiveInArg transitiveInArgInverse functional_at_instant]
                         "through algebraic_predicate_property"))
 
 (tu/deftest-kb the-exact-arity-classes-are-definitional-through-their-mapping-facts
@@ -118,6 +119,26 @@
       (is (not (v/ask? kb (list 'definitional_predicate t) 'CxUniverse))
           (str t " is the subject of no mapping fact, so no rule makes it definitional"))
       (is (not (contains? population t)) (str t " is not in vocabulary-audit's population")))))
+
+(tu/deftest-kb a-member-commented-outside-core-is-classified-and-not-retired
+  ;; time.txt comments functional_at_instant, and core.txt makes it an
+  ;; algebraic_predicate_property.  The audit reads which terms are commented off the loaded
+  ;; KB, so a member any upper file comments is classified, not reported retired.
+  (let [{:keys [enforced inert unclassified retired]} (v/vocabulary-audit kb)
+        classified (into #{} (map first) (concat enforced inert))]
+    (is (contains? (audited kb) 'functional_at_instant) "it is in the population")
+    (is (contains? classified 'functional_at_instant) "and classified")
+    (is (not (some #{'functional_at_instant} unclassified)))
+    (is (not (some #{'functional_at_instant} retired)) "and its entry is not retired")))
+
+(tu/deftest-kb the-relation-kinds-and-rigidity-kinds-are-definitional
+  (derived-definitional kb '[instance_relation_predicate type_relation_predicate] "through relation_kind")
+  (derived-definitional kb '[time_invariant_relation time_agnostic_relation time_varying_relation]
+                        "through rigidity_kind")
+  (derived-definitional kb '[eternal_predicate] "as stated")
+  (doseq [t '[closed_extent_predicate not_assertible fixed_arity functionCorrespondingPredicate]]
+    (is (v/ask? kb (list 'not (list 'definitional_predicate t)) 'CxUniverse)
+        (str t " is in no term's block, so the closed extent refutes it"))))
 
 (tu/deftest-kb the-block-predicates-and-the-lift-have-closed-extents
   ;; Each extent is closed, so a predicate the KB does not make a member is refuted, and a

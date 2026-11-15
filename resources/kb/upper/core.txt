@@ -1160,7 +1160,7 @@
 (not (decontextualized_predicate documentation_predicate))
 
 (comment definitional_predicate
-         "(definitional_predicate ?predicate) means that a (?predicate …) sentence about a term is part of that term's definitional block, the sentences a new term ships with (handbook/06-definitional-block.md): its comment and example annotations, its genl, its separations from its siblings, its order, arity class and arity, its argument declarations, its relation properties and its termsRelated and seeAlso links. vocabulary-audit reads the members as its population: a member the engine's classification answers neither as enforced nor as inert is reported unclassified. The syncategorematic constants are the audit's second population, since they are syntax the engine reads and not predicates of a block. A membership says where a sentence belongs and not how it is believed: comment is a member and is not forced-monotonic. See docs/predicates.md.")
+         "(definitional_predicate ?predicate) means that a (?predicate …) sentence about a term is part of that term's definitional block, the sentences a new term ships with (handbook/06-definitional-block.md): its comment and example annotations, its genl, its separations from its siblings, its order, its relation and rigidity kinds, its arity class and arity, its argument declarations, its relation properties and its termsRelated and seeAlso links. vocabulary-audit reads the members as its population: a member the engine's classification answers neither as enforced nor as inert is reported unclassified. The syncategorematic constants are the audit's second population, since they are syntax the engine reads and not predicates of a block. A membership says where a sentence belongs and not how it is believed: comment is a member and is not forced-monotonic. See docs/predicates.md.")
 (positiveExampleComment definitional_predicate "genl, since (genl dog mammal) is part of dog's block")
 (negativeExampleComment definitional_predicate "parentOf, since (parentOf Tom Bob) is a fact about two people and not a sentence about a term")
 (unary_predicate definitional_predicate)
@@ -1176,6 +1176,12 @@
 (closed_extent_predicate definitional_predicate)
 ;; order: a (type X), (metatype X) or (meta_metatype X) sentence is part of X's block
 (set/monotonic (genl type_type_by_order definitional_predicate))
+;; kind: an (instance_relation_predicate X) or (type_relation_predicate X) sentence, a rigidity
+;; kind sentence such as (time_invariant_relation X), and an (eternal_predicate X) sentence
+;; are part of X's block
+(set/monotonic (genl relation_kind definitional_predicate))
+(set/monotonic (genl rigidity_kind definitional_predicate))
+(definitional_predicate eternal_predicate)
 ;; meaning and examples
 (definitional_predicate comment)
 (definitional_predicate positiveExampleComment)
@@ -1208,6 +1214,7 @@
 (ontology_predicate genlCx)
 (ontology_predicate orthogonalMetatypes)
 (ontology_predicate partitionedByType)
+(ontology_predicate negates)
 (not (ontology_predicate temporallyDisjoint))
 (not (ontology_predicate minCommonGenl))
 (not (ontology_predicate temporalIndexArg))
@@ -1295,9 +1302,10 @@
 (algebraic_predicate_property associative)
 (algebraic_predicate_property commutative)
 (algebraic_predicate_property idempotent)
+(algebraic_predicate_property transitiveInArg)
+(algebraic_predicate_property transitiveInArgInverse)
+(algebraic_predicate_property functional_at_instant)
 (closed_extent_predicate algebraic_predicate_property)
-;; what every member of algebraic_predicate_property is, stated once on the collection
-(set/monotonic (genl algebraic_predicate_property eternal_predicate))
 ;; separations: a sentence places a term, states part of what is well formed, or states a
 ;; property, never two of these
 (set/monotonic (disjoint ontology_predicate wff_predicate))
@@ -1526,15 +1534,6 @@
 (not (eternal_predicate disjoint))
 (genlArg disjoint 1 thing)
 (genlArg disjoint 2 thing)
-
-(comment diachronicallyDisjoint
-         "(diachronicallyDisjoint ?type1 ?type2) means that nothing is an instance of both types at the same time, though one thing can be an instance of each at different times: caterpillar and butterfly, a child and an adult. disjoint is a genl of it, because never sharing an instance means never sharing one at once. Stated and queryable, not enforced: memberships are checked without time, so the engine cannot yet tell an instance that is both at once from one that is each in turn.")
-(set/monotonic (symmetric diachronicallyDisjoint))
-(set/monotonic (type_relation_predicate diachronicallyDisjoint))
-(set/monotonic (time_agnostic_relation diachronicallyDisjoint))
-(genlArg diachronicallyDisjoint 1 thing)
-(genlArg diachronicallyDisjoint 2 thing)
-(genl disjoint diachronicallyDisjoint)
 
 (comment disjoint_metatype
          "(disjoint_metatype ?metatype) means that every pair of ?metatype's member types is disjoint. The clique is consulted rather than stored, so it adds no work quadratic and retraction reaches all of it: dropping ?metatype releases every pair at once, and dropping one member releases exactly that member's pairs.")

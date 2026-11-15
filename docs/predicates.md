@@ -365,7 +365,8 @@ the engine reads it. Both are on `vaelii.core`; see [api.md](api.md).
 The audit's population is named in the KB. A `definitional_predicate` is a predicate whose
 sentences about a term make up that term's definitional block
 ([handbook ch. 6](../handbook/06-definitional-block.md)): `comment` and the example
-annotations, `genl`, the separations, the orders `type_type_by_order` holds, `arity` and the arity classes,
+annotations, `genl`, the separations, the orders `type_type_by_order` holds, the relation kinds `relation_kind` holds, the
+rigidity kinds `rigidity_kind` holds, `eternal_predicate`, `arity` and the arity classes,
 the argument declarations, the algebraic relation properties, and
 `termsRelated` and `seeAlso`. `Quote` and the `set/*` wrappers are syntax rather than block
 predicates, and the KB marks each one `syncategorematic`; those are the second clause. The
