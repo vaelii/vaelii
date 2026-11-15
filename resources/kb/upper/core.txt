@@ -2449,6 +2449,9 @@
 (set/forwardRule (implies (and (surjection ?p)) (functional ?p)))
 (set/forwardRule (implies (and (bijection ?p))  (injection ?p)))
 (set/forwardRule (implies (and (bijection ?p))  (surjection ?p)))
+;; bijection is the intersection of the two: a forward-only rule, so no goal below
+;; injection, surjection or binary_predicate runs it backward into its own antecedents.
+(set/forwardOnlyRule (implies (and (injection ?p) (surjection ?p)) (bijection ?p)))
 
 ;; The audited half. Totality quantifies over the domain and ontoness over the range, so
 ;; each rule reads only the ONE arg declaration that names its quantified collection —

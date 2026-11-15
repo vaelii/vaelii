@@ -79,6 +79,18 @@
     (is (v/ask? kb (list 'injection capitalCityOf) U))
     (is (v/ask? kb (list 'surjection capitalCityOf) U))))
 
+(tu/deftest-kb an-injection-that-is-a-surjection-is-a-bijection
+  ;; bijection is the intersection of injection and surjection, so the two marks together
+  ;; conclude it, and either alone does not.
+  (tu/with-terms [capitalCityOf injectiveOf surjectiveOf]
+    (v/assert kb (list 'injection capitalCityOf) U)
+    (v/assert kb (list 'surjection capitalCityOf) U)
+    (v/assert kb (list 'injection injectiveOf) U)
+    (v/assert kb (list 'surjection surjectiveOf) U)
+    (is (true? (v/ask? kb (list 'bijection capitalCityOf) U)))
+    (is (not (v/ask? kb (list 'bijection injectiveOf) U)))
+    (is (not (v/ask? kb (list 'bijection surjectiveOf) U)))))
+
 ;;; ── the enforced half: marks the engine already refuses against ───────
 
 (tu/deftest-kb each-mark-derives-the-enforced-marks-it-stands-in-for

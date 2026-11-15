@@ -156,7 +156,7 @@
         definitions (remove #(or (rigidity? %) (arity-copy? %) (policy-copy? %) (class-copy? %)) acked)]
     (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
-    (is (= {:negation 13 :disjoint 104 :functional 10} kinds)
+    (is (= {:negation 13 :disjoint 106 :functional 10} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
     (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
         "negation clashes are excepted or acknowledged")
@@ -182,11 +182,12 @@
                                                  [equivalence_relation reflexive]
                                                  [equivalence_relation symmetric]
                                                  [equivalence_relation transitive]
-                                                 [injection functional] [surjection functional]]]
+                                                 [injection functional] [surjection functional]
+                                                 [and bijection]]]
                   [constructor antecedent consequence]))
            (set (map signature (filter policy-copy? acked))))
         "the variable-policy reviews name only the fixed unary/binary metadata contracts")
-    (is (= 18 (count (filter policy-copy? acked))))
+    (is (= 20 (count (filter policy-copy? acked))))
     (let [class-copies (filter class-copy? pairs)
           concluded    (fn [pair] (let [{:keys [sentence constructor kind]} (copy-rule pair)]
                                     [constructor kind (first (nth (first (remove #{sentence} (:sentences pair))) 2))]))]
