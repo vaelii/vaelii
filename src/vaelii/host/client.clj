@@ -1049,8 +1049,10 @@
   (call conn :violations []))
 
 (defn ^:daemon-op vocabulary-audit
-  "Every term core.txt comments in `kb`, classified: `{:enforced [[term why] …] :inert
-  [[term why] …] :unclassified [term …] :retired [term …] :contradicted [term …]}`."
+  "The vocabulary population of `kb`, classified: every term a believed CxUniverse
+  `(definitional_predicate t)` or `(syncategorematic t)` names, as `{:enforced [[term why]
+  …] :inert [[term why] …] :unclassified [term …] :retired [term …] :contradicted [term
+  …]}`."
   [conn]
   (call conn :vocabulary-audit []))
 

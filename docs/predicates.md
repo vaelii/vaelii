@@ -262,8 +262,8 @@ is not reported, in the one arrival order that route was the only way into.
    triple, the `:wff` check, or both. Declaring `:checked true` with no `:wff` arm will not
    load, and neither will the reverse.
 4. **Answer for it.** Either `:enforced` prose naming the path that reads it, or the `inert`
-   constructor with the reason nothing does. A term `core.txt` comments and nobody answers for
-   lands in `vocabulary-audit`'s `:unclassified`.
+   constructor with the reason nothing does. A term the KB marks `definitional_predicate` or
+   `syncategorematic` and nobody answers for lands in `vocabulary-audit`'s `:unclassified`.
 5. **Satisfy the facet contract, or record what it stops short of.** Each facet you carry
    implies others, a family holds its spellings to the same lanes, and a declaration that
    answers goals about a predicate has to post an exception re-check. Whichever you cannot
@@ -361,6 +361,16 @@ fact it needs — and they are the two an *arbitrable* mark runs into.
 `(vocabulary-audit kb)` gives the whole picture — including `:unclassified`, the finding it
 exists to surface: a declaration that landed in the grammar without anybody deciding whether
 the engine reads it. Both are on `vaelii.core`; see [api.md](api.md).
+
+The audit's population is named in the KB. A `definitional_predicate` is a predicate whose
+sentences about a term make up that term's definitional block
+([handbook ch. 6](../handbook/06-definitional-block.md)): `comment` and the example
+annotations, `genl`, the separations, `type` and `metatype`, `arity` and the arity classes,
+the argument declarations, the relation properties `describe` lists under `:props`, and
+`termsRelated` and `seeAlso`. `Quote` and the `set/*` wrappers are syntax rather than block
+predicates, and the KB marks each one `syncategorematic`; those are the second clause. A
+grammar term in neither, such as `except` or `genlCx`, still has its classification entry,
+and `interpreted` answers for it.
 
 `nil` is **not** "nothing reads it". The question is asked of the engine's own grammar, so
 an ordinary domain predicate — `marriedTo`, at the top of this page — is simply not a term

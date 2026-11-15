@@ -63,9 +63,9 @@
               facet vocabulary does not reach yet.
     :enforced prose naming the code path that reads the term — what a KB author is told
               by `core/interpreted` when they ask whether a declaration does anything.
-              Carried by the terms core.txt comments and by no others, which is why an
-              entry without it is not a defect: the grammar terms core.txt does not
-              comment are outside the question rather than unanswered.
+              Carried by grammar terms core.txt comments, and owed by every term of
+              `vocabulary/audit`'s population; an entry without it outside the population
+              is not a defect.
     :inert    prose recording that nothing reads the term **and that this is a
               decision**.  Written by the `inert` constructor, which sets the facet with
               it, so the class is never a second opinion about the facets.
@@ -310,8 +310,8 @@
   `vocabulary/classification` answers with and `core/interpreted` hands a KB author.  The prose
   is written by hand, since no facet set can name the path.  The class is read off `:facets` by
   `classification`, so a term the engine reads cannot be called inert by different prose.
-  Nil-tolerant: grammar terms core.txt does not comment pass through, and `vocabulary/audit`
-  notices a term the ontology names and this file answers with nothing."
+  Nil-tolerant: grammar terms outside the audit's population pass through, and
+  `vocabulary/audit` notices a population term this file answers with nothing."
   [spec where]
   (cond-> spec where (assoc :enforced where)))
 
@@ -1348,8 +1348,8 @@
     ;; under the root, or declare a position over a type a second domain file declares one
     ;; over.
     ;;
-    ;; They are here because core.txt comments them and `vocabulary/audit` answers for every
-    ;; term core.txt comments, not because the engine reads any of them.  It reads none: no
+    ;; They are here so `interpreted` answers for the terms core.txt comments, not because
+    ;; the engine reads any of them.  It reads none: no
     ;; check names one, and the kinds hanging off them are the domain files'.  `inert` is the
     ;; class, and the note is what a KB author asking `interpreted` is told.
     (map (fn [[t why]] [t (inert (collection :notes why) why)])
@@ -1365,7 +1365,7 @@
            [quantitative "ontology, not grammar: what a measurement is made of or yields, the whole above measure, unit_of_measure, physical_dimension and sign_value. core.txt states it so the separation from logical and linguistic reaches measure; no engine check names it."]])
 
     ;; ---- the space/time complements, nowhere_never, and the metatype ladder ----
-    ;; core.txt comments these too, beside their genl edges, so `vocabulary/audit` answers
+    ;; core.txt comments these too, beside their genl edges, so `interpreted` answers
     ;; for them and they are classified inert like the skeleton above: ontology the engine
     ;; reads by no name.  `temporal` is `spatial`'s
     ;; time twin; `aspatial` / `atemporal` are the not-in-any-space / not-in-time collections
@@ -1426,7 +1426,7 @@
                                 " functionCorrespondingPredicate and"
                                 " functionCorrespondingBinaryPredicate name"))]
      ;; The other half of relation, and the three levels below it.  core.txt comments them
-     ;; and `vocabulary/audit` answers for every term core.txt comments; no engine check names
+     ;; and `interpreted` answers for each; no engine check names
      ;; any of the four.  The connectives are read by their own names (the `implies`, `and`,
      ;; `or` and `not` entries above), never through `logical_connective`.
      ['truth_valued_relation (inert (collection :notes "ontology, not grammar: a relation whose applications are true or false, the complement of function within relation. No engine check names it.")
@@ -1720,8 +1720,9 @@
      ;; ---- documentation ---------------------------------------------------
      ['comment (enforced {:shape {:args [:term :term]} :storage [:none] :checked false
                           :family nil :facets #{}
-                          :notes (str "ordinary sentexes, queried like any fact — and the"
-                                      " population of vocabulary/audit is read off them.")}
+                          :notes (str "ordinary sentexes, queried like any fact — and"
+                                      " vocabulary/audit's :retired reads which terms core.txt"
+                                      " comments.")}
                          (str "gloss, core-context/comment-of, and the browser's term pages —"
                               " ordinary sentexes, queried like any fact"))]
      ['definitional_predicate

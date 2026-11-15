@@ -75,9 +75,10 @@ per-argument closure grant at position N names a predicate with N or more argume
   no clash names it, and no retraction moves it.
 
 **Audit.** For each constraint a change adds in code or in prose, ask whether the KB could
-state it, and state it there when it can. `vocabulary-audit` classifies every term core.txt
-comments as `:enforced` (a code path reads it) or `:inert` (nothing does, with the reason),
-and lists a term that landed with neither under `:unclassified`.
+state it, and state it there when it can. `vocabulary-audit` classifies every
+`definitional_predicate` and every `syncategorematic` constant as `:enforced` (a code path
+reads it) or `:inert` (nothing does, with the reason), and lists a term that landed with
+neither under `:unclassified`.
 
 ## represent the definition
 

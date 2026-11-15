@@ -12,15 +12,15 @@
   enforced and one that was never implemented.  A classification table is what turns that silence into
   an answer.
 
-  **Population: the terms core.txt comments.**  Not every predicate in the KB — a domain
-  relation is *supposed* to be inert, and `(likes Fred Mary)` asks nothing of the engine.
-  `resources/kb/upper/core.txt` is the vocabulary file, whose charter (see its header) is
-  exactly \"the engine-interpreted special predicates and the predicate meta-ontology\",
-  and it is term-centric: one `(comment <term> …)` block per term.  So the terms it
-  comments are precisely the grammar, and precisely the set where \"declared but
-  unimplemented\" is a defect rather than the normal case.  The file loads into
-  CxUniverse with the rest of the upper ontology, so the context alone does not name the
-  population, and the file does.
+  **Population: the `definitional_predicate` members and the `syncategorematic`
+  constants.**  Not every predicate in the KB — a domain relation is *supposed* to be
+  inert, and `(likes Fred Mary)` asks nothing of the engine.  A `definitional_predicate`
+  is a predicate a term's definitional block is written in
+  (`handbook/06-definitional-block.md`), so one declared and read by nothing is a defect
+  rather than the normal case.  `Quote` and the `set/*` wrappers are syntax the engine
+  reads rather than block predicates, and the KB marks each one `syncategorematic`.  The
+  classification answers for every grammar term core.txt comments; the audit requires an
+  answer only of the population.
 
   **Two classes, and the distinction is the point.**  `:enforced` means some code path
   reads it and the KB will refuse, derive, or answer differently because of it — the
@@ -39,7 +39,7 @@
   was written under, so a term the engine demonstrably reads cannot be classified inert
   by writing different prose beside it.
 
-  **`audit` checks the classification**, with two tests over it: a term core.txt comments
+  **`audit` checks the classification**, with two tests over it: a term of the population
   with no classification entry fails, and an entry naming a term core.txt no longer
   comments fails.  So the next plausible-looking functor cannot land unimplemented in
   silence, and a retired one cannot leave a stale claim behind.  `:contradicted` is the
@@ -68,12 +68,19 @@
   sx/root-context)
 
 (def vocabulary-file
-  "The classpath path of the KB file whose `comment` sentences name this table's
-  population."
+  "The classpath path of the KB file whose `comment` sentences name the terms this
+  table may answer for."
   "kb/upper/core.txt")
 
+(def population-markers
+  "The memberships that name the audit's population: `definitional_predicate`, whose
+  members' sentences make up a term's definitional block, and `syncategorematic`, the
+  syntax constants the engine reads, which are no predicate of a block."
+  '[definitional_predicate syncategorematic])
+
 (def ^:private file-terms
-  "Every term `vocabulary-file` comments, read once."
+  "Every term `vocabulary-file` comments, read once: the terms a classification entry may
+  name without being `:retired`."
   (delay (into #{}
                (keep (fn [form]
                        (let [[s _] (text/peel-form form)]
@@ -82,7 +89,7 @@
                (text/read-forms (io/resource vocabulary-file)))))
 
 (def classification
-  "`term -> {:enforced \"where\"}` or `term -> {:inert \"why\"}`, over every term
+  "`term -> {:enforced \"where\"}` or `term -> {:inert \"why\"}`, over the grammar terms
   core.txt comments.
 
   The `:enforced` prose names a code path, so it is the thing to update when one moves —
@@ -95,12 +102,10 @@
   is written beside it, and only a term whose facets say `:inert` — which the `inert`
   constructor is the sole way to write — is classified inert.
 
-  **The population is still core.txt's**, and stays a question about the ontology rather
-  than about the declaration: an entry carries prose iff core.txt comments the term, so the
-  grammar terms it does not comment are simply not in here.  A term core.txt starts
-  commenting and
-  nobody answers for lands in `audit`'s `:unclassified`, which is the whole mechanism and
-  is untouched by the move."
+  **The population is the ontology's**, and stays a question about the KB rather than
+  about the declaration: a term the KB marks `definitional_predicate` or
+  `syncategorematic` and nobody answers for lands in `audit`'s `:unclassified`, which is
+  the whole mechanism."
   (into {}
         (keep (fn [[term spec]]
                 (when-let [prose (or (:enforced spec) (:inert spec))]
@@ -111,29 +116,26 @@
   "What the engine does with vocabulary term `term`: `{:enforced \"where\"}`,
   `{:inert \"why\"}`, or nil for a term the table does not cover.
 
-  Nil is **not** \"nothing reads it\" — the table's population is core.txt's grammar,
-  so an ordinary domain predicate is simply not a term this question is asked about."
+  Nil is **not** \"nothing reads it\" — the table answers for core.txt's grammar, so an
+  ordinary domain predicate is simply not a term this question is asked about."
   [term]
   (get classification term))
 
 (defn- declared-terms
-  "Every term `vocabulary-file` comments that `kb` holds a comment for in
-  `vocabulary-context` — the grammar, read off the loaded KB, so the audit is about what
-  this KB has, and bounded by the file, since the context holds the whole upper ontology.
-
-  **As stored**, so a `comment` on a defeated declaration still names its term.  The
-  audit's question is which grammar terms this KB carries documentation for, and a
-  `comment` is documentation rather than a claim about the world: the term is spelled in
-  the vocabulary whatever the JTMS currently makes of the sentex that spells it, and a
-  believed entry point would report the grammar shrinking whenever a settle moved a belief
-  nobody wrote the comment about."
+  "The audit's population in `kb`: every term a believed `(definitional_predicate t)` or
+  `(syncategorematic t)` in `vocabulary-context` names (`population-markers`).  Read off
+  the loaded KB, so the audit is about what this KB has.  **Believed**, since a membership
+  is a claim about the term: a KB that retracts one no longer asks the term to be
+  answered for."
   [kb]
-  (into (sorted-set)
-        (comp (keep #(p/get-sentex (:records kb) %))
-              (filter #(= vocabulary-context (:context %)))
-              (keep (fn [s] (let [[_ t] (:sentence s)] (when (symbol? t) t))))
-              (filter @file-terms))
-        (reads/as-stored-with-functor (:index kb) 'comment)))
+  (let [marker? (set population-markers)]
+    (into (sorted-set)
+          (comp (mapcat #(reads/believed-with-functor kb %))
+                (keep #(p/get-sentex (:records kb) %))
+                (filter #(= vocabulary-context (:context %)))
+                (keep (fn [s] (let [[f t & more] (:sentence s)]
+                                (when (and (marker? f) (symbol? t) (empty? more)) t)))))
+          population-markers)))
 
 (def ^:private machine-readable-enforced
   "The functors whose behaviour is provable from a data structure rather than from prose:
@@ -150,17 +152,17 @@
              (conj sx/default-rule-wrapper))))
 
 (defn audit
-  "Classify every term `vocabulary-context` declares in `kb`:
+  "Classify every term of the population `kb` declares (`declared-terms`):
 
       {:enforced    [[term \"where\"] …]
        :inert       [[term \"why\"] …]
-       :unclassified [term …]      ; declared, and the table says nothing — the defect
-       :retired      [term …]      ; the table claims a term the KB no longer declares
+       :unclassified [term …]      ; in the population, and the table says nothing — the defect
+       :retired      [term …]      ; the table claims a term core.txt no longer comments
        :contradicted [term …]}     ; called inert, but the special table gives it an arm
 
-  `:unclassified` is what this exists for: a declaration that landed without anybody
-  deciding whether the engine reads it.  `:retired` is the mirror — a claim about a term
-  that is gone, which is how a hand-kept table goes quietly wrong.  `:contradicted` is the check
+  `:unclassified` is what this exists for: a block predicate or syntax constant that
+  landed without anybody deciding whether the engine reads it.  `:retired` is the mirror —
+  a claim about a term that is gone, which is how a hand-kept table goes quietly wrong.  `:contradicted` is the check
   that needs no judgement at all.
 
   Vectors sorted by term, so two runs over one KB compare."
@@ -170,7 +172,7 @@
     {:enforced     (mapv entry (filter #(:enforced (classification %)) declared))
      :inert        (mapv entry (filter #(:inert (classification %)) declared))
      :unclassified (vec (remove classification declared))
-     :retired      (vec (remove declared (sort (keys classification))))
+     :retired      (vec (remove @file-terms (sort (keys classification))))
      :contradicted (vec (filter #(and (:inert (classification %))
                                       (contains? @machine-readable-enforced %))
                                 declared))}))

@@ -44,6 +44,21 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Breaking: integrity
 
+- **`vocabulary-audit` reads its population from the KB.** core.txt declares
+  `definitional_predicate`. Its members are the predicates a term's definitional block is
+  written in. They are `comment` and the example annotations, `genl`, the separations,
+  `type`, `metatype`, `arity` and the arity classes, and the argument declarations. The
+  relation properties `describe` lists under `:props`, `termsRelated` and `seeAlso` are
+  members too. The audit classifies those members and the `syncategorematic` constants
+  (`Quote` and the `set/*` wrappers), read believed in CxUniverse, where it classified every
+  term core.txt comments. A grammar term in neither, such as `except` or `genlCx`, is no
+  longer listed under `:enforced` or `:inert`; `interpreted` still answers for it.
+  `:retired` still names a classification entry for a term core.txt no longer comments.
+  *Migration:* ask `interpreted` of a grammar term outside the population, or mark a
+  block predicate a KB adds `definitional_predicate` so the audit asks it to be answered for.
+  *Breaks:* `vocabulary-audit`
+  [predicates.md](docs/predicates.md#reading-the-answer-back)
+
 - **The undeclared-arity sweep reports a `genl` node whose only length is inherited.** A
   node passes when the node itself is known to have an exact length, or when a
   `variable_arity` membership releases it. The node's own exact length comes from an

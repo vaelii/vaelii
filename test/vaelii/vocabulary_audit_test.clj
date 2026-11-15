@@ -8,8 +8,8 @@
   read by nobody — so a KB author gets identical silence from a constraint that is
   enforced and one that was never implemented.  `vaelii.impl.vocabulary` answers the
   question for the engine's own grammar, and these tests are what keep the answer true:
-  a term core.txt declares that the classification says nothing about fails here, and so does a
-  classification entry naming a term the grammar has retired.
+  a `definitional_predicate` or `syncategorematic` term the classification says nothing
+  about fails here, and so does an entry naming a term the grammar has retired.
 
   An upper-layer baseline holds the whole population, which is why this is its own
   namespace — the constraint tests beside it (`constraint-vocabulary-test`) need a cleared
@@ -23,13 +23,13 @@
 (use-fixtures :each (tu/neutral))
 
 (tu/deftest-kb every-term-the-grammar-declares-is-classified
-  ;; The durable half.  A functor added to core.txt without anybody deciding whether
-  ;; the engine reads it lands in `:unclassified`, and this fails — which is the whole
-  ;; point: `interArg` sat in the design notes as a plausible declaration for as long
-  ;; as nothing was checking.
+  ;; The durable half.  A block predicate or syntax constant added without anybody
+  ;; deciding whether the engine reads it lands in `:unclassified`, and this fails — which
+  ;; is the whole point: `interArg` sat in the design notes as a plausible declaration for
+  ;; as long as nothing was checking.
   (let [a (v/vocabulary-audit kb)]
     (is (empty? (:unclassified a))
-        "a term core.txt declares that vocabulary/classification says nothing about")
+        "a definitional_predicate or syncategorematic term vocabulary/classification says nothing about")
     (is (empty? (:retired a))
         "a classification entry naming a term core.txt no longer declares")
     (is (empty? (:contradicted a))
@@ -38,16 +38,27 @@
     (is (seq (:inert a)) "and the inert set is not empty — the classification calls some terms inert")))
 
 (tu/deftest-kb a-new-grammar-declaration-nobody-classified-is-reported
-  ;; The test above only fails if this mechanism works, so drive it: a term added to the
-  ;; grammar shows up unclassified rather than passing quietly.
-  ;; core.txt names the population, so the term is added to the file's terms as well as
-  ;; declared in CxUniverse.
-  (tu/with-terms [maxCardinality]
-    (v/assert kb (list 'comment maxCardinality "a plausible-looking declaration")
-              'CxUniverse)
-    (let [terms (conj @@#'vocab/file-terms maxCardinality)]
-      (with-redefs [vocab/file-terms (delay terms)]
-        (is (= [maxCardinality] (:unclassified (v/vocabulary-audit kb))))))))
+  ;; The test above only fails if this mechanism works, so drive it: a term added to either
+  ;; population shows up unclassified, and leaves it when the membership is retracted.
+  (doseq [marker vocab/population-markers]
+    (tu/with-terms [maxCardinality]
+      (let [h (v/assert kb (list marker maxCardinality) 'CxUniverse)]
+        (is (= [maxCardinality] (:unclassified (v/vocabulary-audit kb))) (str marker))
+        (v/retract! kb h)
+        (is (empty? (:unclassified (v/vocabulary-audit kb))) (str marker))))))
+
+(tu/deftest-kb the-population-is-the-block-and-the-syntax
+  ;; describe's :definitional-block parts, and the syntax the KB marks syncategorematic.
+  (let [{:keys [enforced inert]} (v/vocabulary-audit kb)
+        audited (into #{} (map first) (concat enforced inert))]
+    (doseq [t '[comment positiveExampleComment negativeExampleComment genl disjoint
+                orthogonal arity unary_predicate arg genlArg transitive functional
+                termsRelated seeAlso]]
+      (is (contains? audited t) (str t " is a part of the definitional block")))
+    (doseq [t '[Quote set/monotonic set/inert set/defaultRule]]
+      (is (contains? audited t) (str t " is syntax the engine reads")))
+    (doseq [t '[genlCx implies CxUniverse thing]]
+      (is (not (contains? audited t)) (str t " is in no term's block")))))
 
 ;; A test asserting the special-predicate table and the classification agree stood here and is gone.  It walked
 ;; `special/entries` asserting no functor with an arm was classified inert — which is
