@@ -87,7 +87,11 @@
     (v/assert kb (list 'surjection surjectiveOf) U)
     (is (true? (v/ask? kb (list 'bijection capitalCityOf) U)))
     (is (not (v/ask? kb (list 'bijection injectiveOf) U)))
-    (is (not (v/ask? kb (list 'bijection surjectiveOf) U)))))
+    (is (not (v/ask? kb (list 'bijection surjectiveOf) U)))
+    (testing "the bijection's own injection rule does not hold the injection up"
+      (v/retract! kb (v/handle-of kb (list 'injection capitalCityOf) U))
+      (is (not (v/ask? kb (list 'bijection capitalCityOf) U)))
+      (is (not (v/ask? kb (list 'injection capitalCityOf) U))))))
 
 ;;; ── the enforced half: marks the engine already refuses against ───────
 
