@@ -10,13 +10,13 @@
 ;; caller's code rewrites.
 {:renames        {}
  :context-merges {}
- :re-meanings    {parentOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
-                  childOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
-                  motherOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
-                  fatherOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
-                  siblingOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
-                  grandparentOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
-                  ancestorOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
+ :re-meanings    {parentOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
+                  childOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
+                  motherOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
+                  fatherOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
+                  siblingOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
+                  grandparentOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
+                  ancestorOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
                   MotherFn "Corresponds to genetic motherOf; several mothers select none."
                   FatherFn "Corresponds to genetic fatherOf."}
  :retired        #{chosenSiblingOf}

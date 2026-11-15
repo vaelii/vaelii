@@ -24,8 +24,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   Named genetic/chosen predicates keep separately justified constructor results and
   correspondences; removing a use removes only the proofs that depend on it.
   `originatorOf` admits organisms and no longer specializes kinship.
-  *Migration:* rename `relativeOf` to `kinOf`; rewrite biological family/history facts
-  with `GeneticKinFn`. Unqualified facts no longer assert genetic descent or eternity.
+  *Migration:* rename `relativeOf` to `kinOf`; use `GeneticKinFn` for genetic descent,
+  and state gestational-only parenthood or surrogacy with `gestationalOnlyParentOf` or
+  `surrogateMotherOf`. Unqualified facts no longer assert genetic descent or eternity.
   `MotherFn` and `FatherFn` correspond to their genetic predicates.
   *Breaks:* `relativeOf`, `parentOf`, `childOf`, `motherOf`, `fatherOf`, `siblingOf`,
   `grandparentOf`, `ancestorOf`, `MotherFn`, `FatherFn`, `originatorOf`
