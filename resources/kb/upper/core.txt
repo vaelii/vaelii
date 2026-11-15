@@ -1066,6 +1066,7 @@
 (set/monotonic (transitiveInArgInverse time_varying_relation 1 genl))
 ;; Each rigidity kind holds types and predicates alike, so the members of rigidity_kind
 ;; are of more than one order, and rigidity_kind is at_least_metatype, as arity_type is.
+(unary_predicate rigidity_kind)
 (at_least_metatype rigidity_kind)
 (set/monotonic (typeGenl rigidity_kind relation))
 (set/monotonic (rigidity_kind time_invariant_relation))

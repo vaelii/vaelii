@@ -121,9 +121,6 @@
       (is (not (contains? population t)) (str t " is not in vocabulary-audit's population")))))
 
 (tu/deftest-kb a-member-commented-outside-core-is-classified-and-not-retired
-  ;; time.txt comments functional_at_instant, and core.txt makes it an
-  ;; algebraic_predicate_property.  The audit reads which terms are commented off the loaded
-  ;; KB, so a member any upper file comments is classified, not reported retired.
   (let [{:keys [enforced inert unclassified retired]} (v/vocabulary-audit kb)
         classified (into #{} (map first) (concat enforced inert))]
     (is (contains? (audited kb) 'functional_at_instant) "it is in the population")
@@ -141,8 +138,6 @@
         (str t " is in no term's block, so the closed extent refutes it"))))
 
 (tu/deftest-kb the-block-predicates-and-the-lift-have-closed-extents
-  ;; Each extent is closed, so a predicate the KB does not make a member is refuted, and a
-  ;; member, stated or derived, is not.
   (doseq [p '[definitional_predicate ontology_predicate wff_predicate wff_constraint
               wff_satisfaction_predicate algebraic_predicate_property
               decontextualized_predicate]]

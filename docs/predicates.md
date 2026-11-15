@@ -364,26 +364,34 @@ the engine reads it. Both are on `vaelii.core`; see [api.md](api.md).
 
 The audit's population is named in the KB. A `definitional_predicate` is a predicate whose
 sentences about a term make up that term's definitional block
-([handbook ch. 6](../handbook/06-definitional-block.md)): `comment` and the example
-annotations, `genl`, the separations, the orders `type_type_by_order` holds, the relation kinds `relation_kind` holds, the
-rigidity kinds `rigidity_kind` holds, `eternal_predicate`, `arity` and the arity classes,
-the argument declarations, the algebraic relation properties, and
-`termsRelated` and `seeAlso`. `Quote` and the `set/*` wrappers are syntax rather than block
-predicates, and the KB marks each one `syncategorematic`; those are the second clause. The
-audit reads both populations by query, so a membership a `genl` edge or a rule derives counts
-as a stated one does: `(genl type_type_by_order definitional_predicate)` makes `type`,
-`metatype` and `meta_metatype` members. `ontology_predicate`, `wff_predicate` and
-`algebraic_predicate_property` hold the hierarchy and separation predicates, the
-well-formedness declarations, and the algebraic relation properties, and a `genl` edge from
-each to `definitional_predicate` makes their members members. `wff_predicate` is partitioned
-into `wff_constraint`, which constrains what may fill a relation's argument positions, and
-`wff_satisfaction_predicate`, which states what a term such as a function's value satisfies. A forward rule over each of `relationTypeByArity`,
-`predicateTypeByArity` and `functionTypeByArity` makes every exact-arity class a mapping
-fact names a member. An `at_least` class is the subject of no mapping fact, so it is not a
-member. `definitional_predicate` and the five collections below it are each a
-`closed_extent_predicate`, so a predicate the KB does not make a member is refuted as one. A
-grammar term in neither, such as `except` or `equals`, still has its classification entry,
-and `interpreted` answers for it.
+([handbook ch. 6](../handbook/06-definitional-block.md)). Its members are `comment`, the
+example annotations, `genl`, the separations and the orders `type_type_by_order` holds.
+They also include the relation kinds `relation_kind` holds, the rigidity kinds
+`rigidity_kind` holds, `eternal_predicate`, `arity` and the arity classes. The argument
+declarations, the algebraic relation properties, `termsRelated` and `seeAlso` are members
+too. `Quote` and the `set/*` wrappers are syntax rather than block predicates, and the KB
+marks each one `syncategorematic`; those are the second clause. The audit reads both
+populations by query, so a membership a `genl` edge or a rule derives counts as a stated
+one does. `(genl type_type_by_order definitional_predicate)` makes `type`, `metatype` and
+`meta_metatype` members. `ontology_predicate` holds the hierarchy and separation
+predicates. `wff_predicate` holds the well-formedness declarations.
+`algebraic_predicate_property` holds the algebraic relation properties. A `genl` edge from
+each of the three to `definitional_predicate` makes their members members.
+`wff_predicate` is partitioned into `wff_constraint` and `wff_satisfaction_predicate`. A
+`wff_constraint` sentence constrains
+what may fill a relation's argument positions. A `wff_satisfaction_predicate` sentence
+states what a term, such as a function's value, satisfies. A forward rule over each of
+`relationTypeByArity`, `predicateTypeByArity` and `functionTypeByArity` makes every
+exact-arity class a mapping fact names a member. An `at_least` class is the subject of no
+mapping fact, so it is not a member. `definitional_predicate` and the five collections
+below it are each a `closed_extent_predicate`. A predicate the KB does not make a member is
+therefore refuted as one. A grammar term in neither population, such as `except` or
+`equals`, still has its classification entry, and `interpreted` answers for it.
+
+`:retired` names a classification entry for a term that no believed `comment` in the
+audited KB names. The audit reads the comments off the loaded KB, not off one file. A
+member that any upper file comments is therefore classified and not retired, as time.txt's
+`functional_at_instant` is.
 
 `nil` is **not** "nothing reads it". The question is asked of the engine's own grammar, so
 an ordinary domain predicate — `marriedTo`, at the top of this page — is simply not a term
