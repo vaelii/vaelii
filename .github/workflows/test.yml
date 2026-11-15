@@ -30,6 +30,13 @@ name: test
 # the committed weights were four weeks stale and the disk shards took 4m49s to
 # 17m12s; repacked eight ways from that run's times, each shard carries 299s.
 #
+# EVERY SHARD RUNS vaelii.shared-dumps-test FIRST. A shard's JVM builds the starter
+# dump once, about 70 s, and the upper-ontology dump once, in whichever namespace
+# loads each first, and that namespace's time took the build. In vaelii#265
+# vaelii.orthogonal-test read 139 s against 46 s on the disk-log leg for that reason.
+# scripts/ci-shard.sh prints the namespace that builds both first, so the builds are
+# that row's time and no other's.
+#
 # The shard COUNT is the length of each job's matrix, read back as
 # `strategy.job-total`. Both matrices have one dimension, so adding a value to
 # `shard:` is the whole of adding a shard.

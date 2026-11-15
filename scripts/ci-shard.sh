@@ -48,6 +48,15 @@
 # the order it ran before the history existed.  The file is data: awk matches each row
 # against a pattern and nothing in it is sourced or evaluated.
 #
+# EVERY SHARD RUNS vaelii.shared-dumps-test FIRST.  The test JVM builds the
+# starter dump once, about 70 s on CI, and the upper-ontology dump once, each
+# inside whichever namespace loads it first (test/vaelii/test_util.clj,
+# `starter-dump` and `core-context-dump`).  A namespace's time is the gap to the
+# next `lein test` line, so that namespace was billed the build.  The namespace scripts/lib/ns-timings.sh names as NS_TIMINGS_FIRST is
+# therefore left out of the packing and printed first in every shard, where its
+# row takes both builds.  scripts/ci-weights.sh --check judges no shard's first row.
+# A tree without that namespace packs and prints as before.
+#
 # The output is one namespace per line on stdout, ready for `lein test`; the
 # summary line goes to stderr so a caller can read the list from a pipe.
 { # one brace group, read whole before it runs: scripts/lint-shellcheck.sh says why
@@ -55,6 +64,8 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
+# shellcheck source=scripts/lib/ns-timings.sh
+. scripts/lib/ns-timings.sh
 
 WEIGHTS=""
 HISTORY=scripts/ci-test-history.tsv
@@ -107,8 +118,10 @@ if [[ -n "$missed" ]]; then
 fi
 
 namespaces=()
+first=""
 while IFS= read -r f; do
   ns="${f#test/}"; ns="${ns%.clj}"; ns="${ns//\//.}"; ns="${ns//_/-}"
+  if [[ "$ns" == "$NS_TIMINGS_FIRST" ]]; then first="$ns"; continue; fi
   namespaces+=("$ns")
 done < <(find test -name '*_test.clj' | sort)
 
@@ -117,17 +130,20 @@ if [[ ${#namespaces[@]} -eq 0 ]]; then
   exit 1
 fi
 
+[[ -z "$first" ]] || echo "$first"
+
 # Weight every namespace, heaviest first.  The sort is on the weight descending
 # and the name ascending, so two namespaces of equal weight land in a fixed
 # order and every shard computes the same assignment from the same input.
 printf '%s\n' "${namespaces[@]}" \
-  | awk -v weights="$WEIGHTS" '
+  | awk -v weights="$WEIGHTS" -v first="$first" '
       BEGIN {
         total = 0; known = 0
         while ((getline line < weights) > 0) {
           if (line ~ /^#/ || line ~ /^[ \t]*$/) continue
           split(line, f, "\t")
-          if (f[1] == "") continue
+          # the first namespace is in no packing, so its weight is no part of the mean
+          if (f[1] == "" || f[1] == first) continue
           secs[f[1]] = f[2] + 0; total += f[2] + 0; known++
         }
         close(weights)
@@ -135,7 +151,7 @@ printf '%s\n' "${namespaces[@]}" \
       }
       { printf "%012.3f\t%s\n", (($0 in secs) ? secs[$0] : mean), $0 }' \
   | LC_ALL=C sort -k1,1r -k2,2 \
-  | awk -F'\t' -v shard="$shard" -v of="$of" -v weights="$WEIGHTS" -v history="$HISTORY" '
+  | awk -F'\t' -v shard="$shard" -v of="$of" -v weights="$WEIGHTS" -v history="$HISTORY" -v first="$first" '
       # The recurring-failure history, policy 1 (scripts/ci-test-history.tsv says
       # what the numbers are).  Each row is matched whole against the pattern
       # `namespace<TAB>count`; a row that does not match makes the whole file
@@ -199,8 +215,9 @@ printf '%s\n' "${namespaces[@]}" \
           order = "lightest/heaviest alternating, history " history " ignored: " why
         }
         for (b = 1; b <= of; b++) all += load[b]
-        msg = sprintf("shard %d of %d: %d of %d namespaces, %.0fs of %.0fs predicted, from %s; order: %s",
-                      shard, of, count[shard] + 0, NR, load[shard] + 0, all, weights, order)
+        msg = sprintf("shard %d of %d: %d of %d namespaces, %.0fs of %.0fs predicted, from %s; order: %s%s",
+                      shard, of, count[shard] + 0, NR, load[shard] + 0, all, weights, order,
+                      (first != "") ? "; " first " first, outside the packing" : "")
         print msg > "/dev/stderr"
       }'
 exit

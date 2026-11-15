@@ -479,6 +479,7 @@
 7	151	test/vaelii/serve_test.clj
 16	7	test/vaelii/settle_hour_test.clj
 23	50	test/vaelii/settle_region_cost_test.clj
+0	2	test/vaelii/shared_dumps_test.clj
 0	52	test/vaelii/sibling_disjoint_test.clj
 5	56	test/vaelii/snapshot_sink_test.clj
 8	37	test/vaelii/solve_rule_test.clj

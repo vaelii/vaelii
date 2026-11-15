@@ -198,6 +198,17 @@ it — `git show v0.16.0:CHANGELOG.md`.
   rerun is skipped when rerunning the named namespaces is predicted to take longer
   than the whole shard, so a run where most namespaces regress fails on its first
   times instead of rerunning the shard.
+- **Every CI shard builds the shared test dumps first, in a namespace of its own.** A
+  test JVM builds the starter dump once, about 70 s on CI, and the upper-ontology dump
+  once, each inside whichever namespace loads it first. The `weights` check then read
+  that namespace as slow: `vaelii.orthogonal-test` took 139 s against 46 s on the
+  disk-log leg in [#265](https://github.com/vaelii/vaelii/pull/265).
+  `scripts/ci-shard.sh` now prints the new `vaelii.shared-dumps-test` first in every
+  shard, outside the packing, so its row takes both builds. The check judges no
+  shard's first row, so it does not judge this one.
+  A slow namespace's rerun runs in a JVM of its own, so the rerun runs
+  `vaelii.shared-dumps-test` before it too, and the rerun's prediction counts that
+  namespace once per rerun.
 
 ## 0.33.0 — 2026-11-10 — "A separation undercutting a `:default` edge's reading, shipped type edges at `:monotonic`, relations classified by rigidity, a three-argument `functionCorrespondingPredicate`, daemon reads held to their ceilings, a time slice seeing the context it slices"
 

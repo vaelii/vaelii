@@ -33,21 +33,25 @@
        "t.d-test\t3\nt.b-test\t1\nt.a-test\t1\nt.f-test\t1\nt.zz-test\t9\nt.c-test\t0\n"))
 
 (defn- with-tree
-  "Call `f` with a scratch directory holding a copy of `scripts/ci-shard.sh`, a test
-  tree of `namespaces` and `w.tsv` of `weights`."
-  [f]
-  (tu/with-requirement @tu/host-bash? "the bash on PATH is WSL's, which sees neither this checkout nor the scratch directory"
-    (let [dir (.toFile (Files/createTempDirectory "vaelii-ci-shard-" (into-array FileAttribute [])))]
-      (try (io/make-parents (io/file dir "scripts/ci-shard.sh"))
-           (io/copy (io/file "scripts/ci-shard.sh") (io/file dir "scripts/ci-shard.sh"))
-           (doseq [ns namespaces
-                   :let [p (str "test/" (-> ns (str/replace "." "/") (str/replace "-" "_")) ".clj")]]
-             (io/make-parents (io/file dir p))
-             (spit (io/file dir p) (str "(ns " ns ")\n")))
-           (spit (io/file dir "w.tsv")
-                 (str "# weights\n" (str/join (map (fn [[k v]] (str k "\t" v "\n")) weights))))
-           (f dir)
-           (finally (doseq [^File x (reverse (file-seq dir))] (.delete x)))))))
+  "Call `f` with a scratch directory holding a copy of `scripts/ci-shard.sh` and the
+  library it sources, a test tree of `namespaces` plus `extra`, and `w.tsv` of
+  `weights` merged with `extra-weights`."
+  ([f] (with-tree [] {} f))
+  ([extra extra-weights f]
+   (tu/with-requirement @tu/host-bash? "the bash on PATH is WSL's, which sees neither this checkout nor the scratch directory"
+     (let [dir (.toFile (Files/createTempDirectory "vaelii-ci-shard-" (into-array FileAttribute [])))]
+       (try (doseq [script ["scripts/ci-shard.sh" "scripts/lib/ns-timings.sh"]]
+              (io/make-parents (io/file dir script))
+              (io/copy (io/file script) (io/file dir script)))
+            (doseq [ns (concat namespaces extra)
+                    :let [p (str "test/" (-> ns (str/replace "." "/") (str/replace "-" "_")) ".clj")]]
+              (io/make-parents (io/file dir p))
+              (spit (io/file dir p) (str "(ns " ns ")\n")))
+            (spit (io/file dir "w.tsv")
+                  (str "# weights\n" (str/join (map (fn [[k v]] (str k "\t" v "\n"))
+                                                    (merge weights extra-weights)))))
+            (f dir)
+            (finally (doseq [^File x (reverse (file-seq dir))] (.delete x))))))))
 
 (defn- shard
   "`{:nss [...] :err \"...\"}` from shard `n` of `of` over the tree in `dir`, with
@@ -120,6 +124,25 @@
             (is (= (frequencies namespaces) (frequencies (apply concat with)))
                 "every namespace runs, once")))))))
 
+(def ^:private dumps-first
+  "The namespace `scripts/ci-shard.sh` prints first in every shard, which builds the
+  shared test dumps (`NS_TIMINGS_FIRST` in `scripts/lib/ns-timings.sh`)."
+  "vaelii.shared-dumps-test")
+
+(deftest every-shard-runs-the-dump-builds-first-and-packs-the-rest-as-before
+  (let [before (with-tree (fn [dir] (into {} (for [of [1 2 3 8] n (range 1 (inc of))]
+                                               [[of n] (nss dir history n of)]))))]
+    ;; weighted at 500 s: were it packed, or counted in the mean that t.g-test gets,
+    ;; the other shards' contents would move
+    (with-tree [dumps-first] {dumps-first 500}
+      (fn [dir]
+        (doseq [of [1 2 3 8] n (range 1 (inc of))]
+          (testing (str "shard " n " of " of)
+            (let [{:keys [nss err]} (shard dir history n of)]
+              (is (= dumps-first (first nss)) "the dump builds are the shard's first row")
+              (is (= (get before [of n]) (rest nss)) "the shard's other namespaces, in their order")
+              (is (str/includes? err (str dumps-first " first, outside the packing"))))))))))
+
 (deftest the-checked-in-history-is-read-and-moves-no-namespace-between-shards
   (tu/with-requirement @tu/host-bash? "the bash on PATH is WSL's, which does not see this checkout"
     (doseq [leg ["memory" "disk"]]
@@ -133,4 +156,5 @@
           (is (every? #(str/includes? (:err %) "order: recurring failures first") with)
               "scripts/ci-test-history.tsv is a history the script trusts")
           (is (= (map (comp frequencies :nss) without) (map (comp frequencies :nss) with)))
-          (is (apply distinct? (mapcat :nss with))))))))
+          (is (every? #(= dumps-first (first (:nss %))) with) "every shard builds the dumps first")
+          (is (apply distinct? (mapcat (comp rest :nss) with))))))))
