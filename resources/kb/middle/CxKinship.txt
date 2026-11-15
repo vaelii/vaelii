@@ -21,20 +21,11 @@
 (genlInverse fatherOf parentOf)
 (genlInverse motherOf parentOf)
 
-;; The same carrier can carry unrelated children in separate pregnancies, so a parent
-;; who is a gestational-only parent of either child proves no siblinghood.
-(exceptWhen (gestationalOnlyParentOf ?parent ?first)
- (set/defaultRule
-  (set/forwardRule
-   (implies (and (parentOf ?parent ?first) (parentOf ?parent ?second)
-                 (different ?first ?second))
-            (siblingOf ?first ?second)))))
-(exceptWhen (gestationalOnlyParentOf ?parent ?second)
- (set/defaultRule
-  (set/forwardRule
-   (implies (and (parentOf ?parent ?first) (parentOf ?parent ?second)
-                 (different ?first ?second))
-            (siblingOf ?first ?second)))))
+(set/defaultRule
+ (set/forwardRule
+  (implies (and (parentOf ?parent ?first) (parentOf ?parent ?second)
+                (different ?first ?second))
+           (siblingOf ?first ?second))))
 
 (set/defaultRule
  (set/forwardRule

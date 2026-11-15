@@ -248,6 +248,14 @@
     (is (not (proves? kb (list 'sharesGenesWith Carrier Ann) K)))
     (is (true? (v/ask? kb (list 'sharesGenesWith GeneticMotherAnn Ann) K)))))
 
+(tu/deftest-kb a-carrier-who-is-also-a-chosen-parent-proves-siblings
+  (tu/with-terms [Carrier Ann Bob]
+    (doseq [sentence [(list 'gestationalOnlyParentOf Carrier Ann)
+                      (list (chosen 'parentOf) Carrier Ann)
+                      (list (chosen 'parentOf) Carrier Bob)]]
+      (v/assert kb sentence K))
+    (is (true? (v/ask? kb (list 'siblingOf Ann Bob) K)))))
+
 (tu/deftest-kb chosen-siblings-start-in-2020-without-a-2019-genetic-or-common-proof
   (tu/with-terms [Carrier Ann Bob CxFamily]
     (v/assert kb (list 'genlCx CxFamily 'CxWell) U)
