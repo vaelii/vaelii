@@ -74,7 +74,7 @@ Separations sit at the top of what they separate (abstract.txt). The first line 
 **Why not the other ways.**
 
 - **A general instance type.** A term stated `bird` when it is a penguin misses every
-  penguin rule. CxBiology concludes `(not (hasCapability ?x flying))` from `(penguin ?x)`,
+  penguin rule. CxBiology concludes `(not (able ?x flying))` from `(penguin ?x)`,
   and that conclusion never reaches it.
 - **An argument type broader than the truth.** The declaration derives a weaker membership
   than the facts support, and a declaration of `thing` derives none, so it rules out

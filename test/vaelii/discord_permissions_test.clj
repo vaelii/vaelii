@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.discord-permissions-test
-  "Discord channel identities, names and permission capabilities in CxTra."
+  "Discord channel identities, names and permission abilities in CxTra."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.test-util :as tu]))
@@ -15,7 +15,7 @@
     (v/assert kb (list 'human Ann) CxDesk)
     (let [channel '(DiscordChannelFn "42")
           access (list 'ChannelViewFn channel)]
-      (v/assert kb (list 'hasCapability Ann access) CxDesk)
+      (v/assert kb (list 'able Ann access) CxDesk)
       (is (boolean (v/genl? kb 'discord_channel 'communication_channel CxDesk)))
       (is (boolean (v/genl? kb 'communication_channel 'intangible CxDesk)))
       (is (boolean (v/genl? kb 'communication_channel 'aspatial CxDesk)))
@@ -29,13 +29,13 @@
       (is (seq (v/ask kb (list 'discordChannelOf "42" channel) CxDesk)))
       (is (seq (v/ask kb (list 'channelViewOf channel access) CxDesk)))
       (is (seq (v/ask kb (list 'genl access 'channel_view) CxDesk)))
-      (is (seq (v/ask kb (list 'hasCapability Ann 'resource_access) CxDesk)))
+      (is (seq (v/ask kb (list 'able Ann 'resource_access) CxDesk)))
       (testing "a channel permission does not grant reading"
-        (is (empty? (v/ask kb (list 'hasCapability Ann 'read_access) CxDesk)))
-        (is (empty? (v/ask kb (list 'hasCapability Ann (list 'ReadAccessFn channel)) CxDesk)))
-        (v/assert kb (list 'hasCapability Ann (list 'ReadAccessFn channel)) CxDesk)
-        (is (seq (v/ask kb (list 'hasCapability Ann 'read_access) CxDesk)))
-        (is (seq (v/ask kb (list 'hasCapability Ann (list 'ReadAccessFn channel)) CxDesk)))))))
+        (is (empty? (v/ask kb (list 'able Ann 'read_access) CxDesk)))
+        (is (empty? (v/ask kb (list 'able Ann (list 'ReadAccessFn channel)) CxDesk)))
+        (v/assert kb (list 'able Ann (list 'ReadAccessFn channel)) CxDesk)
+        (is (seq (v/ask kb (list 'able Ann 'read_access) CxDesk)))
+        (is (seq (v/ask kb (list 'able Ann (list 'ReadAccessFn channel)) CxDesk)))))))
 
 (tu/deftest-kb permission-and-channel-names-are-scoped-to-their-observation-instants
   (tu/with-terms [CxDesk Ann]
@@ -44,7 +44,7 @@
     (let [first-time (list 'CxTimeFn CxDesk '(InstantFn 2026 11 3 15 30 0))
           next-time (list 'CxTimeFn CxDesk '(InstantFn 2026 11 3 15 31 0))
           channel '(DiscordChannelFn "42")
-          permission (list 'hasCapability Ann (list 'ChannelViewFn channel))]
+          permission (list 'able Ann (list 'ChannelViewFn channel))]
       (v/assert kb permission first-time)
       (v/assert kb (list 'discordChannelName channel "workshop") first-time)
       (v/assert kb (list 'discordChannelName channel "cafe") next-time)
@@ -84,5 +84,5 @@
     (is (= #{Ann Bo} (set (map #(get % '?person)
                                (v/ask kb '(discordAccountId ?person "80") CxDesk)))))
     (is (empty? (v/ask kb (list 'equals Ann Bo) CxDesk)))
-    (is (empty? (v/ask kb (list 'hasCapability Ann 'channel_view) CxDesk)))
-    (is (empty? (v/ask kb (list 'not (list 'hasCapability Ann 'channel_view)) CxDesk)))))
+    (is (empty? (v/ask kb (list 'able Ann 'channel_view) CxDesk)))
+    (is (empty? (v/ask kb (list 'not (list 'able Ann 'channel_view)) CxDesk)))))

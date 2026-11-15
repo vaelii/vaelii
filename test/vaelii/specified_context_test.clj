@@ -39,6 +39,10 @@
     (is (= {:status :audited :violations #{}}
            (result kb 'predAllSpecified notes relation_kind 'CxUniverse)))
     (v/assert kb (list 'binary_predicate nearbyRel) 'CxUniverse)
+    (is (= {:status :audited :violations #{}}
+           (result kb 'predAllSpecified notes relation_kind 'CxUniverse))
+        "a forced arity-class store in CxUniverse is not a definition there")
+    (v/assert kb (list 'comment nearbyRel "Stated in CxUniverse.") 'CxUniverse)
     (is (= {:status :audited :violations #{nearbyRel}}
            (result kb 'predAllSpecified notes relation_kind 'CxUniverse)))))
 

@@ -1512,7 +1512,7 @@
   rule is a pattern and the mint is what gets stored, checked in its own right when minted.  A
   variable an enclosing level binds is ground before anything is keyed on it, so one generator
   can range over a family of predicates.  A variable bound by a literal of the rule being
-  stored (`(implies (and (?tpred ?type ?cap) (?type ?instance)) …)`) is refused; written one
+  stored (`(implies (and (?tpred ?type ?ability) (?type ?instance)) …)`) is refused; written one
   level further in it is a hole of the middle level and both functors are concrete.  A
   generated variable functor no enclosing level binds is refused, naming the generator."
   [sentence]

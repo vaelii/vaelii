@@ -428,42 +428,42 @@
   ;; the type-level/instance-level bridge, stated once instead of once per pair: the
   ;; outer level fills the two predicates, the middle fills the type, and what is stored
   ;; at the bottom is an ordinary rule over concrete functors
-  (tu/with-terms [typeVersion hasCap capType bird flying Tweety]
+  (tu/with-terms [typeVersion able abilityType bird flying Tweety]
     (v/assert kb (list 'implies (list typeVersion '?ipred '?tpred)
-                       (list 'implies (list '?tpred '?type '?cap)
+                       (list 'implies (list '?tpred '?type '?ability)
                              (list 'implies (list '?type '?instance)
-                                   (list '?ipred '?instance '?cap))))
+                                   (list '?ipred '?instance '?ability))))
               'CxUniverse)
     (testing "the pair fact generates a generator, not a rule"
-      (v/assert kb (list typeVersion hasCap capType) 'CxUniverse)
+      (v/assert kb (list typeVersion able abilityType) 'CxUniverse)
       (is (= 2 (count (generators kb 'CxUniverse))) "the written one and its mint")
       (is (empty? (generated-rules kb 'CxUniverse)) "and nothing that concludes a fact yet"))
     (testing "the type-level fact generates the rule the mint was for"
-      (v/assert kb (list capType bird flying) 'CxUniverse)
+      (v/assert kb (list abilityType bird flying) 'CxUniverse)
       (is (= 1 (count (generated-rules kb 'CxUniverse))))
       (is (= bird (first (vr/antecedent-keys
                           (:antecedent (first (generated-rules kb 'CxUniverse))))))
           "keyed on the type, which was a variable two levels up"))
     (testing "and the instance-level conclusion follows"
       (v/assert kb (list bird Tweety) 'CxUniverse)
-      (is (= #{flying} (into #{} (map '?c) (v/ask kb (list hasCap Tweety '?c) 'CxUniverse)))))))
+      (is (= #{flying} (into #{} (map '?c) (v/ask kb (list able Tweety '?c) 'CxUniverse)))))))
 
 (tu/deftest-kb an-outer-level-binds-the-functor-a-middle-one-cannot
   ;; the distinction nesting exists for, in one pair of sentences.  Both write the same
   ;; join; only the nested one stores rules the index can key.
-  (tu/with-terms [typeVersion hasCap capType]
+  (tu/with-terms [typeVersion able abilityType]
     (testing "same level: the type is bound by a literal of the rule being stored"
       (is (= :not-indexable
              (refusal kb (list 'implies (list typeVersion '?ipred '?tpred)
-                               (list 'implies (list 'and (list '?tpred '?type '?cap)
+                               (list 'implies (list 'and (list '?tpred '?type '?ability)
                                                     (list '?type '?instance))
-                                     (list '?ipred '?instance '?cap)))))))
+                                     (list '?ipred '?instance '?ability)))))))
     (testing "a level out: the type is a hole of the middle level, ground before it stores"
       (is (= :accepted
              (refusal kb (list 'implies (list typeVersion '?ipred '?tpred)
-                               (list 'implies (list '?tpred '?type '?cap)
+                               (list 'implies (list '?tpred '?type '?ability)
                                      (list 'implies (list '?type '?instance)
-                                           (list '?ipred '?instance '?cap))))))))))
+                                           (list '?ipred '?instance '?ability))))))))))
 
 (tu/deftest-kb nesting-is-not-capped
   ;; three levels, so the middle mint is itself a generator that generates a generator.
@@ -487,21 +487,21 @@
   ;; a mint is derived content at every level, so one relabel takes the chain: the fill
   ;; goes, the generator it generated stops being believed, the rule *that* generated goes
   ;; with it, and so does the conclusion
-  (tu/with-terms [typeVersion hasCap capType bird flying Tweety]
+  (tu/with-terms [typeVersion able abilityType bird flying Tweety]
     (v/assert kb (list 'implies (list typeVersion '?ipred '?tpred)
-                       (list 'implies (list '?tpred '?type '?cap)
+                       (list 'implies (list '?tpred '?type '?ability)
                              (list 'implies (list '?type '?instance)
-                                   (list '?ipred '?instance '?cap))))
+                                   (list '?ipred '?instance '?ability))))
               'CxUniverse)
-    (let [pair (v/assert kb (list typeVersion hasCap capType) 'CxUniverse)]
-      (v/assert kb (list capType bird flying) 'CxUniverse)
+    (let [pair (v/assert kb (list typeVersion able abilityType) 'CxUniverse)]
+      (v/assert kb (list abilityType bird flying) 'CxUniverse)
       (v/assert kb (list bird Tweety) 'CxUniverse)
-      (is (seq (v/ask kb (list hasCap Tweety '?c) 'CxUniverse)))
+      (is (seq (v/ask kb (list able Tweety '?c) 'CxUniverse)))
       (let [minted (mapv :id (remove #(vr/generator-sentex? %)
                                      (rule-sentexes kb 'CxUniverse)))]
         (v/retract! kb pair)
         (testing "the conclusion goes"
-          (is (empty? (v/ask kb (list hasCap Tweety '?c) 'CxUniverse))))
+          (is (empty? (v/ask kb (list able Tweety '?c) 'CxUniverse))))
         (testing "and so does every rule the chain minted, at both levels"
           (is (every? #(not (v/in? kb %)) minted))
           (is (= 1 (count (filter #(v/in? kb (:id %)) (rule-sentexes kb 'CxUniverse))))
@@ -511,17 +511,17 @@
   ;; order independence again, now over three levels: each level's mint is a datum that
   ;; joins over what is already stored, so no arrival order needs a sweep of its own
   (let [run (fn [reverse?]
-              (tu/with-terms [typeVersion hasCap capType bird flying Tweety]
+              (tu/with-terms [typeVersion able abilityType bird flying Tweety]
                 (let [gen   #(v/assert kb (list 'implies (list typeVersion '?ipred '?tpred)
-                                                (list 'implies (list '?tpred '?type '?cap)
+                                                (list 'implies (list '?tpred '?type '?ability)
                                                       (list 'implies (list '?type '?instance)
-                                                            (list '?ipred '?instance '?cap))))
+                                                            (list '?ipred '?instance '?ability))))
                                        'CxUniverse)
                       facts #(do (v/assert kb (list bird Tweety) 'CxUniverse)
-                                 (v/assert kb (list capType bird flying) 'CxUniverse)
-                                 (v/assert kb (list typeVersion hasCap capType) 'CxUniverse))]
+                                 (v/assert kb (list abilityType bird flying) 'CxUniverse)
+                                 (v/assert kb (list typeVersion able abilityType) 'CxUniverse))]
                   (if reverse? (do (facts) (gen)) (do (gen) (facts)))
-                  {:derived (into #{} (map '?c) (v/ask kb (list hasCap Tweety '?c)
+                  {:derived (into #{} (map '?c) (v/ask kb (list able Tweety '?c)
                                                        'CxUniverse))
                    :flying  flying})))
         a   (run false)
@@ -557,15 +557,15 @@
 (tu/deftest-kb a-nested-mint-that-cannot-stand-is-dropped-and-recorded
   ;; the mint entry point under nesting: a fill can make the *middle* rule junk, and the
   ;; firing must record it rather than throw — the fixpoint is halfway through itself
-  (tu/with-terms [typeVersion capType]
+  (tu/with-terms [typeVersion abilityType]
     (v/assert kb (list 'implies (list typeVersion '?ipred '?tpred)
-                       (list 'implies (list '?tpred '?type '?cap)
+                       (list 'implies (list '?tpred '?type '?ability)
                              (list 'implies (list '?type '?instance)
-                                   (list '?ipred '?instance '?cap))))
+                                   (list '?ipred '?instance '?ability))))
               'CxUniverse)
     (v/clear-violations! kb)
     ;; a number in the instance-level predicate's place heads a literal no index can key
-    (v/assert kb (list typeVersion 7 capType) 'CxUniverse)
+    (v/assert kb (list typeVersion 7 abilityType) 'CxUniverse)
     (is (empty? (generated-rules kb 'CxUniverse)) "nothing was stored for it")
     (is (= 1 (count (generators kb 'CxUniverse))) "and no generator was minted either")
     (is (seq (v/violations kb)) "the drop is readable")))

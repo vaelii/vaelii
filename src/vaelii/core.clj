@@ -1335,13 +1335,13 @@
 
 (defn- rehome-forced-extent!
   "When `sentence` is a `(forced_decontextualized_predicate P)` declaration, move every
-  `(P …)` premise stored outside CxUniverse into it: the same sentence asserted there
-  at the premise's own strength, and the original retracted, as one `edit!` batch
+  `(P …)` premise stored outside CxUniverse into it, as one `edit!` batch at each
+  premise's own strength, then move the `declaredType` memberships of
+  `special/declared-types-rehomed` and settle
   (docs/contexts.md#forced_decontextualized_predicate-a-canonical-home-in-cxuniverse).
-
-  Premises only: a derived `(P …)` outside CxUniverse is placed by the rule that
-  concluded it.  The extent is snapshotted before the first move, since each move writes
-  to the posting being read.  The mark is read unscoped."
+  A rule's conclusion stays where the rule placed it.  The extent is snapshotted before
+  the first move, since each move writes to the posting being read.  The mark is read
+  unscoped."
   [kb sentence]
   (let [s    (rules/inner-rule sentence)
         pred (when (and (seq? s) (= 'forced_decontextualized_predicate (first s))) (second s))]
@@ -1356,7 +1356,13 @@
           (edit! kb {:add    (mapv #(vector (:sentence %) special/universal-context
                                             {:strength (p/premise-strength (:records kb) (:id %))})
                                    moved)
-                     :remove (mapv :id moved)}))))))
+                     :remove (mapv :id moved)})))
+      (let [{:keys [new violations dropped]} (special/declared-types-rehomed kb pred)]
+        (when (seq violations) (viol/report kb violations))
+        (when (seq dropped) (chain/drop-justifications! kb dropped))
+        (when (or (seq new) (seq dropped))
+          (settle/rechain-seeds kb (special/minted-seeds kb new))
+          (settle/settle-write kb false))))))
 
 (defn- teardown-refusal
   "The refusal a storage teardown of `handle` earns, as a value, or nil.  `retract-storage!`

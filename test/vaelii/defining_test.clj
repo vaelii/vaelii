@@ -146,13 +146,59 @@
     (is (v/ask? kb (list 'binary_predicate nearbyRel) 'CxUniverse))
     (is (= #{CxHome} (v/defining-contexts kb nearbyRel)))))
 
-(tu/deftest-kb an-independent-premise-on-an-arity-class-copy-remains-ordinary
+(tu/deftest-kb an-independent-arity-class-premise-is-a-forced-store-not-a-home
+  ;; `binary_predicate` is a forced_decontextualized_predicate, so its premise lives in
+  ;; CxUniverse whichever context states it, and the store cannot tell the two apart: it
+  ;; leaves the home where the relation's other statements put it.  An ordinary premise in
+  ;; CxUniverse does make a global home.
   (tu/with-terms [CxHome relation_kind nearbyRel]
     (contexts kb [CxHome])
     (v/assert kb (list 'genl relation_kind 'binary_predicate) CxHome {:strength :monotonic})
     (v/assert kb (list relation_kind nearbyRel) CxHome {:strength :monotonic})
     (v/assert kb (list 'binary_predicate nearbyRel) 'CxUniverse)
-    (is (= #{'CxUniverse} (v/defining-contexts kb nearbyRel)))))
+    (is (= #{CxHome} (v/defining-contexts kb nearbyRel)))
+    (let [h (v/assert kb (list 'comment nearbyRel "Stated in CxUniverse.") 'CxUniverse)]
+      (is (= #{'CxUniverse} (v/defining-contexts kb nearbyRel)))
+      (v/retract! kb h)
+      (is (= #{CxHome} (v/defining-contexts kb nearbyRel))))))
+
+(defn- rigidity-findings
+  "The relations the shipped `(typeAllSpecified rigidity_kind relation)` reports, read from
+  `context`."
+  [kb context]
+  (get-in (v/kb-integrity kb #{} context {:categories #{:type-specified-violations}})
+          [:type-specified-violations '[typeAllSpecified rigidity_kind relation] :violations]
+          #{}))
+
+(tu/deftest-kb a-forced-arity-class-store-keeps-a-middle-theory-types-home
+  ;; The arity classes are forced_decontextualized_predicates: a middle theory's
+  ;; (unary_predicate T) is stored in CxUniverse.  That record is scaffolding, so T's
+  ;; defining context stays the middle theory, where its rigidity class is stated.
+  (tu/with-terms [CxMiddle mid_kind midRel unclassifiedRel loneRel]
+    (contexts kb [CxMiddle])
+    (let [stated [(list 'unary_predicate mid_kind)
+                  (list 'comment mid_kind "A type the middle theory alone defines.")
+                  (list 'time_invariant_relation mid_kind)
+                  (list 'binary_predicate midRel)
+                  (list 'comment midRel "A relation the middle theory alone defines.")
+                  (list 'time_varying_relation midRel)
+                  (list 'binary_predicate unclassifiedRel)
+                  (list 'comment unclassifiedRel "Classified by no rigidity kind.")]
+          _ (doseq [s stated] (v/assert kb s CxMiddle))
+          membership (v/sentex kb (v/handle-of kb (list 'unary_predicate mid_kind) CxMiddle))]
+      (is (= 'CxUniverse (:context membership)) "the membership is stored in CxUniverse by force")
+      (is (= #{CxMiddle} (v/defining-contexts kb mid_kind)))
+      (is (= #{CxMiddle} (v/defining-contexts kb midRel)))
+      (is (= #{CxMiddle} (v/defining-contexts kb unclassifiedRel)))
+      (testing "the rigidity audit reports neither classified term, and still the unclassified one"
+        (doseq [cx ['CxUniverse CxMiddle]]
+          (let [found (rigidity-findings kb cx)]
+            (is (not (contains? found mid_kind)) (str "from " cx))
+            (is (not (contains? found midRel)) (str "from " cx))
+            (is (contains? found unclassifiedRel) (str "from " cx)))))
+      (testing "a relation known by its arity alone is defined where that record is"
+        (v/assert kb (list 'binary_predicate loneRel) CxMiddle)
+        (is (= #{'CxUniverse} (v/defining-contexts kb loneRel)))))))
 
 (tu/deftest-kb another-nats-bookkeeping-does-not-define-its-namespace-argument
   (tu/with-terms [CxHome Namespace namespace_kind LookupFn lookupOf access_kind usedBy Observer]

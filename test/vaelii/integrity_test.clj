@@ -1711,6 +1711,45 @@
     (is (= #{(list 'genl bird_kind warm_blooded_kind) (list 'genl fatherX parentX)}
            (set (map #(nth % 2) (rule-macros kb)))))))
 
+(defn- intersection-of
+  "An `(intersection C . types)` declaration as `[C #{types}]`, since the sweep may name
+  the intersected types in either order."
+  [decl]
+  (when (and (seq? decl) (= 'intersection (first decl)))
+    [(second decl) (set (nnext decl))]))
+
+(tu/deftest-kb a-conjunction-rule-is-reported-as-intersection
+  (tu/with-terms [swimmer_kind diver_kind both_kind third_kind all_kind ableX mayX canX]
+    (doseq [p [ableX mayX canX]]
+      (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list swimmer_kind '?x) (list diver_kind '?x))
+                             (list both_kind '?x)))
+              'CxUniverse)
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list swimmer_kind '?x) (list diver_kind '?x)
+                                            (list third_kind '?x))
+                             (list all_kind '?x)))
+              'CxUniverse)
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list ableX '?a '?k) (list mayX '?a '?k))
+                             (list canX '?a '?k)))
+              'CxUniverse)
+    (is (= #{[both_kind #{swimmer_kind diver_kind}]
+             [all_kind #{swimmer_kind diver_kind third_kind}]
+             [canX #{ableX mayX}]}
+           (set (keep #(intersection-of (nth % 2)) (rule-macros kb)))))))
+
+(tu/deftest-kb a-conjunction-over-crossed-arguments-is-not-an-intersection
+  (tu/with-terms [ableX mayX canX]
+    (doseq [p [ableX mayX canX]]
+      (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list ableX '?a '?k) (list mayX '?k '?a))
+                             (list canX '?a '?k)))
+              'CxUniverse)
+    (is (empty? (keep #(intersection-of (nth % 2)) (rule-macros kb))))))
+
 (defn- default-rule
   "The `set/defaultRule` `(implies (antecedent) (consequent))`, forward and backward."
   [ante conseq]
@@ -2061,21 +2100,29 @@
                                                   {:categories #{:undeclared-arity}})))))
 
 (tu/deftest-kb a-genl-node-with-no-arity-is-reported
-  (tu/with-terms [stray_kind loose_kind placed_kind below_kind]
-    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
-    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+  (tu/with-terms [stray_kind loose_kind]
     (v/assert kb (list 'genl stray_kind loose_kind) 'CxUniverse)
     (let [before (state-snapshot kb)
           report (v/kb-integrity kb #{} 'CxUniverse {:categories #{:undeclared-arity}})]
       (is (= :gap (:status report)))
       (is (= (mapv (fn [t] {:term t}) (sort-by nm/print-key [loose_kind stray_kind]))
              (:undeclared-arity report))
-          "a subtype inherits its supertype's length, and both ends of an edge no length binds are findings")
+          "both ends of an edge no length binds are findings")
       (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
 
+(tu/deftest-kb a-genl-node-below-a-bound-predicate-is-reported
+  ;; `arity` is part of a predicate's own definition, as `arg` is: a length the node
+  ;; would read through `genl` from a bound supertype does not declare the node.
+  (tu/with-terms [placed_kind below_kind relP relQ]
+    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
+    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+    (v/assert kb (list 'arity relQ 2) 'CxUniverse)
+    (v/assert kb (list 'genl relP relQ) 'CxUniverse)
+    (is (= (sort-by nm/print-key [below_kind relP]) (undeclared kb))
+        "below_kind under a unary_predicate and relP under an (arity relQ 2) state no arity of their own")))
+
 (tu/deftest-kb a-genl-node-with-a-declared-arity-is-not-reported
-  (tu/with-terms [typed_kind upper_kind linksX relatesX listsX gathersX arityX aritiesX
-                  relP relQ Xa Xb Xc]
+  (tu/with-terms [typed_kind upper_kind linksX relatesX listsX gathersX arityX aritiesX]
     (v/assert kb (list 'unary_predicate typed_kind) 'CxUniverse)
     (v/assert kb (list 'unary_predicate upper_kind) 'CxUniverse)
     (v/assert kb (list 'genl typed_kind upper_kind) 'CxUniverse)
@@ -2088,12 +2135,9 @@
     (v/assert kb (list 'arity arityX 3) 'CxUniverse)
     (v/assert kb (list 'arity aritiesX 3) 'CxUniverse)
     (v/assert kb (list 'genl arityX aritiesX) 'CxUniverse)
-    (v/assert kb (list 'arity relQ 2) 'CxUniverse)
-    (v/assert kb (list 'genl relP relQ) 'CxUniverse)
-    (v/assert kb (list relP Xa Xb Xc) 'CxUniverse)
     (is (= [] (undeclared kb))
         "a unary_predicate, a binary_predicate, a variable_arity and an (arity P n)
-         declaration each state an arity, and relP inherits relQ's")))
+         declaration each state an arity")))
 
 (tu/deftest-kb undeclared-arity-reads-the-edges-a-context-sees-and-an-arity-stated-anywhere
   (tu/with-terms [CxHidden stray_kind placed_kind hidden_kind loose_kind chainOf relatedTo]
@@ -2121,6 +2165,92 @@
         (let [report (run {:max-results 1})]
           (is (= [:truncated :max-results] ((juxt :status :reason) report)))
           (is (= (subvec in-order 0 1) (:undeclared-arity report)))))
+      (testing "work exhaustion is truncated, never audited"
+        (let [needed (first (filter #(= :gap (:status (run {:max-work %}))) (range 0 5000)))]
+          (is (some? needed))
+          (is (every? #(= [:truncated :max-work] ((juxt :status :reason) (run {:max-work %})))
+                      (range 0 (or needed 0)))))))))
+
+;; ---- genl-arity-mismatch --------------------------------------------------
+
+(defn- mismatched
+  "The `:genl-arity-mismatch` findings a sweep run with that category alone reports in
+  CxUniverse."
+  [kb]
+  (vec (:genl-arity-mismatch (v/kb-integrity kb #{} 'CxUniverse
+                                             {:categories #{:genl-arity-mismatch}}))))
+
+(tu/deftest-kb a-unary-predicate-under-an-unbounded-one-is-not-a-mismatch
+  (tu/with-terms [placed_kind chainOf]
+    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
+    (v/assert kb (list 'variable_arity chainOf) 'CxUniverse)
+    (v/assert kb (list 'genl placed_kind chainOf) 'CxUniverse)
+    (is (= [] (mismatched kb))
+        "every length placed_kind admits, chainOf admits")))
+
+(tu/deftest-kb an-unbounded-predicate-under-a-unary-one-is-a-mismatch
+  (tu/with-terms [placed_kind chainOf]
+    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
+    (v/assert kb (list 'variable_arity chainOf) 'CxUniverse)
+    (v/assert kb (list 'genl chainOf placed_kind) 'CxUniverse)
+    (let [before (state-snapshot kb)
+          report (v/kb-integrity kb #{} 'CxUniverse {:categories #{:genl-arity-mismatch}})]
+      (is (= :gap (:status report)))
+      (is (= [{:spec chainOf :genl placed_kind :spec-arity {:min 0} :genl-arity {:exact 1}}]
+             (:genl-arity-mismatch report))
+          "chainOf admits two arguments, which placed_kind does not")
+      (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
+
+(tu/deftest-kb exact-lengths-mismatch-when-they-differ
+  (tu/with-terms [linksX relatesX tiesX bindsX]
+    (v/assert kb (list 'arity linksX 2) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate relatesX) 'CxUniverse)
+    (v/assert kb (list 'genl linksX relatesX) 'CxUniverse)
+    (v/assert kb (list 'arity tiesX 3) 'CxUniverse)
+    (v/assert kb (list 'arity bindsX 2) 'CxUniverse)
+    (v/assert kb (list 'genl tiesX bindsX) 'CxUniverse)
+    (is (= [{:spec tiesX :genl bindsX :spec-arity {:exact 3} :genl-arity {:exact 2}}]
+           (mismatched kb))
+        "equal lengths agree, and a ternary under a binary does not")))
+
+(tu/deftest-kb floors-mismatch-when-the-spec-admits-a-shorter-length
+  (tu/with-terms [listsX gathersX joinsX meetsX]
+    (doseq [[p m] [[listsX 2] [gathersX 3] [joinsX 3] [meetsX 2]]]
+      (v/assert kb (list 'variable_arity p) 'CxUniverse)
+      (v/assert kb (list 'arityMin p m) 'CxUniverse))
+    (v/assert kb (list 'genl listsX gathersX) 'CxUniverse)
+    (v/assert kb (list 'genl joinsX meetsX) 'CxUniverse)
+    (is (= [{:spec listsX :genl gathersX :spec-arity {:min 2} :genl-arity {:min 3}}]
+           (mismatched kb))
+        "a floor of two under a floor of three admits two arguments the genl does not;
+         a floor of three under a floor of two admits nothing more")))
+
+(tu/deftest-kb a-genl-end-with-no-known-arity-is-not-a-mismatch
+  (tu/with-terms [placed_kind below_kind stray_kind loose_kind]
+    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
+    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+    (v/assert kb (list 'genl stray_kind loose_kind) 'CxUniverse)
+    (is (= [] (mismatched kb))
+        "an end with no arity of its own is an undeclared-arity finding, not this one")))
+
+(tu/deftest-kb genl-arity-mismatch-findings-truncate-under-every-bound
+  (tu/with-terms [one_kind two_kind chainOf linksOf]
+    (v/assert kb (list 'unary_predicate one_kind) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate two_kind) 'CxUniverse)
+    (v/assert kb (list 'variable_arity chainOf) 'CxUniverse)
+    (v/assert kb (list 'variable_arity linksOf) 'CxUniverse)
+    (v/assert kb (list 'genl chainOf one_kind) 'CxUniverse)
+    (v/assert kb (list 'genl linksOf two_kind) 'CxUniverse)
+    (let [run      #(v/kb-integrity kb #{} 'CxUniverse
+                                    (assoc % :categories #{:genl-arity-mismatch}))
+          in-order (vec (sort-by (comp nm/print-key :spec)
+                                 [{:spec chainOf :genl one_kind :spec-arity {:min 0} :genl-arity {:exact 1}}
+                                  {:spec linksOf :genl two_kind :spec-arity {:min 0} :genl-arity {:exact 1}}]))]
+      (is (= in-order (:genl-arity-mismatch (run {}))))
+      (testing "a result cap below the finding count keeps the completed prefix"
+        (let [report (run {:max-results 1})]
+          (is (= [:truncated :max-results] ((juxt :status :reason) report)))
+          (is (= (subvec in-order 0 1) (:genl-arity-mismatch report)))))
       (testing "work exhaustion is truncated, never audited"
         (let [needed (first (filter #(= :gap (:status (run {:max-work %}))) (range 0 5000)))]
           (is (some? needed))

@@ -1,8 +1,8 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.resource-access-test
-  "The access vocabulary of CxTra.  A grant is a capability over a function term that
-  keeps the resource, so `hasCapability` carries it up to its access kind; admin and
+  "The access vocabulary of CxTra.  A grant is an ability over a function term that
+  keeps the resource, so `able` carries it up to its access kind; admin and
   deploy access each entail write access over the same resource by default, and no
   other kind entails another."
   (:require [clojure.test :refer [is testing use-fixtures]]
@@ -45,16 +45,16 @@
     (v/assert kb (list 'human Ann) CxDesk)
     (v/assert kb (list 'human Bo) CxDesk)
     (v/assert kb (list 'computer Box) CxDesk)
-    (v/assert kb (list 'hasCapability Ann (list 'ShellAccessFn Box)) CxDesk)
-    (v/assert kb (list 'hasCapability Bo (list 'ReadAccessFn Repo)) CxDesk)
+    (v/assert kb (list 'able Ann (list 'ShellAccessFn Box)) CxDesk)
+    (v/assert kb (list 'able Bo (list 'ReadAccessFn Repo)) CxDesk)
     (testing "the grant is answered for its resource, and carried up to the kinds"
-      (is (holds-ask (list 'hasCapability Ann (list 'ShellAccessFn Box)) CxDesk))
-      (is (holds-ask (list 'hasCapability Ann 'shell_access) CxDesk))
-      (is (holds-ask (list 'hasCapability Ann 'resource_access) CxDesk)))
+      (is (holds-ask (list 'able Ann (list 'ShellAccessFn Box)) CxDesk))
+      (is (holds-ask (list 'able Ann 'shell_access) CxDesk))
+      (is (holds-ask (list 'able Ann 'resource_access) CxDesk)))
     (testing "the resource is kept: a grant over one resource is not one over another"
-      (is (not (holds-ask (list 'hasCapability Ann (list 'ShellAccessFn Repo)) CxDesk))))
+      (is (not (holds-ask (list 'able Ann (list 'ShellAccessFn Repo)) CxDesk))))
     (testing "shell access does not entail read access"
-      (is (not (holds-ask (list 'hasCapability Ann 'read_access) CxDesk))))
+      (is (not (holds-ask (list 'able Ann 'read_access) CxDesk))))
     (testing "the corresponding predicate names the kind"
       (is (seq (v/ask kb (list 'shellAccessOf Box '?kind) CxDesk))))))
 
@@ -62,19 +62,19 @@
   (tu/with-terms [CxDesk Ann Bo Cy Box Repo]
     (desk! kb CxDesk)
     (doseq [p [Ann Bo Cy]] (v/assert kb (list 'human p) CxDesk))
-    (v/assert kb (list 'hasCapability Ann (list 'AdminAccessFn Box)) CxDesk)
-    (v/assert kb (list 'hasCapability Bo (list 'DeployAccessFn Box)) CxDesk)
-    (v/assert kb (list 'hasCapability Cy (list 'WriteAccessFn Repo)) CxDesk)
-    (is (holds-ask (list 'hasCapability Ann (list 'WriteAccessFn Box)) CxDesk))
-    (is (holds-ask (list 'hasCapability Bo (list 'WriteAccessFn Box)) CxDesk))
-    (is (holds-ask (list 'hasCapability Ann 'write_access) CxDesk))
+    (v/assert kb (list 'able Ann (list 'AdminAccessFn Box)) CxDesk)
+    (v/assert kb (list 'able Bo (list 'DeployAccessFn Box)) CxDesk)
+    (v/assert kb (list 'able Cy (list 'WriteAccessFn Repo)) CxDesk)
+    (is (holds-ask (list 'able Ann (list 'WriteAccessFn Box)) CxDesk))
+    (is (holds-ask (list 'able Bo (list 'WriteAccessFn Box)) CxDesk))
+    (is (holds-ask (list 'able Ann 'write_access) CxDesk))
     (testing "over the same resource only"
-      (is (not (holds-ask (list 'hasCapability Ann (list 'WriteAccessFn Repo)) CxDesk))))
+      (is (not (holds-ask (list 'able Ann (list 'WriteAccessFn Repo)) CxDesk))))
     (testing "write access entails neither read nor admin access"
-      (is (not (holds-ask (list 'hasCapability Cy 'read_access) CxDesk)))
-      (is (not (holds-ask (list 'hasCapability Cy 'admin_access) CxDesk))))
+      (is (not (holds-ask (list 'able Cy 'read_access) CxDesk)))
+      (is (not (holds-ask (list 'able Cy 'admin_access) CxDesk))))
     (testing "admin access does not entail shell access"
-      (is (not (holds-ask (list 'hasCapability Ann 'shell_access) CxDesk))))))
+      (is (not (holds-ask (list 'able Ann 'shell_access) CxDesk))))))
 
 (tu/deftest-kb each-access-function-names-its-corresponding-predicate
   ;; A function comes with the predicate relating its argument to its result, so a grant

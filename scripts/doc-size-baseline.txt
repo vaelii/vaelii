@@ -348,7 +348,6 @@
 27	128	test/vaelii/inherited_clash_test.clj
 3	5	test/vaelii/input_output_timing_test.clj
 2	33	test/vaelii/inter_args_test.clj
-2	32	test/vaelii/intersection_test.clj
 1	45	test/vaelii/introspection_test.clj
 0	70	test/vaelii/jobs_test.clj
 34	24	test/vaelii/join_lead_cost_test.clj

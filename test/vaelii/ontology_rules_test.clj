@@ -128,7 +128,10 @@
         pairs       (rule-clashes-everywhere kb #{:rule-clash-review})
         kinds       (frequencies (map :kind (concat live pairs)))
         root-denial '(implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
-        definition? #(some #{root-denial} (:sentences %))
+        no-flight   '(implies (penguin ?x) (not (able ?x flying)))
+        can-rule?   #(and (seq? %) (= 'implies (first %)) (= 'can (first (nth % 2))))
+        definition? #(or (some #{root-denial} (:sentences %))
+                         (and (some #{no-flight} (:sentences %)) (some can-rule? (:sentences %))))
         rigidity    '#{time_invariant_relation time_agnostic_relation time_varying_relation
                        eternal_predicate situation_predicate blood_kinship_predicate chosen_kinship_predicate}
         rigidity?   (fn [pair] (every? #(contains? rigidity (first (nth % 2))) (:sentences pair)))
@@ -153,7 +156,7 @@
         definitions (remove #(or (rigidity? %) (arity-copy? %) (policy-copy? %)) acked)]
     (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
-    (is (= {:negation 11 :disjoint 33 :functional 10} kinds)
+    (is (= {:negation 12 :disjoint 33 :functional 10} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
     (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
         "negation clashes are excepted or acknowledged")
@@ -161,9 +164,9 @@
         "the one other disjoint pair, a metal solid and mercury liquid, is excepted")
     (is (= 14 (count (filter rigidity? acked)))
         "the seven existing transfers and seven kinship branch contracts are acknowledged")
-    (is (= 7 (count definitions))
-        "the root denial meets the two proper readings', TimeIntersectionFn's four and subtimeOf's definitions, unexcepted")
-    (is (every? definition? definitions) "and those are the seven other acknowledged pairs")
+    (is (= 8 (count definitions))
+        "the root denial meets the two proper readings', TimeIntersectionFn's four and subtimeOf's definitions, unexcepted, and CxBiology's penguin flight denial meets the strict membership rule (intersection can able may) generates, since can is a spec of able; it fires only for a penguin stated able to fly, so CxBiology acknowledges it as the other seven are")
+    (is (every? definition? definitions) "and those are the eight other acknowledged pairs")
     (is (= (set (for [constructor '[BloodKinFn ChosenKinFn]
                       [kind n] '[[unary 1] [binary 2] [ternary 3] [quaternary 4] [quinary 5]]]
                   [constructor kind n]))

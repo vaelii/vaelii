@@ -1081,6 +1081,33 @@
         (is (nil? (entailed kb (list 'unary_predicate orphan_t) CxWorld))
             "retracting the declaration takes the membership back")))))
 
+(tu/deftest-kb a-forced-unary-predicate-places-the-declared-membership-in-cxuniverse-in-either-order
+  (let [results
+        (for [order [[:mark :decl] [:decl :mark]]]
+          (tu/with-neutral-kb [kb tu/fresh]
+            (tu/with-terms [parentOf orphan_t CxWorld]
+              (with-entailing
+                (a-context kb CxWorld)
+                (doseq [step order]
+                  (case step
+                    :mark (v/assert kb '(forced_decontextualized_predicate unary_predicate) 'CxUniverse)
+                    :decl (v/assert kb (list 'arg parentOf 1 orphan_t) CxWorld)))
+                (let [m (list 'unary_predicate orphan_t)]
+                  [order (walk/postwalk-replace
+                          {parentOf 'parentOf orphan_t 'orphan_t CxWorld 'CxWorld}
+                          {:homes   (sort-by str (keep #(when (= m (:sentence %)) (:context %))
+                                                       (kb/find-sentexes kb 'unary_predicate)))
+                           :support (set (for [j (some->> (v/handle-of kb m 'CxUniverse)
+                                                          (v/supporting-justifications kb))]
+                                           [(:informant j)
+                                            (into #{} (map #(v/sentence-of (v/sentex kb %))) (:antecedents j))]))
+                           :read    (believed? kb m CxWorld)})])))))]
+    (is (= #{{:homes   ['CxUniverse]
+              :support #{['declaredType #{'(arg parentOf 1 orphan_t)}]}
+              :read    true}}
+           (set (map second results)))
+        (pr-str results))))
+
 ;; ---- argArg: the type read off the sentence -----------------------------
 
 (tu/deftest-kb an-arg-arg-entails-the-type-the-sentence-names

@@ -8,7 +8,10 @@
 ;; `:context-merges`) or reports (`:re-meanings`, `:retired`).  `:api` holds the
 ;; same kinds for the public API, koinii's vars and the daemon's ops, which a
 ;; caller's code rewrites.
-{:renames        {relativeOf kinOf}
+{:renames        {hasCapability         able
+                  capabilityType        abilityType
+                  relativeOf            kinOf
+                  toolEnablesCapability toolEnablesAbility}
  :context-merges {}
  :re-meanings    {parentOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."
                   childOf "Generic blood-or-chosen reading; use BloodKinFn for biological history."

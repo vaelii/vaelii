@@ -22,8 +22,8 @@
 
 (def ^:private bird    '(bird Pingu))
 (def ^:private penguin '(penguin Pingu))
-(def ^:private flies   '(hasCapability Pingu flying))
-(def ^:private travel  '(hasCapability Pingu travelling))
+(def ^:private flies   '(able Pingu flying))
+(def ^:private travel  '(able Pingu travelling))
 
 (defn- fresh-sandbox [] (sandbox/context-for (sandbox/mint-token)))
 
@@ -65,7 +65,7 @@
           (testing "the proof is identical, which is the other half of the point"
             (let [rule-of #(-> (tu/why-root kb %) :support first :rule)
                   from-of #(-> (tu/why-root kb %) :support first :because first :handle)]
-              (is (= (rule-of h2) '(implies (bird ?x) (hasCapability ?x flying))))
+              (is (= (rule-of h2) '(implies (bird ?x) (able ?x flying))))
               (is (= (from-of h2) (v/handle-of kb bird sbx)))))))
       (finally (sandbox/reset! kb sbx)))))
 
@@ -135,7 +135,7 @@
           (is (str/includes? b1 "<b>Believed</b>"))
           (is (nat-int? h1) "and threads the handle it reached forward")
           (is (str/includes? b1 (str "/why/" h1)) "linking the proof")
-          (is (str/includes? (text-of b1) "( implies ( bird ?x ) ( hasCapability ?x flying ) )")
+          (is (str/includes? (text-of b1) "( implies ( bird ?x ) ( able ?x flying ) )")
               "the rule that concluded it is on the page, not just its name"))
 
         (let [b2 (step app cookie "except" b1)]
@@ -170,7 +170,7 @@
                    (some? (re-find (re-pattern (str (java.util.regex.Pattern/quote form)
                                                     " \\) " tag))
                                    (text-of b))))
-          travel-row "( hasCapability Pingu travelling"]
+          travel-row "( able Pingu travelling"]
       (try
         (let [[_ b1 b2 b3] (run-through app cookie body ["start" "except" "restore"])]
           (is (shows? b1 "( penguin Pingu" "not stored") "before step 2, nothing says Pingu is a penguin")
@@ -187,7 +187,7 @@
       (try
         (v/assert kb bird sbx)
         (is (v/ask? kb travel sbx) "step 1: flying earned → travelling answerable via hierarchy")
-        (is (some #(= #{flies '(genl flying travelling) '(transitiveInArg hasCapability 2 genl)}
+        (is (some #(= #{flies '(genl flying travelling) '(transitiveInArg able 2 genl)}
                       (set (map :sentence %)))
                   (some :supports (:for-derivation (v/argue kb travel sbx))))
             "step 1: the answer names the flight, the genl edge and the declaration")

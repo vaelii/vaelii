@@ -789,7 +789,7 @@
     :build   plain-teardown
     :sentexes 0
     :unindexed 100
-    :reads   {:exception-index 100 :opposed 100 :predicate-extent 900
+    :reads   {:exception-index 100 :opposed 100 :predicate-extent 1000
               :trie-counts 600 :mint 100}
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 1102 :term-names 202 :slots 201 :dead 302}}
@@ -799,14 +799,14 @@
     :build   rule-derived-teardown
     :sentexes 0
     :unindexed 200
-    :reads   {:exception-index 200 :opposed 100 :predicate-extent 1100
+    :reads   {:exception-index 200 :opposed 100 :predicate-extent 1200
               :trie-counts 600 :mint 100}
     :writes  {}
     :retracts {:levels 1000 :terms 800 :roots 2204 :term-names 200 :slots 402 :dead 602}}
 
    ;; **The workload the orphan sweep's scope is priced by.**  The sweep reads the removed
    ;; region, not what the KB holds, so a bystander NAT population costs a teardown nothing:
-   ;; 9 predicate-extent and 0 term-index per retraction, `plain-teardown`'s own, where a
+   ;; 10 predicate-extent and 0 term-index per retraction, `plain-teardown`'s own, where a
    ;; sweep over the KB's population read about 100 more of each.
    ;; `:term-index` and `:trie-lookup` are absent rather than asserted at 0: a family the
    ;; workload never reads is a key the tally never emits, so one read of either fails this
@@ -815,7 +815,7 @@
     :build   nat-bystander-teardown
     :sentexes 0
     :unindexed 100
-    :reads   {:exception-index 100 :opposed 100 :predicate-extent 900
+    :reads   {:exception-index 100 :opposed 100 :predicate-extent 1000
               :trie-counts 200 :mint 100}
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 1003 :term-names 102 :slots 102 :dead 301}}
@@ -823,7 +823,7 @@
    ;; 200 unindexed for 100 retractions: the use, plus the `natFormula` its removal orphaned.
    ;; That count is the workload's point: a sweep that stops finding the orphan unindexes 100
    ;; and leaves a raw `nat/` symbol behind, so the narrowing is admissible only while this
-   ;; stays 200. The reads are the region's, 17 predicate-extent and 3 term-index per
+   ;; stays 200. The reads are the region's, 19 predicate-extent and 3 term-index per
    ;; retraction, and the population does not enter them. The orphan question settles on the
    ;; `natFormula` clause, since a collected constant has its map and nothing else left, so it
    ;; reads neither the expression nor the declarations (`nat/minted-for`, held behind a delay).
@@ -833,7 +833,7 @@
     :build   nat-orphan-teardown
     :sentexes 0
     :unindexed 200
-    :reads   {:exception-index 200 :opposed 200 :predicate-extent 1700
+    :reads   {:exception-index 200 :opposed 200 :predicate-extent 1900
               :term-index 300 :trie-counts 400 :mint 200}
     :writes  {}
     :retracts {:levels 1200 :terms 1000 :roots 2504 :term-names 303 :slots 402 :dead 802}}
@@ -848,7 +848,7 @@
     :build   merge-bystander-teardown
     :sentexes 0
     :unindexed 100
-    :reads   {:exception-index 100 :opposed 100 :predicate-extent 900
+    :reads   {:exception-index 100 :opposed 100 :predicate-extent 1000
               :trie-counts 600 :mint 100}
     :writes  {}
     :retracts {:levels 500 :terms 400 :roots 1003 :term-names 102 :slots 102 :dead 301}}])

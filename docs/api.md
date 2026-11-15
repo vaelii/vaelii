@@ -224,7 +224,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; over a pair a stated separation divides, the suggested
                                                 ; declaration for every stored rule that a declaration the
                                                 ; engine implements states, every genl node with no
-                                                ; declared arity, every argument declaration naming a
+                                                ; declared arity, every genl edge whose spec admits a
+                                                ; length its genl does not, every argument declaration naming a
                                                 ; position its predicate lacks, and every live rule pair
                                                 ; whose conclusions would contradict if both fired, plus three
                                                 ; review-only smells: sibling types sharing one direct
@@ -246,7 +247,7 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; :not-under-thing, :implicit-genl,
                                                 ; :implicit-arity-class, :undeclared-term,
                                                 ; :orthogonal-over-separation, :rule-macro,
-                                                ; :undeclared-arity,
+                                                ; :undeclared-arity, :genl-arity-mismatch,
                                                 ; :uncorresponded-function, :stranded-declaration,
                                                 ; :rule-clash, :twin-genls, :derivable-stated-edge,
                                                 ; :disjoint-could-be-partition, :missing-arg,
@@ -871,8 +872,10 @@ The read excludes literal `Quote` contents and nested sentences, but enters ordi
 function terms. NAT bookkeeping is recognized by the owning reified constant, including
 a projection mentioning another term as an argument. A lift-only copy and a consequence
 with only skeletal content support do not create an ordinary home. The engine's
-generated arity-class copy is skeletal too. An independent
-ordinary content support preserves the home. A fact an equality merge respells keeps the
+generated arity-class copy is skeletal too. An arity, `arityMin` or arity-class premise
+(a `forced_decontextualized_predicate`, stored in CxUniverse whichever context states it)
+gives a home only when no other leaf does, so a type a middle theory defines keeps that
+theory as its home. An independent ordinary content support preserves the home. A fact an equality merge respells keeps the
 home of the fact as stated, since the stated spelling the merge supersedes classifies as
 a premise.
 
@@ -1754,11 +1757,11 @@ a variable so they join — grandparentOf, part-location, owns-parts).
 **A binary predicate says which level it relates at, unless its two ends disagree.**
 `relation_kind` is a `disjoint_metatype` over `instance_relation_predicate` and
 `type_relation_predicate`: `parentOf`, `northOf` and `madeOf` relate individuals; `genl`,
-`disjoint`, `orthogonal`, `typeLargerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
+`disjoint`, `orthogonal`, `typeLargerThan`, `partType` and `abilityType` relate kinds. *At most* one, not
 exactly one — the unmarked are those whose two ends sit at different levels, or at no
 level at all (`implies` is a connective; `rewriteOf` takes either role so long as its two
 sides agree; `result` and `genlResult` relate a function to a type;
-`functionCorrespondingPredicate` relates a function to a predicate; `hasCapability`
+`functionCorrespondingPredicate` relates a function to a predicate; `able`
 relates one causal thing to an event kind). The mark is not decoration: an
 `instance_relation_predicate` relates individuals, which are never subtypes, so
 `try-assert` refuses `genlArg` on one (`:arg-constraint-kind`). A `type_relation_predicate` takes `genlArg` and

@@ -1378,6 +1378,21 @@
               (filter symbol?))
         (p/sentex-ids (:records kb))))
 
+(defn- describe-justification
+  "A leaked justification as the teardown report prints it: its consequence, informant and
+  antecedents, each handle shown as its sentence when the KB still holds the sentex, so
+  the reader can see which inference survived the retraction."
+  [kb jid]
+  (let [sentence (fn [h] (if-some [sx (and (integer? h) (v/sentex kb h))]
+                           (v/sentence-of sx)
+                           h))
+        j        (v/justification kb jid)]
+    {:id          jid
+     :consequence (sentence (:consequence j))
+     :informant   (sentence (:informant j))
+     :antecedents (mapv sentence (:antecedents j))
+     :strength    (:strength j)}))
+
 (defn assert-neutral!
   "Retract the test's additions and assert the KB is restored to the `baseline` it was
   snapshotted at — **set equality on all three, so both directions are checked**.
@@ -1407,6 +1422,8 @@
         (str "KB not restored after teardown — leaked "
              (count leak-sx) " sentex(es), " (count leak-dd) " justification(s) "
              (pr-str (mapv #(v/sentence-of (v/sentex kb %)) (take 8 leak-sx)))
+             " "
+             (pr-str (mapv #(describe-justification kb %) (take 8 leak-dd)))
              "; lost " (count lost-sx) " sentex(es), " (count lost-dd) " justification(s) "
              ;; a lost sentex has no record left to print, so the handles are the report
              (pr-str (vec (take 8 lost-sx)))))
