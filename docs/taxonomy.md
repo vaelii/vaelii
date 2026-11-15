@@ -1936,7 +1936,7 @@ the membership nogood, as a type `genl` edge is.
   genl-inherited membership is not a stored `symmetric` sentex the mark ingestion sees — so
   the rules, which materialize that sentex, are the minimal correct expression.
 - `(injection P)`, `(surjection P)`, `(bijection P)` — the composite **function marks**,
-  no engine code either: eight shipped `core.txt` rules derive what the engine already
+  no engine code either: nine shipped `core.txt` rules derive what the engine already
   enforces and audits. Each mark splits into two halves, and the split is what the family
   is for. The **enforced** half is `(functional P)` and `(functionalInArg P 1)`, merged or
   decided as a nogood exactly as a directly written mark is. The **audited**
@@ -1966,6 +1966,9 @@ the membership nogood, as a type `genl` edge is.
   contradicts nothing — the filler may arrive next — so totality is a sweep to run at a
   checkpoint. `(bijection P)` derives `(injection P)` and `(surjection P)` rather than the
   base marks directly, so the whole family reaches the engine through two entries.
+  Conversely, a predicate that is both an `injection` and a `surjection` is concluded a
+  `bijection` by a forward-only rule, so no goal runs it backward, and retracting either
+  mark withdraws the `bijection`.
   `(genl bijection injection)` and `(genl bijection surjection)` state the subsumption
   outright; those edges set none of the properties the enforcement reads, for the reason
   `equivalence_relation`'s entry above gives, so the rules are the minimal correct

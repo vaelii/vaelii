@@ -179,7 +179,8 @@ nothing about whether the KB holds it. See [belief.md](belief.md).
 **`bijection`** ![kb](../.github/badges/cat-kb.svg): `(bijection P)` — the strongest of
 the three **function marks**: `P` is single-valued, one-to-one, total on its declared
 domain and onto its declared range. `core.txt` rules derive `(injection P)` and
-`(surjection P)`, and those derive the four marks the engine reads. See
+`(surjection P)`, and those derive the four marks the engine reads. A predicate that is
+both an `injection` and a `surjection` is concluded a `bijection`. See
 [taxonomy.md](taxonomy.md).
 
 **Brave / cautious** ![asp](../.github/badges/cat-asp.svg): The two readings of

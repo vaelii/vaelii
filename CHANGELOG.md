@@ -39,6 +39,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Migration:* write `((ChosenKinFn siblingOf) ?x ?y)` for `(chosenSiblingOf ?x ?y)`.
   *Breaks:* `chosenSiblingOf`
 
+### Additive: shipped ontology
+
+- **An `injection` that is a `surjection` is a `bijection`, and `folk_biological_class` is
+  forced-monotonic.** A forward-only `core.txt` rule concludes `(bijection P)` from
+  `(injection P)` and `(surjection P)`, and retracting either withdraws it. `organism.txt`
+  declares `(forced_monotonic_predicate folk_biological_class)`, as `folk_species` already
+  is, so a class membership is never the loser of a nogood.
+  [taxonomy.md](docs/taxonomy.md)
+  *Migration:* none.
+
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
 | Area | Change |
