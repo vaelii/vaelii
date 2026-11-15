@@ -321,24 +321,6 @@
                   (into #{} (map content) (:antecedents j))]))
           (some->> (v/handle-of kb goal 'CxUniverse) (v/supporting-justifications kb)))))
 
-(deftest a-quoted-member-of-a-unary-intersection-holds-one-support-set-in-every-order
-  ;; The same justifications in every order of the kind's edge, member, intersection and unary.
-  (tu/with-terms [gadget_kind fits Peg sealed_kind]
-    (let [q        (list sx/quote-functor (list fits Peg))
-          goal     (list sealed_kind q)
-          steps    [(list 'genl gadget_kind 'closed_predication)
-                    (list gadget_kind q)
-                    (list 'intersection sealed_kind 'predication 'closed_expression)
-                    (list 'unary sealed_kind)]
-          readings (for [order (oi/permutations steps)]
-                     (tu/with-neutral-kb [kb #(doto (tu/isolated-fresh) (tu/load-core!))]
-                       (doseq [s order] (v/assert kb s 'CxUniverse {:strength :monotonic}))
-                       [order (support-of kb goal)]))]
-      (is (= 24 (count readings)))
-      (is (every? (comp seq second) readings) "the membership is concluded in every order")
-      (is (= 1 (count (distinct (map second readings))))
-          (pr-str (into {} (map (fn [[sup rs]] [sup (map first rs)])) (group-by second readings)))))))
-
 (defn- member-steps
   "The fixture's four statements: the kind's edge, the quoted member, the intersection and
   the combined kind's unary membership."
@@ -387,18 +369,52 @@
   [kb steps]
   (mapv #(v/assert kb % 'CxUniverse {:strength :monotonic}) steps))
 
-(deftest every-order-holds-the-spelled-closed-expression-proofs-and-the-stored-ones
+(defn- member-orders
+  "Orders of `member-steps`'s four `steps`: `:every` is all 24.  `:sample` is the identity
+  order and the one ending on the intersection, two orders completing the rule last, which
+  held no spelled proof before the join led by each expression kind, and one order
+  completing it first, which did."
+  [steps which]
+  (if (= which :every)
+    (oi/permutations steps)
+    (map #(mapv steps %) [[0 1 2 3] [0 1 3 2] [2 3 0 1]])))
+
+(defn- member-readings
+  "`[order supports]` per order of `which` (`member-orders`), each on a fresh core KB;
+  `supports` is `(f kb)`."
+  [gadget q sealed which f]
+  (for [order (member-orders (member-steps gadget q sealed) which)]
+    (tu/with-neutral-kb [kb core-kb]
+      (assert-steps! kb order)
+      [order (f kb)])))
+
+(defn- check-one-support-set
+  [which]
   (tu/with-terms [gadget_kind fits Peg sealed_kind]
     (let [q        (list sx/quote-functor (list fits Peg))
-          goal     (list sealed_kind q)
+          readings (member-readings gadget_kind q sealed_kind which
+                                    #(support-of % (list sealed_kind q)))]
+      (is (= ({:every 24 :sample 3} which) (count readings)))
+      (is (every? (comp seq second) readings) "the membership is concluded in every order")
+      (is (= 1 (count (distinct (map second readings))))
+          (pr-str (into {} (map (fn [[sup rs]] [sup (map first rs)])) (group-by second readings)))))))
+
+(deftest a-quoted-member-of-a-unary-intersection-holds-one-support-set-in-sampled-orders
+  (check-one-support-set :sample))
+
+(deftest ^:slow a-quoted-member-of-a-unary-intersection-holds-one-support-set-in-every-order
+  (check-one-support-set :every))
+
+(defn- check-spelled-and-stored-proofs
+  [which]
+  (tu/with-terms [gadget_kind fits Peg sealed_kind]
+    (let [q        (list sx/quote-functor (list fits Peg))
           routes   (member-routes gadget_kind q)
           spelled  (proofs-over (:spelled routes) (:predication routes))
           stored   (proofs-over (:stored routes) (:predication routes))
-          readings (for [order (oi/permutations (member-steps gadget_kind q sealed_kind))]
-                     (tu/with-neutral-kb [kb core-kb]
-                       (assert-steps! kb order)
-                       [order (membership-supports kb goal sealed_kind)]))]
-      (is (= 24 (count readings)))
+          readings (member-readings gadget_kind q sealed_kind which
+                                    #(membership-supports % (list sealed_kind q) sealed_kind))]
+      (is (= ({:every 24 :sample 3} which) (count readings)))
       (doseq [[order sups] readings]
         (is (set/subset? spelled sups)
             (str "the spelled proofs, missing " (pr-str (set/difference spelled sups))
@@ -406,6 +422,12 @@
         (is (set/subset? stored sups)
             (str "the stored proofs, missing " (pr-str (set/difference stored sups))
                  " in " (pr-str order)))))))
+
+(deftest sampled-orders-hold-the-spelled-closed-expression-proofs-and-the-stored-ones
+  (check-spelled-and-stored-proofs :sample))
+
+(deftest ^:slow every-order-holds-the-spelled-closed-expression-proofs-and-the-stored-ones
+  (check-spelled-and-stored-proofs :every))
 
 (deftest withdrawing-the-member-withdraws-the-spelled-proofs-with-the-rest
   (tu/with-terms [gadget_kind fits Peg sealed_kind]
