@@ -38,6 +38,13 @@
 ;; shared across tests would keep.
 (use-fixtures :each (tu/neutral-fresh #(doto (tu/empty-kb) (tu/load-core!))))
 
+(defn- sweep-of
+  "The entries of `all-specified-violations` in `ctx` whose declaration names one of
+  `preds`, the test's own.  Whether the whole KB sweeps clean is
+  `curation-test/kb-has-integrity`'s question, asked of a KB with no test terms."
+  [kb ctx & preds]
+  (into {} (filter (fn [[k _]] (some (set preds) k))) (v/all-specified-violations kb ctx)))
+
 (tu/deftest-kb nested-comments-do-not-satisfy-a-specified-comment
   (tu/with-terms [CxTest fictional_defined FictionalDefinedTerm JimboMcFallible]
     (v/assert kb (list 'genlCx CxTest 'CxUniverse) 'CxUniverse)
@@ -273,7 +280,7 @@
       (v/assert kb (list 'predAllExists owns person dog) 'CxUniverse)
       (v/assert kb (list 'predInstanceExists owns Alice dog) 'CxUniverse)
       (is (= {['predAllExists owns person dog] {:status :audited :violations #{Bob}}}
-             (v/all-specified-violations kb 'CxUniverse))))
+             (sweep-of kb 'CxUniverse owns))))
     (is (= :bad-args (try (v/exists-violations kb (list 'predAllSpecified owns person) 'CxUniverse)
                           nil
                           (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))))))
@@ -1141,12 +1148,12 @@
     (is (= {:status :audited :violations #{Bob}}
            (v/specified-violations kb hasPet person 'CxUniverse :second))
         "and :second is the default argument position, stated or not")
-    (let [report (v/all-specified-violations kb 'CxUniverse)]
+    (let [report (sweep-of kb 'CxUniverse hasPet)]
       (is (= {['predAllSpecified hasPet person] {:status :audited :violations #{Bob}}}
              report)
           "the sweep reports the one declaration that does not hold, keyed by it"))
     (v/assert kb (list hasPet Bob Rex) 'CxUniverse)
-    (is (= {} (v/all-specified-violations kb 'CxUniverse))
+    (is (= {} (sweep-of kb 'CxUniverse hasPet))
         "and a requirement that holds is omitted, so a clean sweep is an empty map")))
 
 (defn- specified-note [functor pred member]
