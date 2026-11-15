@@ -30,10 +30,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `MotherFn` and `FatherFn` correspond to their genetic predicates.
   *Breaks:* `relativeOf`, `parentOf`, `childOf`, `motherOf`, `fatherOf`, `siblingOf`,
   `grandparentOf`, `ancestorOf`, `MotherFn`, `FatherFn`, `originatorOf`
-- **CxTra drops `chosenSiblingOf` for `(ChosenKinFn siblingOf)`.** The two named one
-  relation, siblings by choice, and a `genl` edge between them answered one direction only.
-  CxTra no longer declares `chosenSiblingOf`; `(ChosenKinFn siblingOf)` is symmetric,
-  time-varying, typed `person` at both positions and below `chosenKinOf` and `siblingOf`.
+- **CxTra drops `chosenSiblingOf` for `(ChosenKinFn siblingOf)`.** `chosenSiblingOf`, a
+  spec of `relativeOf`, is retired. `(ChosenKinFn siblingOf)` names the same relation and
+  is symmetric, time-varying, typed `person` at both positions, and below `chosenKinOf`
+  and `siblingOf`.
   `resources/renames/unreleased.edn` records the term as retired, so `upgrade --sync`
   reports a stored premise that names it.
   *Migration:* write `((ChosenKinFn siblingOf) ?x ?y)` for `(chosenSiblingOf ?x ?y)`.
