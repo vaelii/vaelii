@@ -892,7 +892,7 @@
   `(definitional_predicate ?t)` or `(syncategorematic ?t)` answers, as `{:enforced [[term
   why] …] :inert [[term why] …] :unclassified [term …] :retired [term …] :contradicted
   [term …]}`.  `:unclassified` is a member nobody classified, `:retired` a classification
-  of a term core.txt no longer comments, `:contradicted` a term the special-predicate table
+  of a term no upper file comments, `:contradicted` a term the special-predicate table
   gives an arm to and the classification calls inert.  The three are empty on the shipped
   ontology."
   [kb] (vocab/audit kb))

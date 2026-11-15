@@ -19,7 +19,7 @@
   (`handbook/06-definitional-block.md`), so one declared and read by nothing is a defect
   rather than the normal case.  `Quote` and the `set/*` wrappers are syntax the engine
   reads rather than block predicates, and the KB marks each one `syncategorematic`.  The
-  classification answers for every grammar term core.txt comments; the audit requires an
+  classification answers for every grammar term an upper file comments; the audit requires an
   answer only of the population.
 
   **Two classes, and the distinction is the point.**  `:enforced` means some code path
@@ -40,7 +40,7 @@
   by writing different prose beside it.
 
   **`audit` checks the classification**, with two tests over it: a term of the population
-  with no classification entry fails, and an entry naming a term core.txt no longer
+  with no classification entry fails, and an entry naming a term no upper file
   comments fails.  So the next plausible-looking functor cannot land unimplemented in
   silence, and a retired one cannot leave a stale claim behind.  `:contradicted` is the
   third, and the one that needs no judgement: a functor some data structure in the tree
@@ -54,21 +54,14 @@
   term's `comment` prose is worse: nothing can check prose without matching strings, so it
   would drift the first time a check was added and the sentence was not.  A table in code
   drifts too, but a test can see it drift."
-  (:require [clojure.java.io :as io]
-            [vaelii.impl.io.text :as text]
-            [vaelii.impl.predicates :as pr]
+  (:require [vaelii.impl.predicates :as pr]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.special :as special]))
 
 (def vocabulary-context
-  "The context the vocabulary file loads into."
+  "The context the upper ontology loads into, every one of its files alike."
   sx/root-context)
-
-(def vocabulary-file
-  "The classpath path of the KB file whose `comment` sentences name the terms this
-  table may answer for."
-  "kb/upper/core.txt")
 
 (def population-markers
   "The memberships that name the audit's population: `definitional_predicate`, whose
@@ -76,19 +69,19 @@
   syntax constants the engine reads, which are no predicate of a block."
   '[definitional_predicate syncategorematic])
 
-(def ^:private file-terms
-  "Every term `vocabulary-file` comments, read once: the terms a classification entry may
-  name without being `:retired`."
-  (delay (into #{}
-               (keep (fn [form]
-                       (let [[s _] (text/peel-form form)]
-                         (when (and (seq? s) (= 'comment (first s)) (symbol? (second s)))
-                           (second s)))))
-               (text/read-forms (io/resource vocabulary-file)))))
+(defn- commented-terms
+  "Every term a `(comment ?term ?text)` query answers in `vocabulary-context` of `kb`: the
+  terms a classification entry may name without being `:retired`.  Read off the loaded KB
+  rather than off one file, so a term any shipped upper file comments counts, time.txt's
+  `functional_at_instant` as much as core.txt's `genl`."
+  [kb]
+  (into #{}
+        (comp (keep #(get % '?term)) (filter symbol?))
+        (provers/ask kb '(comment ?term ?text) vocabulary-context)))
 
 (def classification
   "`term -> {:enforced \"where\"}` or `term -> {:inert \"why\"}`, over the grammar terms
-  core.txt comments.
+  the upper files comment.
 
   The `:enforced` prose names a code path, so it is the thing to update when one moves —
   and `audit` is what notices when a *term* moves without it.  Both live on the term's
@@ -114,7 +107,7 @@
   "What the engine does with vocabulary term `term`: `{:enforced \"where\"}`,
   `{:inert \"why\"}`, or nil for a term the table does not cover.
 
-  Nil is **not** \"nothing reads it\" — the table answers for core.txt's grammar, so an
+  Nil is **not** \"nothing reads it\" — the table answers for the upper ontology's grammar, so an
   ordinary domain predicate is simply not a term this question is asked about."
   [term]
   (get classification term))
@@ -154,7 +147,7 @@
       {:enforced    [[term \"where\"] …]
        :inert       [[term \"why\"] …]
        :unclassified [term …]      ; in the population, and the table says nothing — the defect
-       :retired      [term …]      ; the table claims a term core.txt no longer comments
+       :retired      [term …]      ; the table claims a term no upper file comments
        :contradicted [term …]}     ; called inert, but the special table gives it an arm
 
   `:unclassified` is what this exists for: a block predicate or syntax constant that
@@ -165,11 +158,12 @@
   Vectors sorted by term, so two runs over one KB compare."
   [kb]
   (let [declared (declared-terms kb)
+        commented (commented-terms kb)
         entry    (fn [t] [t (or (:enforced (classification t)) (:inert (classification t)))])]
     {:enforced     (mapv entry (filter #(:enforced (classification %)) declared))
      :inert        (mapv entry (filter #(:inert (classification %)) declared))
      :unclassified (vec (remove classification declared))
-     :retired      (vec (remove @file-terms (sort (keys classification))))
+     :retired      (vec (remove commented (sort (keys classification))))
      :contradicted (vec (filter #(and (:inert (classification %))
                                       (contains? @machine-readable-enforced %))
                                 declared))}))
