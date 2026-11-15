@@ -112,6 +112,25 @@
   (doseq [constructor [genetic chosen]]
     (is (true? (v/ask? kb (list 'arityMin (constructor 'testKinshipSequenceOf) 3) U)))))
 
+(defn- derived-only?
+  "Is `sentence` believed in CxUniverse, with every sentex stating it derived and none a
+  premise?"
+  [kb sentence]
+  (let [handles (map :id (v/sentexes-matching kb sentence U))]
+    (and (true? (v/ask? kb sentence U))
+         (seq handles)
+         (not-any? #(v/premise? kb %) handles))))
+
+(tu/deftest-kb qualified-readings-take-their-exact-class-from-their-input
+  (doseq [constructor [genetic chosen]
+          predicate '[parentOf childOf motherOf fatherOf siblingOf grandparentOf ancestorOf
+                      birthDate birthYearOf olderThan testNarrowKinshipOf]]
+    (let [derived? (derived-only? kb (list 'binary_predicate (constructor predicate)))]
+      (is derived? (pr-str (constructor predicate)))))
+  (doseq [constructor [genetic chosen]]
+    (let [classed? (v/ask? kb (list 'binary_predicate (constructor 'testKinshipSequenceOf)) U)]
+      (is (not classed?) "a variable-arity input gives no exact class"))))
+
 (tu/deftest-kb qualified-variable-policies-enforce-the-copied-minimum
   (tu/with-terms [Ann Bob Cal Dee]
     (doseq [constructor [genetic chosen]]

@@ -138,7 +138,7 @@
                       (some (fn [sentence]
                               (let [consequence (nth sentence 2)
                                     target (second consequence)]
-                                (when (and (#{'arity 'variable_arity_predicate} (first consequence))
+                                (when (and (#{'arity 'variable_arity_predicate 'binary_predicate} (first consequence))
                                            (sequential? target)
                                            (#{'GeneticKinFn 'ChosenKinFn} (first target)))
                                   {:sentence sentence :constructor (first target)
@@ -146,20 +146,21 @@
                             (:sentences pair)))
         arity-copy? #(= 'arity (:kind (copy-rule %)))
         policy-copy? #(= 'variable_arity_predicate (:kind (copy-rule %)))
+        class-copy? #(= 'binary_predicate (:kind (copy-rule %)))
         signature   (fn [pair]
                       (let [{:keys [sentence constructor kind]} (copy-rule pair)
                             other (first (remove #{sentence} (:sentences pair)))]
                         [constructor (first (second other))
                          (if (= kind 'arity) (nth (nth other 2) 2) (first (nth other 2)))]))
         acked       (filter :acknowledged pairs)
-        definitions (remove #(or (rigidity? %) (arity-copy? %) (policy-copy? %)) acked)]
+        definitions (remove #(or (rigidity? %) (arity-copy? %) (policy-copy? %) (class-copy? %)) acked)]
     (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
-    (is (= {:negation 13 :disjoint 33 :functional 10} kinds)
+    (is (= {:negation 13 :disjoint 65 :functional 10} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
     (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
         "negation clashes are excepted or acknowledged")
-    (is (every? :excepted (remove #(or (rigidity? %) (policy-copy? %)) (filter #(= :disjoint (:kind %)) pairs)))
+    (is (every? :excepted (remove #(or (rigidity? %) (policy-copy? %) (class-copy? %)) (filter #(= :disjoint (:kind %)) pairs)))
         "the one other disjoint pair, a metal solid and mercury liquid, is excepted")
     (is (= 14 (count (filter rigidity? acked)))
         "the seven existing transfers and seven kinship branch contracts are acknowledged")
@@ -183,6 +184,21 @@
            (set (map signature (filter policy-copy? acked))))
         "the variable-policy reviews name only the fixed unary/binary metadata contracts")
     (is (= 18 (count (filter policy-copy? acked))))
+    (let [class-copies (filter class-copy? pairs)
+          concluded    (fn [pair] (let [{:keys [sentence constructor]} (copy-rule pair)]
+                                    [constructor (first (nth (first (remove #{sentence} (:sentences pair))) 2))]))]
+      (is (= (set (for [constructor '[GeneticKinFn ChosenKinFn]
+                        consequence '[at_least_ternary at_least_quaternary at_least_quinary
+                                      unary ternary quaternary quinary empty unbounded_arity_predicate
+                                      unary_predicate ternary_predicate quaternary_predicate
+                                      quinary_predicate]]
+                    [constructor consequence]))
+             (set (map concluded class-copies)))
+          "the exact-class copies meet every rule that concludes another arity class of a reading")
+      (is (= 32 (count class-copies)))
+      (is (= 24 (count (filter :acknowledged class-copies))))
+      (is (every? #(or (:acknowledged %) (:inert %)) class-copies)
+          "each is acknowledged, or pairs with an inert classification rule and is review-only"))
     (is (every? #(not (:excepted %)) acked))))
 
 (tu/deftest-kb a-type-relation-predicate-relates-predicates
@@ -221,28 +237,33 @@
   ;; `arg-type-conflicted?` drops the pair as unreachable (vaelii#95).  The arity table
   ;; has only the constructor-copy review pairs inventoried above. An arity floor binds one relation
   ;; above and at or below one length, and `functional-slot-conflicted?` drops that pair, so
-  ;; the floors pair with nothing either.
+  ;; the floors pair with nothing but the exact-class copies inventoried above either.
   (let [pairs   (rule-clashes-everywhere kb #{:rule-clash :rule-clash-review})
         about   (fn [f] (filter (fn [p] (some #(some #{f} (flatten %)) (:sentences p)))
                                 pairs))]
     (let [copies '#{(implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
                              (arity (GeneticKinFn ?predicate) ?arity))
                     (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
-                             (arity (ChosenKinFn ?predicate) ?arity))}
+                             (arity (ChosenKinFn ?predicate) ?arity))
+                    (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate))
+                             (binary_predicate (GeneticKinFn ?predicate)))
+                    (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate))
+                             (binary_predicate (ChosenKinFn ?predicate)))}
           other-pairs (remove #(some copies (:sentences %)) (about 'arity))]
       (is (empty? other-pairs)
-          (str "the arity table has no other pairs: " (pr-str (mapv :sentences other-pairs)))))
-    (is (empty? (about 'unary_predicate))
-        (str "nor do the classes: " (pr-str (mapv :sentences (about 'unary_predicate)))))
-    ;; A floor read as a guard in an antecedent constrains which relations a rule reaches,
-    ;; and a pair over that rule's conclusion belongs to the conclusion's reading.  So the
-    ;; floors are checked where a rule concludes one.
-    (let [concludes (fn [f] (filter (fn [p] (some #(some #{f} (flatten (list (last %))))
-                                                  (:sentences p)))
-                                    pairs))]
-      (doseq [floor '[at_least_binary at_least_ternary at_least_quaternary at_least_quinary]]
-        (is (empty? (concludes floor))
-            (str "nor does " floor ": " (pr-str (mapv :sentences (concludes floor)))))))))
+          (str "the arity table has no other pairs: " (pr-str (mapv :sentences other-pairs))))
+      (is (empty? (remove #(some copies (:sentences %)) (about 'unary_predicate)))
+          (str "nor do the classes: " (pr-str (mapv :sentences (about 'unary_predicate)))))
+      ;; A floor read as a guard in an antecedent constrains which relations a rule reaches,
+      ;; and a pair over that rule's conclusion belongs to the conclusion's reading.  So the
+      ;; floors are checked where a rule concludes one.
+      (let [concludes (fn [f] (filter (fn [p] (and (some #(some #{f} (flatten (list (last %))))
+                                                         (:sentences p))
+                                                   (not-any? copies (:sentences p))))
+                                      pairs))]
+        (doseq [floor '[at_least_binary at_least_ternary at_least_quaternary at_least_quinary]]
+          (is (empty? (concludes floor))
+              (str "nor does " floor ": " (pr-str (mapv :sentences (concludes floor))))))))))
 
 (tu/deftest-kb a-predicate-is-at-most-one-of-the-three-arity-classifications
   ;; The declaration that empties the reading above.  A predicate takes one number of
