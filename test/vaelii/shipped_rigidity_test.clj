@@ -258,7 +258,7 @@
   (all-of-kind kb 'time_varying_relation
                '[knows livesIn locatedIn eats able asleep awake]
                'CxUniverse)
-  (all-of-kind kb 'time_varying_relation '[chosenSiblingOf nestingPartnerOf]
+  (all-of-kind kb 'time_varying_relation '[nestingPartnerOf]
                'CxTra))
 
 (tu/deftest-kb the-upper-categories-and-biological-kinds-are-time-invariant

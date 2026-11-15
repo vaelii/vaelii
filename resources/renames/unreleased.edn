@@ -19,5 +19,5 @@
                   ancestorOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
                   MotherFn "Corresponds to genetic motherOf; several mothers select none."
                   FatherFn "Corresponds to genetic fatherOf."}
- :retired        #{}
+ :retired        #{chosenSiblingOf}
  :api            {}}

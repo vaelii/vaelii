@@ -162,7 +162,7 @@
       (is (= 2 (count qualified)))
       (is (= (into '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
                       kinOf geneticRelativeOf chosenKinOf sharesGenesWith
-                      romanticPartnerOf coworkerOf roommateOf nestingPartnerOf chosenSiblingOf
+                      romanticPartnerOf coworkerOf roommateOf nestingPartnerOf
                       headmateOf disjoint diachronicallyDisjoint negates inverse
                       contextsOrderedBothWays}
                    qualified)

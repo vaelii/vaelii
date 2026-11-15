@@ -2,7 +2,7 @@
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.cxtra-social-test
   "The relationship and plural-identity vocabulary of CxTra: nestingPartnerOf,
-  chosenSiblingOf, construct and founderOf, and the plurality terms, each narrower than
+  construct and founderOf, and the plurality terms, each narrower than
   a CxSocial relation or type.  CxTra sees CxSocial as well as CxUniverse, and CxWell does not see CxTra,
   so the everyday contexts below CxWell derive none of it, and a user's own context
   opts in by placing itself under CxTra, which carries CxSocial's own relations to it."
@@ -63,20 +63,20 @@
         (is (not (tu/holds-ask (list 'nestingPartnerOf P1 P2) ctx)) (str "nestingPartnerOf in " ctx))))))
 
 (tu/deftest-kb each-relation-specializes-what-it-is-a-kind-of
-  (doseq [[sub super] '[[chosenSiblingOf chosenKinOf]
-                        [nestingPartnerOf romanticPartnerOf]
+  (doseq [[sub super] '[[nestingPartnerOf romanticPartnerOf]
                         [nestingPartnerOf roommateOf]
                         [founderOf originatorOf]]]
     (is (tu/holds-genl sub super SOCX))
     (is (not (tu/holds-genl sub super 'CxSocial))))
-  (is (tu/holds-genl 'chosenSiblingOf 'siblingOf SOCX))
-  (is (not (tu/holds-genl 'siblingOf 'chosenSiblingOf SOCX))))
+  (is (tu/holds-ask '(genl (ChosenKinFn siblingOf) chosenKinOf) SOCX))
+  (is (tu/holds-ask '(genl (ChosenKinFn siblingOf) siblingOf) SOCX))
+  (is (not (tu/holds-ask '(genl siblingOf (ChosenKinFn siblingOf)) SOCX))))
 
 (tu/deftest-kb a-user-context-under-the-extension-concludes-from-each-relation
   (tu/with-terms [CxHome P1 P2 P3 P4]
     (v/assert kb (list 'genlCx CxHome SOCX) 'CxUniverse)
     (doseq [p [P1 P2 P3 P4]] (v/assert kb (list 'human p) CxHome))
-    (v/assert kb (list 'chosenSiblingOf P1 P2) CxHome)
+    (v/assert kb (list '(ChosenKinFn siblingOf) P1 P2) CxHome)
     (v/assert kb (list 'nestingPartnerOf P3 P4) CxHome)
     (is (tu/holds-ask (list 'kinOf P1 P2) CxHome))
     (is (tu/holds-ask (list 'knows P1 P2) CxHome))

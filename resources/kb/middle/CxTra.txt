@@ -973,16 +973,6 @@
                      (Quote (intersection nestingPartnerOf romanticPartnerOf roommateOf))
                      "The declaration says what the rule and the two genl edges say, and is not stated in their place. Stated at default strength in CxTra, it files a :forced-conclusion violation for each of its two genl edges, since genl is forced-monotonic.")
 
-;; ---- chosen kinship ----------------------------------------------------------
-(comment chosenSiblingOf
-         "(chosenSiblingOf ?x ?y) means ?x and ?y are siblings by choice.")
-(set/monotonic (instance_relation_predicate chosenSiblingOf))
-(set/monotonic (time_varying_relation chosenSiblingOf))
-(set/monotonic (symmetric chosenSiblingOf))
-(arg chosenSiblingOf 1 person)
-(arg chosenSiblingOf 2 person)
-(genl chosenSiblingOf (ChosenKinFn siblingOf))
-
 ;; ---- constructs and their founders --------------------------------------------
 ;; A construct is a person.  It is not made, since made is tangible, and a construct
 ;; makes no commitment either way on tangible or intangible, as core.txt says of a

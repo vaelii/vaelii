@@ -288,8 +288,7 @@ Data hangs below CxWell.
     second argument, since an image or a video need not be located.
   - **relationships and plural identity** — relationship vocabulary narrower than
     CxSocial's: `nestingPartnerOf` (a spec of CxSocial's `romanticPartnerOf` and
-    `roommateOf`, and read by a rule from the two), `chosenSiblingOf` (a spec of
-    `chosenKinOf` and genetic/chosen-neutral `siblingOf`), `construct` (a person whose mind runs on a computational substrate,
+    `roommateOf`, and read by a rule from the two), `construct` (a person whose mind runs on a computational substrate,
     `:monotonic`-disjoint from `organism`, `computational_system` and `organization`), its `seat` (the computational
     system it runs in, related by the non-functional `hasSeat`), `founderOf` (a spec of
     `originatorOf` naming the person who founded a construct), and the plurality terms: `singlet`, `plural_system` and
