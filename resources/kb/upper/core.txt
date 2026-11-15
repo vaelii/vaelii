@@ -1171,6 +1171,8 @@
 ;; A kinship tuple is a fact about two people, never a sentence about a term.
 (set/monotonic (disjoint definitional_predicate generic_kinship_predicate))
 (set/monotonic (disjoint definitional_predicate chosen_kinship_predicate))
+;; order: a (type X), (metatype X) or (meta_metatype X) sentence is part of X's block
+(set/monotonic (genl type_type_by_order definitional_predicate))
 ;; meaning and examples
 (definitional_predicate comment)
 (definitional_predicate positiveExampleComment)
@@ -1183,9 +1185,6 @@
 (definitional_predicate separating)
 (definitional_predicate partition)
 (definitional_predicate orthogonal)
-;; order
-(definitional_predicate type)
-(definitional_predicate metatype)
 ;; arity: the binding and the arity classes describe lists under :arity-class
 (definitional_predicate arity)
 (definitional_predicate unary)

@@ -888,8 +888,8 @@
   [term] (vocab/classify term))
 
 (defn vocabulary-audit
-  "The vocabulary population of `kb`, classified: every term a believed CxUniverse
-  `(definitional_predicate t)` or `(syncategorematic t)` names, as `{:enforced [[term
+  "The vocabulary population of `kb`, classified: every term a CxUniverse query of
+  `(definitional_predicate ?t)` or `(syncategorematic ?t)` answers, as `{:enforced [[term
   why] …] :inert [[term why] …] :unclassified [term …] :retired [term …] :contradicted
   [term …]}`.  `:unclassified` is a member nobody classified, `:retired` a classification
   of a term core.txt no longer comments, `:contradicted` a term the special-predicate table

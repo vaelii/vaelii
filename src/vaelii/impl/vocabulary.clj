@@ -57,9 +57,7 @@
   (:require [clojure.java.io :as io]
             [vaelii.impl.io.text :as text]
             [vaelii.impl.predicates :as pr]
-            [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
-            [vaelii.impl.reads :as reads]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.special :as special]))
 
@@ -122,20 +120,19 @@
   (get classification term))
 
 (defn- declared-terms
-  "The audit's population in `kb`: every term a believed `(definitional_predicate t)` or
-  `(syncategorematic t)` in `vocabulary-context` names (`population-markers`).  Read off
-  the loaded KB, so the audit is about what this KB has.  **Believed**, since a membership
-  is a claim about the term: a KB that retracts one no longer asks the term to be
-  answered for."
+  "The audit's population in `kb`: every term a `(definitional_predicate ?term)` or
+  `(syncategorematic ?term)` query answers in `vocabulary-context`
+  (`population-markers`).  Read off the loaded KB, so the audit is about what this KB
+  has.  **Answered**, not stored: a membership a `genl` edge or a rule derives, as core.txt
+  derives the orders' through `type_type_by_order`, puts its term in the population as a
+  stated one does.  **Believed**, since a membership is a claim about the term: a KB that
+  retracts one no longer asks the term to be answered for."
   [kb]
-  (let [marker? (set population-markers)]
-    (into (sorted-set)
-          (comp (mapcat #(reads/believed-with-functor kb %))
-                (keep #(p/get-sentex (:records kb) %))
-                (filter #(= vocabulary-context (:context %)))
-                (keep (fn [s] (let [[f t & more] (:sentence s)]
-                                (when (and (marker? f) (symbol? t) (empty? more)) t)))))
-          population-markers)))
+  (into (sorted-set)
+        (comp (mapcat #(provers/ask kb (list % '?term) vocabulary-context))
+              (keep #(get % '?term))
+              (filter symbol?))
+        population-markers))
 
 (def ^:private machine-readable-enforced
   "The functors whose behaviour is provable from a data structure rather than from prose:

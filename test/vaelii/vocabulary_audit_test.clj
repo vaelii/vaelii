@@ -60,6 +60,26 @@
     (doseq [t '[genlCx implies CxUniverse thing]]
       (is (not (contains? audited t)) (str t " is in no term's block")))))
 
+(defn- audited
+  "Every term `vocabulary-audit` reports on, classified or not: the audit's population."
+  [kb]
+  (let [{:keys [enforced inert unclassified]} (v/vocabulary-audit kb)]
+    (into (set unclassified) (map first) (concat enforced inert))))
+
+(defn- derived-definitional
+  "Assert each of `terms` is a `definitional_predicate` that the audit reads, `why` naming
+  the classifier it is derived from."
+  [kb terms why]
+  (let [population (audited kb)]
+    (doseq [t terms]
+      (let [answered (v/ask? kb (list 'definitional_predicate t) 'CxUniverse)
+            read     (contains? population t)]
+        (is answered (str t " is a definitional_predicate " why))
+        (is read (str t " is in vocabulary-audit's population, " why))))))
+
+(tu/deftest-kb the-orders-are-definitional-through-type_type_by_order
+  (derived-definitional kb '[type metatype meta_metatype] "through type_type_by_order"))
+
 ;; A test asserting the special-predicate table and the classification agree stood here and is gone.  It walked
 ;; `special/entries` asserting no functor with an arm was classified inert — which is
 ;; `audit`'s `:contradicted` restated, and the test above already asserts that empty.  The

@@ -47,11 +47,13 @@ it — `git show v0.16.0:CHANGELOG.md`.
 - **`vocabulary-audit` reads its population from the KB.** core.txt declares
   `definitional_predicate`. Its members are the predicates a term's definitional block is
   written in. They are `comment` and the example annotations, `genl`, the separations,
-  `type`, `metatype`, `arity` and the arity classes, and the argument declarations. The
+  the orders, `arity` and the arity classes, and the argument declarations. The
   relation properties `describe` lists under `:props`, `termsRelated` and `seeAlso` are
   members too. The audit classifies those members and the `syncategorematic` constants
-  (`Quote` and the `set/*` wrappers), read believed in CxUniverse, where it classified every
-  term core.txt comments. A grammar term in neither, such as `except` or `genlCx`, is no
+  (`Quote` and the `set/*` wrappers), answered in CxUniverse, where it classified every
+  term core.txt comments. A membership a `genl` edge or a rule derives counts as a stated
+  one: `(genl type_type_by_order definitional_predicate)` makes `type`, `metatype` and
+  `meta_metatype` members. A grammar term in neither, such as `except` or `genlCx`, is no
   longer listed under `:enforced` or `:inert`; `interpreted` still answers for it.
   `:retired` still names a classification entry for a term core.txt no longer comments.
   *Migration:* ask `interpreted` of a grammar term outside the population, or mark a
