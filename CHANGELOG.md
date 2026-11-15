@@ -47,6 +47,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `unqualified_kinship_predicate` first and a `genetic_kinship_predicate` or
   `chosen_kinship_predicate` second, functional, eternal and forced-monotonic, so a rule
   reading one may conclude a forced-monotonic declaration of the version.
+  The kinship copy rules read each reading through them rather than through a
+  `GeneticKinFn` or `ChosenKinFn` application, so a reading named by a plain symbol takes
+  its input's class, arity, argument types and symmetry too.
   `(geneticVersionOf siblingOf (GeneticKinFn siblingOf))` holds.
 - **`eagerly_reify` reifies a function's applications as soon as their arguments meet its
   argument constraints.** `core.txt` declares three terms. `eagerly_reify` marks a

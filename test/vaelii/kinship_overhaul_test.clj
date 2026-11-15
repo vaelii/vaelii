@@ -18,7 +18,13 @@
                      (binary_predicate testGeneticLeafOf)
                      (genl testGeneticLeafOf geneticRelativeOf)
                      (binary_predicate testChosenLeafOf)
-                     (genl testChosenLeafOf chosenKinOf)]]
+                     (genl testChosenLeafOf chosenKinOf)
+                     ;; declared only as inputs: nothing names their readings
+                     (unqualified_kinship_predicate testNewKinOf)
+                     (binary_predicate testNewKinOf)
+                     (unqualified_kinship_predicate testNewSymmetricKinOf)
+                     (binary_predicate testNewSymmetricKinOf)
+                     (symmetric testNewSymmetricKinOf)]]
     (v/assert kb sentence 'CxUniverse {:strength :monotonic}))
   kb)
 
@@ -331,3 +337,29 @@
     (doseq [mother [FirstMother SecondMother]]
       (is (not (proves? kb (list 'equals (list 'MotherFn Ann) mother) K))))
     (is (empty? (v/contradictions kb)))))
+
+(tu/deftest-kb a-reading-named-by-a-plain-symbol-gets-its-inputs-copied-properties
+  ;; The copy rules read the correspondence, not the term's syntax. So a genetic reading
+  ;; the KB names by a plain symbol, never as a GeneticKinFn application, is classed,
+  ;; given its input's arity and made symmetric as one written as an application is.
+  (tu/with-terms [testGeneticSiblingOf]
+    (v/assert kb (list 'geneticVersionOf 'siblingOf testGeneticSiblingOf) K)
+    (doseq [sentence [(list 'binary_predicate testGeneticSiblingOf)
+                      (list 'arity testGeneticSiblingOf 2)
+                      (list 'symmetric testGeneticSiblingOf)]]
+      (is (true? (v/ask? kb sentence K)) (pr-str sentence)))))
+
+(tu/deftest-kb a-later-unqualified-predicate-gets-its-readings-reified
+  ;; The fixture declares testNewKinOf and testNewSymmetricKinOf as inputs and nothing
+  ;; names (GeneticKinFn testNewKinOf) or its chosen twin: eagerly_reify reifies each
+  ;; reading, and the copy rules read it through geneticVersionOf and chosenVersionOf.
+  (doseq [constructor [genetic chosen]
+          input '[testNewKinOf testNewSymmetricKinOf]
+          sentence [(list 'reify (constructor input))
+                    (list 'binary_predicate (constructor input))
+                    (list 'arity (constructor input) 2)
+                    (list 'genl (constructor input) input)]]
+    (is (true? (v/ask? kb sentence U)) (pr-str sentence)))
+  (doseq [constructor [genetic chosen]]
+    (is (true? (v/ask? kb (list 'symmetric (constructor 'testNewSymmetricKinOf)) U)))
+    (is (not (v/ask? kb (list 'symmetric (constructor 'testNewKinOf)) U)))))

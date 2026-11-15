@@ -169,77 +169,77 @@
 ;; Only the unqualified vocabulary is a constructor input. Result types are genetic or
 ;; chosen, never unqualified, so these rules do not qualify their own conclusions again.
 (set/forwardRule
- (implies (unqualified_kinship_predicate ?predicate)
-          (genetic_kinship_predicate (GeneticKinFn ?predicate))))
+ (implies (geneticVersionOf ?predicate ?version)
+          (genetic_kinship_predicate ?version)))
 (set/forwardRule
- (implies (unqualified_kinship_predicate ?predicate)
-          (chosen_kinship_predicate (ChosenKinFn ?predicate))))
+ (implies (chosenVersionOf ?predicate ?version)
+          (chosen_kinship_predicate ?version)))
 (set/forwardRule
- (implies (unqualified_kinship_predicate ?predicate)
-          (genl (GeneticKinFn ?predicate) ?predicate)))
+ (implies (geneticVersionOf ?predicate ?version)
+          (genl ?version ?predicate)))
 (set/forwardRule
- (implies (unqualified_kinship_predicate ?predicate)
-          (genl (ChosenKinFn ?predicate) ?predicate)))
+ (implies (chosenVersionOf ?predicate ?version)
+          (genl ?version ?predicate)))
 
 (implementationNote GeneticKinFn "Hierarchy lifting generates ground conditional rules from pairs of unqualified inputs. The generated antecedent is the original ground genl edge, admitted as forced-between-predicates without forcing genl between types. The finite pair schema also reads a hierarchy edge asserted later. Qualified outputs are not unqualified inputs, so qualification cannot nest.")
 
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (unqualified_kinship_predicate ?general))
+ (implies (and (geneticVersionOf ?predicate ?version) (geneticVersionOf ?general ?generalVersion))
           (set/forwardRule
            (implies (genl ?predicate ?general)
-                    (genl (GeneticKinFn ?predicate) (GeneticKinFn ?general))))))
+                    (genl ?version ?generalVersion)))))
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (unqualified_kinship_predicate ?general))
+ (implies (and (chosenVersionOf ?predicate ?version) (chosenVersionOf ?general ?generalVersion))
           (set/forwardRule
            (implies (genl ?predicate ?general)
-                    (genl (ChosenKinFn ?predicate) (ChosenKinFn ?general))))))
+                    (genl ?version ?generalVersion)))))
 
 ;; Predicate arity is explicit on each reading; it is not inherited from its genl.
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
-          (arity (GeneticKinFn ?predicate) ?arity)))
+ (implies (and (geneticVersionOf ?predicate ?version) (arity ?predicate ?arity))
+          (arity ?version ?arity)))
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
-          (arity (ChosenKinFn ?predicate) ?arity)))
+ (implies (and (chosenVersionOf ?predicate ?version) (arity ?predicate ?arity))
+          (arity ?version ?arity)))
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
-          (arityMin (GeneticKinFn ?predicate) ?minimum)))
+ (implies (and (geneticVersionOf ?predicate ?version) (arityMin ?predicate ?minimum))
+          (arityMin ?version ?minimum)))
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
-          (arityMin (ChosenKinFn ?predicate) ?minimum)))
+ (implies (and (chosenVersionOf ?predicate ?version) (arityMin ?predicate ?minimum))
+          (arityMin ?version ?minimum)))
 
 ;; Each reading is in its input's exact predicate class.  The class is copied rather than
 ;; read from the copied arity, since the rule that classifies a predicate by its arity is
 ;; inert (the implementationNote on predicateTypeByArity says why).  Every unqualified
 ;; kinship predicate is binary, so binary_predicate is the class copied.
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate))
-          (binary_predicate (GeneticKinFn ?predicate))))
+ (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate))
+          (binary_predicate ?version)))
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate))
-          (binary_predicate (ChosenKinFn ?predicate))))
+ (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate))
+          (binary_predicate ?version)))
 
 ;; A reading of a symmetric input is symmetric.
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate))
-          (symmetric (GeneticKinFn ?predicate))))
+ (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate))
+          (symmetric ?version)))
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate))
-          (symmetric (ChosenKinFn ?predicate))))
+ (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate))
+          (symmetric ?version)))
 
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
-          (arg (GeneticKinFn ?predicate) ?position ?type)))
+ (implies (and (geneticVersionOf ?predicate ?version) (arg ?predicate ?position ?type))
+          (arg ?version ?position ?type)))
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
-          (arg (ChosenKinFn ?predicate) ?position ?type)))
+ (implies (and (chosenVersionOf ?predicate ?version) (arg ?predicate ?position ?type))
+          (arg ?version ?position ?type)))
 
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
-          (variable_arity_predicate (GeneticKinFn ?predicate))))
+ (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate))
+          (variable_arity_predicate ?version)))
 (set/forwardRule
- (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
-          (variable_arity_predicate (ChosenKinFn ?predicate))))
+ (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate))
+          (variable_arity_predicate ?version)))
 
 ;; These content-exact review records do not except or weaken any inference rule.
 (acknowledgedFinding :rule-clash
@@ -250,469 +250,469 @@
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (binary ?var2) (arity ?var2 2))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (quaternary ?var2) (arity ?var2 4))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (quinary ?var2) (arity ?var2 5))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (ternary ?var2) (arity ?var2 3))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (unary ?var2) (arity ?var2 1))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (binary ?var2) (arity ?var2 2))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (quaternary ?var2) (arity ?var2 4))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (quinary ?var2) (arity ?var2 5))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (ternary ?var2) (arity ?var2 3))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (ChosenKinFn ?predicate) ?arity)))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (arity ?predicate ?arity)) (arity ?version ?arity)))
    (Quote (implies (unary ?var2) (arity ?var2 1))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (and (reflexive ?var4) (symmetric ?var4) (transitive ?var4)) (equivalence_relation ?var4))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (bijection ?p) (injection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (bijection ?p) (surjection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (equivalence_relation ?p) (reflexive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (equivalence_relation ?p) (symmetric ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (equivalence_relation ?p) (transitive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (injection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (surjection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (and (reflexive ?var4) (symmetric ?var4) (transitive ?var4)) (equivalence_relation ?var4))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (bijection ?p) (injection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (bijection ?p) (surjection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (equivalence_relation ?p) (reflexive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (equivalence_relation ?p) (symmetric ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (equivalence_relation ?p) (transitive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (injection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (surjection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (and (injection ?p) (surjection ?p)) (bijection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
    (Quote (implies (and (injection ?p) (surjection ?p)) (bijection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 2 ?arity)) (at_least_ternary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 2 ?arity)) (at_least_ternary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 3 ?arity)) (at_least_quaternary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 3 ?arity)) (at_least_quaternary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 4 ?arity)) (at_least_quinary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 4 ?arity)) (at_least_quinary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 2 ?arity)) (at_least_ternary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 2 ?arity)) (at_least_ternary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 3 ?arity)) (at_least_quaternary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 3 ?arity)) (at_least_quaternary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 4 ?arity)) (at_least_quinary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 4 ?arity)) (at_least_quinary ?relation))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (predicate ?var3) (unbounded_arity ?var3)) (unbounded_arity_predicate ?var3))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (and (predicate ?var3) (unbounded_arity ?var3)) (unbounded_arity_predicate ?var3))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (arity ?var2 5) (quinary ?var2))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (arity ?var2 4) (quaternary ?var2))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (arity ?var2 1) (unary ?var2))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (arity ?var2 3) (ternary ?var2))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (arity ?var2 5) (quinary ?var2))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (arity ?var2 4) (quaternary ?var2))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (arity ?var2 1) (unary ?var2))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate)) (binary_predicate (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
    (Quote (implies (arity ?var2 3) (ternary ?var2))))
   "The copy rule puts a qualified reading in its input's exact predicate class, and the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from that one, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 2 ?arity)) (at_least_ternary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 2 ?arity)) (at_least_ternary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 3 ?arity)) (at_least_quaternary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 3 ?arity)) (at_least_quaternary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 4 ?arity)) (at_least_quinary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arity ?relation ?arity) (lessThan 4 ?arity)) (at_least_quinary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 2 ?arity)) (at_least_ternary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 2 ?arity)) (at_least_ternary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 3 ?arity)) (at_least_quaternary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 3 ?arity)) (at_least_quaternary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 4 ?arity)) (at_least_quinary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (arityMin ?relation ?arity) (lessThan 4 ?arity)) (at_least_quinary ?relation))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (predicate ?var3) (unbounded_arity ?var3)) (unbounded_arity_predicate ?var3))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (predicate ?var3) (unbounded_arity ?var3)) (unbounded_arity_predicate ?var3))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (arity ?var2 1) (unary ?var2))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (arity ?var2 3) (ternary ?var2))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (arity ?var2 4) (quaternary ?var2))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (ChosenKinFn ?predicate))))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (arity ?var2 5) (quinary ?var2))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (arity ?var2 1) (unary ?var2))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (arity ?var2 3) (ternary ?var2))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (arity ?var2 4) (quaternary ?var2))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate)) (symmetric (GeneticKinFn ?predicate))))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
    (Quote (implies (arity ?var2 5) (quinary ?var2))))
   "The copy rule makes a qualified reading of a symmetric input symmetric, and a symmetric relation is a binary_predicate; the arity copy rule gives the reading its input's arity. The other rule concludes a class disjoint from binary_predicate, from an arity, a minimum or an arity class other than its input's. Both fire for one reading only where its arity metadata already contradicts its input's; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
@@ -751,3 +751,27 @@
    (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate)))
    (Quote (implies (genl ?property commutativeInArgs) (eternal_predicate ?property))))
   "The KB puts chosen_kinship_predicate below time_varying_relation, and eternal_predicate and situation_predicate below time_invariant_relation. Its rigidity-kind partition is disjoint. The two strict rules assign incompatible kinds to one predicate under the supplied schema declarations; retain both so that metadata conflict is diagnosed.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version))))
+  "Both copy rules read one correspondence, and they class one reading both binary, as a binary_predicate or a symmetric relation, and a variable_arity_predicate only where two inputs, one fixed-arity and one variable-arity, have that one reading. Each reading is the value of GeneticKinFn or ChosenKinFn at its one input, so it is no other input's reading; both rules stay active so a reading stated for two such inputs is diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
+   (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version))))
+  "Both copy rules read one correspondence, and they class one reading both binary, as a binary_predicate or a symmetric relation, and a variable_arity_predicate only where two inputs, one fixed-arity and one variable-arity, have that one reading. Each reading is the value of GeneticKinFn or ChosenKinFn at its one input, so it is no other input's reading; both rules stay active so a reading stated for two such inputs is diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (binary_predicate ?predicate)) (binary_predicate ?version)))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version))))
+  "Both copy rules read one correspondence, and they class one reading both binary, as a binary_predicate or a symmetric relation, and a variable_arity_predicate only where two inputs, one fixed-arity and one variable-arity, have that one reading. Each reading is the value of GeneticKinFn or ChosenKinFn at its one input, so it is no other input's reading; both rules stay active so a reading stated for two such inputs is diagnosed rather than excepted.")
+
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (symmetric ?predicate)) (symmetric ?version)))
+   (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version))))
+  "Both copy rules read one correspondence, and they class one reading both binary, as a binary_predicate or a symmetric relation, and a variable_arity_predicate only where two inputs, one fixed-arity and one variable-arity, have that one reading. Each reading is the value of GeneticKinFn or ChosenKinFn at its one input, so it is no other input's reading; both rules stay active so a reading stated for two such inputs is diagnosed rather than excepted.")
