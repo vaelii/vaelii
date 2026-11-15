@@ -608,9 +608,12 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ;   :computed-spec-of for a reified one
                                                ; :type and :predicate add :definitional-block:
                                                ;   handbook ch. 06's parts as {:part :value}
-                                               ;   rows in its order, :missing where the KB
-                                               ;   holds none, :kind apart from :arity-class,
-                                               ;   no row for seeAlso/termsRelated; a type's
+                                               ;   rows in predicateDisplayOrder's order,
+                                               ;   :missing where the KB holds none; a sentence
+                                               ;   is in it when its predicate is a
+                                               ;   definitional_predicate; :kind apart from
+                                               ;   :arity-class; :links for seeAlso and
+                                               ;   termsRelated; a type's
                                                ;   :siblings rows each name the :separation
                                                ;   that decides them (:overlaps with a
                                                ;   :witness and :via where one is shown)

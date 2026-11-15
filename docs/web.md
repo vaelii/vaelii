@@ -1871,14 +1871,23 @@ than the extent.
 ### A term page lists its definitional block
 
 A type's or a predicate's page opens its prose column with the term's **definitional
-block**: one line per part `handbook/06-definitional-block.md` names, in the handbook's
-order, read off `describe`'s `:definitional-block`. A type lists its comment, positive and
-negative examples, parents, siblings, kind and arity class; a predicate lists its comment,
-kind, arity class, arity, argument declarations, parents and relation properties. The
-kind is the types asserted of the term less its arity class (`unary_predicate`,
+block**: one line per part `handbook/06-definitional-block.md` names, read off
+`describe`'s `:definitional-block`. A sentence about the term is in the block when the KB
+classifies its predicate `definitional_predicate`. A type lists its comment, positive and
+negative examples, parents, siblings, kind, arity class and links; a predicate lists its
+comment, parents, kind, arity class, arity, argument declarations, relation properties and
+links. The argument declarations are the term's `wff_predicate` sentences and the relation
+properties its `algebraic_predicate_property` sentences, each drawn whole, so a
+per-position one such as `(functionalInArg P 2)` shows its position. The links are its
+`seeAlso` sentences and every `termsRelated` cluster that names it. The kind is the
+definitional types asserted of the term less its arity class (`unary_predicate`,
 `binary_predicate`, …), which has a line of its own, since the starter loader asserts
-`unary_predicate` of every type. The handbook's links part (`seeAlso`, `termsRelated`)
-has no line. A part the KB holds nothing for is tagged **missing**, beside an **add** link
+`unary_predicate` of every type. A grant or a refusal mark such as `closed_extent_predicate`
+or `not_assertible` is no kind. The lines follow `predicateDisplayOrder`: a line takes the
+first position any predicate it shows is named at, and a line none of whose predicates is
+named follows the named ones. The index groups below the block leave out the sentences the
+block shows, so the page shows each assertion about the term once; a group's stored count
+still counts them. A part the KB holds nothing for is tagged **missing**, beside an **add** link
 that opens the assert form on a sentence supplying it (`(comment dog "")`, `(genl dog )`),
 deliberately incomplete as the assert form's term seed is; a predicate's arity class seed
 names the class of its arity. Each sibling carries what decides it against the term, as

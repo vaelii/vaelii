@@ -112,6 +112,16 @@
   [term]
   (get classification term))
 
+(defn members
+  "The terms a `(marker ?term)` query answers in `context` of `kb`, as a sorted set of
+  symbols: the believed members of a block collection such as `definitional_predicate`,
+  `wff_predicate` or `algebraic_predicate_property`, stated or derived.  The one reader of
+  a membership the audit and `describe`'s definitional block both use."
+  [kb marker context]
+  (into (sorted-set)
+        (comp (keep #(get % '?term)) (filter symbol?))
+        (provers/ask kb (list marker '?term) context)))
+
 (defn- declared-terms
   "The audit's population in `kb`: every term a `(definitional_predicate ?term)` or
   `(syncategorematic ?term)` query answers in `vocabulary-context`
@@ -121,11 +131,7 @@
   stated one does.  **Believed**, since a membership is a claim about the term: a KB that
   retracts one no longer asks the term to be answered for."
   [kb]
-  (into (sorted-set)
-        (comp (mapcat #(provers/ask kb (list % '?term) vocabulary-context))
-              (keep #(get % '?term))
-              (filter symbol?))
-        population-markers))
+  (into (sorted-set) (mapcat #(members kb % vocabulary-context)) population-markers))
 
 (def ^:private machine-readable-enforced
   "The functors whose behaviour is provable from a data structure rather than from prose:
