@@ -1641,7 +1641,15 @@
                                            " (exceptWhen Q (sentexHandle H)) naming the rule's handle.")}
                             (str "assert-entry/assert-exceptWhen-meta! — stores the exception;"
                                  " provers/rule-exceptions reads it per firing, and the recheck"
-                                 " queue re-evaluates it"))]]
+                                 " queue re-evaluates it"))]
+     ['except (enforced {:shape   {:args [:term]}
+                         :storage [:none] :checked false :family nil :facets #{}
+                         :notes   (str "asserted, unlike defeat: (except (sentexHandle H)) hides H"
+                                       " from its context and every context that sees it, and"
+                                       " retracting it restores H.")}
+                        (str "except/visible-exception-index — the excepts stated in a reader's"
+                             " ancestor contexts hide each named handle from it; on arrival or"
+                             " removal special/recheck-except sweeps the firings resting on H"))]]
 
     ;; ---- the evaluable comparisons ---------------------------------------
     [['lessThan    (enforced {:shape   {:args [:term :term] :variadic :term}
