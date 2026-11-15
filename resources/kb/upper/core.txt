@@ -778,6 +778,15 @@
 (set/monotonic (genl variable_arity_function variable_arity))
 (set/monotonic (genl variable_arity_function function))
 
+;; Each of the four is the intersection of its arity policy and its kind.  The rules state
+;; that definition and are inert, for the reason the implementationNote on
+;; predicateTypeByArity gives: run backward, each reaches its own antecedent through the
+;; genl edges above, so every policy and kind goal would pay for the cycle.
+(set/inertRule (implies (and (predicate ?relation) (fixed_arity ?relation)) (fixed_arity_predicate ?relation)))
+(set/inertRule (implies (and (function ?relation) (fixed_arity ?relation)) (fixed_arity_function ?relation)))
+(set/inertRule (implies (and (predicate ?relation) (variable_arity ?relation)) (variable_arity_predicate ?relation)))
+(set/inertRule (implies (and (function ?relation) (variable_arity ?relation)) (variable_arity_function ?relation)))
+
 (set/monotonic (partition relation fixed_arity variable_arity))
 
 (comment bounded_arity "A relation whose number of arguments has an upper bound: one exact count, or a fixed range.")

@@ -156,12 +156,15 @@
         definitions (remove #(or (rigidity? %) (arity-copy? %) (policy-copy? %) (class-copy? %)) acked)]
     (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
-    (is (= {:negation 13 :disjoint 97 :functional 10} kinds)
+    (is (= {:negation 13 :disjoint 104 :functional 10} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
     (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
         "negation clashes are excepted or acknowledged")
-    (is (every? :excepted (remove #(or (rigidity? %) (policy-copy? %) (class-copy? %)) (filter #(= :disjoint (:kind %)) pairs)))
-        "the one other disjoint pair, a metal solid and mercury liquid, is excepted")
+    (is (every? :excepted (remove #(or (rigidity? %) (policy-copy? %) (class-copy? %) (:inert %))
+                                  (filter #(= :disjoint (:kind %)) pairs)))
+        "the one other disjoint pair with a live rule, a metal solid and mercury liquid, is excepted")
+    (is (= 7 (count (filter #(and (:inert %) (some (fn [s] (#{'fixed_arity_predicate 'fixed_arity_function 'variable_arity_predicate 'variable_arity_function} (first (nth s 2)))) (:sentences %))) pairs)))
+        "the four inert arity-policy intersections pair, review-only, with the variable-policy copies, the exact-class and symmetry copies and the associative meet rule")
     (is (= 14 (count (filter rigidity? acked)))
         "the seven existing transfers and seven kinship branch contracts are acknowledged")
     (is (= 9 (count definitions))
@@ -192,11 +195,11 @@
                         consequence '[at_least_ternary at_least_quaternary at_least_quinary
                                       unary ternary quaternary quinary empty unbounded_arity_predicate
                                       unary_predicate ternary_predicate quaternary_predicate
-                                      quinary_predicate]]
+                                      quinary_predicate variable_arity_predicate]]
                     [constructor kind consequence]))
              (set (map concluded class-copies)))
           "the exact-class and symmetry copies meet every rule that concludes another arity class of a reading")
-      (is (= 64 (count class-copies)))
+      (is (= 68 (count class-copies)))
       (is (= 48 (count (filter :acknowledged class-copies))))
       (is (every? #(or (:acknowledged %) (:inert %)) class-copies)
           "each is acknowledged, or pairs with an inert classification rule and is review-only"))

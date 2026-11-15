@@ -92,6 +92,29 @@
     (is (empty? (v/query kb (list four_place_function fourPlaceFn) 'CxUniverse {:max-depth 3})))
     (is (empty? (v/sentexes-matching kb (list four_place_function fourPlaceFn) 'CxUniverse)))))
 
+(tu/deftest-kb the-arity-policy-intersections-are-stated-inert
+  ;; fixed_arity_predicate is fixed_arity and predicate together, and likewise the other
+  ;; three.  Each definition is a believed inert rule, run by neither engine, so a
+  ;; predicate of fixed arity is not proved a fixed_arity_predicate by it.
+  (doseq [[kind policy class] '[[predicate fixed_arity fixed_arity_predicate]
+                                [function fixed_arity fixed_arity_function]
+                                [predicate variable_arity variable_arity_predicate]
+                                [function variable_arity variable_arity_function]]]
+    (let [h (v/handle-of kb (list 'set/inertRule
+                                  (list 'implies
+                                        (list 'and (list kind '?relation) (list policy '?relation))
+                                        (list class '?relation)))
+                         'CxUniverse)]
+      (is (some? h) (str "stated: " class))
+      (when h
+        (is (v/in? kb h) (str class "'s rule is believed"))
+        (is (= #{} (:engines (v/sentex kb h))) (str class "'s rule runs in neither engine")))))
+  (tu/with-terms [policyOnlyPredicate]
+    (v/assert kb (list 'predicate policyOnlyPredicate) 'CxUniverse)
+    (v/assert kb (list 'fixed_arity policyOnlyPredicate) 'CxUniverse)
+    (is (empty? (v/query kb (list 'fixed_arity_predicate policyOnlyPredicate) 'CxUniverse
+                         {:max-depth 3})))))
+
 (tu/deftest-kb the-shipped-exact-arity-class-rules-are-inert
   (doseq [[kind type n] '[[predicate unary_predicate 1] [predicate binary_predicate 2]
                           [predicate ternary_predicate 3] [function unary_function 1]
