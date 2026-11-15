@@ -3684,7 +3684,7 @@
   chain of eight rules, rule i reading `pswlink<i>_t` and concluding `pswlink<i+1>_t`, with
   n spec types under every link.  One excepted rule elsewhere keeps the check walking.
 
-  The check is `checks/edge-stratification-violation`, which asks without writing, so
+  The check is `checks/fact-stratification-violation`, which asks without writing, so
   every sample asks the same edge.  Its walk (`wff/genl-negation-cycle`) reaches the eight
   rules, and from each reads the upward closure of its consequent and the rule index under
   each predicate in it.  A walk fanning each read predicate's spec closure reads the rule
@@ -3703,7 +3703,7 @@
               'CxPerf {})
     (let [edge (list 'genl (peek links) (first links))]
       (doall (for [_ (range edge-writes)]
-               (nanos (checks/edge-stratification-violation kb edge)))))))
+               (nanos (checks/fact-stratification-violation kb edge)))))))
 
 (defn- edge-stratification-unreached
   "One `genl` edge under `psutop_t`, on a KB holding n excepted rules the edge does not
@@ -3742,7 +3742,7 @@
   "The stratification check of one `genl` edge from `pscsub_t`, which no rule concludes, to
   `psctop_t`, beside n rules reading `psctop_t` and one excepted rule elsewhere.
 
-  The check is `checks/edge-stratification-violation`, which asks without writing, so
+  The check is `checks/fact-stratification-violation`, which asks without writing, so
   every sample asks the same edge.  Every graph edge the edge would add ends at a rule
   concluding a spec of `pscsub_t`, and there is none, so the check reads the consequent
   index under `pscsub_t` and stops.  A walk from the readers of `psctop_t` builds n rule
@@ -3758,7 +3758,7 @@
                 'CxPerf {:direction :forward}))
     (doall (for [_ (range edge-writes)]
              (nanos (dotimes [_ reads-per-reading]
-                      (checks/edge-stratification-violation kb '(genl pscsub_t psctop_t))))))))
+                      (checks/fact-stratification-violation kb '(genl pscsub_t psctop_t))))))))
 
 (defn- edge-stratification-mints-in-one-pass
   "One `(genlArg pemKind<r> 2 pem_top)` declaration over n stored facts, each naming a type
@@ -3840,7 +3840,7 @@
   stored chain through `pssmid_t` already connects, beside n excepted rules reading
   `psstop_t`.
 
-  The check is `checks/edge-stratification-violation`, which asks without writing, so
+  The check is `checks/fact-stratification-violation`, which asks without writing, so
   every sample asks the same edge.  The edge moves no closure, so it adds no edge to the
   rule dependency graph and the check stops at one reachability test.  A walk from each
   rule reading a predicate above the upper end expands the n excepted rules."
@@ -3856,7 +3856,7 @@
                 'CxPerf {}))
     (doall (for [_ (range edge-writes)]
              (nanos (dotimes [_ reads-per-reading]
-                      (checks/edge-stratification-violation kb '(genl psssub_t psstop_t))))))))
+                      (checks/fact-stratification-violation kb '(genl psssub_t psstop_t))))))))
 
 (defn- taxonomy-edge-arbitration
   "One `genl` edge (a fresh subtype under a fresh supertype, nothing above or below it, no

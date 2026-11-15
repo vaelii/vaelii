@@ -265,7 +265,9 @@ context:
   the sorted one (`res/raw-match`, `matches-hierarchical`). `has-prop?` of `:symmetric` or
   `:commutative` with a context answers whether that context believes a statement, so the
   symmetric prover reads the mirror only where the mark is believed. `handle-of` looks a
-  sentence up under the marks its context believes.
+  sentence up under the marks its context believes. Which marks a reader believes is read
+  with the placed defeats applied under the network reading as well (`res/entries-at`),
+  since the store spells a fact by those marks.
 - **Several commuting groups.** A reader that believes some of a predicate's groups reads
   a fact sorted by those groups alone. More than one spelling read puts the premise at the
   spelling written, and each other spelling read is a `respell` row.

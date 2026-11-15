@@ -74,12 +74,12 @@
 11	30	src/vaelii/impl/asp/edge.clj
 4	29	src/vaelii/impl/asp/label.clj
 12	29	src/vaelii/impl/asp/solve_context.clj
-80	221	src/vaelii/impl/assert_entry.clj
+80	217	src/vaelii/impl/assert_entry.clj
 32	8	src/vaelii/impl/budget.clj
 32	64	src/vaelii/impl/caches.clj
 23	2	src/vaelii/impl/capabilities.clj
 44	442	src/vaelii/impl/chain.clj
-269	358	src/vaelii/impl/checks.clj
+266	358	src/vaelii/impl/checks.clj
 8	22	src/vaelii/impl/clashes.clj
 57	53	src/vaelii/impl/columnar.clj
 98	13	src/vaelii/impl/config.clj

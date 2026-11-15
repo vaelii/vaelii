@@ -1475,19 +1475,20 @@
      :detail    {:message (str "naming invariant: " (str/join "; " ps))}}))
 
 (defn inadmissible
-  "The violation that stops `sentence` from being stored in `context`, or nil: naming,
-  the definitional constraints, well-formedness and edge stratification.  Returns a
-  value and never throws, since its callers run after their triggering sentex is stored
-  (argument-type entailment, the computed `genlCx` edge of `context-nat`) or must refuse a
-  hypothesis without failing the query (abduction).
-  `constraint-arm` is `checks/constraint-violation` by default; a nil arm omits the
-  definitional-constraint check for a caller that already ran it.  See docs/argtypes.md."
+  "The violation that stops `sentence` from being stored in `context`, or nil: naming, the
+  definitional constraints, well-formedness, and the stratification of an edge or a grant
+  (`checks/fact-stratification-violation`).  Returns a value and never throws, since its
+  callers run after their triggering sentex is stored (argument-type entailment, the
+  computed `genlCx` edge of `context-nat`) or must refuse a hypothesis without failing the
+  query (abduction).  `constraint-arm` is `checks/constraint-violation` by default; a nil
+  arm omits the definitional-constraint check for a caller that already ran it.  See
+  docs/argtypes.md."
   ([kb sentence context] (inadmissible kb sentence context checks/constraint-violation))
   ([kb sentence context constraint-arm]
    (or (naming-violation kb sentence context)
        (when constraint-arm (constraint-arm kb sentence context))
        (wff-violation kb sentence context)
-       (checks/edge-stratification-violation kb sentence))))
+       (checks/fact-stratification-violation kb sentence))))
 
 (def ^:private empty-entailment-result
   "What an entailment step that minted nothing returns, and the seed of every reduce that
@@ -6647,6 +6648,20 @@
       (when (seq fs)
         (swap! (reasoning/respell kb) into (map #(vector :corresponded %)) fs)))))
 
+(defn- note-correspondence-move!
+  "Queue `[:correspondence F P]` on `:respell` when `sentex` is a declaration
+  `(functionCorrespondingPredicate F P n)` of two symbols on a KB declaring a reifiable
+  function.  The integration choke points and the removal one call it, so a declaration
+  asserted, derived or removed re-spells the rules applying `F` and the rules a
+  correspondence of `F` respelled (`chain/reconcile-reified!`, docs/nat.md, The
+  corresponding predicate).  Every other sentex costs a field read and a compare."
+  [kb sentex]
+  (let [s (:sentence sentex)]
+    (when (and (seq? s) (= res/correspondence-predicate (first s)))
+      (let [[_ f pred] s]
+        (when (and (symbol? f) (symbol? pred) (nat-read/any-reifiable-functions? kb))
+          (swap! (reasoning/respell kb) conj [:correspondence f pred]))))))
+
 (def ^:private move-families
   "Every family a `genlCx` move re-checks, read by `drain-context-moves!` with the move's
   `context-move` value.  `:on` names the kinds of move a row reads: `:shown` an edge
@@ -7563,6 +7578,7 @@
   path) and `integrate-twin` (migration), so the dispatch lives in one place."
   [kb sentex handle]
   (store-declared-mint-rule! kb sentex)
+  (note-correspondence-move! kb sentex)
   (if-let [e (get table (nm/functor (sx/sentence-of sentex)))]
     (when-let [g (:integrate e)] (g kb sentex handle))
     (structural-integrate kb sentex handle)))
@@ -7595,6 +7611,7 @@
   reference-counted on the departing sentex's id, so an entry survives while
   another sentex still asserts the same claim."
   [kb sentex]
+  (note-correspondence-move! kb sentex)
   (let [sentence (sx/sentence-of sentex)
         f        (nm/functor sentence)]
     (cond
@@ -7657,6 +7674,7 @@
   entailment and `derive-equality`.  See docs/taxonomy.md and docs/exceptions.md."
   [kb sentex handle]
   (store-declared-mint-rule! kb sentex)
+  (note-correspondence-move! kb sentex)
   (let [sentence (sx/sentence-of sentex)]
     (note-derived-move! (nm/functor sentence) handle)
     (if (contains? table (nm/functor sentence))

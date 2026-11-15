@@ -7,6 +7,8 @@
             [vaelii.core :as v]
             [vaelii.impl.profile :as prof]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.order-independence-test :as oi]
             [vaelii.test-util :as tu]))
 
@@ -748,6 +750,45 @@
         (is (= (if (= :retract (second order)) [:stored :stored :stored] [:stored :not-stratified])
                (mapv #(refusal-type (op %)) order))
             (pr-str shape order))))))
+
+(tu/deftest-kb a-derived-closed-extent-grant-keeps-the-rule-set-stratified-in-both-arrival-orders
+  ;; A grant a forward rule concludes, in each spelling, or an argument-type mint entails,
+  ;; beside a rule reading (not (accountOn …)).  When that rule concludes accountOn,
+  ;; whichever arrives second goes: the derived grant is dropped and reported, with no
+  ;; record and no mark, or the rule is refused.  When it concludes another predicate,
+  ;; both are stored.
+  (doseq [[route spelling] [[:forward :whole] [:forward :per-argument] [:forward :binary]
+                            [:entailed :whole]]
+          cyclic? [true false]
+          order   [[:rule :derive] [:derive :rule]]]
+    (tu/with-terms [accountOn grantsOn candidate unhosted closed_listing HostA Zed CxHosts]
+      (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+      (let [grant  (fn [p] (case spelling
+                             :whole        (list 'closed_extent_predicate p)
+                             :per-argument (list 'closedExtentForArg p 2 HostA)
+                             :binary       (list 'closedExtentForArg2 p HostA)))
+            fwd    #(v/assert kb % CxHosts {:direction :forward})
+            op     {:rule   #(fwd (list 'implies (list 'and (list candidate '?u)
+                                                       (list 'not (list accountOn '?u HostA)))
+                                        (if cyclic? (list accountOn '?u HostA) (list unhosted '?u))))
+                    :derive #(case route
+                               :forward  (do (fwd (list 'implies (list closed_listing '?p) (grant '?p)))
+                                             (v/assert kb (list closed_listing accountOn) CxHosts))
+                               :entailed (do (v/assert kb (list 'arg grantsOn 1 'closed_extent_predicate)
+                                                       CxHosts)
+                                             (v/assert kb (list grantsOn accountOn Zed) CxHosts)))}
+            types  (tu/with-entailing (mapv #(refusal-type (op %)) order))
+            tx     (reasoning/taxonomy kb)
+            g      (grant accountOn)]
+        (is (= (cond (not cyclic?)           [[:stored :stored] true true []]
+                     (= :rule (first order)) [[:stored :stored] false false [:not-stratified]]
+                     :else                   [[:stored :not-stratified] true true []])
+               [types
+                (some? (v/handle-of kb g CxHosts))
+                (boolean (some #(contains? (tax/props tx %) accountOn)
+                               [:closed-extent :closed-extent-arg]))
+                (into [] (comp (filter #(= g (:sentence %))) (map :violation)) (v/violations kb))])
+            (pr-str route spelling cyclic? order))))))
 
 (tu/deftest-kb why-not-says-the-extent-is-closed
   (tu/with-terms [month_of_year Smarch CxCalendar]

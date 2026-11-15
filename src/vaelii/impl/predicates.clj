@@ -799,7 +799,7 @@
                              " forward rule derives the ternary, and the prover reads only the"
                              " ternary.")}
                 (str "the CxUniverse forward rule deriving (closedExtentForArg P 1 V), and"
-                     " checks/check-closed-extent-stratified, which refuses the spelling where"
+                     " checks/check-fact-stratified, which refuses the spelling where"
                      " the ternary would be refused"))]
      ['closedExtentForArg2
       (enforced {:shape {:args [:predicate :term]} :storage [:none] :checked false

@@ -16,6 +16,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [vaelii.core :as v]
             [vaelii.impl.chain :as chain]
+            [vaelii.impl.nat-read :as nat-read]
             [vaelii.impl.settle :as settle]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
@@ -170,6 +171,31 @@
                     (into #{} (comp (filter set?) cat (map :bindings)) (vals @(reasoning/refused kb)))]))
         orders [[:rule :member :mark] [:member :mark :rule] [:mark :rule :member]]]
     (is (= (repeat 3 [1 '#{{?var0 RM1}}]) (map ledger orders)))))
+
+(deftest a-refusal-whose-binding-a-later-mark-reifies-reads-as-one-in-every-arrival-order
+  (let [step   {:rule   member-rule!
+                :member #(v/assert % '(rmember (Quote RM1)) ctx {:strength :monotonic})
+                :mark   #(v/assert % '(rmark (Quote RM1)) ctx)
+                :reify  #(v/assert % '(reifiable_function Quote) ctx)}
+        ledger (fn [order]
+                 (tu/with-cleared-kb [kb tu/isolated-fresh]
+                   (run! #((step %) kb) order)
+                   (let [report (into [] (comp (filter #(seq (:refusals %))) (map :refusals))
+                                      (chain/rule-firing-report kb))
+                         states (vec (for [[rh es] @(reasoning/refused kb) :when (set? es), e es]
+                                       (chain/refusal-state kb rh e)))]
+                     (v/retract! kb (v/handle-of kb '(rmember (Quote RM1)) ctx))
+                     {:report   report
+                      :states   states
+                      :released (mapv :sentence (v/sentexes-matching kb '(rseen ?x) ctx))})))
+        [late :as all] (map ledger [[:rule :member :mark :reify] [:reify :rule :member :mark]
+                                    [:rule :mark :reify :member]])]
+    (testing "recorded with (Quote RM1) bound, then the mark moves both rows onto the constant"
+      (is (= [:blocked] (:states late)) "the record re-decides the firing under the constant")
+      (is (= [[:blocked :naf]] (map (juxt :state :reason) (first (:report late)))))
+      (is (nat-read/reified-object-symbol? (second (first (:released late))))
+          "the release places the conclusion over the constant"))
+    (is (apply = all) "the report and the release read alike with the mark first")))
 
 (deftest a-firing-swept-and-refused-by-a-bounded-join-is-one-entry-under-the-wider-bound
   (let [step   {:rule   member-rule!

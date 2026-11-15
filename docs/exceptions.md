@@ -459,7 +459,10 @@ the shape an answer has:
   believed and nothing conflicts; the rule simply did not fire.
 - **It is keyed on content.** Two refusals of the same rule at the same bindings from
   different passes are one entry, so arrival order cannot be read back out of it. The
-  entry keeps the wider of the two runs' `:max-depth` bounds, no bound over a number.
+  entry keeps the wider of the two runs' `:max-depth` bounds, no bound over a number. Two
+  refusals over the same antecedents whose bindings settle at the placement to the same
+  terms (`chain/settled-bindings`) are one entry too, under the later spelling. A firing
+  refused before a `reifiable_function` mark arrives and re-joined after it is one such pair.
 - **A refusal that fires is re-derived from what it recorded** — `place-conclusion` with
   the recorded conclusion, placement and antecedents, and the depth recomputed from the
   antecedent facts. Never a fresh join: re-joining is the cost the record exists to
@@ -946,7 +949,7 @@ rule fired first.
 
 So this joins the **`violations`** mechanism, which exists for exactly the same
 situation one layer over: a derived conclusion that breaks a definitional constraint.
-`chain/place-conclusion` asks `edge-stratification-violation` alongside
+`chain/place-conclusion` asks `fact-stratification-violation` alongside
 `checks/constraint-admission` and `special/wff-violation`, and a bad edge is **dropped** — no sentex, no justification,
 nothing in the closures — and reported in `(violations kb)` as
 `{:violation :not-stratified :detail {:cycle …}}`. Dropping rather than merely

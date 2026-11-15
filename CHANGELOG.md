@@ -144,6 +144,45 @@ it — `git show v0.16.0:CHANGELOG.md`.
   firings over a quoted member in every arrival order.
   [inference.md](docs/inference.md#what-a-computed-answer-rests-on)
 
+### Fix: order independence
+
+- **A derived closed-extent grant that would close a cycle through negation is dropped**
+  ([#275](https://github.com/vaelii/vaelii/issues/275)). The grant is a
+  `closed_extent_predicate`, `closedExtentForArg` or binary-spelling grant that a forward
+  rule concludes or an argument-type mint entails. When it would close a cycle with a
+  stored rule, it is dropped and reported in `violations` as `:not-stratified`, as a
+  derived `genl` edge is. It leaves no record and closes no extent. `assert` refuses a
+  stated grant in the same case.
+  [naf.md](docs/naf.md#stratification-from-both-arrival-orders)
+  *Migration:* none.
+
+- **A rule stored before a derived correspondence is respelled through it**
+  ([#271](https://github.com/vaelii/vaelii/issues/271)). With `(implies (tagged (FruitFn
+  ?t)) (ripe ?t))` stored before `(functionCorrespondingBinaryPredicate FruitFn fruitOf)`,
+  the rule stayed held and `(ripe ?t)` answered nothing. It now answers `AppleTree` from
+  `(fruitOf AppleTree Gala)` and `(tagged Gala)` in every arrival order, and the
+  respelling goes when the declaration does. A `preview` adding a correspondence no longer
+  leaves a held rule respelled after its rollback.
+  [nat.md](docs/nat.md#a-rule-or-a-goal-that-names-an-open-application)
+  *Migration:* none.
+
+- **A guard defeat lands at a reader that hides a `reifiable_function` mark**
+  ([#289](https://github.com/vaelii/vaelii/issues/289)). CxA states
+  `(reifiable_function Quote)` and `(exceptWhen (blocked ?q) R)`, and `R` fires over
+  `(said Tom (Quote Muffet))`. CxB, below CxA, hides the mark and states
+  `(blocked (Quote Muffet))`. CxB believed R's conclusion in some arrival orders when it
+  denies the mark, and in all when an `except` hides the mark. CxB now reads the
+  conclusion defeated, as when no context states the mark.
+  [nat.md](docs/nat.md#a-reifiable-mark-moving)
+  *Migration:* none.
+
+- **A refusal recorded before a `reifiable_function` mark stays one refusal after it**
+  ([#289](https://github.com/vaelii/vaelii/issues/289)). A closed-extent refusal recorded
+  with `(Quote RM1)` bound counted twice in `rule-firing-report` once the mark arrived. It
+  now reads as one refusal, as when the mark arrives first.
+  [exceptions.md](docs/exceptions.md#a-refused-firing-is-remembered-as-bindings)
+  *Migration:* none.
+
 ### Internal: CI
 
 - **A CI shard runs its recurring failures first**

@@ -2377,9 +2377,7 @@
       (is (empty? (v/ask kb (list motherOf Muffet '?m) 'CxUniverse)))
       (v/retract! kb h))))
 
-(tu/deftest-kb ^:red a-binary-correspondence-respells-a-rule-in-every-order
-  ;; Accepted limit: a rule stored before the binary declaration keeps its written
-  ;; spelling because the canonical correspondence is derived, not asserted.
+(tu/deftest-kb a-binary-correspondence-respells-a-rule-in-every-order
   (doseq [order (tu/orders [:corr :rule :facts])]
     (tu/with-terms [FruitFn AppleTree Gala tagged ripe fruitOf]
       (v/assert kb (list 'reifiable_function FruitFn) 'CxUniverse)
@@ -2393,6 +2391,17 @@
         (v/retract! kb (first (:corr hs)))
         (is (empty? (v/query kb (list ripe '?t) 'CxUniverse)) (str order " retracted"))
         (run! #(v/retract! kb %) (mapcat val (dissoc hs :corr)))))))
+
+(tu/deftest-kb a-preview-of-a-correspondence-leaves-a-held-rule-held
+  (tu/with-terms [FruitFn AppleTree Gala tagged ripe fruitOf]
+    (v/assert kb (list 'reifiable_function FruitFn) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate fruitOf) 'CxUniverse)
+    (v/assert kb (list 'set/forwardRule (list 'implies (list tagged (list FruitFn '?t)) (list ripe '?t)))
+              'CxUniverse)
+    (v/assert kb (list fruitOf AppleTree Gala) 'CxUniverse)
+    (v/assert kb (list tagged Gala) 'CxUniverse)
+    (v/preview kb {:add [[(list 'functionCorrespondingPredicate FruitFn fruitOf 2) 'CxUniverse]]})
+    (is (empty? (v/query kb (list ripe '?t) 'CxUniverse)))))
 
 (tu/deftest-kb a-binary-correspondence-types-the-second-argument-by-the-result
   (tu/with-terms [ShadeFn shadeOf paint shade]

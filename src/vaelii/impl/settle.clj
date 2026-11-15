@@ -1292,14 +1292,14 @@
   "Drain the `:respell` queue, the predicates whose permuting marks moved in the settle just
   run, the `[:row h]` rows a write stored while their readers disagree on a mark, the
   `[:mention p]` predicates whose mention mark moved, the `[:reifiable f]` functions whose
-  reifiable or permuting mark moved, the `[:reifiable-use f]` functions used while their
-  readers disagree, the `[:corresponded f]` functions a `genlCx` move can re-spell rules
-  through, and the `[:named-valued t]` targets and `[:valued k]`, `[:valued-fn f]` and
-  `[:valued-facts f]` constants whose correspondence derivations moved (`nat-read/note-values`),
-  through `vaelii.impl.chain`'s reconciles and value syncs, and return `[respelled valued]`,
-  the handles each made.  A rebuild clears the queue and respells nothing, since a recovered store was
-  spelled when written.  With `*sweep?*` off the queue is kept, so `core/preview`'s rollback
-  settle drains it against the restored KB and the handles stay the same."
+  reifiable or permuting mark moved, the `[:correspondence f p]` declarations stored or
+  removed, the `[:reifiable-use f]` functions used while their readers disagree, the
+  `[:corresponded f]` functions a `genlCx` move can re-spell rules through, and the
+  `[:named-valued t]` targets and `[:valued k]`, `[:valued-fn f]` and `[:valued-facts f]`
+  constants whose correspondence derivations moved (`nat-read/note-values`), through
+  `chain`'s reconciles and value syncs, and return `[respelled valued]`, the handles each
+  made.  A rebuild clears the queue, since a recovered store was spelled when written.
+  With `*sweep?*` off the queue waits for `core/preview`'s rollback settle at the same handles."
   [kb]
   (let [q (reasoning/respell kb)]
     (when (seq @q)
@@ -1312,7 +1312,8 @@
                                tagged (fn [k] (into [] (comp (filter #(and (vector? %) (= k (first %))))
                                                              (map second))
                                                     moved))
-                               fns    (tagged :reifiable)
+                               decls  (filterv #(and (vector? %) (= :correspondence (first %))) moved)
+                               fns    (distinct (into (tagged :reifiable) (map second) decls))
                                ufns   (remove (set fns) (tagged :reifiable-use))
                                cfs    (remove (set fns) (tagged :corresponded))]
                            [(-> (chain/reconcile-spellings!
@@ -1320,7 +1321,8 @@
                                  (distinct (into (tagged :row)
                                                  (mapcat #(integrate/rows-a-mention-spells kb %))
                                                  (tagged :mention))))
-                                (into (when (seq fns) (chain/reconcile-reified! kb fns)))
+                                (into (when (seq fns)
+                                        (chain/reconcile-reified! kb fns (distinct (map #(nth % 2) decls)))))
                                 (into (when (seq ufns) (chain/reconcile-reified! kb ufns nil false)))
                                 (into (when (seq cfs) (chain/reconcile-corresponded! kb cfs))))
                             (into (chain/sync-values! kb (tagged :valued) (tagged :valued-fn)
