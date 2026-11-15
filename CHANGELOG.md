@@ -53,7 +53,12 @@ it — `git show v0.16.0:CHANGELOG.md`.
   (`Quote` and the `set/*` wrappers), answered in CxUniverse, where it classified every
   term core.txt comments. A membership a `genl` edge or a rule derives counts as a stated
   one: `(genl type_type_by_order definitional_predicate)` makes `type`, `metatype` and
-  `meta_metatype` members. A grammar term in neither, such as `except` or `genlCx`, is no
+  `meta_metatype` members. Three new collections below `definitional_predicate` hold most
+  of the rest: `ontology_predicate` holds `genl` and the separations, `arg_constraint` the
+  argument declarations, and `algebraic_predicate_property` the relation properties. A
+  forward rule over each of `relationTypeByArity`, `predicateTypeByArity` and
+  `functionTypeByArity` makes the fifteen exact-arity classes members. The `at_least`
+  classes are not members. A grammar term in neither, such as `except` or `genlCx`, is no
   longer listed under `:enforced` or `:inert`; `interpreted` still answers for it.
   `:retired` still names a classification entry for a term core.txt no longer comments.
   *Migration:* ask `interpreted` of a grammar term outside the population, or mark a

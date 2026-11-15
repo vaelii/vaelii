@@ -371,7 +371,13 @@ the argument declarations, the relation properties `describe` lists under `:prop
 predicates, and the KB marks each one `syncategorematic`; those are the second clause. The
 audit reads both populations by query, so a membership a `genl` edge or a rule derives counts
 as a stated one does: `(genl type_type_by_order definitional_predicate)` makes `type`,
-`metatype` and `meta_metatype` members. A
+`metatype` and `meta_metatype` members. `ontology_predicate`, `arg_constraint` and
+`algebraic_predicate_property` hold the separations and `genl`, the argument declarations,
+and the relation properties, and a `genl` edge from each to `definitional_predicate` makes
+their members members. A forward rule over each of `relationTypeByArity`,
+`predicateTypeByArity` and `functionTypeByArity` makes every exact-arity class a mapping
+fact names a member. An `at_least` class is the subject of no mapping fact, so it is not a
+member. A
 grammar term in neither, such as `except` or `genlCx`, still has its classification entry,
 and `interpreted` answers for it.
 

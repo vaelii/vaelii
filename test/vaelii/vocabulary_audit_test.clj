@@ -80,6 +80,33 @@
 (tu/deftest-kb the-orders-are-definitional-through-type_type_by_order
   (derived-definitional kb '[type metatype meta_metatype] "through type_type_by_order"))
 
+(tu/deftest-kb the-placement-predicates-are-definitional-through-ontology_predicate
+  (derived-definitional kb '[genl disjoint separating partition orthogonal]
+                        "through ontology_predicate"))
+
+(tu/deftest-kb the-argument-declarations-are-definitional-through-arg_constraint
+  (derived-definitional kb '[arg genlArg quotedArg interArg interArgEqual argArg]
+                        "through arg_constraint"))
+
+(tu/deftest-kb the-relation-properties-are-definitional-through-algebraic_predicate_property
+  (derived-definitional kb '[transitive symmetric asymmetric reflexive functional]
+                        "through algebraic_predicate_property"))
+
+(tu/deftest-kb the-exact-arity-classes-are-definitional-through-their-mapping-facts
+  (derived-definitional kb '[unary binary ternary quaternary quinary]
+                        "through relationTypeByArity")
+  (derived-definitional kb '[unary_predicate binary_predicate ternary_predicate
+                             quaternary_predicate quinary_predicate]
+                        "through predicateTypeByArity")
+  (derived-definitional kb '[unary_function binary_function ternary_function
+                             quaternary_function quinary_function]
+                        "through functionTypeByArity")
+  (let [population (audited kb)]
+    (doseq [t '[at_least_binary at_least_ternary at_least_quaternary at_least_quinary]]
+      (is (not (v/ask? kb (list 'definitional_predicate t) 'CxUniverse))
+          (str t " is the subject of no mapping fact, so no rule makes it definitional"))
+      (is (not (contains? population t)) (str t " is not in vocabulary-audit's population")))))
+
 ;; A test asserting the special-predicate table and the classification agree stood here and is gone.  It walked
 ;; `special/entries` asserting no functor with an arm was classified inert — which is
 ;; `audit`'s `:contradicted` restated, and the test above already asserts that empty.  The
