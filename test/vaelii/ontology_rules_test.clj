@@ -165,8 +165,8 @@
                                   (filter #(= :disjoint (:kind %)) pairs)))
         "the one other disjoint pair with a live rule, a metal solid and mercury liquid, is excepted")
     (is (= 7 (count (filter #(and (:inert %) (some (fn [s] (and (#{'fixed_arity_predicate 'fixed_arity_function 'variable_arity_predicate 'variable_arity_function} (first (nth s 2)))
-                                                                         (symbol? (second (nth s 2)))))
-                                                          (:sentences %))) pairs)))
+                                                                (symbol? (second (nth s 2)))))
+                                                   (:sentences %))) pairs)))
         "the four inert arity-policy intersections pair, review-only, with the variable-policy copies, the exact-class and symmetry copies and the associative meet rule")
     (is (= 14 (count (filter rigidity? acked)))
         "the seven existing transfers and seven kinship branch contracts are acknowledged")
@@ -265,8 +265,6 @@
                              (symmetric (GeneticKinFn ?predicate)))
                     (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate))
                              (symmetric (ChosenKinFn ?predicate)))}
-          ;; The inert definition of asymmetric pairs, review-only, with the rule concluding
-          ;; symmetric from commutative and an arity of two.
           asymmetry   '(implies (and (anti_symmetric ?p) (irreflexive ?p)) (asymmetric ?p))
           other-pairs (remove #(or (some copies (:sentences %)) (some #{asymmetry} (:sentences %)))
                               (about 'arity))]

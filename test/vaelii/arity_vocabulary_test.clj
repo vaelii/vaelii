@@ -93,9 +93,6 @@
     (is (empty? (v/sentexes-matching kb (list four_place_function fourPlaceFn) 'CxUniverse)))))
 
 (tu/deftest-kb the-arity-policy-intersections-are-stated-inert
-  ;; fixed_arity_predicate is fixed_arity and predicate together, and likewise the other
-  ;; three.  Each definition is a believed inert rule, run by neither engine, so a
-  ;; predicate of fixed arity is not proved a fixed_arity_predicate by it.
   (doseq [[kind policy class] '[[predicate fixed_arity fixed_arity_predicate]
                                 [function fixed_arity fixed_arity_function]
                                 [predicate variable_arity variable_arity_predicate]

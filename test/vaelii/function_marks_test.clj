@@ -80,8 +80,6 @@
     (is (v/ask? kb (list 'surjection capitalCityOf) U))))
 
 (tu/deftest-kb an-injection-that-is-a-surjection-is-a-bijection
-  ;; bijection is the intersection of injection and surjection, so the two marks together
-  ;; conclude it, and either alone does not.
   (tu/with-terms [capitalCityOf injectiveOf surjectiveOf]
     (v/assert kb (list 'injection capitalCityOf) U)
     (v/assert kb (list 'surjection capitalCityOf) U)

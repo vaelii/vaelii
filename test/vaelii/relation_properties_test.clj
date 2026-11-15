@@ -59,8 +59,6 @@
             r))))
 
 (tu/deftest-kb asymmetric-is-stated-as-the-intersection-of-irreflexive-and-anti-symmetric
-  ;; The definition is a believed inert rule: neither engine runs it, so the two marks
-  ;; together do not turn on the asymmetric nogood.
   (let [h (v/handle-of kb '(set/inertRule (implies (and (irreflexive ?p) (anti_symmetric ?p))
                                                    (asymmetric ?p)))
                        U)]
