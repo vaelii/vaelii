@@ -232,7 +232,9 @@ declared kind or below it. The names come from the index's term-name set
 (`reads/stored-terms-global`), and a name's term-index postings
 (`reads/as-stored-with-term`) say which contexts write it. A compound is no name, so a
 quotation such as `(Quote (genl dog animal))` is never in `symbol`'s population, though
-`dog` and `animal` are. The term-name set keys no string, number or other value, so the
+`dog` and `animal` are. A NAT is taken as the compound it reifies, so a
+`non_atomic_expression` and never a `symbol`, though the store spells it as a reified
+constant (`natFormula` maps the constant back). The term-name set keys no string, number or other value, so the
 population of `string` is empty. A declared kind that is not below `expression` is a
 `{:status :gap :gap :non-syntactic-type …}` result.
 

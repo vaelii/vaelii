@@ -79,6 +79,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
   and `vaelii.impl.predall/quoted-specified-violations` audits one declaration. The
   population grows by one term per name the KB writes. core.txt states
   `(predAllQuotedSpecified comment symbol)`: every name the KB writes has a comment.
+  A NAT is no name: the audit takes it as the compound it reifies.
   [predall.md](docs/predall.md#quoted-specified-the-population-as-written)
 - **life.txt ships `may` and `can` beside `able`.** `(may ?doer ?kind)` is deontic
   permission to be the doer of a happening of kind `?kind`, and `(can ?doer ?kind)` is

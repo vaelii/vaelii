@@ -246,11 +246,25 @@
                          (budget/checked-seq (reads/as-stored-with-term idx x)))))
             (budget/checked-seq (reads/stored-terms-global idx)))))
 
+(defn- written-form
+  "The form the term `x` writes: for a reified constant (`nm/reified-constant?`), the
+  expression its `natFormula` visible from `ctx` maps it to, the content-least where a
+  collision maps it to several; else `x`.  The store spells a NAT as a reified constant,
+  and KB text writes it as the compound it reifies."
+  [kb x ctx]
+  (or (when (nm/reified-constant? x)
+        (some->> (res/matches-visible kb (list 'natFormula x '?e) ctx)
+                 (keep #(get (second %) '?e))
+                 (nm/min-by-content-key identity)))
+      x))
+
 (defn- of-written-kind?
-  "Is the term `x`, taken as written, of the expression kind `qtype` in `ctx`: is one of
-  its spelling's kinds (`provers/shape-kinds`) `qtype` or below it?"
-  [tax x qtype ctx]
-  (boolean (some #(or (= % qtype) (tax/genl? tax % qtype ctx)) (provers/shape-kinds x))))
+  "Is the term `x`, taken as written (`written-form`), of the expression kind `qtype` in
+  `ctx`: is one of its spelling's kinds (`provers/shape-kinds`) `qtype` or below it?  A
+  NAT is a `non_atomic_expression`, so no `symbol`, whatever constant stores it."
+  [kb tax x qtype ctx]
+  (boolean (some #(or (= % qtype) (tax/genl? tax % qtype ctx))
+                 (provers/shape-kinds (written-form kb x ctx)))))
 
 (defn quoted-specified-violations
   "Audit `(predAllQuotedSpecified pred qtype)` in `ctx`, `arg-pos` `:first` for
@@ -283,7 +297,7 @@
              {:status :audited
               :violations
               (into #{}
-                    (comp (filter #(of-written-kind? tax % qtype ctx))
+                    (comp (filter #(of-written-kind? kb tax % qtype ctx))
                           (remove #(admissible-filler? kb pred % typings n ctx))
                           (filter eligible?))
                     (written-terms kb ctx))}

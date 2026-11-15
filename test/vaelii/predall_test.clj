@@ -1391,6 +1391,25 @@
                                         kb 'comment 'symbol 'CxUniverse))
                           Uncommented))))))
 
+(tu/deftest-kb a-nat-is-no-symbol-so-the-symbol-audit-asks-it-no-comment
+  (tu/with-terms [CxTest FruitFn AppleTree fruit tag Uncommented]
+    (v/assert kb (list 'genlCx CxTest 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'reifiable_function FruitFn) 'CxUniverse)
+    (v/assert kb (list 'result FruitFn fruit) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate tag) CxTest)
+    (let [h (v/assert kb (list tag (list FruitFn AppleTree)) CxTest)
+          k (second (:sentence (v/sentex kb h)))]
+      (v/assert kb (list tag Uncommented) CxTest)
+      (v/assert kb '(predAllQuotedSpecified comment symbol) CxTest)
+      (is (symbol? k) "the store writes the NAT as a constant")
+      (let [vs (:violations (predall/quoted-specified-violations kb 'comment 'symbol CxTest))]
+        (is (not (contains? vs k)) "the NAT's constant is not in symbol's population")
+        (is (contains? vs Uncommented) "an uncommented symbol written beside it still is"))
+      (is (contains? (:violations (predall/quoted-specified-violations
+                                   kb 'comment 'non_atomic_expression CxTest))
+                     k)
+          "the NAT is in non_atomic_expression's population, the kind KB text writes it as"))))
+
 (tu/deftest-kb pred-specified-all-quoted-audits-the-first-position
   (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible documents]
     (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
