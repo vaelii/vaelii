@@ -1016,8 +1016,8 @@ assert. Declare before loading where you can.
 Every shipped declaration is a claim about a **predicate** rather than about a world.
 `functional`, `functionalInArg`, `inverse`, `reflexive`, `irreflexive`, `symmetric`, `commutative`,
 `commutativeInArgs`, `commutativeInArgAndRest`, `associative`, `idempotent`,
-`meetFunctionOf`, `distinctInArgAndRest`, `anti_symmetric`, `asymmetric`, `transitive`, `anti_transitive`, `equivalence_relation`, `injection`, `surjection` and
-`bijection` carry the mark — so a `(symmetric P)` stated in one theory is the KB's
+`meetFunctionOf`, `distinctInArgAndRest`, `anti_symmetric`, `asymmetric`, `transitive`, `anti_transitive`, `equivalence_relation`, `injective_predicate`, `surjective_predicate` and
+`bijective_predicate` carry the mark — so a `(symmetric P)` stated in one theory is the KB's
 claim about `P` and not that theory's — and `genlCx` carries the forced variant below.
 The fourteen length bindings (`sx/arity-binding-functors`: `arity`, `arityMin`, the nine
 exact-arity classes and the three `variable_arity` classes) carry it at `:monotonic`, so a
@@ -1093,7 +1093,7 @@ arrival orders:
 | `anti_transitive` | every context | `CxA`, `CxD` | `:props :anti-transitive` — the refusal and the settle's nogood |
 | `inverse` | every context | `CxA`, `CxD` | the `:inverse` table — the inverse prover |
 | `functional` | every context | `CxA`, `CxD` | `:props :functional` — the merge, placed where the mark is visible |
-| `injection` `surjection` `bijection` | every context | nowhere | `core.txt` rules deriving `functional` and `functionalInArg`; inert without them |
+| `injective_predicate` `surjective_predicate` `bijective_predicate` | every context | nowhere | `core.txt` rules deriving `functional` and `functionalInArg`; inert without them |
 | `functionalInArg` | every context | `CxA`, `CxD` | the `:functional-in-arg` table — the merge, placed where the mark is visible |
 
 Each table entry records its supporting sentexes with their contexts

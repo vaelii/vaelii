@@ -8,7 +8,9 @@
 ;; `:context-merges`) or reports (`:re-meanings`, `:retired`).  `:api` holds the
 ;; same kinds for the public API, koinii's vars and the daemon's ops, which a
 ;; caller's code rewrites.
-{:renames        {}
+{:renames        {bijection  bijective_predicate
+                  injection  injective_predicate
+                  surjection surjective_predicate}
  :context-merges {}
  :re-meanings    {parentOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
                   childOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."

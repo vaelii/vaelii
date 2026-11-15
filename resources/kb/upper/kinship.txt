@@ -323,13 +323,13 @@
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (bijection ?p) (injection ?p))))
+   (Quote (implies (bijective_predicate ?p) (injective_predicate ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (bijection ?p) (surjection ?p))))
+   (Quote (implies (bijective_predicate ?p) (surjective_predicate ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
@@ -353,13 +353,13 @@
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (injection ?p) (functional ?p))))
+   (Quote (implies (injective_predicate ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (surjection ?p) (functional ?p))))
+   (Quote (implies (surjective_predicate ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
@@ -377,13 +377,13 @@
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (bijection ?p) (injection ?p))))
+   (Quote (implies (bijective_predicate ?p) (injective_predicate ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (bijection ?p) (surjection ?p))))
+   (Quote (implies (bijective_predicate ?p) (surjective_predicate ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
@@ -407,25 +407,25 @@
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (injection ?p) (functional ?p))))
+   (Quote (implies (injective_predicate ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (surjection ?p) (functional ?p))))
+   (Quote (implies (surjective_predicate ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (geneticVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (and (injection ?p) (surjection ?p)) (bijection ?p))))
+   (Quote (implies (and (injective_predicate ?p) (surjective_predicate ?p)) (bijective_predicate ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (chosenVersionOf ?predicate ?version) (variable_arity_predicate ?predicate)) (variable_arity_predicate ?version)))
-   (Quote (implies (and (injection ?p) (surjection ?p)) (bijection ?p))))
+   (Quote (implies (and (injective_predicate ?p) (surjective_predicate ?p)) (bijective_predicate ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash

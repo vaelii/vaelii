@@ -98,7 +98,7 @@
   ;;
   ;; No `:disjoint` pair is left.  CxCriedWolf's `lied_before → liar` concludes a person,
   ;; and two kinds of rule conclude a type disjoint from one: the signed refinements of
-  ;; `integer` and the relation classifications (arity, `bijection`, the arity classes).
+  ;; `integer` and the relation classifications (arity, `bijective_predicate`, the arity classes).
   ;; No ground term satisfies both antecedents of any such pair — nothing is a person and
   ;; an integer or a relation — and the checker reads that off the
   ;; `arg` declarations: `(arg lied_before 1 person)` types the liar rule's variable a
@@ -186,12 +186,12 @@
     (is (= 10 (count (filter arity-copy? acked))))
     (is (= (set (for [constructor '[GeneticKinFn ChosenKinFn]
                       [antecedent consequence] '[[and equivalence_relation] [and empty]
-                                                 [bijection injection] [bijection surjection]
+                                                 [bijective_predicate injective_predicate] [bijective_predicate surjective_predicate]
                                                  [equivalence_relation reflexive]
                                                  [equivalence_relation symmetric]
                                                  [equivalence_relation transitive]
-                                                 [injection functional] [surjection functional]
-                                                 [and bijection]]]
+                                                 [injective_predicate functional] [surjective_predicate functional]
+                                                 [and bijective_predicate]]]
                   [constructor antecedent consequence]))
            (set (map signature (filter policy-copy? acked))))
         "the variable-policy reviews name only the fixed unary/binary metadata contracts")

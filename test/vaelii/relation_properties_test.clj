@@ -119,15 +119,15 @@
       (is (believed-at? kb (list before Alice Bob) U)))))
 
 (tu/deftest-kb a-mark-stated-beside-its-excepted-derivation-convicts-at-the-excepting-reader
-  ;;   CxUniverse  (injection ageRel) monotonic; a core.txt rule derives (functional ageRel)
-  ;;     └─ CxHid  (ageRel Tom 1) default  (ageRel Tom 2) monotonic  (except (injection ageRel))
+  ;;   CxUniverse  (injective_predicate ageRel) monotonic; a core.txt rule derives (functional ageRel)
+  ;;     └─ CxHid  (ageRel Tom 1) default  (ageRel Tom 2) monotonic  (except (injective_predicate ageRel))
   ;; CxHid reads no mark while the derivation alone states it.  The mark stated as well
   ;; convicts the pair there, and the placement reads the network: the default filler its
   ;; own defeat hides at CxHid is no reason to move the placement.
   (tu/with-terms [ageRel Tom CxHid]
     (v/assert kb (list 'genlCx CxHid U) U)
     (let [M   {:strength :monotonic}
-          inj (v/assert kb (list 'injection ageRel) U M)
+          inj (v/assert kb (list 'injective_predicate ageRel) U M)
           los (v/assert kb (list ageRel Tom 1) CxHid)]
       (v/assert kb (list ageRel Tom 2) CxHid M)
       (v/assert kb (list 'except (list 'sentexHandle inj)) CxHid M)

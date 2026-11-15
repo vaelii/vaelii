@@ -282,7 +282,7 @@ page that holds it.
     first. A rule whose antecedents are all forced-monotonic literals, with no `unknown`,
     `exceptWhen` or `set/defaultRule`, keeps the strength it was written at, and its
     conclusion is an ordinary belief at its antecedents' class, never a loser;
-    `core.txt`'s `injection`, `surjection` and `bijection` rules are the case. Each firing
+    `core.txt`'s `injective_predicate`, `surjective_predicate` and `bijective_predicate` rules are the case. Each firing
     of any other rule whose conclusion is a forced-monotonic literal or its denial is
     stored and held void, `core/violations` reads a `:forced-conclusion` entry for it, and
     `why-not` on its conclusion names the antecedent predicates that are not

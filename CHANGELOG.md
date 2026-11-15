@@ -38,6 +38,17 @@ it — `git show v0.16.0:CHANGELOG.md`.
   reports a stored premise that names it.
   *Migration:* write `((ChosenKinFn siblingOf) ?x ?y)` for `(chosenSiblingOf ?x ?y)`.
   *Breaks:* `chosenSiblingOf`
+- **`injection` is `injective_predicate`, `surjection` is `surjective_predicate` and
+  `bijection` is `bijective_predicate`.** The three predicate types keep their meanings,
+  declarations, comments and rules under the new names in `core.txt`, and `kinship.txt`'s
+  acknowledgments quote the rules by the new names. The names say that each is a type of
+  predicate. `resources/renames/unreleased.edn` records the three renames, so
+  `upgrade --sync` rewrites a stored premise that names an old spelling.
+  [taxonomy.md](docs/taxonomy.md)
+  *Migration:* rename `injection` to `injective_predicate`, `surjection` to
+  `surjective_predicate` and `bijection` to `bijective_predicate` in KB text, rules and
+  queries.
+  *Breaks:* `injection`, `surjection`, `bijection`
 
 ### Additive: shipped ontology
 
@@ -65,9 +76,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
   temporary implementation. `meetsArgConstraints` is concluded only for a unary
   `eagerly_reifiable_function`, from each `arg` declaration alone and without `argGenl`.
   `eager_reify_test`'s `^:red` tests state the general reading.
-- **An `injection` that is a `surjection` is a `bijection`, and `folk_biological_class` is
-  forced-monotonic.** A forward-only `core.txt` rule concludes `(bijection P)` from
-  `(injection P)` and `(surjection P)`, and retracting either withdraws it. `organism.txt`
+- **An `injective_predicate` that is a `surjective_predicate` is a `bijective_predicate`,
+  and `folk_biological_class` is forced-monotonic.** A forward-only `core.txt` rule
+  concludes `(bijective_predicate P)` from `(injective_predicate P)` and
+  `(surjective_predicate P)`, and retracting either withdraws it. `organism.txt`
   declares `(forced_monotonic_predicate folk_biological_class)`, as `folk_species` already
   is, so a class membership is never the loser of a nogood.
   [taxonomy.md](docs/taxonomy.md)

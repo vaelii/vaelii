@@ -2180,9 +2180,9 @@
 (orthogonal not_assertible anti_transitive)
 (orthogonal not_assertible equivalence_relation)
 (orthogonal not_assertible functional)
-(orthogonal not_assertible injection)
-(orthogonal not_assertible surjection)
-(orthogonal not_assertible bijection)
+(orthogonal not_assertible injective_predicate)
+(orthogonal not_assertible surjective_predicate)
+(orthogonal not_assertible bijective_predicate)
 (orthogonal not_assertible associative)
 (orthogonal not_assertible type_relation_predicate)
 (orthogonal not_assertible closed_extent_predicate)
@@ -2219,7 +2219,7 @@
 (not_assertible cautiously)
 
 (comment forced_monotonic_predicate
-         "(forced_monotonic_predicate ?predicate) makes ?predicate forced-monotonic. Every (?predicate …) sentence is stored as written and keeps the strength it was written at, a genlCx edge excepted, which reads :monotonic so that it caps no firing's class, and belief is computed with the forced-monotonic set applied: a (?predicate …) sentence is never the loser of a nogood, a denial of one loses to the literal it denies at either strength, and a firing concluding one from a rule that is not all forced-monotonic antecedents with no unknown, exceptWhen or set/defaultRule supports nothing and is reported as a :forced-conclusion violation. The declaration is a switch: asserting or retracting it recomputes belief over what ?predicate reaches, so a KB that retracted it believes what a KB that never held it believes. Declared of genlCx, the relation marks, the function classes, the arity bindings (arity, the exact-arity classes, variable_arity and its two specializations, arityMin), the arity policies (fixed_arity and its two specializations, bounded_arity, unbounded_arity, at_least_binary through at_least_quinary, arityMax, admitsArgnum), the term kinds (relation, predicate, function, truth_valued_relation, logical_constant, logical_connective, quantifier, symbol, context, unrepresented_term and its value kinds), the numeric comparators (greaterThan, lessThan) and their quantity twins (quantityGreaterThan, quantityGreaterThanOrEqual, quantityLessThan, quantityLessThanOrEqual, sameQuantity), the argument declarations (arg, arg1 through arg5), the correspondence premises (functionCorrespondingPredicate, result), except, exceptWhen and the equality relations, every one of which the engine holds forced-monotonic whether or not it is declared; the retraction of every one of these but injection, surjection, bijection, the arity policies, the term kinds, the numeric and quantity comparators, the argument declarations and the correspondence premises is refused. Declared of inverse too, a premise of the rules typing one partner's arguments by the other's. The engine holds inverse forced-monotonic only where this declaration is seen, and its retraction is not refused. See docs/nmtms.md.")
+         "(forced_monotonic_predicate ?predicate) makes ?predicate forced-monotonic. Every (?predicate …) sentence is stored as written and keeps the strength it was written at, a genlCx edge excepted, which reads :monotonic so that it caps no firing's class, and belief is computed with the forced-monotonic set applied: a (?predicate …) sentence is never the loser of a nogood, a denial of one loses to the literal it denies at either strength, and a firing concluding one from a rule that is not all forced-monotonic antecedents with no unknown, exceptWhen or set/defaultRule supports nothing and is reported as a :forced-conclusion violation. The declaration is a switch: asserting or retracting it recomputes belief over what ?predicate reaches, so a KB that retracted it believes what a KB that never held it believes. Declared of genlCx, the relation marks, the function classes, the arity bindings (arity, the exact-arity classes, variable_arity and its two specializations, arityMin), the arity policies (fixed_arity and its two specializations, bounded_arity, unbounded_arity, at_least_binary through at_least_quinary, arityMax, admitsArgnum), the term kinds (relation, predicate, function, truth_valued_relation, logical_constant, logical_connective, quantifier, symbol, context, unrepresented_term and its value kinds), the numeric comparators (greaterThan, lessThan) and their quantity twins (quantityGreaterThan, quantityGreaterThanOrEqual, quantityLessThan, quantityLessThanOrEqual, sameQuantity), the argument declarations (arg, arg1 through arg5), the correspondence premises (functionCorrespondingPredicate, result), except, exceptWhen and the equality relations, every one of which the engine holds forced-monotonic whether or not it is declared; the retraction of every one of these but injective_predicate, surjective_predicate, bijective_predicate, the arity policies, the term kinds, the numeric and quantity comparators, the argument declarations and the correspondence premises is refused. Declared of inverse too, a premise of the rules typing one partner's arguments by the other's. The engine holds inverse forced-monotonic only where this declaration is seen, and its retraction is not refused. See docs/nmtms.md.")
 (unary_predicate forced_monotonic_predicate)
 ;; Every member of the forced-monotonic set is a predicate.
 (set/monotonic (genl forced_monotonic_predicate predicate))
@@ -2231,9 +2231,9 @@
 (forced_monotonic_predicate functional)
 (forced_monotonic_predicate functionalInArg)
 (forced_monotonic_predicate anti_transitive)
-(forced_monotonic_predicate injection)
-(forced_monotonic_predicate surjection)
-(forced_monotonic_predicate bijection)
+(forced_monotonic_predicate injective_predicate)
+(forced_monotonic_predicate surjective_predicate)
+(forced_monotonic_predicate bijective_predicate)
 ;; No nogood family reads an orthogonal as a ground, so its written strength decides its
 ;; own clash: a :default orthogonal loses to the separation or the genl edge that
 ;; contradicts it, and a rule concludes one from a defeasible membership.
@@ -2423,41 +2423,41 @@
 ;; alone and functional is sugar for it.
 (set/forwardRule (implies (and (functional ?p)) (functionalInArg ?p 2)))
 
-(comment injection
-         "(injection ?predicate) means that ?predicate is an injective function: single-valued, one-to-one, and total on the type its first argument is declared to be. Declared once, it stands in for four claims the engine already reads. Two forward rules derive (functional ?predicate) and (functionalInArg ?predicate 1), each a real mark the engine enforces in turn: the merge-or-nogood rule over a shared first argument, and the same rule mirrored over a shared second. A second symbol filler on either side, both facts monotonic, derives (equals V1 V2) and merges, while any other collision, such as 1980 and 1990, is a nogood. A third rule reads the domain off (arg ?predicate 1 ?d) and derives the binary integrity requirement (predAllSpecified ?predicate ?d); the required filler type is not restated — the audit derives it from ?predicate's own slot-2 contract at read time. That requirement is audited on demand by vaelii.core/specified-violations, which reports the domain members carrying no determinate filler. Totality is audited rather than enforced because an open world cannot refuse a write for a member whose filler has not arrived. A predicate with no arg 1 declaration gets the two enforced marks and no audit, since nothing states what the domain is; one typed at arg 1 but not at arg 2 concludes the requirement, and the audit reports the missing slot contract as an explicit gap rather than auditing unconstrained. A one-to-one relation that is not total is (functional P) beside (functionalInArg P 1), written directly. Also a type: (genl injection functional) classifies P as functional and so binary_predicate. See docs/taxonomy.md.")
-(positiveExampleComment injection "a relation such as capitalCityOf")
-(unary_predicate injection)
-(decontextualized_predicate injection)
-(set/monotonic (time_invariant_relation injection))
-(set/monotonic (genl injection functional))
+(comment injective_predicate
+         "(injective_predicate ?predicate) means that ?predicate is an injective function: single-valued, one-to-one, and total on the type its first argument is declared to be. Declared once, it stands in for four claims the engine already reads. Two forward rules derive (functional ?predicate) and (functionalInArg ?predicate 1), each a real mark the engine enforces in turn: the merge-or-nogood rule over a shared first argument, and the same rule mirrored over a shared second. A second symbol filler on either side, both facts monotonic, derives (equals V1 V2) and merges, while any other collision, such as 1980 and 1990, is a nogood. A third rule reads the domain off (arg ?predicate 1 ?d) and derives the binary integrity requirement (predAllSpecified ?predicate ?d); the required filler type is not restated — the audit derives it from ?predicate's own slot-2 contract at read time. That requirement is audited on demand by vaelii.core/specified-violations, which reports the domain members carrying no determinate filler. Totality is audited rather than enforced because an open world cannot refuse a write for a member whose filler has not arrived. A predicate with no arg 1 declaration gets the two enforced marks and no audit, since nothing states what the domain is; one typed at arg 1 but not at arg 2 concludes the requirement, and the audit reports the missing slot contract as an explicit gap rather than auditing unconstrained. A one-to-one relation that is not total is (functional P) beside (functionalInArg P 1), written directly. Also a type: (genl injective_predicate functional) classifies P as functional and so binary_predicate. See docs/taxonomy.md.")
+(positiveExampleComment injective_predicate "a relation such as capitalCityOf")
+(unary_predicate injective_predicate)
+(decontextualized_predicate injective_predicate)
+(set/monotonic (time_invariant_relation injective_predicate))
+(set/monotonic (genl injective_predicate functional))
 
-(comment surjection
-         "(surjection ?predicate) means that ?predicate is a surjective function: single-valued, total on the type its first argument is declared to be, and onto the type its second is. Declared once, it stands in for three claims. One forward rule derives (functional ?predicate), the mark the engine enforces by merging two monotonic symbol fillers for one first argument and deciding any other two as a nogood. Two further rules read the domain off (arg ?predicate 1 ?d) and the range off (arg ?predicate 2 ?r), and derive (predAllSpecified ?predicate ?d) for totality and (predSpecifiedAll ?predicate ?r) for ontoness — each binary, the filler's type derived from the predicate's own slot contract at read time rather than restated. Both are audited on demand by vaelii.core/specified-violations: the first reports the domain members with no determinate filler, the second the range members no determinate domain member reaches. Neither is enforced at a write, an open world having no ground to refuse a fact for a member nothing has reached yet. A predicate whose quantified side is untyped concludes no requirement; an untyped filler side is reported by the audit as an explicit gap. Nothing here says one-to-one, so a surjection may send two domain members to one range member; that is what separates it from bijection. See docs/taxonomy.md.")
-(positiveExampleComment surjection "a relation such as capitalCityOf over capital_city")
-(unary_predicate surjection)
-(decontextualized_predicate surjection)
-(set/monotonic (time_invariant_relation surjection))
-(set/monotonic (genl surjection functional))
+(comment surjective_predicate
+         "(surjective_predicate ?predicate) means that ?predicate is a surjective function: single-valued, total on the type its first argument is declared to be, and onto the type its second is. Declared once, it stands in for three claims. One forward rule derives (functional ?predicate), the mark the engine enforces by merging two monotonic symbol fillers for one first argument and deciding any other two as a nogood. Two further rules read the domain off (arg ?predicate 1 ?d) and the range off (arg ?predicate 2 ?r), and derive (predAllSpecified ?predicate ?d) for totality and (predSpecifiedAll ?predicate ?r) for ontoness — each binary, the filler's type derived from the predicate's own slot contract at read time rather than restated. Both are audited on demand by vaelii.core/specified-violations: the first reports the domain members with no determinate filler, the second the range members no determinate domain member reaches. Neither is enforced at a write, an open world having no ground to refuse a fact for a member nothing has reached yet. A predicate whose quantified side is untyped concludes no requirement; an untyped filler side is reported by the audit as an explicit gap. Nothing here says one-to-one, so a surjective_predicate may send two domain members to one range member; that is what separates it from bijective_predicate. See docs/taxonomy.md.")
+(positiveExampleComment surjective_predicate "a relation such as capitalCityOf over capital_city")
+(unary_predicate surjective_predicate)
+(decontextualized_predicate surjective_predicate)
+(set/monotonic (time_invariant_relation surjective_predicate))
+(set/monotonic (genl surjective_predicate functional))
 
-(comment bijection
-         "(bijection ?predicate) means that ?predicate is a bijective function: an injection and a surjection at once, so the two declared types are in one-to-one correspondence. Declared once, it stands in for the pair: two forward rules derive (injection ?predicate) and (surjection ?predicate), and each of those derives its own marks in turn, so the whole family reaches the engine through the two entries above rather than through anything keyed on this name. What lands is (functional ?predicate) and (functionalInArg ?predicate 1), enforced at the assert entry point, beside (predAllSpecified ?predicate ?d) over the arg-declared domain and (predSpecifiedAll ?predicate ?r) over the arg-declared range — binary, the filler types derived from the predicate's own slot contract at read time — audited on demand. The marks are materialized as stored sentexes rather than claimed by subsumption edges, for the reason equivalence_relation's entry gives: the rule's stored conclusion both classifies and enforces, where a genl-inherited membership never reaches the mark ingestion. Also a type: (genl bijection injection) and (genl bijection surjection) state the subsumption outright, and classify P as functional and so binary_predicate. See docs/taxonomy.md.")
-(positiveExampleComment bijection "a relation such as capitalCityOf over capital_city")
-(unary_predicate bijection)
-(decontextualized_predicate bijection)
-(set/monotonic (time_invariant_relation bijection))
-(set/monotonic (genl bijection injection))
-(set/monotonic (genl bijection surjection))
+(comment bijective_predicate
+         "(bijective_predicate ?predicate) means that ?predicate is a bijective function: an injective_predicate and a surjective_predicate at once, so the two declared types are in one-to-one correspondence. Declared once, it stands in for the pair: two forward rules derive (injective_predicate ?predicate) and (surjective_predicate ?predicate), and each of those derives its own marks in turn, so the whole family reaches the engine through the two entries above rather than through anything keyed on this name. What lands is (functional ?predicate) and (functionalInArg ?predicate 1), enforced at the assert entry point, beside (predAllSpecified ?predicate ?d) over the arg-declared domain and (predSpecifiedAll ?predicate ?r) over the arg-declared range — binary, the filler types derived from the predicate's own slot contract at read time — audited on demand. The marks are materialized as stored sentexes rather than claimed by subsumption edges, for the reason equivalence_relation's entry gives: the rule's stored conclusion both classifies and enforces, where a genl-inherited membership never reaches the mark ingestion. Also a type: (genl bijective_predicate injective_predicate) and (genl bijective_predicate surjective_predicate) state the subsumption outright, and classify P as functional and so binary_predicate. See docs/taxonomy.md.")
+(positiveExampleComment bijective_predicate "a relation such as capitalCityOf over capital_city")
+(unary_predicate bijective_predicate)
+(decontextualized_predicate bijective_predicate)
+(set/monotonic (time_invariant_relation bijective_predicate))
+(set/monotonic (genl bijective_predicate injective_predicate))
+(set/monotonic (genl bijective_predicate surjective_predicate))
 
 ;; The enforced half. Each derived mark is a real property the engine enforces exactly as
 ;; a directly written one is, so nothing is keyed on the three names above.
-(set/forwardRule (implies (and (injection ?p))  (functional ?p)))
-(set/forwardRule (implies (and (injection ?p))  (functionalInArg ?p 1)))
-(set/forwardRule (implies (and (surjection ?p)) (functional ?p)))
-(set/forwardRule (implies (and (bijection ?p))  (injection ?p)))
-(set/forwardRule (implies (and (bijection ?p))  (surjection ?p)))
-;; bijection is the intersection of the two: a forward-only rule, so no goal below
-;; injection, surjection or binary_predicate runs it backward into its own antecedents.
-(set/forwardOnlyRule (implies (and (injection ?p) (surjection ?p)) (bijection ?p)))
+(set/forwardRule (implies (and (injective_predicate ?p))  (functional ?p)))
+(set/forwardRule (implies (and (injective_predicate ?p))  (functionalInArg ?p 1)))
+(set/forwardRule (implies (and (surjective_predicate ?p)) (functional ?p)))
+(set/forwardRule (implies (and (bijective_predicate ?p))  (injective_predicate ?p)))
+(set/forwardRule (implies (and (bijective_predicate ?p))  (surjective_predicate ?p)))
+;; bijective_predicate is the intersection of the two: a forward-only rule, so no goal below
+;; injective_predicate, surjective_predicate or binary_predicate runs it backward into its own antecedents.
+(set/forwardOnlyRule (implies (and (injective_predicate ?p) (surjective_predicate ?p)) (bijective_predicate ?p)))
 
 ;; The audited half. Totality quantifies over the domain and ontoness over the range, so
 ;; each rule reads only the ONE arg declaration that names its quantified collection —
@@ -2465,9 +2465,9 @@
 ;; it from the predicate's slot contract at read time. A predicate whose quantified side
 ;; is untyped concludes no requirement; one whose FILLER side is untyped concludes the
 ;; requirement and the audit reports the missing slot contract as an explicit gap.
-(set/forwardRule (implies (and (injection ?p)  (arg ?p 1 ?d)) (predAllSpecified ?p ?d)))
-(set/forwardRule (implies (and (surjection ?p) (arg ?p 1 ?d)) (predAllSpecified ?p ?d)))
-(set/forwardRule (implies (and (surjection ?p) (arg ?p 2 ?r)) (predSpecifiedAll ?p ?r)))
+(set/forwardRule (implies (and (injective_predicate ?p)  (arg ?p 1 ?d)) (predAllSpecified ?p ?d)))
+(set/forwardRule (implies (and (surjective_predicate ?p) (arg ?p 1 ?d)) (predAllSpecified ?p ?d)))
+(set/forwardRule (implies (and (surjective_predicate ?p) (arg ?p 2 ?r)) (predSpecifiedAll ?p ?r)))
 
 (comment functionCorrespondingPredicate
          "(functionCorrespondingPredicate ?function ?predicate ?position) means that ?function and ?predicate state the same relationship: ?function maps some arguments to a value exactly when ?predicate holds of those same arguments with the value at ?position, 1-based over ?predicate's arguments. So (functionCorrespondingPredicate MotherFn motherOf 2) makes (MotherFn Muffet) resolve to the Mary of a believed (motherOf Muffet Mary), and, where no mother is known, projects the placeholder constant it mints back onto motherOf so the placeholder still answers questions about who Muffet's mother is. Reading it both ways is what stops the function and the predicate from being one claim the KB can reason with only half of, and a value arriving after its application is equated with the placeholder, so the order the two are asserted in does not decide the answer. A function may correspond to several predicates. A function and predicate pair has one position, and a predicate and position have one function. functionCorrespondingBinaryPredicate states the common case, a binary predicate with the value second. Read only for a reifiable_function, an undeclared function having no application to reify. See docs/nat.md.")

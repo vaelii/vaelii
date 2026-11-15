@@ -1593,7 +1593,7 @@
                 (str "generic forward chaining: the three core.txt rules derive (symmetric P),"
                      " (transitive P) and (reflexive P), each enforced in turn; also a"
                      " binary_predicate type"))]
-     ['injection
+     ['injective_predicate
       (enforced (collection :notes (str "three core.txt rules derive (functional P),"
                                         " (functionalInArg P 1) and, off the arg-declared"
                                         " domain, (predAllSpecified P D) — the"
@@ -1602,7 +1602,7 @@
                 (str "generic forward chaining: the three core.txt rules derive (functional P),"
                      " (functionalInArg P 1) and (predAllSpecified P D); also a"
                      " binary_predicate type"))]
-     ['surjection
+     ['surjective_predicate
       (enforced (collection :notes (str "three core.txt rules derive (functional P) and, off"
                                         " the arg-declared domain and range,"
                                         " (predAllSpecified P D) and (predSpecifiedAll P R)"
@@ -1611,14 +1611,14 @@
                 (str "generic forward chaining: the three core.txt rules derive (functional P),"
                      " (predAllSpecified P D) and (predSpecifiedAll P R); also a"
                      " binary_predicate type"))]
-     ['bijection
-      (enforced (collection :notes (str "two core.txt rules derive (injection P) and"
-                                        " (surjection P) from it, and each of those derives"
+     ['bijective_predicate
+      (enforced (collection :notes (str "two core.txt rules derive (injective_predicate P) and"
+                                        " (surjective_predicate P) from it, and each of those derives"
                                         " its own marks in turn — so it is enforced by generic"
                                         " forward chaining and by nothing keyed on its name,"
                                         " like equivalence_relation."))
-                (str "generic forward chaining: the two core.txt rules derive (injection P)"
-                     " and (surjection P), whose own rules land the enforced and audited"
+                (str "generic forward chaining: the two core.txt rules derive (injective_predicate P)"
+                     " and (surjective_predicate P), whose own rules land the enforced and audited"
                      " marks; also a binary_predicate type"))]
 
      ;; ---- the connectives and rule wrappers -------------------------------

@@ -71,11 +71,11 @@
 (def forced-monotonic
   "The functors whose every write is never a loser, whose denial loses its negation nogood
   at either strength, and which a v1 rule concludes only inertly (docs/reference.md,
-  invariants 1, 2 and 6 to 8).  `injection`, `surjection`, `bijection`, the arity
+  invariants 1, 2 and 6 to 8).  `injective_predicate`, `surjective_predicate`, `bijective_predicate`, the arity
   bindings, `except`, `rewriteOf`, `sameAs` and `equals` are outside v1, and
   `write-kind` refuses a write of one."
   '#{genlCx irreflexive anti_symmetric asymmetric functional functionalInArg
-     anti_transitive negates injection surjection bijection arity unary binary ternary unary_predicate
+     anti_transitive negates injective_predicate surjective_predicate bijective_predicate arity unary binary ternary unary_predicate
      binary_predicate ternary_predicate unary_function binary_function ternary_function
      variable_arity variable_arity_predicate variable_arity_function arityMin except
      rewriteOf sameAs equals})
