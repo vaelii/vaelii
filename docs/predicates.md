@@ -366,19 +366,22 @@ The audit's population is named in the KB. A `definitional_predicate` is a predi
 sentences about a term make up that term's definitional block
 ([handbook ch. 6](../handbook/06-definitional-block.md)): `comment` and the example
 annotations, `genl`, the separations, the orders `type_type_by_order` holds, `arity` and the arity classes,
-the argument declarations, the relation properties `describe` lists under `:props`, and
+the argument declarations, the algebraic relation properties, and
 `termsRelated` and `seeAlso`. `Quote` and the `set/*` wrappers are syntax rather than block
 predicates, and the KB marks each one `syncategorematic`; those are the second clause. The
 audit reads both populations by query, so a membership a `genl` edge or a rule derives counts
 as a stated one does: `(genl type_type_by_order definitional_predicate)` makes `type`,
-`metatype` and `meta_metatype` members. `ontology_predicate`, `arg_constraint` and
-`algebraic_predicate_property` hold the separations and `genl`, the argument declarations,
-and the relation properties, and a `genl` edge from each to `definitional_predicate` makes
-their members members. A forward rule over each of `relationTypeByArity`,
+`metatype` and `meta_metatype` members. `ontology_predicate`, `wff_predicate` and
+`algebraic_predicate_property` hold the hierarchy and separation predicates, the
+well-formedness declarations, and the algebraic relation properties, and a `genl` edge from
+each to `definitional_predicate` makes their members members. `wff_predicate` is partitioned
+into `wff_constraint`, which constrains what may fill a relation's argument positions, and
+`wff_satisfaction_predicate`, which states what a term such as a function's value satisfies. A forward rule over each of `relationTypeByArity`,
 `predicateTypeByArity` and `functionTypeByArity` makes every exact-arity class a mapping
 fact names a member. An `at_least` class is the subject of no mapping fact, so it is not a
-member. A
-grammar term in neither, such as `except` or `genlCx`, still has its classification entry,
+member. `definitional_predicate` and the five collections below it are each a
+`closed_extent_predicate`, so a predicate the KB does not make a member is refuted as one. A
+grammar term in neither, such as `except` or `equals`, still has its classification entry,
 and `interpreted` answers for it.
 
 `nil` is **not** "nothing reads it". The question is asked of the engine's own grammar, so

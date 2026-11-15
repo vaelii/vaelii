@@ -91,8 +91,8 @@
     (testing "its supertypes, up the genl chain, reflexively minus itself"
       (is (contains? (set (:terms (:genls d))) 'animal))
       (is (not (contains? (set (:terms (:genls d))) 'dog))))
-    (testing "what it is disjoint from"
-      (is (contains? (set (:terms (:disjoint d))) 'cat)))
+    (testing "what it is disjoint from, read past the default page"
+      (is (contains? (set (:terms (:disjoint (v/describe kb 'dog W {:limit 500})))) 'cat)))
     (testing "and the maximally-general reading of the same separation"
       (is (contains? (set (:terms (:disjoint-maximal d))) 'cat)))
     (testing "and how many instances are stored"

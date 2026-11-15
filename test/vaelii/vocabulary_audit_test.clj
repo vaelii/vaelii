@@ -57,7 +57,7 @@
       (is (contains? audited t) (str t " is a part of the definitional block")))
     (doseq [t '[Quote set/monotonic set/inert set/defaultRule]]
       (is (contains? audited t) (str t " is syntax the engine reads")))
-    (doseq [t '[genlCx implies CxUniverse thing]]
+    (doseq [t '[equals implies CxUniverse thing]]
       (is (not (contains? audited t)) (str t " is in no term's block")))))
 
 (defn- audited
@@ -81,15 +81,27 @@
   (derived-definitional kb '[type metatype meta_metatype] "through type_type_by_order"))
 
 (tu/deftest-kb the-placement-predicates-are-definitional-through-ontology_predicate
-  (derived-definitional kb '[genl disjoint separating partition orthogonal]
+  (derived-definitional kb '[genl disjoint separating partition orthogonal covering intersection
+                             typeGenl typeOrthogonal diachronicallyDisjoint disjoint_metatype
+                             sibling_disjoint siblingDisjointException inverse genlInverse
+                             genlCx orthogonalMetatypes partitionedByType]
                         "through ontology_predicate"))
 
-(tu/deftest-kb the-argument-declarations-are-definitional-through-arg_constraint
-  (derived-definitional kb '[arg genlArg quotedArg interArg interArgEqual argArg]
-                        "through arg_constraint"))
+(tu/deftest-kb the-argument-declarations-are-definitional-through-wff_constraint
+  (derived-definitional kb '[arg genlArg quotedArg interArg interArgEqual argArg argAndRestGenl args
+                             argsGenl argAndRest interArgs interArgAndRest quotedArgAndRest
+                             temporalIndexArg]
+                        "through wff_constraint and wff_predicate"))
+
+(tu/deftest-kb the-result-declarations-are-definitional-through-wff_satisfaction_predicate
+  (derived-definitional kb '[result resultArg genlResult contextArgGenlCx]
+                        "through wff_satisfaction_predicate and wff_predicate"))
 
 (tu/deftest-kb the-relation-properties-are-definitional-through-algebraic_predicate_property
-  (derived-definitional kb '[transitive symmetric asymmetric reflexive functional]
+  (derived-definitional kb '[transitive symmetric asymmetric reflexive functional irreflexive
+                             anti_symmetric anti_transitive equivalence_relation functionalInArg
+                             commutativeInArgs commutativeInArgAndRest distinctInArgAndRest
+                             injection surjection bijection associative commutative idempotent]
                         "through algebraic_predicate_property"))
 
 (tu/deftest-kb the-exact-arity-classes-are-definitional-through-their-mapping-facts
@@ -106,6 +118,27 @@
       (is (not (v/ask? kb (list 'definitional_predicate t) 'CxUniverse))
           (str t " is the subject of no mapping fact, so no rule makes it definitional"))
       (is (not (contains? population t)) (str t " is not in vocabulary-audit's population")))))
+
+(tu/deftest-kb the-block-predicates-and-the-lift-have-closed-extents
+  ;; Each extent is closed, so a predicate the KB does not make a member is refuted, and a
+  ;; member, stated or derived, is not.
+  (doseq [p '[definitional_predicate ontology_predicate wff_predicate wff_constraint
+              wff_satisfaction_predicate algebraic_predicate_property
+              decontextualized_predicate]]
+    (is (v/ask? kb (list 'closed_extent_predicate p) 'CxUniverse) (str p " has a closed extent")))
+  (doseq [[p t] '[[definitional_predicate parentOf] [ontology_predicate arity]
+                  [wff_constraint arity] [algebraic_predicate_property comment]
+                  [decontextualized_predicate genl] [ontology_predicate temporalIndexArg]
+                  [wff_predicate arity] [wff_satisfaction_predicate arity]]]
+    (is (v/ask? kb (list 'not (list p t)) 'CxUniverse) (str "(not (" p " " t ")) follows")))
+  (doseq [[p t] '[[definitional_predicate genl] [definitional_predicate binary]
+                  [ontology_predicate sibling_disjoint] [wff_constraint argAndRestGenl]
+                  [algebraic_predicate_property irreflexive] [decontextualized_predicate transitive]
+                  [wff_predicate result] [wff_satisfaction_predicate genlResult]
+                  [decontextualized_predicate genlCx] [decontextualized_predicate not_assertible]
+                  [decontextualized_predicate unbounded_arity]]]
+    (is (not (v/ask? kb (list 'not (list p t)) 'CxUniverse))
+        (str t " is a member of " p ", so its extent does not refute it"))))
 
 ;; A test asserting the special-predicate table and the classification agree stood here and is gone.  It walked
 ;; `special/entries` asserting no functor with an arm was classified inert — which is

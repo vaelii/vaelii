@@ -48,17 +48,24 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `definitional_predicate`. Its members are the predicates a term's definitional block is
   written in. They are `comment` and the example annotations, `genl`, the separations,
   the orders, `arity` and the arity classes, and the argument declarations. The
-  relation properties `describe` lists under `:props`, `termsRelated` and `seeAlso` are
-  members too. The audit classifies those members and the `syncategorematic` constants
+  algebraic relation properties, `termsRelated` and `seeAlso` are members too. The audit
+  classifies those members and the `syncategorematic` constants
   (`Quote` and the `set/*` wrappers), answered in CxUniverse, where it classified every
   term core.txt comments. A membership a `genl` edge or a rule derives counts as a stated
   one: `(genl type_type_by_order definitional_predicate)` makes `type`, `metatype` and
-  `meta_metatype` members. Three new collections below `definitional_predicate` hold most
-  of the rest: `ontology_predicate` holds `genl` and the separations, `arg_constraint` the
-  argument declarations, and `algebraic_predicate_property` the relation properties. A
+  `meta_metatype` members. New collections below `definitional_predicate` hold most of
+  the rest: `ontology_predicate` holds `genl`, `genlCx`, `inverse` and the separations,
+  `wff_predicate` the well-formedness declarations, and `algebraic_predicate_property` the
+  relation properties, including the per-position ones such as `functionalInArg`.
+  `wff_predicate` is partitioned into `wff_constraint`, the argument declarations, and
+  `wff_satisfaction_predicate`, the result declarations. A
   forward rule over each of `relationTypeByArity`, `predicateTypeByArity` and
   `functionTypeByArity` makes the fifteen exact-arity classes members. The `at_least`
-  classes are not members. A grammar term in neither, such as `except` or `genlCx`, is no
+  classes are not members. `definitional_predicate`, the five collections below it and
+  `decontextualized_predicate` are each a `closed_extent_predicate`, so a predicate the KB
+  does not make a member is refuted as one: `(not (decontextualized_predicate P))` now
+  answers true of an undeclared `P`. `decontextualized_predicate` is now a `genl` of
+  `forced_decontextualized_predicate`. A grammar term in neither, such as `except` or `equals`, is no
   longer listed under `:enforced` or `:inert`; `interpreted` still answers for it.
   `:retired` still names a classification entry for a term core.txt no longer comments.
   *Migration:* ask `interpreted` of a grammar term outside the population, or mark a
