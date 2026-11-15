@@ -778,14 +778,15 @@
 (set/monotonic (genl variable_arity_function variable_arity))
 (set/monotonic (genl variable_arity_function function))
 
-;; Each of the four is the intersection of its arity policy and its kind.  The rules state
-;; that definition and are inert, for the reason the implementationNote on
-;; predicateTypeByArity gives: run backward, each reaches its own antecedent through the
-;; genl edges above, so every policy and kind goal would pay for the cycle.
+;; Each of the four is the intersection of its arity policy and its kind.
 (set/inertRule (implies (and (predicate ?relation) (fixed_arity ?relation)) (fixed_arity_predicate ?relation)))
 (set/inertRule (implies (and (function ?relation) (fixed_arity ?relation)) (fixed_arity_function ?relation)))
 (set/inertRule (implies (and (predicate ?relation) (variable_arity ?relation)) (variable_arity_predicate ?relation)))
 (set/inertRule (implies (and (function ?relation) (variable_arity ?relation)) (variable_arity_function ?relation)))
+(implementationNote fixed_arity_predicate "The rule stating it is the intersection of fixed_arity and predicate is inert, for the reason the implementationNote on predicateTypeByArity gives: run backward, it reaches its own antecedents through the genl edges to fixed_arity and predicate, so every policy and kind goal would pay for the cycle.")
+(implementationNote fixed_arity_function "The rule stating it is the intersection of fixed_arity and function is inert, for the reason the implementationNote on predicateTypeByArity gives: run backward, it reaches its own antecedents through the genl edges to fixed_arity and function, so every policy and kind goal would pay for the cycle.")
+(implementationNote variable_arity_predicate "The rule stating it is the intersection of variable_arity and predicate is inert, for the reason the implementationNote on predicateTypeByArity gives: run backward, it reaches its own antecedents through the genl edges to variable_arity and predicate, so every policy and kind goal would pay for the cycle.")
+(implementationNote variable_arity_function "The rule stating it is the intersection of variable_arity and function is inert, for the reason the implementationNote on predicateTypeByArity gives: run backward, it reaches its own antecedents through the genl edges to variable_arity and function, so every policy and kind goal would pay for the cycle.")
 
 (set/monotonic (partition relation fixed_arity variable_arity))
 
@@ -3289,11 +3290,9 @@
 ;; predicate still admits its self tuple).
 (set/monotonic (genl asymmetric irreflexive))
 (set/monotonic (genl asymmetric anti_symmetric))
-;; The converse holds too: asymmetric is irreflexive and anti_symmetric together.  The rule
-;; is inert.  Run backward, it reaches its own antecedents through the two genl edges
-;; above, and a firing would store an asymmetric mark, which turns on the asymmetric
-;; nogood for a predicate stated only irreflexive and anti_symmetric.
+;; The converse holds too: asymmetric is irreflexive and anti_symmetric together.
 (set/inertRule (implies (and (irreflexive ?p) (anti_symmetric ?p)) (asymmetric ?p)))
+(implementationNote asymmetric "The rule stating it is the intersection of irreflexive and anti_symmetric is inert. Run backward, it reaches its own antecedents through the genl edges to irreflexive and anti_symmetric, and a firing would store an asymmetric mark, which turns on the asymmetric nogood for a predicate stated only irreflexive and anti_symmetric.")
 
 ;; and the incompatible pairs: no predicate is both symmetric and asymmetric, both
 ;; reflexive and irreflexive, or both transitive and antitransitive.  (disjoint symmetric
