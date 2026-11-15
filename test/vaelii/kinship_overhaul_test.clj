@@ -192,8 +192,6 @@
                       (list (blood 'motherOf) Bob GeneticMotherBob)
                       (list (blood 'fatherOf) Bob GeneticFatherBob)]]
       (v/assert kb sentence K))
-    (is (true? (v/ask? kb (list (blood 'motherOf) Ann Carrier) K)))
-    (is (true? (v/ask? kb (list (blood 'parentOf) Carrier Ann) K)))
     (doseq [predicate ['siblingOf (blood 'siblingOf) 'sharesGenesWith]]
       (is (not (proves? kb (list predicate Ann Bob) K)) (str predicate " has no proof from the carrier"))
       (is (not (proves? kb (list 'not (list predicate Ann Bob)) K)) "absence of proof is not a negative"))
@@ -236,18 +234,31 @@
     (is (not (v/ask? kb (list 'organism SecondPerson) CxFamily)))
     (is (true? (v/query? kb (list 'originatorOf FernParent FernChild) CxFamily {:max-depth 5})))))
 
-(tu/deftest-kb genetic-and-gestational-mothers-remain-distinct-and-the-function-does-not-choose
-  (tu/with-terms [Ann GeneticMother Carrier]
-    (doseq [sentence [(list (blood 'motherOf) Ann GeneticMother)
-                      (list 'surrogateMotherOf Ann Carrier)
+(tu/deftest-kb a-gestational-carrier-is-no-parent-or-mother-by-carrying
+  (tu/with-terms [Ann Carrier]
+    (doseq [sentence [(list 'surrogateMotherOf Ann Carrier)
                       (list 'gestationalOnlyParentOf Carrier Ann)]]
       (v/assert kb sentence K))
+    (is (true? (v/ask? kb '(eternal_predicate gestationalOnlyParentOf) U)))
+    (is (true? (v/ask? kb '(eternal_predicate surrogateMotherOf) U)))
+    (is (not (v/ask? kb '(blood_kinship_predicate gestationalOnlyParentOf) U)))
+    (is (not (v/ask? kb '(blood_kinship_predicate surrogateMotherOf) U)))
+    (doseq [sentence [(list 'motherOf Ann Carrier) (list (blood 'motherOf) Ann Carrier)
+                      (list 'parentOf Carrier Ann) (list (blood 'parentOf) Carrier Ann)
+                      (list 'kinOf Carrier Ann)]]
+      (is (not (proves? kb sentence K)) (str sentence " has no proof from carrying")))))
+
+(tu/deftest-kb two-blood-mothers-remain-distinct-and-the-function-does-not-choose
+  (tu/with-terms [Ann FirstMother SecondMother]
+    (doseq [sentence [(list (blood 'motherOf) Ann FirstMother)
+                      (list (blood 'motherOf) Ann SecondMother)]]
+      (v/assert kb sentence K))
     (v/assert kb (list 'comment (list 'MotherFn Ann) "An unresolved mother name") K)
-    (is (true? (v/ask? kb (list (blood 'motherOf) Ann GeneticMother) K)))
-    (is (true? (v/ask? kb (list (blood 'motherOf) Ann Carrier) K)))
-    (is (true? (v/ask? kb (list 'different GeneticMother Carrier) K)))
+    (is (true? (v/ask? kb (list (blood 'motherOf) Ann FirstMother) K)))
+    (is (true? (v/ask? kb (list (blood 'motherOf) Ann SecondMother) K)))
+    (is (not (v/same-class? kb FirstMother SecondMother)))
     (is (not (v/ask? kb (list 'functional 'motherOf) K)))
     (is (not (v/ask? kb (list 'functional (blood 'motherOf)) K)))
-    (doseq [mother [GeneticMother Carrier]]
+    (doseq [mother [FirstMother SecondMother]]
       (is (not (proves? kb (list 'equals (list 'MotherFn Ann) mother) K))))
     (is (empty? (v/contradictions kb)))))

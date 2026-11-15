@@ -21,8 +21,8 @@
 (genlInverse fatherOf parentOf)
 (genlInverse motherOf parentOf)
 
-;; The same carrier can carry unrelated children in separate pregnancies. Sharing
-;; that parent alone proves neither siblinghood nor its blood-qualified reading.
+;; The same carrier can carry unrelated children in separate pregnancies, so a parent
+;; who is a gestational-only parent of either child proves no siblinghood.
 (exceptWhen (gestationalOnlyParentOf ?parent ?first)
  (set/defaultRule
   (set/forwardRule
@@ -36,17 +36,9 @@
                  (different ?first ?second))
             (siblingOf ?first ?second)))))
 
-(exceptWhen (gestationalOnlyParentOf ?parent ?first)
- (set/defaultRule
-  (set/forwardRule
-   (implies (and ((BloodKinFn parentOf) ?parent ?first)
-                 ((BloodKinFn parentOf) ?parent ?second)
-                 (different ?first ?second))
-            ((BloodKinFn siblingOf) ?first ?second)))))
-(exceptWhen (gestationalOnlyParentOf ?parent ?second)
- (set/defaultRule
-  (set/forwardRule
-   (implies (and ((BloodKinFn parentOf) ?parent ?first)
-                 ((BloodKinFn parentOf) ?parent ?second)
-                 (different ?first ?second))
-            ((BloodKinFn siblingOf) ?first ?second)))))
+(set/defaultRule
+ (set/forwardRule
+  (implies (and ((BloodKinFn parentOf) ?parent ?first)
+                ((BloodKinFn parentOf) ?parent ?second)
+                (different ?first ?second))
+           ((BloodKinFn siblingOf) ?first ?second))))

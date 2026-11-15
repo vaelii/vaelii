@@ -36,7 +36,7 @@
 (set/monotonic (symmetric kinOf))
 (not (eternal_predicate kinOf))
 
-(comment bloodRelativeOf "(bloodRelativeOf ?first ?second) means ?first and ?second are blood kin. Genetic descent is the default reading; gestational-only parenthood is also blood kinship without licensing its genetic consequences.")
+(comment bloodRelativeOf "(bloodRelativeOf ?first ?second) means ?first and ?second are blood kin, related by genetic descent.")
 (binary_predicate bloodRelativeOf)
 (arg bloodRelativeOf 1 organism)
 (arg bloodRelativeOf 2 organism)
@@ -93,7 +93,7 @@
 (set/monotonic (symmetric bloodRelativeOf))
 (set/monotonic (symmetric chosenKinOf))
 
-(comment (BloodKinFn parentOf) "((BloodKinFn parentOf) ?parent ?child) means ?parent is a biological parent of ?child by default, the primitive of the blood kinship theory. A plant or a bacterium has a parent as an animal does. Gestational parenthood is included, while genetic consequences have their own exceptions.")
+(comment (BloodKinFn parentOf) "((BloodKinFn parentOf) ?parent ?child) means ?parent contributed germline genetic material to ?child, the primitive of the blood kinship theory. A plant or a bacterium has a parent as an animal does. Carrying a child without that contribution is gestationalOnlyParentOf, not this.")
 (arg (BloodKinFn parentOf) 1 organism)
 (arg (BloodKinFn parentOf) 2 organism)
 (arg (BloodKinFn childOf) 1 organism)
@@ -141,19 +141,19 @@
 (genl ancestorOf kinOf)
 (genl grandparentOf kinOf)
 
-(comment surrogateMotherOf "(surrogateMotherOf ?child ?mother) means ?mother carried ?child for another intended parent. The child is first, as in motherOf. Surrogacy may involve the carrier's egg or a genetically unrelated embryo.")
+(comment surrogateMotherOf "(surrogateMotherOf ?child ?mother) means ?mother carried ?child for another intended parent. The child is first, as in motherOf. Surrogacy may involve the carrier's egg or a genetically unrelated embryo, so a surrogate is a mother of the child only where that is stated or derived of her separately.")
 (binary_predicate surrogateMotherOf)
-(blood_kinship_predicate surrogateMotherOf)
+(set/monotonic (eternal_predicate surrogateMotherOf))
 (arg surrogateMotherOf 1 animal)
 (arg surrogateMotherOf 2 animal)
-(genl surrogateMotherOf (BloodKinFn motherOf))
+(not (genl surrogateMotherOf motherOf))
+(comment (not (genl surrogateMotherOf motherOf)) "A surrogate who carries a genetically unrelated embryo for its intended parents is not the child's mother by carrying it.")
 
 (comment gestationalOnlyParentOf "(gestationalOnlyParentOf ?parent ?child) means ?parent carried ?child without contributing an egg or other germline genetic material. It records parenthood through gestation, not genetic descent.")
 (binary_predicate gestationalOnlyParentOf)
-(blood_kinship_predicate gestationalOnlyParentOf)
+(set/monotonic (eternal_predicate gestationalOnlyParentOf))
 (arg gestationalOnlyParentOf 1 animal)
 (arg gestationalOnlyParentOf 2 animal)
-(genl gestationalOnlyParentOf (BloodKinFn parentOf))
 
 (comment genetic_chimera "An organism containing cells from genetically distinct zygotic lineages.")
 (unary_predicate genetic_chimera)
@@ -257,20 +257,9 @@
 (set/monotonic (symmetric sharesGenesWith))
 (set/monotonic (eternal_predicate sharesGenesWith))
 
-(implementationNote MotherFn "A correspondence with more than one visible value resolves no function application to a selected mother. Its values remain distinct; the function does not choose a genetic mother over a gestational one.")
+(implementationNote MotherFn "A correspondence with more than one visible value resolves no function application to a selected mother. A child can have two blood mothers; the values remain distinct and the function chooses neither.")
 
-;; A known gestational-only tie does not license a genetic consequence in either order.
-;; Chimerism also blocks the ordinary genetic reading without denying shared genes.
-(exceptWhen (gestationalOnlyParentOf ?first ?second)
- (set/defaultRule
-  (set/forwardRule
-   (implies (bloodRelativeOf ?first ?second)
-            (sharesGenesWith ?first ?second)))))
-(exceptWhen (gestationalOnlyParentOf ?second ?first)
- (set/defaultRule
-  (set/forwardRule
-   (implies (bloodRelativeOf ?first ?second)
-            (sharesGenesWith ?first ?second)))))
+;; Chimerism blocks the ordinary genetic reading without denying shared genes.
 (exceptWhen (genetic_chimera ?first)
  (set/defaultRule
   (set/forwardRule

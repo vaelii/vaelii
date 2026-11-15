@@ -1367,7 +1367,7 @@
 (forced_monotonic_predicate unqualified_kinship_predicate)
 (implementationNote unqualified_kinship_predicate "Constructor inputs are structural declarations. Their mark is forced-monotonic so the guarded rules may conclude the forced-monotonic arity and argument declarations of their qualified readings.")
 
-(comment blood_kinship_predicate "The blood-qualified reading of a kinship predicate. It describes ancestry or birth history, with genetic consequences defeasible for gestational-only parenthood and other known exceptions.")
+(comment blood_kinship_predicate "The blood-qualified reading of a kinship predicate. It describes ancestry or birth history by genetic descent.")
 (unary_predicate blood_kinship_predicate)
 (set/monotonic (genl blood_kinship_predicate eternal_predicate))
 (set/monotonic (time_invariant_relation blood_kinship_predicate))

@@ -19,7 +19,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
 - **Kinship shares one unqualified hierarchy with blood and chosen readings.** `relativeOf`
   becomes `kinOf`; `BloodKinFn` qualifies eternal blood history and `ChosenKinFn`
   qualifies time-varying chosen ties. Unqualified kinship is time-agnostic. Gestational-only
-  parenthood is blood kin without a genetic or shared-carrier sibling inference.
+  parenthood and surrogacy are not blood kin and specialize no parent or mother predicate.
   Mothers are not unique; `MotherFn` does not choose between several known mothers.
   Named blood/chosen predicates keep separately justified constructor results and
   correspondences; removing a use removes only the proofs that depend on it.
