@@ -138,7 +138,7 @@
                       (some (fn [sentence]
                               (let [consequence (nth sentence 2)
                                     target (second consequence)]
-                                (when (and (#{'arity 'variable_arity_predicate 'binary_predicate} (first consequence))
+                                (when (and (#{'arity 'variable_arity_predicate 'binary_predicate 'symmetric} (first consequence))
                                            (sequential? target)
                                            (#{'GeneticKinFn 'ChosenKinFn} (first target)))
                                   {:sentence sentence :constructor (first target)
@@ -146,7 +146,7 @@
                             (:sentences pair)))
         arity-copy? #(= 'arity (:kind (copy-rule %)))
         policy-copy? #(= 'variable_arity_predicate (:kind (copy-rule %)))
-        class-copy? #(= 'binary_predicate (:kind (copy-rule %)))
+        class-copy? #(contains? #{'binary_predicate 'symmetric} (:kind (copy-rule %)))
         signature   (fn [pair]
                       (let [{:keys [sentence constructor kind]} (copy-rule pair)
                             other (first (remove #{sentence} (:sentences pair)))]
@@ -156,7 +156,7 @@
         definitions (remove #(or (rigidity? %) (arity-copy? %) (policy-copy? %) (class-copy? %)) acked)]
     (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
-    (is (= {:negation 13 :disjoint 65 :functional 10} kinds)
+    (is (= {:negation 13 :disjoint 97 :functional 10} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
     (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
         "negation clashes are excepted or acknowledged")
@@ -185,18 +185,19 @@
         "the variable-policy reviews name only the fixed unary/binary metadata contracts")
     (is (= 18 (count (filter policy-copy? acked))))
     (let [class-copies (filter class-copy? pairs)
-          concluded    (fn [pair] (let [{:keys [sentence constructor]} (copy-rule pair)]
-                                    [constructor (first (nth (first (remove #{sentence} (:sentences pair))) 2))]))]
+          concluded    (fn [pair] (let [{:keys [sentence constructor kind]} (copy-rule pair)]
+                                    [constructor kind (first (nth (first (remove #{sentence} (:sentences pair))) 2))]))]
       (is (= (set (for [constructor '[GeneticKinFn ChosenKinFn]
+                        kind '[binary_predicate symmetric]
                         consequence '[at_least_ternary at_least_quaternary at_least_quinary
                                       unary ternary quaternary quinary empty unbounded_arity_predicate
                                       unary_predicate ternary_predicate quaternary_predicate
                                       quinary_predicate]]
-                    [constructor consequence]))
+                    [constructor kind consequence]))
              (set (map concluded class-copies)))
-          "the exact-class copies meet every rule that concludes another arity class of a reading")
-      (is (= 32 (count class-copies)))
-      (is (= 24 (count (filter :acknowledged class-copies))))
+          "the exact-class and symmetry copies meet every rule that concludes another arity class of a reading")
+      (is (= 64 (count class-copies)))
+      (is (= 48 (count (filter :acknowledged class-copies))))
       (is (every? #(or (:acknowledged %) (:inert %)) class-copies)
           "each is acknowledged, or pairs with an inert classification rule and is review-only"))
     (is (every? #(not (:excepted %)) acked))))
@@ -237,7 +238,7 @@
   ;; `arg-type-conflicted?` drops the pair as unreachable (vaelii#95).  The arity table
   ;; has only the constructor-copy review pairs inventoried above. An arity floor binds one relation
   ;; above and at or below one length, and `functional-slot-conflicted?` drops that pair, so
-  ;; the floors pair with nothing but the exact-class copies inventoried above either.
+  ;; the floors pair with nothing but the exact-class and symmetry copies inventoried above either.
   (let [pairs   (rule-clashes-everywhere kb #{:rule-clash :rule-clash-review})
         about   (fn [f] (filter (fn [p] (some #(some #{f} (flatten %)) (:sentences p)))
                                 pairs))]
@@ -248,7 +249,11 @@
                     (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate))
                              (binary_predicate (GeneticKinFn ?predicate)))
                     (implies (and (unqualified_kinship_predicate ?predicate) (binary_predicate ?predicate))
-                             (binary_predicate (ChosenKinFn ?predicate)))}
+                             (binary_predicate (ChosenKinFn ?predicate)))
+                    (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate))
+                             (symmetric (GeneticKinFn ?predicate)))
+                    (implies (and (unqualified_kinship_predicate ?predicate) (symmetric ?predicate))
+                             (symmetric (ChosenKinFn ?predicate)))}
           other-pairs (remove #(some copies (:sentences %)) (about 'arity))]
       (is (empty? other-pairs)
           (str "the arity table has no other pairs: " (pr-str (mapv :sentences other-pairs))))

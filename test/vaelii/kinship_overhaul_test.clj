@@ -113,13 +113,14 @@
     (is (true? (v/ask? kb (list 'arityMin (constructor 'testKinshipSequenceOf) 3) U)))))
 
 (defn- derived-only?
-  "Is `sentence` believed in CxUniverse, with every sentex stating it derived and none a
-  premise?"
-  [kb sentence]
-  (let [handles (map :id (v/sentexes-matching kb sentence U))]
-    (and (true? (v/ask? kb sentence U))
-         (seq handles)
-         (not-any? #(v/premise? kb %) handles))))
+  "Is `sentence` believed in `context` (CxUniverse by default), with every sentex stating
+  it derived and none a premise?"
+  ([kb sentence] (derived-only? kb sentence U))
+  ([kb sentence context]
+   (let [handles (map :id (v/sentexes-matching kb sentence context))]
+     (and (true? (v/ask? kb sentence context))
+          (seq handles)
+          (not-any? #(v/premise? kb %) handles)))))
 
 (tu/deftest-kb qualified-readings-take-their-exact-class-from-their-input
   (doseq [constructor [genetic chosen]
@@ -130,6 +131,19 @@
   (doseq [constructor [genetic chosen]]
     (let [classed? (v/ask? kb (list 'binary_predicate (constructor 'testKinshipSequenceOf)) U)]
       (is (not classed?) "a variable-arity input gives no exact class"))))
+
+(tu/deftest-kb qualified-readings-keep-their-inputs-symmetry
+  (doseq [constructor [genetic chosen]
+          predicate '[siblingOf kinOf]]
+    (let [sentence (list 'symmetric (constructor predicate))
+          derived? (derived-only? kb sentence)]
+      (is derived? (pr-str sentence))))
+  (doseq [named '[geneticRelativeOf chosenKinOf]]
+    (let [symmetric? (v/ask? kb (list 'symmetric named) U)]
+      (is (true? symmetric?) (str named " is the symmetric reading of kinOf"))))
+  (doseq [constructor [genetic chosen]]
+    (let [symmetric? (v/ask? kb (list 'symmetric (constructor 'parentOf)) U)]
+      (is (not symmetric?) "an input that is not symmetric gives no symmetric reading"))))
 
 (tu/deftest-kb qualified-variable-policies-enforce-the-copied-minimum
   (tu/with-terms [Ann Bob Cal Dee]
