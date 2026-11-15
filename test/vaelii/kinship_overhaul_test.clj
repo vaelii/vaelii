@@ -222,6 +222,14 @@
     (is (true? (v/ask? kb (list (genetic 'siblingOf) Ann Bob) K)))
     (is (true? (v/ask? kb (list 'sharesGenesWith Ann Bob) K)))))
 
+(tu/deftest-kb a-shared-genetic-parent-proves-genetic-siblings-over-a-default-denial
+  (tu/with-terms [Parent Ann Bob]
+    (doseq [child [Ann Bob]]
+      (v/assert kb (list (genetic 'parentOf) Parent child) K {:strength :monotonic}))
+    (v/assert kb (list 'not (list (genetic 'siblingOf) Ann Bob)) K)
+    (is (true? (v/ask? kb (list (genetic 'siblingOf) Ann Bob) K)))
+    (is (not (v/ask? kb (list 'not (list (genetic 'siblingOf) Ann Bob)) K)))))
+
 (tu/deftest-kb gestational-only-origination-stays-open-with-an-ordinary-genetic-control
   (tu/with-terms [Carrier GeneticParent Ann]
     (v/assert kb (list 'surrogateMotherOf Ann Carrier) 'CxWell)
