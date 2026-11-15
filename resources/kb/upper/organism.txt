@@ -30,7 +30,7 @@
 (unary_predicate amphibian)
 (comment amphibian "A cold-blooded animal that begins life in water and breathes through its skin.")
 (set/monotonic (genl amphibian vertebrate))
-(vertebrate_class amphibian)
+(set/monotonic (vertebrate_class amphibian))
 
 (comment animal "An organism that moves and senses; disjoint from plant.")
 (set/monotonic (time_invariant_relation animal))
@@ -51,7 +51,7 @@
 (positiveExampleComment arachnid "a mite")
 (negativeExampleComment arachnid "an insect, which has six legs")
 (set/monotonic (genl arachnid invertebrate))
-(invertebrate_class arachnid)
+(set/monotonic (invertebrate_class arachnid))
 
 (unary_predicate bee)
 (comment bee "An insect that gathers nectar and pollinates flowers.")
@@ -61,7 +61,7 @@
 (unary_predicate bird)
 (comment bird "An animal with feathers. Flight is an ability of the kind, held by default and denied of penguins, rather than a property of each bird.")
 (set/monotonic (genl bird vertebrate))
-(vertebrate_class bird)
+(set/monotonic (vertebrate_class bird))
 
 (comment butterfly "A winged insect: the adult stage of a lepidopteran, which was a caterpillar first.")
 (unary_predicate butterfly)
@@ -109,7 +109,7 @@
 (unary_predicate fish)
 (comment fish "An animal that lives and breathes in water.")
 (set/monotonic (genl fish vertebrate))
-(vertebrate_class fish)
+(set/monotonic (vertebrate_class fish))
 
 (unary_predicate flower)
 (comment flower "A plant grown or picked for its blooms, in the folk sense. Tree and grass are separate folk classes.")
@@ -119,7 +119,7 @@
 (negativeExampleComment flower "a flowering tree such as an oak")
 (negativeExampleComment flower "a grass")
 (set/monotonic (genl flower plant))
-(plant_class flower)
+(set/monotonic (plant_class flower))
 
 (comment folk_biological_class
          "(folk_biological_class ?type) means that ?type is a class-level kind of organism as everyday speech names it, broader than a species: mammal, insect, tree. The parent of vertebrate_class, invertebrate_class and plant_class, which separating keeps apart, so no class is of two of them.")
@@ -137,6 +137,11 @@
 (set/monotonic (genl folk_biological_class time_invariant_relation))
 ;; The separating declaration installs each part's genl edge to folk_biological_class.
 (set/monotonic (separating folk_biological_class vertebrate_class invertebrate_class plant_class))
+;; A class membership is definitional, so each is written :monotonic and
+;; folk_biological_class is forced-monotonic, as folk_species is: a rule concluding a
+;; forced-monotonic literal such as orthogonal from (folk_biological_class ?c) alone is a
+;; forced-monotonic rule whose firings are believed (docs/nmtms.md).
+(forced_monotonic_predicate folk_biological_class)
 
 (unary_predicate folk_species)
 (comment folk_species
@@ -175,7 +180,7 @@
 (unary_predicate grass)
 (comment grass "A low green plant that covers open ground.")
 (set/monotonic (genl grass plant))
-(plant_class grass)
+(set/monotonic (plant_class grass))
 
 (unary_predicate grasshopper)
 (comment grasshopper "An insect that sings all summer and starves in winter.")
@@ -201,7 +206,7 @@
 (unary_predicate insect)
 (comment insect "A small six-legged animal.")
 (set/monotonic (genl insect invertebrate))
-(invertebrate_class insect)
+(set/monotonic (invertebrate_class insect))
 
 (unary_predicate invertebrate)
 (comment invertebrate "An animal without a backbone.")
@@ -254,7 +259,7 @@
 (unary_predicate mammal)
 (comment mammal "An animal that nurses its young.")
 (set/monotonic (genl mammal vertebrate))
-(vertebrate_class mammal)
+(set/monotonic (vertebrate_class mammal))
 
 (unary_predicate mouse)
 (comment mouse "A small rodent — the weak animal that repays the lion's mercy.")
@@ -305,7 +310,7 @@
 (unary_predicate reptile)
 (comment reptile "A cold-blooded, scaled animal.")
 (set/monotonic (genl reptile vertebrate))
-(vertebrate_class reptile)
+(set/monotonic (vertebrate_class reptile))
 
 (unary_predicate rose)
 (comment rose "A thorned flowering shrub.")
@@ -340,7 +345,7 @@
 (unary_predicate tree)
 (comment tree "A tall, woody perennial plant.")
 (set/monotonic (genl tree plant))
-(plant_class tree)
+(set/monotonic (plant_class tree))
 
 (unary_predicate vertebrate)
 (comment vertebrate "An animal with a backbone: a mammal, a bird, a fish, a reptile or an amphibian.")

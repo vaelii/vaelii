@@ -195,6 +195,17 @@
     (is (not (proves? kb (list 'geneticRelativeOf Cal Dee) K)))
     (is (not (proves? kb (list 'chosenKinOf Cal Dee) K)))))
 
+(tu/deftest-kb chimerism-is-orthogonal-to-every-folk-species-and-class
+  (doseq [classifier '[folk_species folk_biological_class]
+          binding (v/query kb (list classifier '?kind) U {:max-depth 2})
+          :let [kind (get binding '?kind)]
+          :when (symbol? kind)]
+    (let [orthogonal? (v/ask? kb (list 'orthogonal 'genetic_chimera kind) U)]
+      (is (true? orthogonal?) (str classifier " " kind))))
+  (doseq [kind '[animal butterfly caterpillar invertebrate plant vertebrate]]
+    (let [orthogonal? (v/ask? kb (list 'orthogonal 'genetic_chimera kind) U)]
+      (is (true? orthogonal?) (str kind)))))
+
 (tu/deftest-kb chimerism-blocks-the-default-without-denying-genetic-overlap
   (tu/with-terms [Ann Bob]
     (v/assert kb (list (genetic 'parentOf) Ann Bob) K)
