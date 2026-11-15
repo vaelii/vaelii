@@ -57,19 +57,6 @@
 
 (covering kinOf geneticRelativeOf chosenKinOf)
 
-(arg (GeneticKinFn birthDate) 1 organism)
-(arg (GeneticKinFn birthDate) 2 uninterrupted_time)
-(arg (GeneticKinFn birthYearOf) 1 organism)
-(arg (GeneticKinFn birthYearOf) 2 integer)
-(arg (GeneticKinFn olderThan) 1 organism)
-(arg (GeneticKinFn olderThan) 2 organism)
-(arg (ChosenKinFn birthDate) 1 organism)
-(arg (ChosenKinFn birthDate) 2 uninterrupted_time)
-(arg (ChosenKinFn birthYearOf) 1 organism)
-(arg (ChosenKinFn birthYearOf) 2 integer)
-(arg (ChosenKinFn olderThan) 1 organism)
-(arg (ChosenKinFn olderThan) 2 organism)
-
 (comment (GeneticKinFn parentOf) "((GeneticKinFn parentOf) ?parent ?child) means ?parent contributed germline genetic material to ?child, the primitive of the genetic kinship theory. A plant or a bacterium has a parent as an animal does. Carrying a child without that contribution is gestationalOnlyParentOf, not this.")
 (arg (GeneticKinFn parentOf) 1 organism)
 (arg (GeneticKinFn parentOf) 2 organism)

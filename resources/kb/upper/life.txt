@@ -36,7 +36,7 @@
 (implementationNote birthDate "Each rule below concludes the next coarser birthDate, from an InstantFn to its DayFn, a DayFn to its MonthFn and a MonthFn to its YearFn, and one rule concludes birthYearOf from the YearFn, so one rule alone concludes the functional birthYearOf. Two birth dates in different years clash on birthYearOf; two different days in one year clash with nothing, since birthDate is not functional. No rule reads the year out of a DatetimeFn or DatetimeRangeFn term, whose year is inside a string. The converse rule, from birthYearOf to the YearFn, is inert, so the clash on birthYearOf runs through the facts and not through a pair of rules concluding each other.")
 (positiveExampleComment birthDate "(birthDate Tom (DayFn 1970 3 14)) beside (birthDate Tom (YearFn 1970))")
 (set/monotonic (instance_relation_predicate birthDate))
-(unqualified_kinship_predicate birthDate)
+(set/monotonic (eternal_predicate birthDate))
 (arg birthDate 1 organism)
 (arg birthDate 2 uninterrupted_time)
 ;; Not functional: a birth stated to the day and to the year has two true birthDate
@@ -60,7 +60,7 @@
 (arg birthYearOf 1 organism)
 (arg birthYearOf 2 integer)
 (set/monotonic (functional birthYearOf))
-(unqualified_kinship_predicate birthYearOf)
+(set/monotonic (eternal_predicate birthYearOf))
 
 (comment breathes_air
          "(breathes_air ?animal) means that ?animal takes its oxygen from the air. True by default of an animal and blocked for a fish. The exception names a whole CLASS rather than one awkward species, so it reaches every kind of fish ever added and needs no upkeep.")
@@ -197,7 +197,7 @@
          "(olderThan ?organism1 ?organism2) means that ?organism1 was born before ?organism2. CxKinship concludes it from two birthYearOf values in order, so it holds whenever both birth years are known and ordered. Declared transitive, the same instance-level strict order heavierThan and tallerThan are: born-before composes, so two stated comparisons carry the third with no birth year written down.")
 (implementationNote olderThan "The CxKinship rule is a backward rule, and it compares the two years with the evaluable lessThan. The transitive prover answers a chain of olderThan facts at query time.")
 (set/monotonic (instance_relation_predicate olderThan))
-(unqualified_kinship_predicate olderThan)
+(set/monotonic (eternal_predicate olderThan))
 (arg olderThan 1 organism)
 (arg olderThan 2 organism)
 (set/monotonic (transitive olderThan))

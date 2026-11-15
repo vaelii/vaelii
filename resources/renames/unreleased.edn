@@ -17,9 +17,6 @@
                   siblingOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
                   grandparentOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
                   ancestorOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
-                  birthDate "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
-                  birthYearOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
-                  olderThan "Unqualified genetic-or-chosen reading; use GeneticKinFn for biological history."
                   MotherFn "Corresponds to genetic motherOf; several mothers select none."
                   FatherFn "Corresponds to genetic fatherOf."}
  :retired        #{}

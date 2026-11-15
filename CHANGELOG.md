@@ -28,8 +28,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
   with `GeneticKinFn`. Unqualified facts no longer assert genetic descent or eternity.
   `MotherFn` and `FatherFn` correspond to their genetic predicates.
   *Breaks:* `relativeOf`, `parentOf`, `childOf`, `motherOf`, `fatherOf`, `siblingOf`,
-  `grandparentOf`, `ancestorOf`, `birthDate`, `birthYearOf`, `olderThan`, `MotherFn`,
-  `FatherFn`, `originatorOf`
+  `grandparentOf`, `ancestorOf`, `MotherFn`, `FatherFn`, `originatorOf`
 
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 

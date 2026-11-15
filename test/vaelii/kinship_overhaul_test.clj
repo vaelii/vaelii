@@ -40,7 +40,7 @@
 
 (tu/deftest-kb qualified-predicates-have-distinct-rigidity-kinds
   (doseq [predicate '[kinOf parentOf childOf motherOf fatherOf siblingOf
-                      grandparentOf ancestorOf birthDate birthYearOf olderThan]]
+                      grandparentOf ancestorOf]]
     (testing (str predicate)
       (is (true? (v/ask? kb (list 'unqualified_kinship_predicate predicate) U)))
       (is (= #{'time_agnostic_relation} (kinds-of kb predicate)))
@@ -54,6 +54,12 @@
       (is (= #{'time_varying_relation} (kinds-of kb (chosen predicate)))))
     (is (not (v/ask? kb (list 'unqualified_kinship_predicate (genetic predicate)) U)))
     (is (not (v/ask? kb (list 'unqualified_kinship_predicate (chosen predicate)) U)))))
+
+(tu/deftest-kb birth-and-age-are-eternal-and-not-kinship
+  (doseq [predicate '[birthDate birthYearOf olderThan]]
+    (testing (str predicate)
+      (is (true? (v/ask? kb (list 'eternal_predicate predicate) U)))
+      (is (not (v/ask? kb (list 'unqualified_kinship_predicate predicate) U))))))
 
 (tu/deftest-kb branch-specializations-get-their-stronger-classification
   (is (true? (v/ask? kb '(genetic_kinship_predicate testGeneticLeafOf) U)))
@@ -125,7 +131,7 @@
 (tu/deftest-kb qualified-readings-take-their-exact-class-from-their-input
   (doseq [constructor [genetic chosen]
           predicate '[parentOf childOf motherOf fatherOf siblingOf grandparentOf ancestorOf
-                      birthDate birthYearOf olderThan testNarrowKinshipOf]]
+                      testNarrowKinshipOf]]
     (let [derived? (derived-only? kb (list 'binary_predicate (constructor predicate)))]
       (is derived? (pr-str (constructor predicate)))))
   (doseq [constructor [genetic chosen]]
