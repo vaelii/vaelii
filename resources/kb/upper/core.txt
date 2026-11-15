@@ -2631,10 +2631,12 @@
 ;; TEMPORARY: no generator answers meetsArgConstraints over a whole argument list, so the
 ;; rule below reads only a unary function's one position, ignores argGenl, and concludes
 ;; the literal from each arg declaration at that position alone rather than from all of
-;; them together.
+;; them together.  The rule reads only an eagerly_reifiable_function, the one kind of
+;; function the general reify rule reads meetsArgConstraints of.
 (set/forwardRule
  (implies
   (and
+   (eagerly_reifiable_function ?function)
    (unary_function ?function)
    (arg ?function 1 ?type))
   (set/lazyForwardRule

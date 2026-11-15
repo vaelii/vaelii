@@ -62,9 +62,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `(eagerly_reifiable_function ChosenKinFn)`, so every unqualified kinship predicate,
   one declared later included, has both readings reified.
   *@hack:* `reify` has no engine support yet, so a rule comments each reified term as a
-  temporary implementation. `meetsArgConstraints` is concluded only for a unary function,
-  from each `arg` declaration alone and without `argGenl`. `eager_reify_test`'s `^:red`
-  tests state the general reading.
+  temporary implementation. `meetsArgConstraints` is concluded only for a unary
+  `eagerly_reifiable_function`, from each `arg` declaration alone and without `argGenl`.
+  `eager_reify_test`'s `^:red` tests state the general reading.
 - **An `injection` that is a `surjection` is a `bijection`, and `folk_biological_class` is
   forced-monotonic.** A forward-only `core.txt` rule concludes `(bijection P)` from
   `(injection P)` and `(surjection P)`, and retracting either withdraws it. `organism.txt`
