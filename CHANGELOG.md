@@ -52,6 +52,12 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Additive: shipped ontology
 
+- **`injective_function`, `surjective_function` and `bijective_function` are types of
+  function.** `core.txt` declares each below `function`, decontextualized, time-invariant
+  and forced-monotonic, as its predicate twin is. `bijective_function` is below the other
+  two. An `injective_function`'s applications to different arguments denote different
+  things. An inert rule states that definition for a unary function, since an argument
+  tuple of any length is no term.
 - **`geneticVersionOf` and `chosenVersionOf` relate an unqualified kinship predicate to
   its genetic and chosen versions.** `kinship.txt` declares each the binary predicate
   corresponding to `GeneticKinFn` or `ChosenKinFn`, taking an

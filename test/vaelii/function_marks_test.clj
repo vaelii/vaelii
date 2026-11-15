@@ -73,6 +73,20 @@
         (v/assert kb (list term capitalCityOf) U)
         (is (v/ask? kb (list 'binary_predicate capitalCityOf) U))))))
 
+(tu/deftest-kb cxuniverse-declares-the-three-function-types
+  (doseq [term '[injective_function surjective_function bijective_function]]
+    (testing (str term " carries one comment and is a forced-monotonic type of function")
+      (is (= 1 (count (core-context/comment-of kb term))) (str "comment for " term))
+      (is (true? (v/ask? kb (list 'genl term 'function) U)))
+      (is (true? (v/ask? kb (list 'forced_monotonic_predicate term) U)))))
+  (tu/with-terms [PairingFn]
+    (v/assert kb (list 'unary_function PairingFn) U)
+    (v/assert kb (list 'bijective_function PairingFn) U)
+    (testing "a bijective_function is an injective_function and a surjective_function"
+      (is (true? (v/ask? kb (list 'injective_function PairingFn) U)))
+      (is (true? (v/ask? kb (list 'surjective_function PairingFn) U)))
+      (is (true? (v/ask? kb (list 'function PairingFn) U))))))
+
 (tu/deftest-kb a-bijective-predicate-is-an-injective-predicate-and-a-surjective-predicate
   (tu/with-terms [capitalCityOf]
     (v/assert kb (list 'bijective_predicate capitalCityOf) U)

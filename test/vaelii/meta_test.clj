@@ -1303,6 +1303,7 @@
     (is (= (into '#{functional functionalInArg inverse reflexive symmetric asymmetric transitive
                     irreflexive anti_symmetric anti_transitive equivalence_relation
                     injective_predicate surjective_predicate bijective_predicate
+                    injective_function surjective_function bijective_function
                     commutative commutativeInArgs commutativeInArgAndRest
                     associative idempotent meetFunctionOf distinctInArgAndRest}
                  sx/arity-binding-functors)

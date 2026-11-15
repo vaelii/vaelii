@@ -1620,6 +1620,19 @@
                 (str "generic forward chaining: the two core.txt rules derive (injective_predicate P)"
                      " and (surjective_predicate P), whose own rules land the enforced and audited"
                      " marks; also a binary_predicate type"))]
+     ['injective_function
+      (inert (collection :notes (str "a type of function whose applications to different"
+                                     " arguments denote different things; core.txt states"
+                                     " its unary definition as an inert rule."))
+             "no engine check names it; core.txt's inert rule states the definition")]
+     ['surjective_function
+      (inert (collection :notes (str "a type of function every member of whose result type"
+                                     " is the value of an application."))
+             "documentary: no engine check or rule names it")]
+     ['bijective_function
+      (inert (collection :notes (str "a type of function both injective and surjective,"
+                                     " below injective_function and surjective_function."))
+             "documentary: no engine check or rule names it")]
 
      ;; ---- the connectives and rule wrappers -------------------------------
      ['implies (enforced (structural {:args [:sentence :sentence]}

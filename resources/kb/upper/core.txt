@@ -2234,6 +2234,9 @@
 (forced_monotonic_predicate injective_predicate)
 (forced_monotonic_predicate surjective_predicate)
 (forced_monotonic_predicate bijective_predicate)
+(forced_monotonic_predicate injective_function)
+(forced_monotonic_predicate surjective_function)
+(forced_monotonic_predicate bijective_function)
 ;; No nogood family reads an orthogonal as a ground, so its written strength decides its
 ;; own clash: a :default orthogonal loses to the separation or the genl edge that
 ;; contradicts it, and a rule concludes one from a defeasible membership.
@@ -2468,6 +2471,40 @@
 (set/forwardRule (implies (and (injective_predicate ?p)  (arg ?p 1 ?d)) (predAllSpecified ?p ?d)))
 (set/forwardRule (implies (and (surjective_predicate ?p) (arg ?p 1 ?d)) (predAllSpecified ?p ?d)))
 (set/forwardRule (implies (and (surjective_predicate ?p) (arg ?p 2 ?r)) (predSpecifiedAll ?p ?r)))
+
+;; The function family: what injective, surjective and bijective say of a function's
+;; applications rather than of a predicate's tuples.
+(comment injective_function
+         "A function whose applications to different arguments denote different things: two applications of it denote one thing only when they agree at every argument position. For a function of several arguments the value determines the whole argument tuple, though no one argument need determine the value. ListFn is one, since two lists are one list only when they have the same items in the same order.")
+(unary_predicate injective_function)
+(decontextualized_predicate injective_function)
+(set/monotonic (time_invariant_relation injective_function))
+(set/monotonic (genl injective_function function))
+;; The definition for a unary function, stated and run on no write and no query.  An
+;; argument tuple of any length is no term, so the n-ary case is stated in the comment
+;; alone.
+(set/inertRule
+ (implies
+  (and
+   (injective_function ?function)
+   (unary_function ?function)
+   (equals (?function ?first) (?function ?second)))
+  (equals ?first ?second)))
+
+(comment surjective_function
+         "A function every member of whose result type is the value of at least one of its applications: no member of the type its result declaration names is left without an argument tuple that maps to it.")
+(unary_predicate surjective_function)
+(decontextualized_predicate surjective_function)
+(set/monotonic (time_invariant_relation surjective_function))
+(set/monotonic (genl surjective_function function))
+
+(comment bijective_function
+         "A function whose argument tuples are in one-to-one correspondence with the members of its result type: each member is the value of exactly one argument tuple.")
+(unary_predicate bijective_function)
+(decontextualized_predicate bijective_function)
+(set/monotonic (time_invariant_relation bijective_function))
+(set/monotonic (genl bijective_function injective_function))
+(set/monotonic (genl bijective_function surjective_function))
 
 (comment functionCorrespondingPredicate
          "(functionCorrespondingPredicate ?function ?predicate ?position) means that ?function and ?predicate state the same relationship: ?function maps some arguments to a value exactly when ?predicate holds of those same arguments with the value at ?position, 1-based over ?predicate's arguments. So (functionCorrespondingPredicate MotherFn motherOf 2) makes (MotherFn Muffet) resolve to the Mary of a believed (motherOf Muffet Mary), and, where no mother is known, projects the placeholder constant it mints back onto motherOf so the placeholder still answers questions about who Muffet's mother is. Reading it both ways is what stops the function and the predicate from being one claim the KB can reason with only half of, and a value arriving after its application is equated with the placeholder, so the order the two are asserted in does not decide the answer. A function may correspond to several predicates. A function and predicate pair has one position, and a predicate and position have one function. functionCorrespondingBinaryPredicate states the common case, a binary predicate with the value second. Read only for a reifiable_function, an undeclared function having no application to reify. See docs/nat.md.")
