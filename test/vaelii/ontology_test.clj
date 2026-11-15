@@ -25,7 +25,20 @@
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
-(use-fixtures :once (tu/loaded (fn [kb] (-> kb tu/load-starter! world/load-into))))
+(def ^:private closed-extent-grants
+  '#{closedExtentForArg closedExtentForArg1 closedExtentForArg2 closedExtentForArg3
+     closedExtentForArg4 closedExtentForArg5})
+
+(def ^:private starter-integrity
+  "The `kb-integrity` sweep over `closed-extent-grants` in CxUniverse, read by the `:once`
+  fixture before the test-world loads, so the sweep sees none of the world's names."
+  (atom ::unread))
+
+(use-fixtures :once (tu/loaded (fn [kb]
+                                 (tu/load-starter! kb)
+                                 (reset! starter-integrity
+                                         (v/kb-integrity kb closed-extent-grants 'CxUniverse))
+                                 (world/load-into kb))))
 (use-fixtures :each (tu/neutral))
 
 (def ^:private B 'CxBiology)
@@ -1077,14 +1090,10 @@
 (tu/deftest-kb the-closed-extent-grants-pass-the-integrity-sweep
   ;; The candidate sweep checks these grants; the global review-only missing-arg pass
   ;; must find none of their positions untyped.
-  (let [terms '#{closedExtentForArg closedExtentForArg1 closedExtentForArg2 closedExtentForArg3
-                 closedExtentForArg4 closedExtentForArg5}]
-    (let [report (v/kb-integrity kb terms 'CxUniverse)]
-      (is (= {:status :gap :candidate-count (count terms)}
-             (dissoc report :type-specified-violations :work :elapsed-ms))
-          "the default passes find nothing")
-      (is (= ['[typeAllSpecified rigidity_kind relation]]
-             (keys (:type-specified-violations report)))))
+  (let [terms  closed-extent-grants
+        report @starter-integrity]
+    (is (= {:status :audited :candidate-count (count terms)} (dissoc report :work :elapsed-ms))
+        "the default passes find nothing in the starter")
     (let [missing (:missing-arg (v/kb-integrity kb terms 'CxUniverse {:categories #{:missing-arg}}))]
       (is (empty? (for [{:keys [predicate missing]} missing
                         :when (contains? terms predicate)
