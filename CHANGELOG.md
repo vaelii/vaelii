@@ -45,7 +45,8 @@ it — `git show v0.16.0:CHANGELOG.md`.
   its genetic and chosen versions.** `kinship.txt` declares each the binary predicate
   corresponding to `GeneticKinFn` or `ChosenKinFn`, taking an
   `unqualified_kinship_predicate` first and a `genetic_kinship_predicate` or
-  `chosen_kinship_predicate` second, functional and eternal.
+  `chosen_kinship_predicate` second, functional, eternal and forced-monotonic, so a rule
+  reading one may conclude a forced-monotonic declaration of the version.
   `(geneticVersionOf siblingOf (GeneticKinFn siblingOf))` holds.
 - **An `injection` that is a `surjection` is a `bijection`, and `folk_biological_class` is
   forced-monotonic.** A forward-only `core.txt` rule concludes `(bijection P)` from

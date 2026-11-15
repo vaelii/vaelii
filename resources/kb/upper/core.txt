@@ -1376,6 +1376,11 @@
 (set/monotonic (time_invariant_relation unqualified_kinship_predicate))
 (forced_monotonic_predicate unqualified_kinship_predicate)
 (implementationNote unqualified_kinship_predicate "Constructor inputs are structural declarations. Their mark is forced-monotonic so the guarded rules may conclude the forced-monotonic arity and argument declarations of their qualified readings.")
+;; The correspondences between an unqualified kinship predicate and its qualified readings
+;; are structural declarations too, so a rule reading one may conclude the forced-monotonic
+;; arity and argument declarations of the reading.
+(forced_monotonic_predicate geneticVersionOf)
+(forced_monotonic_predicate chosenVersionOf)
 
 (comment genetic_kinship_predicate "The genetic reading of a kinship predicate. It describes ancestry or birth history by genetic descent.")
 (unary_predicate genetic_kinship_predicate)
