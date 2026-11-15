@@ -198,7 +198,7 @@
 (set/monotonic (folk_species horse))
 
 (unary_predicate human)
-(comment human "A human being — a mammal that is also a social and rational agent.")
+(comment human "A human being: a mammal of the species Homo sapiens. The species is what makes a member human; being a person is a separate kind every human is in, and not what makes one human, since a person need not be human.")
 (set/monotonic (genl human mammal))
 (set/monotonic (genl human person))
 (set/monotonic (folk_species human))
