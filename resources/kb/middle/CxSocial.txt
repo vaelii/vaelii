@@ -71,8 +71,8 @@
 (arg originatorOf 1 causal)
 (arg originatorOf 2 causal)
 
-;; A blood parent brought its child into being.
-(genl (BloodKinFn parentOf) originatorOf)
+;; A genetic parent brought its child into being.
+(genl (GeneticKinFn parentOf) originatorOf)
 
 (comment relationshipLabel
          "(relationshipLabel ?namer ?named ?label) means ?namer calls their relationship with ?named by ?label. Perspectival: the label ?named would give the same relationship need not be the same string.")

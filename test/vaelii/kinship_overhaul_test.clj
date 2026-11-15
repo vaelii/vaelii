@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.kinship-overhaul-test
-  "One common kinship vocabulary with independently classified blood and chosen readings."
+  "One common kinship vocabulary with independently classified genetic and chosen readings."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.test-util :as tu]))
@@ -15,8 +15,8 @@
                      (binary_predicate testNarrowKinshipOf)
                      (unqualified_kinship_predicate testBroadKinshipOf)
                      (binary_predicate testBroadKinshipOf)
-                     (binary_predicate testBloodLeafOf)
-                     (genl testBloodLeafOf bloodRelativeOf)
+                     (binary_predicate testGeneticLeafOf)
+                     (genl testGeneticLeafOf geneticRelativeOf)
                      (binary_predicate testChosenLeafOf)
                      (genl testChosenLeafOf chosenKinOf)]]
     (v/assert kb sentence 'CxUniverse {:strength :monotonic}))
@@ -35,7 +35,7 @@
 (defn- kinds-of [kb predicate]
   (set (filter #(v/ask? kb (list % predicate) U) kinds)))
 
-(defn- blood [predicate] (list 'BloodKinFn predicate))
+(defn- genetic [predicate] (list 'GeneticKinFn predicate))
 (defn- chosen [predicate] (list 'ChosenKinFn predicate))
 
 (tu/deftest-kb qualified-predicates-have-distinct-rigidity-kinds
@@ -45,40 +45,40 @@
       (is (true? (v/ask? kb (list 'unqualified_kinship_predicate predicate) U)))
       (is (= #{'time_agnostic_relation} (kinds-of kb predicate)))
       (is (not (v/ask? kb (list 'eternal_predicate predicate) U))))
-    (testing (str "blood " predicate)
-      (is (true? (v/ask? kb (list 'blood_kinship_predicate (blood predicate)) U)))
-      (is (true? (v/ask? kb (list 'eternal_predicate (blood predicate)) U)))
-      (is (= #{'time_invariant_relation} (kinds-of kb (blood predicate)))))
+    (testing (str "genetic " predicate)
+      (is (true? (v/ask? kb (list 'genetic_kinship_predicate (genetic predicate)) U)))
+      (is (true? (v/ask? kb (list 'eternal_predicate (genetic predicate)) U)))
+      (is (= #{'time_invariant_relation} (kinds-of kb (genetic predicate)))))
     (testing (str "chosen " predicate)
       (is (true? (v/ask? kb (list 'chosen_kinship_predicate (chosen predicate)) U)))
       (is (= #{'time_varying_relation} (kinds-of kb (chosen predicate)))))
-    (is (not (v/ask? kb (list 'unqualified_kinship_predicate (blood predicate)) U)))
+    (is (not (v/ask? kb (list 'unqualified_kinship_predicate (genetic predicate)) U)))
     (is (not (v/ask? kb (list 'unqualified_kinship_predicate (chosen predicate)) U)))))
 
 (tu/deftest-kb branch-specializations-get-their-stronger-classification
-  (is (true? (v/ask? kb '(blood_kinship_predicate testBloodLeafOf) U)))
-  (is (true? (v/ask? kb '(eternal_predicate testBloodLeafOf) U)))
+  (is (true? (v/ask? kb '(genetic_kinship_predicate testGeneticLeafOf) U)))
+  (is (true? (v/ask? kb '(eternal_predicate testGeneticLeafOf) U)))
   (is (true? (v/ask? kb '(chosen_kinship_predicate testChosenLeafOf) U)))
   (is (true? (v/ask? kb '(time_varying_relation testChosenLeafOf) U)))
-  (is (not (v/ask? kb '(unqualified_kinship_predicate testBloodLeafOf) U)))
+  (is (not (v/ask? kb '(unqualified_kinship_predicate testGeneticLeafOf) U)))
   (is (not (v/ask? kb '(unqualified_kinship_predicate testChosenLeafOf) U))))
 
 (tu/deftest-kb constructors-have-corresponding-predicates-and-named-roots
-  (is (true? (v/ask? kb '(functionCorrespondingPredicate BloodKinFn bloodKinPredicateOf 2) U)))
+  (is (true? (v/ask? kb '(functionCorrespondingPredicate GeneticKinFn geneticKinPredicateOf 2) U)))
   (is (true? (v/ask? kb '(functionCorrespondingPredicate ChosenKinFn chosenKinPredicateOf 2) U)))
-  (is (true? (v/ask? kb '(rewriteOf bloodRelativeOf (BloodKinFn kinOf)) U)))
+  (is (true? (v/ask? kb '(rewriteOf geneticRelativeOf (GeneticKinFn kinOf)) U)))
   (is (true? (v/ask? kb '(rewriteOf chosenKinOf (ChosenKinFn kinOf)) U)))
-  (is (true? (v/ask? kb '(covering kinOf bloodRelativeOf chosenKinOf) U)))
-  (is (true? (v/ask? kb '(bloodKinPredicateOf siblingOf (BloodKinFn siblingOf)) U)))
+  (is (true? (v/ask? kb '(covering kinOf geneticRelativeOf chosenKinOf) U)))
+  (is (true? (v/ask? kb '(geneticKinPredicateOf siblingOf (GeneticKinFn siblingOf)) U)))
   (is (true? (v/ask? kb '(chosenKinPredicateOf siblingOf (ChosenKinFn siblingOf)) U))))
 
 (tu/deftest-kb constructor-lifting-stays-on-the-unqualified-hierarchy
-  (doseq [constructor [blood chosen]]
+  (doseq [constructor [genetic chosen]]
     (is (true? (v/ask? kb (list 'genl (constructor 'siblingOf) (constructor 'kinOf)) U)))
     (is (true? (v/ask? kb (list 'genl (constructor 'siblingOf) 'siblingOf) U))))
   (let [formulas (v/query kb '(natFormula ?term ?expression) U)
         by-term (into {} (map (juxt '?term '?expression) formulas))
-        qualified? #(and (sequential? %) (#{'BloodKinFn 'ChosenKinFn} (first %)))
+        qualified? #(and (sequential? %) (#{'GeneticKinFn 'ChosenKinFn} (first %)))
         rule-count #(count (filter :antecedent (v/sentexes-in-context kb U)))
         before [(count formulas) (rule-count)]]
     (is (seq formulas) "the check inspected minted expressions")
@@ -89,32 +89,32 @@
                   by-term)
         "no constructor input names another constructed kinship predicate")
     (dotimes [_ 3]
-      (v/ask? kb '(genl (BloodKinFn siblingOf) bloodRelativeOf) U))
+      (v/ask? kb '(genl (GeneticKinFn siblingOf) geneticRelativeOf) U))
     (is (= before [(count (v/query kb '(natFormula ?term ?expression) U)) (rule-count)])
         "repeated reads preserve the saturated formula and rule counts")))
 
 (tu/deftest-kb generated-lifts-follow-late-source-edges-and-their-retraction
-  (doseq [constructor [blood chosen]]
+  (doseq [constructor [genetic chosen]]
     (is (not (v/ask? kb (list 'genl (constructor 'testNarrowKinshipOf)
                               (constructor 'testBroadKinshipOf)) K))))
   (let [edge (v/assert kb '(genl testNarrowKinshipOf testBroadKinshipOf) K)]
-    (doseq [constructor [blood chosen]]
+    (doseq [constructor [genetic chosen]]
       (is (true? (v/ask? kb (list 'genl (constructor 'testNarrowKinshipOf)
                                   (constructor 'testBroadKinshipOf)) K))))
     (v/retract! kb edge)
-    (doseq [constructor [blood chosen]]
+    (doseq [constructor [genetic chosen]]
       (is (not (v/ask? kb (list 'genl (constructor 'testNarrowKinshipOf)
                                 (constructor 'testBroadKinshipOf)) K))))))
 
 (tu/deftest-kb constructor-rules-preserve-exact-arity-and-minimum-arity
-  (doseq [constructor [blood chosen]]
+  (doseq [constructor [genetic chosen]]
     (is (true? (v/ask? kb (list 'arity (constructor 'siblingOf) 2) U))))
-  (doseq [constructor [blood chosen]]
+  (doseq [constructor [genetic chosen]]
     (is (true? (v/ask? kb (list 'arityMin (constructor 'testKinshipSequenceOf) 3) U)))))
 
 (tu/deftest-kb qualified-variable-policies-enforce-the-copied-minimum
   (tu/with-terms [Ann Bob Cal Dee]
-    (doseq [constructor [blood chosen]]
+    (doseq [constructor [genetic chosen]]
       (let [predicate (constructor 'testKinshipSequenceOf)
             refusal (try (v/try-assert kb (list predicate Ann Bob) U) nil
                          (catch clojure.lang.ExceptionInfo e (ex-data e)))]
@@ -126,57 +126,57 @@
             (is (true? (v/ask? kb sentence U)))))))))
 
 (tu/deftest-kb contradictory-qualified-metadata-is-not-hidden-by-review-records
-  (doseq [[sentence violation] [['(arity (BloodKinFn siblingOf) 1) :functional]
-                                ['(unary_predicate (BloodKinFn siblingOf)) :disjoint]]]
+  (doseq [[sentence violation] [['(arity (GeneticKinFn siblingOf) 1) :functional]
+                                ['(unary_predicate (GeneticKinFn siblingOf)) :disjoint]]]
     (let [refusal (try (v/try-assert kb sentence U) nil
                        (catch clojure.lang.ExceptionInfo e (ex-data e)))]
       (is (= :definitional-clash (:type refusal)))
       (is (= violation (:violation refusal)))))
-  (is (true? (v/ask? kb '(arity (BloodKinFn siblingOf) 2) U))))
+  (is (true? (v/ask? kb '(arity (GeneticKinFn siblingOf) 2) U))))
 
 (tu/deftest-kb qualified-siblings-imply-the-common-predicate-but-not-each-other
   (tu/with-terms [Ann Bob Cal Dee Elm Fox]
-    (v/assert kb (list (blood 'siblingOf) Ann Bob) K)
+    (v/assert kb (list (genetic 'siblingOf) Ann Bob) K)
     (v/assert kb (list (chosen 'siblingOf) Cal Dee) K)
     (v/assert kb (list 'siblingOf Elm Fox) K)
     (is (true? (v/ask? kb (list 'siblingOf Ann Bob) K)))
     (is (true? (v/ask? kb (list 'siblingOf Cal Dee) K)))
     (is (not (proves? kb (list (chosen 'siblingOf) Ann Bob) K)))
-    (is (not (proves? kb (list (blood 'siblingOf) Cal Dee) K)))
-    (doseq [constructor [blood chosen]]
+    (is (not (proves? kb (list (genetic 'siblingOf) Cal Dee) K)))
+    (doseq [constructor [genetic chosen]]
       (is (not (proves? kb (list (constructor 'siblingOf) Elm Fox) K))))))
 
-(tu/deftest-kb ordinary-blood-parenthood-supports-genetic-overlap-but-common-kinship-does-not
+(tu/deftest-kb ordinary-genetic-parenthood-supports-genetic-overlap-but-common-kinship-does-not
   (tu/with-terms [Ann Bob Cal Dee]
-    (v/assert kb (list (blood 'parentOf) Ann Bob) K)
+    (v/assert kb (list (genetic 'parentOf) Ann Bob) K)
     (v/assert kb (list 'parentOf Cal Dee) K)
     (is (true? (v/ask? kb (list 'sharesGenesWith Ann Bob) K)))
     (is (true? (v/ask? kb (list 'sharesGenesWith Bob Ann) K)))
     (is (not (proves? kb (list 'sharesGenesWith Cal Dee) K)))
-    (is (not (proves? kb (list 'bloodRelativeOf Cal Dee) K)))
+    (is (not (proves? kb (list 'geneticRelativeOf Cal Dee) K)))
     (is (not (proves? kb (list 'chosenKinOf Cal Dee) K)))))
 
 (tu/deftest-kb chimerism-blocks-the-default-without-denying-genetic-overlap
   (tu/with-terms [Ann Bob]
-    (v/assert kb (list (blood 'parentOf) Ann Bob) K)
+    (v/assert kb (list (genetic 'parentOf) Ann Bob) K)
     (is (true? (v/ask? kb (list 'sharesGenesWith Ann Bob) K)))
     (v/assert kb (list 'genetic_chimera Bob) K)
     (is (not (proves? kb (list 'sharesGenesWith Ann Bob) K)))
     (is (not (proves? kb (list 'not (list 'sharesGenesWith Ann Bob)) K)))))
 
-(tu/deftest-kb an-ordinary-shared-blood-parent-proves-siblings
+(tu/deftest-kb an-ordinary-shared-genetic-parent-proves-siblings
   (tu/with-terms [Mother Ann Bob]
-    (v/assert kb (list (blood 'motherOf) Ann Mother) K)
-    (v/assert kb (list (blood 'motherOf) Bob Mother) K)
+    (v/assert kb (list (genetic 'motherOf) Ann Mother) K)
+    (v/assert kb (list (genetic 'motherOf) Bob Mother) K)
     (is (true? (v/ask? kb (list 'siblingOf Ann Bob) K)))
-    (is (true? (v/ask? kb (list (blood 'siblingOf) Ann Bob) K)))
+    (is (true? (v/ask? kb (list (genetic 'siblingOf) Ann Bob) K)))
     (is (true? (v/ask? kb (list 'sharesGenesWith Ann Bob) K)))))
 
-(tu/deftest-kb gestational-only-origination-stays-open-with-an-ordinary-blood-control
+(tu/deftest-kb gestational-only-origination-stays-open-with-an-ordinary-genetic-control
   (tu/with-terms [Carrier GeneticParent Ann]
     (v/assert kb (list 'surrogateMotherOf Ann Carrier) 'CxWell)
     (v/assert kb (list 'gestationalOnlyParentOf Carrier Ann) 'CxWell)
-    (v/assert kb (list (blood 'parentOf) GeneticParent Ann) 'CxWell)
+    (v/assert kb (list (genetic 'parentOf) GeneticParent Ann) 'CxWell)
     (is (true? (v/query? kb (list 'originatorOf GeneticParent Ann) 'CxWell {:max-depth 5})))
     (is (not (v/query? kb (list 'originatorOf Carrier Ann) 'CxWell {:max-depth 5})))
     (is (not (v/query? kb (list 'not (list 'originatorOf Carrier Ann)) 'CxWell {:max-depth 5})))))
@@ -187,18 +187,18 @@
                       (list 'surrogateMotherOf Bob Carrier)
                       (list 'gestationalOnlyParentOf Carrier Ann)
                       (list 'gestationalOnlyParentOf Carrier Bob)
-                      (list (blood 'motherOf) Ann GeneticMotherAnn)
-                      (list (blood 'fatherOf) Ann GeneticFatherAnn)
-                      (list (blood 'motherOf) Bob GeneticMotherBob)
-                      (list (blood 'fatherOf) Bob GeneticFatherBob)]]
+                      (list (genetic 'motherOf) Ann GeneticMotherAnn)
+                      (list (genetic 'fatherOf) Ann GeneticFatherAnn)
+                      (list (genetic 'motherOf) Bob GeneticMotherBob)
+                      (list (genetic 'fatherOf) Bob GeneticFatherBob)]]
       (v/assert kb sentence K))
-    (doseq [predicate ['siblingOf (blood 'siblingOf) 'sharesGenesWith]]
+    (doseq [predicate ['siblingOf (genetic 'siblingOf) 'sharesGenesWith]]
       (is (not (proves? kb (list predicate Ann Bob) K)) (str predicate " has no proof from the carrier"))
       (is (not (proves? kb (list 'not (list predicate Ann Bob)) K)) "absence of proof is not a negative"))
     (is (not (proves? kb (list 'sharesGenesWith Carrier Ann) K)))
     (is (true? (v/ask? kb (list 'sharesGenesWith GeneticMotherAnn Ann) K)))))
 
-(tu/deftest-kb chosen-siblings-start-in-2020-without-a-2019-blood-or-common-proof
+(tu/deftest-kb chosen-siblings-start-in-2020-without-a-2019-genetic-or-common-proof
   (tu/with-terms [Carrier Ann Bob CxFamily]
     (v/assert kb (list 'genlCx CxFamily 'CxWell) U)
     (doseq [sentence [(list 'surrogateMotherOf Ann Carrier)
@@ -215,14 +215,14 @@
         (is (= :unknown (:verdict (v/argue kb (list predicate Ann Bob) y2019 {:max-depth 5}))))
         (is (not (proves? kb (list 'not (list predicate Ann Bob)) y2019))))
       (doseq [context [y2019 y2020]
-              predicate [(blood 'siblingOf) 'sharesGenesWith]]
+              predicate [(genetic 'siblingOf) 'sharesGenesWith]]
         (is (not (proves? kb (list predicate Ann Bob) context)))))))
 
 (tu/deftest-kb common-bounds-do-not-turn-plants-into-persons-or-constructs-into-organisms
   (tu/with-terms [FernParent FernChild FirstPerson SecondPerson CxFamily]
     (v/assert kb (list 'genlCx CxFamily 'CxTra) U)
     (doseq [sentence [(list 'plant FernParent) (list 'plant FernChild)
-                      (list (blood 'parentOf) FernParent FernChild)
+                      (list (genetic 'parentOf) FernParent FernChild)
                       (list 'construct FirstPerson) (list 'construct SecondPerson)
                       (list (chosen 'parentOf) FirstPerson SecondPerson)]]
       (v/assert kb sentence CxFamily))
@@ -241,24 +241,24 @@
       (v/assert kb sentence K))
     (is (true? (v/ask? kb '(eternal_predicate gestationalOnlyParentOf) U)))
     (is (true? (v/ask? kb '(eternal_predicate surrogateMotherOf) U)))
-    (is (not (v/ask? kb '(blood_kinship_predicate gestationalOnlyParentOf) U)))
-    (is (not (v/ask? kb '(blood_kinship_predicate surrogateMotherOf) U)))
-    (doseq [sentence [(list 'motherOf Ann Carrier) (list (blood 'motherOf) Ann Carrier)
-                      (list 'parentOf Carrier Ann) (list (blood 'parentOf) Carrier Ann)
+    (is (not (v/ask? kb '(genetic_kinship_predicate gestationalOnlyParentOf) U)))
+    (is (not (v/ask? kb '(genetic_kinship_predicate surrogateMotherOf) U)))
+    (doseq [sentence [(list 'motherOf Ann Carrier) (list (genetic 'motherOf) Ann Carrier)
+                      (list 'parentOf Carrier Ann) (list (genetic 'parentOf) Carrier Ann)
                       (list 'kinOf Carrier Ann)]]
       (is (not (proves? kb sentence K)) (str sentence " has no proof from carrying")))))
 
-(tu/deftest-kb two-blood-mothers-remain-distinct-and-the-function-does-not-choose
+(tu/deftest-kb two-genetic-mothers-remain-distinct-and-the-function-does-not-choose
   (tu/with-terms [Ann FirstMother SecondMother]
-    (doseq [sentence [(list (blood 'motherOf) Ann FirstMother)
-                      (list (blood 'motherOf) Ann SecondMother)]]
+    (doseq [sentence [(list (genetic 'motherOf) Ann FirstMother)
+                      (list (genetic 'motherOf) Ann SecondMother)]]
       (v/assert kb sentence K))
     (v/assert kb (list 'comment (list 'MotherFn Ann) "An unresolved mother name") K)
-    (is (true? (v/ask? kb (list (blood 'motherOf) Ann FirstMother) K)))
-    (is (true? (v/ask? kb (list (blood 'motherOf) Ann SecondMother) K)))
+    (is (true? (v/ask? kb (list (genetic 'motherOf) Ann FirstMother) K)))
+    (is (true? (v/ask? kb (list (genetic 'motherOf) Ann SecondMother) K)))
     (is (not (v/same-class? kb FirstMother SecondMother)))
     (is (not (v/ask? kb (list 'functional 'motherOf) K)))
-    (is (not (v/ask? kb (list 'functional (blood 'motherOf)) K)))
+    (is (not (v/ask? kb (list 'functional (genetic 'motherOf)) K)))
     (doseq [mother [FirstMother SecondMother]]
       (is (not (proves? kb (list 'equals (list 'MotherFn Ann) mother) K))))
     (is (empty? (v/contradictions kb)))))

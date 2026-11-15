@@ -38,7 +38,7 @@
 
 (set/defaultRule
  (set/forwardRule
-  (implies (and ((BloodKinFn parentOf) ?parent ?first)
-                ((BloodKinFn parentOf) ?parent ?second)
+  (implies (and ((GeneticKinFn parentOf) ?parent ?first)
+                ((GeneticKinFn parentOf) ?parent ?second)
                 (different ?first ?second))
-           ((BloodKinFn siblingOf) ?first ?second))))
+           ((GeneticKinFn siblingOf) ?first ?second))))

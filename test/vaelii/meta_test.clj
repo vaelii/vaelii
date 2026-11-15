@@ -158,10 +158,10 @@
                                    (map #(get % '?predicate)
                                         (v/query kb (list 'natFormula '?predicate
                                                           (list constructor 'siblingOf)) 'CxUniverse)))
-                                 '[BloodKinFn ChosenKinFn]))]
+                                 '[GeneticKinFn ChosenKinFn]))]
       (is (= 2 (count qualified)))
       (is (= (into '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
-                      kinOf bloodRelativeOf chosenKinOf sharesGenesWith
+                      kinOf geneticRelativeOf chosenKinOf sharesGenesWith
                       romanticPartnerOf coworkerOf roommateOf nestingPartnerOf chosenSiblingOf
                       headmateOf disjoint diachronicallyDisjoint negates inverse
                       contextsOrderedBothWays}

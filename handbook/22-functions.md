@@ -30,7 +30,7 @@ file says so in a `;;` note when it is made.
 ```clojure
 (reifiable_function MotherFn)
 (unary_function MotherFn)
-(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf))
+(functionCorrespondingBinaryPredicate MotherFn (GeneticKinFn motherOf))
 (result MotherFn animal)
 ```
 
@@ -42,7 +42,7 @@ file says so in a `;;` note when it is made.
 ```
 
 `functionCorrespondingBinaryPredicate` puts the value at the second argument of
-blood-qualified `motherOf`. The child comes first. Unqualified motherOf and its blood
+genetic `motherOf`. The child comes first. Unqualified motherOf and its genetic
 reading need not be functional: if several mothers are visible the correspondence
 selects none and does not merge them.
 
@@ -55,11 +55,11 @@ selects none and does not merge them.
   relationship, and the declaration tells the KB so.
 - *Engine.* The correspondence is read both ways. A write or firing naming
   `(MotherFn Muffet)` stores the application's own constant `K`. A single visible
-  `:monotonic` `((BloodKinFn motherOf) Muffet Mary)` reaches `K` through a supported
+  `:monotonic` `((GeneticKinFn motherOf) Muffet Mary)` reaches `K` through a supported
   `rewriteOf` merge, so a read sees its uses as `Mary`. Retracting the value's premise
   withdraws those restatements and leaves the original uses of `K`. A `:default` value
   supplies supported copies instead of a merge. When no value is known, the constant is
-  projected onto `((BloodKinFn motherOf) Muffet K)`, so it answers blood-qualified
+  projected onto `((GeneticKinFn motherOf) Muffet K)`, so it answers genetic
   `motherOf` questions. Whichever of the application, the fact and the declaration
   arrives last, the KB ends in the same state.
 - *Engine.* The engine does not match a function application inside a rule. A rule whose
@@ -69,7 +69,7 @@ selects none and does not merge them.
   correspondence for is stored as written and held: it is not believed and fires nothing.
   Nothing on the write path refuses the rule.
 - *Maintenance.* Keep the correspondence on the qualified predicate: an unqualified parent
-  fact alone does not choose blood descent.
+  fact alone does not choose genetic descent.
 
 **Why not the other ways.** A function with no predicate forces every statement about
 the relationship to be written with the NAT in it, so the representation depends on how

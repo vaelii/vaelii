@@ -1,11 +1,11 @@
-;; The qualification of one common kinship vocabulary by blood or by choice.
+;; The qualification of one common kinship vocabulary as genetic or chosen.
 
-(comment BloodKinFn "(BloodKinFn ?predicate) denotes the blood-qualified reading of the unqualified kinship predicate ?predicate.")
-(unary_function BloodKinFn)
-(reifiable_function BloodKinFn)
-(arg BloodKinFn 1 unqualified_kinship_predicate)
-(result BloodKinFn blood_kinship_predicate)
-(functionCorrespondingBinaryPredicate BloodKinFn bloodKinPredicateOf)
+(comment GeneticKinFn "(GeneticKinFn ?predicate) denotes the genetic reading of the unqualified kinship predicate ?predicate.")
+(unary_function GeneticKinFn)
+(reifiable_function GeneticKinFn)
+(arg GeneticKinFn 1 unqualified_kinship_predicate)
+(result GeneticKinFn genetic_kinship_predicate)
+(functionCorrespondingBinaryPredicate GeneticKinFn geneticKinPredicateOf)
 
 (comment ChosenKinFn "(ChosenKinFn ?predicate) denotes the chosen-family reading of the unqualified kinship predicate ?predicate.")
 (unary_function ChosenKinFn)
@@ -14,12 +14,12 @@
 (result ChosenKinFn chosen_kinship_predicate)
 (functionCorrespondingBinaryPredicate ChosenKinFn chosenKinPredicateOf)
 
-(comment bloodKinPredicateOf "(bloodKinPredicateOf ?unqualified ?blood) means ?blood is the blood-qualified reading of ?unqualified.")
-(binary_predicate bloodKinPredicateOf)
-(arg bloodKinPredicateOf 1 unqualified_kinship_predicate)
-(arg bloodKinPredicateOf 2 blood_kinship_predicate)
-(set/monotonic (eternal_predicate bloodKinPredicateOf))
-(set/monotonic (functional bloodKinPredicateOf))
+(comment geneticKinPredicateOf "(geneticKinPredicateOf ?unqualified ?genetic) means ?genetic is the genetic reading of ?unqualified.")
+(binary_predicate geneticKinPredicateOf)
+(arg geneticKinPredicateOf 1 unqualified_kinship_predicate)
+(arg geneticKinPredicateOf 2 genetic_kinship_predicate)
+(set/monotonic (eternal_predicate geneticKinPredicateOf))
+(set/monotonic (functional geneticKinPredicateOf))
 
 (comment chosenKinPredicateOf "(chosenKinPredicateOf ?unqualified ?chosen) means ?chosen is the chosen-family reading of ?unqualified.")
 (binary_predicate chosenKinPredicateOf)
@@ -28,7 +28,7 @@
 (set/monotonic (eternal_predicate chosenKinPredicateOf))
 (set/monotonic (functional chosenKinPredicateOf))
 
-(comment kinOf "(kinOf ?first ?second) means ?first and ?second are family, by blood or by choice. It describes the family tie that holds, rather than merely recording that a chosen tie once held.")
+(comment kinOf "(kinOf ?first ?second) means ?first and ?second are family, genetically or by choice. It describes the family tie that holds, rather than merely recording that a chosen tie once held.")
 (instance_relation_predicate kinOf)
 (unqualified_kinship_predicate kinOf)
 (arg kinOf 1 causal)
@@ -36,11 +36,11 @@
 (set/monotonic (symmetric kinOf))
 (not (eternal_predicate kinOf))
 
-(comment bloodRelativeOf "(bloodRelativeOf ?first ?second) means ?first and ?second are blood kin, related by genetic descent.")
-(binary_predicate bloodRelativeOf)
-(arg bloodRelativeOf 1 organism)
-(arg bloodRelativeOf 2 organism)
-(rewriteOf bloodRelativeOf (BloodKinFn kinOf))
+(comment geneticRelativeOf "(geneticRelativeOf ?first ?second) means ?first and ?second are related by genetic descent.")
+(binary_predicate geneticRelativeOf)
+(arg geneticRelativeOf 1 organism)
+(arg geneticRelativeOf 2 organism)
+(rewriteOf geneticRelativeOf (GeneticKinFn kinOf))
 
 (comment chosenKinOf "(chosenKinOf ?first ?second) means ?first and ?second are family by choice.")
 (binary_predicate chosenKinOf)
@@ -49,26 +49,26 @@
 (rewriteOf chosenKinOf (ChosenKinFn kinOf))
 
 (set/forwardRule
- (implies (genl ?predicate bloodRelativeOf)
-          (blood_kinship_predicate ?predicate)))
+ (implies (genl ?predicate geneticRelativeOf)
+          (genetic_kinship_predicate ?predicate)))
 (set/forwardRule
  (implies (genl ?predicate chosenKinOf)
           (chosen_kinship_predicate ?predicate)))
 
-(covering kinOf bloodRelativeOf chosenKinOf)
+(covering kinOf geneticRelativeOf chosenKinOf)
 
 ;; State the exact predicate classes; numeric arity alone leaves their class rules inert.
 ;; The parentOf, motherOf and fatherOf readings are stated too: the genlInverse edges below
 ;; derive their class under the entailing reading only.
-(binary_predicate (BloodKinFn parentOf))
-(binary_predicate (BloodKinFn motherOf))
-(binary_predicate (BloodKinFn fatherOf))
-(binary_predicate (BloodKinFn childOf))
-(binary_predicate (BloodKinFn ancestorOf))
-(binary_predicate (BloodKinFn grandparentOf))
-(binary_predicate (BloodKinFn birthDate))
-(binary_predicate (BloodKinFn birthYearOf))
-(binary_predicate (BloodKinFn olderThan))
+(binary_predicate (GeneticKinFn parentOf))
+(binary_predicate (GeneticKinFn motherOf))
+(binary_predicate (GeneticKinFn fatherOf))
+(binary_predicate (GeneticKinFn childOf))
+(binary_predicate (GeneticKinFn ancestorOf))
+(binary_predicate (GeneticKinFn grandparentOf))
+(binary_predicate (GeneticKinFn birthDate))
+(binary_predicate (GeneticKinFn birthYearOf))
+(binary_predicate (GeneticKinFn olderThan))
 (binary_predicate (ChosenKinFn parentOf))
 (binary_predicate (ChosenKinFn motherOf))
 (binary_predicate (ChosenKinFn fatherOf))
@@ -78,37 +78,37 @@
 (binary_predicate (ChosenKinFn birthDate))
 (binary_predicate (ChosenKinFn birthYearOf))
 (binary_predicate (ChosenKinFn olderThan))
-(arg (BloodKinFn birthDate) 1 organism)
-(arg (BloodKinFn birthDate) 2 uninterrupted_time)
-(arg (BloodKinFn birthYearOf) 1 organism)
-(arg (BloodKinFn birthYearOf) 2 integer)
-(arg (BloodKinFn olderThan) 1 organism)
-(arg (BloodKinFn olderThan) 2 organism)
+(arg (GeneticKinFn birthDate) 1 organism)
+(arg (GeneticKinFn birthDate) 2 uninterrupted_time)
+(arg (GeneticKinFn birthYearOf) 1 organism)
+(arg (GeneticKinFn birthYearOf) 2 integer)
+(arg (GeneticKinFn olderThan) 1 organism)
+(arg (GeneticKinFn olderThan) 2 organism)
 (arg (ChosenKinFn birthDate) 1 organism)
 (arg (ChosenKinFn birthDate) 2 uninterrupted_time)
 (arg (ChosenKinFn birthYearOf) 1 organism)
 (arg (ChosenKinFn birthYearOf) 2 integer)
 (arg (ChosenKinFn olderThan) 1 organism)
 (arg (ChosenKinFn olderThan) 2 organism)
-(set/monotonic (symmetric bloodRelativeOf))
+(set/monotonic (symmetric geneticRelativeOf))
 (set/monotonic (symmetric chosenKinOf))
 
-(comment (BloodKinFn parentOf) "((BloodKinFn parentOf) ?parent ?child) means ?parent contributed germline genetic material to ?child, the primitive of the blood kinship theory. A plant or a bacterium has a parent as an animal does. Carrying a child without that contribution is gestationalOnlyParentOf, not this.")
-(arg (BloodKinFn parentOf) 1 organism)
-(arg (BloodKinFn parentOf) 2 organism)
-(arg (BloodKinFn childOf) 1 organism)
-(arg (BloodKinFn childOf) 2 organism)
-(arg (BloodKinFn motherOf) 1 animal)
-(arg (BloodKinFn motherOf) 2 animal)
-(arg (BloodKinFn fatherOf) 1 animal)
-(arg (BloodKinFn fatherOf) 2 animal)
-(arg (BloodKinFn siblingOf) 1 organism)
-(arg (BloodKinFn siblingOf) 2 organism)
-(arg (BloodKinFn ancestorOf) 1 organism)
-(arg (BloodKinFn ancestorOf) 2 organism)
-(arg (BloodKinFn grandparentOf) 1 organism)
-(arg (BloodKinFn grandparentOf) 2 organism)
-(set/monotonic (symmetric (BloodKinFn siblingOf)))
+(comment (GeneticKinFn parentOf) "((GeneticKinFn parentOf) ?parent ?child) means ?parent contributed germline genetic material to ?child, the primitive of the genetic kinship theory. A plant or a bacterium has a parent as an animal does. Carrying a child without that contribution is gestationalOnlyParentOf, not this.")
+(arg (GeneticKinFn parentOf) 1 organism)
+(arg (GeneticKinFn parentOf) 2 organism)
+(arg (GeneticKinFn childOf) 1 organism)
+(arg (GeneticKinFn childOf) 2 organism)
+(arg (GeneticKinFn motherOf) 1 animal)
+(arg (GeneticKinFn motherOf) 2 animal)
+(arg (GeneticKinFn fatherOf) 1 animal)
+(arg (GeneticKinFn fatherOf) 2 animal)
+(arg (GeneticKinFn siblingOf) 1 organism)
+(arg (GeneticKinFn siblingOf) 2 organism)
+(arg (GeneticKinFn ancestorOf) 1 organism)
+(arg (GeneticKinFn ancestorOf) 2 organism)
+(arg (GeneticKinFn grandparentOf) 1 organism)
+(arg (GeneticKinFn grandparentOf) 2 organism)
+(set/monotonic (symmetric (GeneticKinFn siblingOf)))
 (set/monotonic (symmetric (ChosenKinFn siblingOf)))
 (arg (ChosenKinFn siblingOf) 1 person)
 (arg (ChosenKinFn siblingOf) 2 person)
@@ -126,10 +126,10 @@
 (arg (ChosenKinFn grandparentOf) 2 person)
 
 ;; Qualification preserves argument order as well as the common hierarchy.
-(inverse (BloodKinFn parentOf) (BloodKinFn childOf))
+(inverse (GeneticKinFn parentOf) (GeneticKinFn childOf))
 (inverse (ChosenKinFn parentOf) (ChosenKinFn childOf))
-(genlInverse (BloodKinFn motherOf) (BloodKinFn parentOf))
-(genlInverse (BloodKinFn fatherOf) (BloodKinFn parentOf))
+(genlInverse (GeneticKinFn motherOf) (GeneticKinFn parentOf))
+(genlInverse (GeneticKinFn fatherOf) (GeneticKinFn parentOf))
 (genlInverse (ChosenKinFn motherOf) (ChosenKinFn parentOf))
 (genlInverse (ChosenKinFn fatherOf) (ChosenKinFn parentOf))
 
@@ -257,42 +257,42 @@
 (set/monotonic (symmetric sharesGenesWith))
 (set/monotonic (eternal_predicate sharesGenesWith))
 
-(implementationNote MotherFn "A correspondence with more than one visible value resolves no function application to a selected mother. A child can have two blood mothers; the values remain distinct and the function chooses neither.")
+(implementationNote MotherFn "A correspondence with more than one visible value resolves no function application to a selected mother. A child can have two genetic mothers; the values remain distinct and the function chooses neither.")
 
 ;; Chimerism blocks the ordinary genetic reading without denying shared genes.
 (exceptWhen (genetic_chimera ?first)
  (set/defaultRule
   (set/forwardRule
-   (implies (bloodRelativeOf ?first ?second)
+   (implies (geneticRelativeOf ?first ?second)
             (sharesGenesWith ?first ?second)))))
 (exceptWhen (genetic_chimera ?second)
  (set/defaultRule
   (set/forwardRule
-   (implies (bloodRelativeOf ?first ?second)
+   (implies (geneticRelativeOf ?first ?second)
             (sharesGenesWith ?first ?second)))))
 
-;; Only the unqualified vocabulary is a constructor input. Result types are blood or
+;; Only the unqualified vocabulary is a constructor input. Result types are genetic or
 ;; chosen, never unqualified, so these rules do not qualify their own conclusions again.
 (set/forwardRule
  (implies (unqualified_kinship_predicate ?predicate)
-          (blood_kinship_predicate (BloodKinFn ?predicate))))
+          (genetic_kinship_predicate (GeneticKinFn ?predicate))))
 (set/forwardRule
  (implies (unqualified_kinship_predicate ?predicate)
           (chosen_kinship_predicate (ChosenKinFn ?predicate))))
 (set/forwardRule
  (implies (unqualified_kinship_predicate ?predicate)
-          (genl (BloodKinFn ?predicate) ?predicate)))
+          (genl (GeneticKinFn ?predicate) ?predicate)))
 (set/forwardRule
  (implies (unqualified_kinship_predicate ?predicate)
           (genl (ChosenKinFn ?predicate) ?predicate)))
 
-(implementationNote BloodKinFn "Hierarchy lifting generates ground conditional rules from pairs of unqualified inputs. The generated antecedent is the original ground genl edge, admitted as forced-between-predicates without forcing genl between types. The finite pair schema also reads a hierarchy edge asserted later. Qualified outputs are not unqualified inputs, so qualification cannot nest.")
+(implementationNote GeneticKinFn "Hierarchy lifting generates ground conditional rules from pairs of unqualified inputs. The generated antecedent is the original ground genl edge, admitted as forced-between-predicates without forcing genl between types. The finite pair schema also reads a hierarchy edge asserted later. Qualified outputs are not unqualified inputs, so qualification cannot nest.")
 
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (unqualified_kinship_predicate ?general))
           (set/forwardRule
            (implies (genl ?predicate ?general)
-                    (genl (BloodKinFn ?predicate) (BloodKinFn ?general))))))
+                    (genl (GeneticKinFn ?predicate) (GeneticKinFn ?general))))))
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (unqualified_kinship_predicate ?general))
           (set/forwardRule
@@ -302,27 +302,27 @@
 ;; Predicate arity is explicit on each reading; it is not inherited from its genl.
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
-          (arity (BloodKinFn ?predicate) ?arity)))
+          (arity (GeneticKinFn ?predicate) ?arity)))
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
           (arity (ChosenKinFn ?predicate) ?arity)))
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
-          (arityMin (BloodKinFn ?predicate) ?minimum)))
+          (arityMin (GeneticKinFn ?predicate) ?minimum)))
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (arityMin ?predicate ?minimum))
           (arityMin (ChosenKinFn ?predicate) ?minimum)))
 
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
-          (arg (BloodKinFn ?predicate) ?position ?type)))
+          (arg (GeneticKinFn ?predicate) ?position ?type)))
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (arg ?predicate ?position ?type))
           (arg (ChosenKinFn ?predicate) ?position ?type)))
 
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
-          (variable_arity_predicate (BloodKinFn ?predicate))))
+          (variable_arity_predicate (GeneticKinFn ?predicate))))
 (set/forwardRule
  (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate))
           (variable_arity_predicate (ChosenKinFn ?predicate))))
@@ -336,31 +336,31 @@
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
    (Quote (implies (binary ?var2) (arity ?var2 2))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
    (Quote (implies (quaternary ?var2) (arity ?var2 4))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
    (Quote (implies (quinary ?var2) (arity ?var2 5))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
    (Quote (implies (ternary ?var2) (arity ?var2 3))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (BloodKinFn ?predicate) ?arity)))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity)) (arity (GeneticKinFn ?predicate) ?arity)))
    (Quote (implies (unary ?var2) (arity ?var2 1))))
   "The copy rule gives the qualified output its source's arity, and the KB states (functional arity). The other rule derives an exact arity from its class. Different values therefore conflict with the constructor's defining equation; both rules stay active so contradictory metadata is diagnosed, not excepted.")
 
@@ -396,55 +396,55 @@
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
    (Quote (implies (and (reflexive ?var4) (symmetric ?var4) (transitive ?var4)) (equivalence_relation ?var4))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
    (Quote (implies (and (unary ?type) (disjoint ?type ?type)) (empty ?type))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
    (Quote (implies (bijection ?p) (injection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
    (Quote (implies (bijection ?p) (surjection ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
    (Quote (implies (equivalence_relation ?p) (reflexive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
    (Quote (implies (equivalence_relation ?p) (symmetric ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
    (Quote (implies (equivalence_relation ?p) (transitive ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
    (Quote (implies (injection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (BloodKinFn ?predicate))))
+   (Quote (implies (and (unqualified_kinship_predicate ?predicate) (variable_arity_predicate ?predicate)) (variable_arity_predicate (GeneticKinFn ?predicate))))
    (Quote (implies (surjection ?p) (functional ?p))))
   "The KB partitions relation into fixed_arity and variable_arity. variable_arity_predicate specializes variable_arity; unary and binary specialize fixed_arity, and the other rule's metadata reaches one of those exact classes. The copy rule preserves the variable policy, so conflicting fixed-arity metadata must be diagnosed rather than excepted.")
 
@@ -506,31 +506,31 @@
   (RulePairFn
    (Quote (implies (and (properCounterpart ?pred ?proper) (eternal_predicate ?pred)) (eternal_predicate ?proper)))
    (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate))))
-  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives blood_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
+  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives genetic_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper)) (time_agnostic_relation ?pred)))
-   (Quote (implies (genl ?predicate bloodRelativeOf) (blood_kinship_predicate ?predicate))))
-  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives blood_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
+   (Quote (implies (genl ?predicate geneticRelativeOf) (genetic_kinship_predicate ?predicate))))
+  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives genetic_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (properCounterpart ?pred ?proper) (time_agnostic_relation ?proper)) (time_agnostic_relation ?pred)))
    (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate))))
-  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives blood_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
+  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives genetic_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
    (Quote (implies (and (properCounterpart ?pred ?proper) (time_invariant_relation ?pred)) (time_invariant_relation ?proper)))
    (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate))))
-  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives blood_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
+  "The KB's rigidity-kind partition is disjoint. The proper-counterpart transfer gives one kind; the branch rule gives genetic_kinship_predicate below eternal_predicate/time_invariant_relation or chosen_kinship_predicate below time_varying_relation. Incompatible branch and counterpart declarations should remain contradictory, not block either definition.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn
-   (Quote (implies (genl ?predicate bloodRelativeOf) (blood_kinship_predicate ?predicate)))
+   (Quote (implies (genl ?predicate geneticRelativeOf) (genetic_kinship_predicate ?predicate)))
    (Quote (implies (genl ?predicate chosenKinOf) (chosen_kinship_predicate ?predicate))))
-  "The KB partitions rigidity kinds, with blood_kinship_predicate below eternal_predicate/time_invariant_relation and chosen_kinship_predicate below time_varying_relation. A predicate placed under both roots conflicts with those definitions. Tuples may belong to both branches; that does not identify the predicate kinds. Both classifications remain to diagnose the schema.")
+  "The KB partitions rigidity kinds, with genetic_kinship_predicate below eternal_predicate/time_invariant_relation and chosen_kinship_predicate below time_varying_relation. A predicate placed under both roots conflicts with those definitions. Tuples may belong to both branches; that does not identify the predicate kinds. Both classifications remain to diagnose the schema.")
 
 (acknowledgedFinding :rule-clash
   (RulePairFn

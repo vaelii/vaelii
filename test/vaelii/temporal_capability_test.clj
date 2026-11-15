@@ -249,7 +249,7 @@
 ;; predicate is not eternal.
 
 (tu/deftest-kb an-eternal-fact-in-one-year-slice-holds-in-an-unrelated-year
-  ;; Blood-qualified parentOf is eternal. The unqualified predicate is agnostic. 1800 is
+  ;; Genetic parentOf is eternal. The unqualified predicate is agnostic. 1800 is
   ;; a sibling of 2040 under CxMonad, and sees the copy the store puts in CxMonad.
   (declare-cxtimefn! kb)
   (tu/with-terms [Ann Bob]
@@ -257,9 +257,9 @@
           y1800 (slice '(DatetimeFn "1800"))]
       (v/assert kb (list 'birthYearOf Ann 2000) 'CxUniverse)
       (v/assert kb (list 'birthYearOf Bob 2030) 'CxUniverse)
-      (v/assert kb (list (list 'BloodKinFn 'parentOf) Ann Bob) y2040)
+      (v/assert kb (list (list 'GeneticKinFn 'parentOf) Ann Bob) y2040)
       (testing "an eternal fact asserted only in 2040 is seen from the unrelated 1800 slice"
-        (is (true? (v/ask? kb (list (list 'BloodKinFn 'parentOf) Ann Bob) y1800)))))))
+        (is (true? (v/ask? kb (list (list 'GeneticKinFn 'parentOf) Ann Bob) y1800)))))))
 
 (defn- clashes-naming
   "The contradictions and conflicts whose sentence names `term`."

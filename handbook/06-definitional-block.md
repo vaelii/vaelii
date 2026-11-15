@@ -122,7 +122,7 @@ relation properties.
 
 ```clojure
 (comment siblingOf
-         "(siblingOf ?first ?second) means ?first and ?second are siblings, by blood or by choice. Half-siblings count.")
+         "(siblingOf ?first ?second) means ?first and ?second are siblings, genetically or by choice. Half-siblings count.")
 (implementationNote siblingOf "Declared symmetric, so one assertion answers both orders and the two spellings store as one sentex.")
 (set/monotonic (instance_relation_predicate siblingOf))
 (arg siblingOf 1 causal)

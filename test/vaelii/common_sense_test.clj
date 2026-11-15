@@ -393,17 +393,17 @@
 
 (tu/deftest-kb the-mother-of-a-dog-is-the-dog-the-kb-already-knows
   ;; (MotherFn Pup) is a way of naming somebody without knowing their name.  Because
-  ;; the function corresponds to blood-qualified motherOf, it resolves to the mother already stored
+  ;; the function corresponds to genetic motherOf, it resolves to the mother already stored
   ;; rather than minting a second name for her — and the sentence that used it is
   ;; stored about her, so a later question finds it.  The value resolves the application
-  ;; only where its blood-mother fact is visible: CxSocialWorld does not see CxNaturalWorld.
+  ;; only where its genetic-mother fact is visible: CxSocialWorld does not see CxNaturalWorld.
   (tu/with-terms [Pup Dam Sire]
     (v/assert kb (list 'dog Pup) N)
     (v/assert kb (list 'dog Dam) N)
     (v/assert kb (list 'dog Sire) N)
-    (v/assert kb (list (list 'BloodKinFn 'motherOf) Pup Dam) N)
-    (v/assert kb (list (list 'BloodKinFn 'fatherOf) Pup Sire) N)
-    (testing "a unique blood father also resolves rather than minting a different name"
+    (v/assert kb (list (list 'GeneticKinFn 'motherOf) Pup Dam) N)
+    (v/assert kb (list (list 'GeneticKinFn 'fatherOf) Pup Sire) N)
+    (testing "a unique genetic father also resolves rather than minting a different name"
       (v/assert kb (list 'likes 'Ann (list 'FatherFn Pup)) N)
       (is (true? (v/ask? kb (list 'likes 'Ann Sire) N))))
     (testing "maternity entails parenthood, and the kinship theory reads on from there"
@@ -419,13 +419,13 @@
 
 (tu/deftest-kb a-role-nobody-has-filled-still-answers-questions-about-itself
   ;; Nobody has said who this dog's father is, so the application mints a placeholder
-  ;; — and projects it back onto blood-qualified fatherOf, which is what keeps the constant from being
+  ;; — and projects it back onto genetic fatherOf, which is what keeps the constant from being
   ;; an opaque thing the KB can say nothing about.
   (tu/with-terms [Stray]
     (v/assert kb (list 'dog Stray) N)
-    (is (empty? (v/sentexes-matching kb (list (list 'BloodKinFn 'fatherOf) Stray '?f) '?ctx)))
+    (is (empty? (v/sentexes-matching kb (list (list 'GeneticKinFn 'fatherOf) Stray '?f) '?ctx)))
     (v/assert kb (list 'likes 'Ann (list 'FatherFn Stray)) S)
-    (let [[sx] (v/sentexes-matching kb (list (list 'BloodKinFn 'fatherOf) Stray '?f) '?ctx)
+    (let [[sx] (v/sentexes-matching kb (list (list 'GeneticKinFn 'fatherOf) Stray '?f) '?ctx)
           father (nth (:sentence sx) 2)]
       (testing "the placeholder is projected back, so whose father it is, is askable"
         (is (v/reified-term? father))

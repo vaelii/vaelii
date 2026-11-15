@@ -1359,7 +1359,7 @@
 (set/monotonic (time_invariant_relation situation_predicate))
 (not (decontextualized_predicate situation_predicate))
 
-(comment unqualified_kinship_predicate "An unqualified kinship predicate whose meaning admits both a blood reading and a chosen-family reading. It does not itself choose either reading for a tuple.")
+(comment unqualified_kinship_predicate "An unqualified kinship predicate whose meaning admits both a genetic reading and a chosen-family reading. It does not itself choose either reading for a tuple.")
 (unary_predicate unqualified_kinship_predicate)
 (genl unqualified_kinship_predicate predicate)
 (set/monotonic (genl unqualified_kinship_predicate time_agnostic_relation))
@@ -1367,10 +1367,10 @@
 (forced_monotonic_predicate unqualified_kinship_predicate)
 (implementationNote unqualified_kinship_predicate "Constructor inputs are structural declarations. Their mark is forced-monotonic so the guarded rules may conclude the forced-monotonic arity and argument declarations of their qualified readings.")
 
-(comment blood_kinship_predicate "The blood-qualified reading of a kinship predicate. It describes ancestry or birth history by genetic descent.")
-(unary_predicate blood_kinship_predicate)
-(set/monotonic (genl blood_kinship_predicate eternal_predicate))
-(set/monotonic (time_invariant_relation blood_kinship_predicate))
+(comment genetic_kinship_predicate "The genetic reading of a kinship predicate. It describes ancestry or birth history by genetic descent.")
+(unary_predicate genetic_kinship_predicate)
+(set/monotonic (genl genetic_kinship_predicate eternal_predicate))
+(set/monotonic (time_invariant_relation genetic_kinship_predicate))
 
 (comment chosen_kinship_predicate "The chosen-family reading of a kinship predicate: a tie that can end while its participants continue to exist.")
 (unary_predicate chosen_kinship_predicate)
@@ -2106,7 +2106,7 @@
 ;; target_following_predicate's meta-sentex is retracted with the sentex it names, a
 ;; documentation predicate's sentences are the documentation the KB stores, a
 ;; definitional predicate's sentences are the blocks the KB stores, and a
-;; kinship predicate's tuples, unqualified, blood or chosen, are stored when asserted.
+;; kinship predicate's tuples, unqualified, genetic or chosen, are stored when asserted.
 (set/monotonic (disjoint not_assertible abducible_predicate))
 (set/monotonic (disjoint not_assertible decontextualized_predicate))
 (set/monotonic (disjoint not_assertible forced_decontextualized_predicate))
@@ -2116,7 +2116,7 @@
 (set/monotonic (disjoint not_assertible documentation_predicate))
 (set/monotonic (disjoint not_assertible definitional_predicate))
 (set/monotonic (disjoint not_assertible unqualified_kinship_predicate))
-(set/monotonic (disjoint not_assertible blood_kinship_predicate))
+(set/monotonic (disjoint not_assertible genetic_kinship_predicate))
 (set/monotonic (disjoint not_assertible chosen_kinship_predicate))
 ;; A classifier whose members are stated content has no not_assertible member: the arity
 ;; check reads the arity types' stored bindings, the definitional blocks state the order

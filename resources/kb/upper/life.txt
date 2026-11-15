@@ -11,7 +11,7 @@
 (set/monotonic (stable_once_false alive))
 
 (comment ancestorOf
-         "(ancestorOf ?ancestor ?descendant) means ?ancestor is a parent of ?descendant, or a parent of an ancestor of ?descendant. Parenthood may be by blood or by choice.")
+         "(ancestorOf ?ancestor ?descendant) means ?ancestor is a parent of ?descendant, or a parent of an ancestor of ?descendant. Parenthood may be genetic or by choice.")
 (implementationNote ancestorOf "Declared transitive, so the transitive prover walks a chain of ancestry at query time and stores no conclusion of it.")
 (set/monotonic (instance_relation_predicate ancestorOf))
 (arg ancestorOf 1 causal)
@@ -70,7 +70,7 @@
 (set/monotonic (time_varying_relation breathes_air))
 
 (comment childOf
-         "(childOf ?child ?parent) means ?child is a child of ?parent, by blood or by choice.")
+         "(childOf ?child ?parent) means ?child is a child of ?parent, genetically or by choice.")
 (implementationNote childOf "The inverse prover answers (childOf Tom Ann) from (parentOf Ann Tom), and retracting the one withdraws the other.")
 (set/monotonic (instance_relation_predicate childOf))
 (unqualified_kinship_predicate childOf)
@@ -91,17 +91,17 @@
 (arg eats 2 food)
 
 (comment FatherFn
-         "(FatherFn ?animal) denotes the blood father of ?animal when its blood-parentage reading determines one.")
-(implementationNote FatherFn "A written application names its own opaque constant. The correspondence is to blood-qualified fatherOf, not unqualified fatherOf. One visible monotonic blood father reaches the constant through a supported rewriteOf merge; withdrawing its premise withdraws the restated uses. With several visible values the correspondence selects none and does not merge them. See docs/nat.md.")
+         "(FatherFn ?animal) denotes the genetic father of ?animal when its genetic-parentage reading determines one.")
+(implementationNote FatherFn "A written application names its own opaque constant. The correspondence is to genetic fatherOf, not unqualified fatherOf. One visible monotonic genetic father reaches the constant through a supported rewriteOf merge; withdrawing its premise withdraws the restated uses. With several visible values the correspondence selects none and does not merge them. See docs/nat.md.")
 (reifiable_function FatherFn)
 (unary_function FatherFn)
 (set/monotonic (time_invariant_relation FatherFn))
-(functionCorrespondingBinaryPredicate FatherFn (BloodKinFn fatherOf))
+(functionCorrespondingBinaryPredicate FatherFn (GeneticKinFn fatherOf))
 (arg FatherFn 1 animal)
 (result FatherFn animal)
 
 (comment fatherOf
-         "(fatherOf ?child ?father) means ?father is a father of ?child, by blood or by choice. The child is the first argument.")
+         "(fatherOf ?child ?father) means ?father is a father of ?child, genetically or by choice. The child is the first argument.")
 (set/monotonic (instance_relation_predicate fatherOf))
 (arg fatherOf 1 causal)
 (arg fatherOf 2 causal)
@@ -178,16 +178,16 @@
 (orthogonal animal alive)
 
 (comment MotherFn
-         "(MotherFn ?animal) denotes the blood mother of ?animal when its blood-parentage reading determines one.")
+         "(MotherFn ?animal) denotes the genetic mother of ?animal when its genetic-parentage reading determines one.")
 (reifiable_function MotherFn)
 (unary_function MotherFn)
 (set/monotonic (time_invariant_relation MotherFn))
-(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf))
+(functionCorrespondingBinaryPredicate MotherFn (GeneticKinFn motherOf))
 (arg MotherFn 1 animal)
 (result MotherFn animal)
 
 (comment motherOf
-         "(motherOf ?child ?mother) means ?mother is a mother of ?child, by blood or by choice. The child is the first argument. One child may have more than one mother.")
+         "(motherOf ?child ?mother) means ?mother is a mother of ?child, genetically or by choice. The child is the first argument. One child may have more than one mother.")
 (set/monotonic (instance_relation_predicate motherOf))
 (arg motherOf 1 causal)
 (arg motherOf 2 causal)
@@ -203,7 +203,7 @@
 (set/monotonic (transitive olderThan))
 
 (comment parentOf
-         "(parentOf ?parent ?child) means ?parent is a parent of ?child, by blood or by choice.")
+         "(parentOf ?parent ?child) means ?parent is a parent of ?child, genetically or by choice.")
 (set/monotonic (instance_relation_predicate parentOf))
 (unqualified_kinship_predicate parentOf)
 (arg parentOf 1 causal)
@@ -219,7 +219,7 @@
 (set/monotonic (asymmetric preysOn))
 
 (comment siblingOf
-         "(siblingOf ?first ?second) means ?first and ?second are siblings, by blood or by choice. Half-siblings count.")
+         "(siblingOf ?first ?second) means ?first and ?second are siblings, genetically or by choice. Half-siblings count.")
 (implementationNote siblingOf "Declared symmetric, so one assertion answers both orders and the two spellings store as one sentex.")
 (set/monotonic (instance_relation_predicate siblingOf))
 (arg siblingOf 1 causal)

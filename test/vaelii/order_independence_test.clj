@@ -784,9 +784,9 @@
   (tu/clear-kb! (tu/test-kb)))
 
 (deftest a-late-reifiable-declaration-re-spells-an-application-in-the-head
-  (let [head   '(BloodKinFn siblingOf)
-        ops    [(assert-op '(reifiable_function BloodKinFn))
-                (assert-op '(result BloodKinFn binary_predicate))
+  (let [head   '(GeneticKinFn siblingOf)
+        ops    [(assert-op '(reifiable_function GeneticKinFn))
+                (assert-op '(result GeneticKinFn binary_predicate))
                 (assert-op (list 'genl head 'siblingOf))
                 #(v/assert (assoc % :naming :off) (list head 'Ann 'Bob) 'CxUniverse)]
         result (one-outcome! "a head application" ops

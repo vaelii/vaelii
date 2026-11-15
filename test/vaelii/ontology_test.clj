@@ -688,7 +688,7 @@
         (is (v/assert kb (list 'friendOf CmdrData Geordi) N))
         (is (v/ask? kb (list 'friendOf CmdrData Geordi) N)))
       (testing "while a biological predicate derives organism of the person it is told of"
-        (is (v/assert kb (list (list 'BloodKinFn 'parentOf) CmdrData Geordi) N))
+        (is (v/assert kb (list (list 'GeneticKinFn 'parentOf) CmdrData Geordi) N))
         (is (v/isa? kb CmdrData 'organism N)))
       (testing "and human, the biological half, reaches mammal, animal and person alike"
         (is (v/genl? kb 'human 'mammal))

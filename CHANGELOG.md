@@ -16,17 +16,17 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Breaking: shipped ontology
 
-- **Kinship shares one unqualified hierarchy with blood and chosen readings.** `relativeOf`
-  becomes `kinOf`; `BloodKinFn` qualifies eternal blood history and `ChosenKinFn`
+- **Kinship shares one unqualified hierarchy with genetic and chosen readings.** `relativeOf`
+  becomes `kinOf`; `GeneticKinFn` qualifies eternal genetic history and `ChosenKinFn`
   qualifies time-varying chosen ties. Unqualified kinship is time-agnostic. Gestational-only
-  parenthood and surrogacy are not blood kin and specialize no parent or mother predicate.
+  parenthood and surrogacy are not genetic kin and specialize no parent or mother predicate.
   Mothers are not unique; `MotherFn` does not choose between several known mothers.
-  Named blood/chosen predicates keep separately justified constructor results and
+  Named genetic/chosen predicates keep separately justified constructor results and
   correspondences; removing a use removes only the proofs that depend on it.
   `originatorOf` admits organisms and no longer specializes kinship.
   *Migration:* rename `relativeOf` to `kinOf`; rewrite biological family/history facts
-  with `BloodKinFn`. Unqualified facts no longer assert blood descent or eternity.
-  `MotherFn` and `FatherFn` correspond to their blood-qualified predicates.
+  with `GeneticKinFn`. Unqualified facts no longer assert genetic descent or eternity.
+  `MotherFn` and `FatherFn` correspond to their genetic predicates.
   *Breaks:* `relativeOf`, `parentOf`, `childOf`, `motherOf`, `fatherOf`, `siblingOf`,
   `grandparentOf`, `ancestorOf`, `birthDate`, `birthYearOf`, `olderThan`, `MotherFn`,
   `FatherFn`, `originatorOf`

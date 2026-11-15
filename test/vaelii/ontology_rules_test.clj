@@ -132,7 +132,7 @@
         definition? #(or (some #{root-denial} (:sentences %))
                          (and (some #{no-flight} (:sentences %)) (some can-rule? (:sentences %))))
         rigidity    '#{time_invariant_relation time_agnostic_relation time_varying_relation
-                       eternal_predicate situation_predicate blood_kinship_predicate chosen_kinship_predicate}
+                       eternal_predicate situation_predicate genetic_kinship_predicate chosen_kinship_predicate}
         rigidity?   (fn [pair] (every? #(contains? rigidity (first (nth % 2))) (:sentences pair)))
         copy-rule   (fn [pair]
                       (some (fn [sentence]
@@ -140,7 +140,7 @@
                                     target (second consequence)]
                                 (when (and (#{'arity 'variable_arity_predicate} (first consequence))
                                            (sequential? target)
-                                           (#{'BloodKinFn 'ChosenKinFn} (first target)))
+                                           (#{'GeneticKinFn 'ChosenKinFn} (first target)))
                                   {:sentence sentence :constructor (first target)
                                    :kind (first consequence)})))
                             (:sentences pair)))
@@ -166,13 +166,13 @@
     (is (= 9 (count definitions))
         "the root denial meets the two proper readings', TimeIntersectionFn's four and subtimeOf's two definitions, unexcepted, and CxBiology's penguin flight denial meets the strict membership rule (intersection can able may) generates, since can is a spec of able; it fires only for a penguin stated able to fly, so CxBiology acknowledges it as the other eight are")
     (is (every? definition? definitions) "and those are the nine other acknowledged pairs")
-    (is (= (set (for [constructor '[BloodKinFn ChosenKinFn]
+    (is (= (set (for [constructor '[GeneticKinFn ChosenKinFn]
                       [kind n] '[[unary 1] [binary 2] [ternary 3] [quaternary 4] [quinary 5]]]
                   [constructor kind n]))
            (set (map signature (filter arity-copy? acked))))
         "exactly the two arity-preserving constructors meet the five exact classes")
     (is (= 10 (count (filter arity-copy? acked))))
-    (is (= (set (for [constructor '[BloodKinFn ChosenKinFn]
+    (is (= (set (for [constructor '[GeneticKinFn ChosenKinFn]
                       [antecedent consequence] '[[and equivalence_relation] [and empty]
                                                  [bijection injection] [bijection surjection]
                                                  [equivalence_relation reflexive]
@@ -226,7 +226,7 @@
         about   (fn [f] (filter (fn [p] (some #(some #{f} (flatten %)) (:sentences p)))
                                 pairs))]
     (let [copies '#{(implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
-                             (arity (BloodKinFn ?predicate) ?arity))
+                             (arity (GeneticKinFn ?predicate) ?arity))
                     (implies (and (unqualified_kinship_predicate ?predicate) (arity ?predicate ?arity))
                              (arity (ChosenKinFn ?predicate) ?arity))}
           other-pairs (remove #(some copies (:sentences %)) (about 'arity))]
