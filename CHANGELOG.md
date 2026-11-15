@@ -206,6 +206,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `scripts/ci-shard.sh` now prints the new `vaelii.shared-dumps-test` first in every
   shard, outside the packing, so its row takes both builds. The check judges no
   shard's first row, so it does not judge this one.
+  A slow namespace's rerun runs in a JVM of its own, so the rerun runs
+  `vaelii.shared-dumps-test` before it too, and the rerun's prediction counts that
+  namespace once per rerun.
 
 ## 0.33.0 — 2026-11-10 — "A separation undercutting a `:default` edge's reading, shipped type edges at `:monotonic`, relations classified by rigidity, a three-argument `functionCorrespondingPredicate`, daemon reads held to their ceilings, a time slice seeing the context it slices"
 

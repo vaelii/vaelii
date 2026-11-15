@@ -19,8 +19,15 @@
 # shard.  It builds the starter and upper-ontology dumps, which the test JVM
 # builds once each, in whichever namespace loads each first; the starter's takes
 # about 70 s on CI.  Its row then takes those builds, and no other row does.
-# shellcheck disable=SC2034  # read by scripts/ci-shard.sh, which sources this file
 NS_TIMINGS_FIRST=vaelii.shared-dumps-test
+
+# `ns_timings_first` prints NS_TIMINGS_FIRST when the tree under the working
+# directory holds its file, and nothing otherwise.
+ns_timings_first() {
+  local f="test/${NS_TIMINGS_FIRST//.//}"
+  [[ -f "${f//-/_}.clj" ]] && echo "$NS_TIMINGS_FIRST"
+  return 0
+}
 
 # The clock is in microseconds: bash 5's EPOCHREALTIME, else perl's Time::HiRes for
 # bash 3.2 (macOS's /bin/bash), else whole SECONDS.  Most namespaces take under a
@@ -53,13 +60,18 @@ ns_timings() {
 # vaelii.quote-test in 92 s against the 27 s its runner's speed predicted, on a tree
 # where it took 105 s locally against 114 s on the tree before.  `lein test` runs a
 # namespace named twice in one call only once, so each rerun is its own call.
+# Each rerun's JVM runs `ns_timings_first` before the namespace, so the shared
+# dumps' builds go to that row rather than to the rerun's, and only the rerun
+# namespace's row is written back.
 ns_timings_rerun() {
-  local out="$1" ns rerun
+  local out="$1" ns rerun first
   shift
+  first=$(ns_timings_first)
   rerun=$(mktemp) || return 1
   for ns in "$@"; do
-    if (set -o pipefail; lein test "$ns" 2>&1 | ns_timings "$rerun"); then
-      awk -F'\t' -v OFS='\t' 'NR == FNR { if ($1 != "") r[$1] = $2 + 0; next }
+    # shellcheck disable=SC2086  # $first is one namespace or none
+    if (set -o pipefail; lein test $first "$ns" 2>&1 | ns_timings "$rerun"); then
+      awk -F'\t' -v OFS='\t' -v ns="$ns" 'NR == FNR { if ($1 == ns) r[$1] = $2 + 0; next }
         ($1 in r) && r[$1] < $2 + 0 { $2 = sprintf("%.2f", r[$1]) } { print }' \
         "$rerun" "$out" > "$out.new" && mv "$out.new" "$out"
     else
@@ -73,7 +85,9 @@ ns_timings_rerun() {
 # namespaces is predicted to take no longer than the whole SHARD (a space-separated
 # list of its namespaces).  Both predictions are sums of BASELINE's
 # `namespace<TAB>seconds` rows, and a namespace BASELINE does not name counts at the
-# mean of the rows it does.  When the rerun would cost more than the shard, it prints
+# mean of the rows it does.  Each rerun also pays `ns_timings_first`'s namespace, so
+# the rerun's prediction counts it once per SLOW namespace.  When the rerun would
+# cost more than the shard, it prints
 # a `::warning::` line and fails, and the shard skips the rerun.  The first times then
 # stand and the `weights` job fails on them.  A run where most namespaces regress
 # therefore fails in about one shard's time, instead of running most of the shard again.
@@ -82,13 +96,14 @@ ns_timings_rerun_fits() {
   shift 2
   [[ $# -gt 0 ]] || return 0
   [[ -f "$base" ]] || return 0
-  awk -F'\t' -v shard="$shard" -v slow="$*" '
+  awk -F'\t' -v shard="$shard" -v slow="$*" -v first="$(ns_timings_first)" '
     $1 == "" || $1 ~ /^#/ { next }
     { w[$1] = $2 + 0; tot += $2 + 0; n++ }
     END {
       mean = n ? tot / n : 0
       k = split(shard, s, " "); for (i = 1; i <= k; i++) sh += (s[i] in w) ? w[s[i]] : mean
       k = split(slow, r, " "); for (i = 1; i <= k; i++) re += (r[i] in w) ? w[r[i]] : mean
+      if (first != "") re += k * ((first in w) ? w[first] : mean)
       if (re > sh) {
         printf "::warning::the rerun (%.0f s) would take longer than the shard (%.0f s), so it is skipped\n", re, sh
         exit 1
