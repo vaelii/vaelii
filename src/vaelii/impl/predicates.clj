@@ -1917,10 +1917,10 @@
                           " rule concludes (acknowledgedFinding :rule-macro ...) from it.")}
              (str "sugar the engine does not read: core.txt's forward rule concludes"
                   " acknowledgedFinding from it, and the integrity sweep reads that"))]
-     ['eagerly_reify
+     ['eagerly_reifiable_function
       (inert {:shape {:args [:term]} :storage [:none] :checked false
               :family nil :facets #{}
-              :notes "an ordinary mark on a function, read by core.txt's general reify rule."}
+              :notes "a type of function, read by core.txt's general reify rule."}
              "a premise of core.txt's general reify rule; no engine check names it")]
      ['meetsArgConstraints
       (inert {:shape {:args [:term] :variadic :term} :storage [:none] :checked false

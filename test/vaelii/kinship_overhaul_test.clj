@@ -351,8 +351,9 @@
 
 (tu/deftest-kb a-later-unqualified-predicate-gets-its-readings-reified
   ;; The fixture declares testNewKinOf and testNewSymmetricKinOf as inputs and nothing
-  ;; names (GeneticKinFn testNewKinOf) or its chosen twin: eagerly_reify reifies each
-  ;; reading, and the copy rules read it through geneticVersionOf and chosenVersionOf.
+  ;; names (GeneticKinFn testNewKinOf) or its chosen twin. GeneticKinFn and ChosenKinFn
+  ;; are eagerly_reifiable_function members, so each reading is reified, and the copy
+  ;; rules read it through geneticVersionOf and chosenVersionOf.
   (doseq [constructor [genetic chosen]
           input '[testNewKinOf testNewSymmetricKinOf]
           sentence [(list 'reify (constructor input))

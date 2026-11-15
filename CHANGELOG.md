@@ -51,14 +51,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `GeneticKinFn` or `ChosenKinFn` application, so a reading named by a plain symbol takes
   its input's class, arity, argument types and symmetry too.
   `(geneticVersionOf siblingOf (GeneticKinFn siblingOf))` holds.
-- **`eagerly_reify` reifies a function's applications as soon as their arguments meet its
-  argument constraints.** `core.txt` declares three terms. `eagerly_reify` marks a
-  `reifiable_function`. `meetsArgConstraints` holds of a function and arguments that meet
-  its `arg` and `argGenl` declarations. `reify` holds of a term of the KB. One general
-  rule concludes `(reify (?f . ?args))` from `(eagerly_reify ?f)` and
-  `(meetsArgConstraints ?f . ?args)`, and its firing mints the application. `kinship.txt`
-  declares `(eagerly_reify GeneticKinFn)` and `(eagerly_reify ChosenKinFn)`, so every
-  unqualified kinship predicate, one declared later included, has both readings reified.
+- **An `eagerly_reifiable_function`'s applications are reified as soon as their arguments
+  meet its argument constraints.** `core.txt` declares three terms.
+  `eagerly_reifiable_function` is a type of function, a spec of `reifiable_function`.
+  `meetsArgConstraints` holds of a function and arguments that meet its `arg` and
+  `argGenl` declarations. `reify` holds of a term of the KB. One general rule concludes
+  `(reify (?f . ?args))` from `(eagerly_reifiable_function ?f)` and
+  `(meetsArgConstraints ?f . ?args)`, and its firing mints the application.
+  `kinship.txt` declares `(eagerly_reifiable_function GeneticKinFn)` and
+  `(eagerly_reifiable_function ChosenKinFn)`, so every unqualified kinship predicate,
+  one declared later included, has both readings reified.
   *@hack:* `reify` has no engine support yet, so a rule comments each reified term as a
   temporary implementation. `meetsArgConstraints` is concluded only for a unary function,
   from each `arg` declaration alone and without `argGenl`. `eager_reify_test`'s `^:red`

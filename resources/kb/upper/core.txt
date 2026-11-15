@@ -2593,14 +2593,14 @@
 ;; marks stated of one function are a conflict rather than a defeat.
 (forced_monotonic_predicate reifiable_function)
 (forced_monotonic_predicate unreifiable_function)
-;; Eager reification, Cyc's reifyForward: an eagerly_reify function's applications are
-;; reified as soon as their arguments meet its argument constraints, so a term exists for
-;; an argument declared after the rule as for one declared before it.
-(comment eagerly_reify
-         "(eagerly_reify ?function) means that the KB reifies every application of ?function whose arguments meet ?function's argument constraints, whether or not any sentence names the application: (eagerly_reify GeneticKinFn) makes (GeneticKinFn siblingOf) a term of the KB once siblingOf is an unqualified_kinship_predicate. Only an object-denoting function's applications are reified, so every eagerly_reify function is a reifiable_function.")
-(unary_predicate eagerly_reify)
-(set/monotonic (genl eagerly_reify reifiable_function))
-(set/monotonic (time_invariant_relation eagerly_reify))
+;; Eager reification, Cyc's reifyForward: an eagerly_reifiable_function's applications
+;; are reified as soon as their arguments meet its argument constraints, so a term exists
+;; for an argument declared after the rule as for one declared before it.
+(comment eagerly_reifiable_function
+         "A function whose every application to arguments that meet its argument constraints is a term of the KB, whether or not any sentence names the application. GeneticKinFn is one, so (GeneticKinFn siblingOf) is a term of the KB once siblingOf is an unqualified_kinship_predicate.")
+(unary_predicate eagerly_reifiable_function)
+(set/monotonic (genl eagerly_reifiable_function reifiable_function))
+(set/monotonic (time_invariant_relation eagerly_reifiable_function))
 
 (comment meetsArgConstraints
          "(meetsArgConstraints ?function . ?args) means that ?args, in order, meet every argument constraint ?function declares: their number is one ?function's arity admits, and each is an instance of every type an arg declaration states at its position and a spec of every type an argGenl declaration states there.")
@@ -2619,7 +2619,7 @@
 (set/forwardRule
  (implies
   (and
-   (eagerly_reify ?function)
+   (eagerly_reifiable_function ?function)
    (meetsArgConstraints ?function . ?args))
   (reify (?function . ?args))))
 

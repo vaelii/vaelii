@@ -1,10 +1,10 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.eager-reify-test
-  "`eagerly_reify`: core.txt's general rule reifies every application of an eagerly
-  reified function whose arguments meet its argument constraints. The constraint check is
-  a TEMPORARY rule over a unary function's one position, read one arg declaration at a
-  time and without argGenl. The `^:red` tests state the general reading."
+  "`eagerly_reifiable_function`: core.txt's general rule reifies every application of an
+  eagerly reifiable function whose arguments meet its argument constraints. The
+  constraint check is a TEMPORARY rule over a unary function's one position, read one arg
+  declaration at a time and without argGenl. The `^:red` tests state the general reading."
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
             [vaelii.test-util :as tu]))
@@ -23,21 +23,21 @@
                      (unary_function TestReadingFn)
                      (reifiable_function TestReadingFn)
                      (arg TestReadingFn 1 test_gadget)
-                     (eagerly_reify TestReadingFn)
+                     (eagerly_reifiable_function TestReadingFn)
                      (unary_function TestShinyReadingFn)
                      (reifiable_function TestShinyReadingFn)
                      (arg TestShinyReadingFn 1 test_gadget)
                      (arg TestShinyReadingFn 1 test_shiny_gadget)
-                     (eagerly_reify TestShinyReadingFn)
+                     (eagerly_reifiable_function TestShinyReadingFn)
                      (binary_function TestPairReadingFn)
                      (reifiable_function TestPairReadingFn)
                      (arg TestPairReadingFn 1 test_gadget)
                      (arg TestPairReadingFn 2 test_shiny_gadget)
-                     (eagerly_reify TestPairReadingFn)
+                     (eagerly_reifiable_function TestPairReadingFn)
                      (unary_function TestKindReadingFn)
                      (reifiable_function TestKindReadingFn)
                      (argGenl TestKindReadingFn 1 test_gadget)
-                     (eagerly_reify TestKindReadingFn)]]
+                     (eagerly_reifiable_function TestKindReadingFn)]]
     (v/assert kb sentence U {:strength :monotonic}))
   kb)
 

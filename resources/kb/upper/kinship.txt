@@ -6,7 +6,7 @@
 (arg GeneticKinFn 1 unqualified_kinship_predicate)
 (result GeneticKinFn genetic_kinship_predicate)
 (functionCorrespondingBinaryPredicate GeneticKinFn geneticVersionOf)
-(eagerly_reify GeneticKinFn)
+(eagerly_reifiable_function GeneticKinFn)
 
 (comment ChosenKinFn "(ChosenKinFn ?predicate) denotes the chosen-family reading of the unqualified kinship predicate ?predicate.")
 (unary_function ChosenKinFn)
@@ -14,7 +14,7 @@
 (arg ChosenKinFn 1 unqualified_kinship_predicate)
 (result ChosenKinFn chosen_kinship_predicate)
 (functionCorrespondingBinaryPredicate ChosenKinFn chosenVersionOf)
-(eagerly_reify ChosenKinFn)
+(eagerly_reifiable_function ChosenKinFn)
 
 (comment geneticVersionOf "(geneticVersionOf ?unqualified ?genetic) means that ?genetic holds of exactly the tuples ?unqualified holds of through genetic descent: (geneticVersionOf siblingOf (GeneticKinFn siblingOf)) says two organisms stand in the second relation when they share a genetic parent, half-siblings included, and never by adoption or choice alone. Binary. The first position takes an unqualified_kinship_predicate and the second a genetic_kinship_predicate, and each unqualified predicate has one genetic version. Which relation is the genetic version of which never changes, so the correspondence is eternal.")
 (binary_predicate geneticVersionOf)
