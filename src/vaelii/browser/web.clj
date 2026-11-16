@@ -3562,7 +3562,7 @@
         kind*  (cond
                  (or arity? (not (map? aclass))) kind
                  (map? kind) (assoc kind :terms (into (vec (:terms aclass)) (:terms kind))
-                                         :total (+ (:total aclass) (:total kind)))
+                                    :total (+ (:total aclass) (:total kind)))
                  :else       aclass)]
     (into [] (keep #(case (:part %)
                       :arity-class nil
