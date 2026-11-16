@@ -208,6 +208,11 @@ it — `git show v0.16.0:CHANGELOG.md`.
   The rerun runs every slow namespace three times in one JVM
   (`VAELII_TEST_NS_REPEAT`), and the `weights` check reads the smallest of each
   namespace's times.
+- **A change accepts a slower namespace time by setting its row in
+  `scripts/ci-test-weights-<leg>.tsv`.** A row that differs from the file at the
+  change's base revision raises the namespace's figure in the `weights` check and in
+  the weights the run saves, where the row is higher. Rewriting both files from the
+  change's own run (`scripts/ci-weights.sh <run-id>`) accepts a whole leg.
 
 ## 0.33.0 — 2026-11-10 — "A separation undercutting a `:default` edge's reading, shipped type edges at `:monotonic`, relations classified by rigidity, a three-argument `functionCorrespondingPredicate`, daemon reads held to their ceilings, a time slice seeing the context it slices"
 

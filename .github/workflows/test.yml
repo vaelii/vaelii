@@ -423,6 +423,15 @@ jobs:
   # run of a pull request is judged against develop and not against its own earlier
   # runs, while a push to develop is judged against the push before it. The checks
   # follow both weight saves, so a red check still hands the next run its weights.
+  #
+  # A change accepts a slower time by setting the namespace's row in
+  # scripts/ci-test-weights-<leg>.tsv (scripts/ci-weights.sh, --accept).  The rows it
+  # sets are those that differ from the file at the change's base revision: the merge
+  # commit's first parent on a pull request, the tip before the push on a push.  Each
+  # raises its namespace's figure in the check and in the weights this run saves, so
+  # the push to develop saves the accepted figure as the next baseline.  The shards'
+  # rerun reads no accepted row.
+  #
   # Not a required check: a red here names namespaces for a reviewer to read, and
   # blocks no merge.
   weights:
@@ -431,9 +440,29 @@ jobs:
     if: ${{ always() && (needs.memory-shard.result == 'success' || needs.disk-shard.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
+      # the whole history, which the next step reads the change's base revision from
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read the weights files at the change's base revision
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) base=$(git rev-parse HEAD^1) ;;
+            push) base=$BEFORE ;;
+            *) base= ;;
+          esac
+          mkdir -p target/ci-base
+          if [ -n "$base" ] && git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
+            for leg in memory disk; do
+              git show "$base:scripts/ci-test-weights-$leg.tsv" > "target/ci-base/$leg.tsv" 2>/dev/null \
+                || rm -f "target/ci-base/$leg.tsv"
+            done
+          fi
+          ls target/ci-base
 
       - name: Download the memory timings
         if: needs.memory-shard.result == 'success'
@@ -454,7 +483,8 @@ jobs:
         run: |
           prev=target/ci-weights/memory.tsv
           [ -f "$prev" ] || prev=scripts/ci-test-weights-memory.tsv
-          scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --prev "$prev" --out target/ci-weights/memory.tsv
+          if [ -f target/ci-base/memory.tsv ]; then set -- --accept target/ci-base/memory.tsv; fi
+          scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --prev "$prev" --out target/ci-weights/memory.tsv "$@"
       - name: Save the memory weights
         if: needs.memory-shard.result == 'success'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -481,7 +511,8 @@ jobs:
         run: |
           prev=target/ci-weights/disk.tsv
           [ -f "$prev" ] || prev=scripts/ci-test-weights-disk.tsv
-          scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --prev "$prev" --out target/ci-weights/disk.tsv
+          if [ -f target/ci-base/disk.tsv ]; then set -- --accept target/ci-base/disk.tsv; fi
+          scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --prev "$prev" --out target/ci-weights/disk.tsv "$@"
       - name: Save the disk weights
         if: needs.disk-shard.result == 'success'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -509,8 +540,9 @@ jobs:
         run: |
           set -o pipefail
           rc=0
+          if [ -f target/ci-base/memory.tsv ]; then set -- --accept target/ci-base/memory.tsv; fi
           scripts/ci-weights.sh --from target/ci/timings-memory --leg memory \
-            --check target/ci-baseline/memory.tsv | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
+            --check target/ci-baseline/memory.tsv "$@" | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           [ "$rc" -ne 3 ] || echo "::warning::the memory leg ran slower than its runners' speed accounts for"
           [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
@@ -520,8 +552,9 @@ jobs:
         run: |
           set -o pipefail
           rc=0
+          if [ -f target/ci-base/disk.tsv ]; then set -- --accept target/ci-base/disk.tsv; fi
           scripts/ci-weights.sh --from target/ci/timings-disk --leg disk \
-            --check target/ci-baseline/disk.tsv | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
+            --check target/ci-baseline/disk.tsv "$@" | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           [ "$rc" -ne 3 ] || echo "::warning::the disk leg ran slower than its runners' speed accounts for"
           [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
