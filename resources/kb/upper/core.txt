@@ -2482,7 +2482,7 @@
 (set/monotonic (genl injective_function function))
 ;; The definition for a unary function, stated and run on no write and no query.  An
 ;; argument tuple of any length is no term, so the n-ary case is stated in the comment
-;; alone.
+;; alone.  The implementationNote on equals says why the rule is inert.
 (set/inertRule
  (implies
   (and
@@ -2747,6 +2747,7 @@
 
 (comment equals
          "(equals ?term1 ?term2) means that ?term1 and ?term2 denote one thing. Any two terms may be equated, where sameAs follows OWL in equating individuals. The merge feeds the one equivalence closure rewriteOf and sameAs feed. A goal of equals is answered from the closure. A collision under functional, functionalInArg or anti_symmetric between two monotonic symbols derives an equals. See docs/equality.md.")
+(implementationNote equals "The rule stating injective_function's definition for a unary function concludes an equals and is inert. Its antecedent (equals (?function ?first) (?function ?second)) applies the variable ?function, and no rule reads a variable-functor application in an antecedent. Written as a forward or a backward rule, it would be held and fire nothing. See docs/nat.md.")
 (binary_predicate equals)
 (arg equals 1 thing)   ;; either side of an equals: a term of any kind
 (arg equals 2 thing)
