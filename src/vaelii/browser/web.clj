@@ -3469,10 +3469,16 @@
                           (render-form env sentence)))
                       rows)))
 
+(defn- related-terms
+  "The terms a links part's `seeAlso` and `termsRelated` rows relate `term` to, deduped,
+  in printed order, `term` itself left out."
+  [term rows]
+  (by-print-key (into #{} (comp (mapcat (comp rest :sentence)) (remove #{term})) rows)))
+
 (defn- block-value
-  "One present part of the definitional block of the term whose text is `text`, by the
+  "One present part of the definitional block of `term`, whose text is `text`, by the
   shape `describe` answers that part in."
-  [env text part v]
+  [env term text part v]
   (cond
     (= :siblings part)
     (if (empty? (:rows v))
@@ -3491,7 +3497,8 @@
             (more-note (:total v) (count (:rows v)))))
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
-    (#{:arg-declarations :props :links} part) (sentence-rows env v)
+    (= :links part)            (interpose ", " (map #(term-link env %) (related-terms term v)))
+    (#{:arg-declarations :props} part) (sentence-rows env v)
     (= :comment part)          (interpose [:br] (map #(comment-text env % #{}) v))
     (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
@@ -3537,7 +3544,7 @@
           (list [:dt label]
                 [:dd (if (= :missing value)
                        (missing-mark (seeds part arity?))
-                       (block-value env text part value))]))]])))
+                       (block-value env term text part value))]))]])))
 
 (defn term-page
   "A term's page: the concept graph, the three type lines, the sentexes grouped by the
