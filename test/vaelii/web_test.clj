@@ -388,6 +388,20 @@
       (is (= (vec (sort-by str [relQ relR relS])) (linked-terms line)))
       (is (not (re-find #"badge-link" line)) "the line draws no sentence"))))
 
+(tu/deftest-kb a-unary-relation-property-is-drawn-as-the-property
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'irreflexive relP) (list 'functionalInArg relP 2)]]
+      (v/assert kb s 'CxUniverse))
+    (let [line (block-line (:body (GET "/term" (str "q=" (name relP)))) "relation properties")
+          h    #(v/handle-of kb % 'CxUniverse)]
+      (is (= 'irreflexive (first (linked-terms line))) "the unary property, as a term")
+      (is (not (re-find (re-pattern (str "/sentex/" (h (list 'irreflexive relP)) "\"")) line))
+          "and not as its sentence")
+      (is (re-find (re-pattern (str "/sentex/" (h (list 'functionalInArg relP 2)) "\"")) line)
+          "a sentence with more arguments is drawn whole"))))
+
 (deftest ^:slow the-stats-page-tallies-the-definitional-blocks-as-a-read-job
   (is (re-find #"action=\"/stats/blocks\"" (:body (GET "/stats"))))
   (is (nil? (jobs/latest :blocks)) "a page load runs no tally")
