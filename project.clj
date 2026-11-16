@@ -244,6 +244,9 @@
                     ;; way, which `lein test-red` reads.  `VAELII_TEST_NS_REPEAT=n` runs
                     ;; each namespace n times in the one JVM, for scripts/lib/ns-timings.sh's
                     ;; rerun.
+                    ;; `vaelii.call-caps` counts the capped calls (`vaelii.impl.call-cap`)
+                    ;; from the first namespace on and checks every cap once, after the
+                    ;; last namespace of the JVM's run.
                     :injections
                     [(require 'vaelii.impl.logging 'vaelii.impl.config)
                      ((resolve 'vaelii.impl.logging/set-level)
@@ -259,7 +262,9 @@
                          ((resolve 'vaelii.ns-counts/install-verdicts!)))
                        (when (< 1 repeat-n)
                          (require 'vaelii.ns-counts)
-                         ((resolve 'vaelii.ns-counts/install-repeat!) repeat-n)))]}
+                         ((resolve 'vaelii.ns-counts/install-repeat!) repeat-n)))
+                     (require 'vaelii.call-caps)
+                     ((resolve 'vaelii.call-caps/install!))]}
              ;; sampling profiler for a repl: `(prof/profile (…))`, flamegraphs under
              ;; /tmp/clj-async-profiler/results/, `(prof/serve-ui 8080)`. The -XX pair
              ;; keeps inlined frames off their caller's line; the attach flag is how it

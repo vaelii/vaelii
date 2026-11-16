@@ -27,7 +27,7 @@
   derives (the evaluative defnSufficient provers, #59) and is discharged inside a
   query/prove proof (`pred-all-instance-keystone-proves-from-the-bare-literal`).  `ask`
   answers the same goal false by contract — the registry expands no rule."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.predall :as predall]
@@ -1403,11 +1403,16 @@
     (testing "the sweep reports the declaration"
       (is (contains? (:violations (get (v/all-specified-violations kb CxTest)
                                        ['predAllQuotedSpecified 'comment 'symbol]))
-                     Uncommented)))
-    (testing "a name written only in CxTest is outside CxUniverse's population"
-      (is (not (contains? (:violations (predall/quoted-specified-violations
-                                        kb 'comment 'symbol 'CxUniverse))
-                          Uncommented))))))
+                     Uncommented)))))
+
+(tu/deftest-kb a-name-written-only-in-a-subcontext-is-outside-the-universe-population
+  (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible]
+    (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
+    (v/assert kb '(predAllQuotedSpecified comment symbol) CxTest)
+    (is (not (contains? (:violations (predall/quoted-specified-violations
+                                      kb 'comment 'symbol 'CxUniverse))
+                        Uncommented))
+        "a name written only in CxTest is outside CxUniverse's population")))
 
 (tu/deftest-kb a-nat-is-no-symbol-so-the-symbol-audit-asks-it-no-comment
   (tu/with-terms [CxTest FruitFn AppleTree fruit tag Uncommented]
@@ -1545,41 +1550,52 @@
                                  (symbol? (nth goal n)) (= \? (first (name (nth goal n))))))
              :solve (fn [_ _ _] (throw (ex-info "open read refused" {:pred pred})))}))
 
-(tu/deftest-kb the-quoted-filler-table-agrees-with-the-per-term-asks
+(defn- quoted-case-paths
+  "`quoted-paths` on `args` over a KB of its own on the isolated space, holding the upper
+  ontology and what `(setup! kb)` asserts.  Each case's two audits are that KB's two sweeps."
+  [setup! args]
+  (tu/with-cleared-kb [k #(doto (tu/isolated-fresh) (tu/load-core!) setup!)]
+    (apply quoted-paths k args)))
+
+(deftest the-quoted-filler-table-agrees-with-the-per-term-asks
   (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible documents
                   tagged tags refused flaky untyped]
     (testing "the core fixture KB, in both positions, and its gaps"
       (doseq [args [['comment 'symbol 'CxUniverse] ['comment 'symbol 'CxUniverse :first]
                     ['comment fictional_defined 'CxUniverse]]]
-        (let [[table per-term] (apply quoted-paths kb args)]
+        (let [[table per-term] (quoted-case-paths (fn [_]) args)]
           (is (= per-term table) (pr-str args)))))
-    (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
-    (doseq [sentence [(list 'binary_predicate documents) (list 'arg documents 1 'string)
-                      (list documents "a note" Commented)
-                      (list 'binary_predicate untyped)]]
-      (v/assert kb sentence CxTest))
-    (doseq [[pred n] [[tagged 2] [tags 1] [refused 2] [flaky 2]]]
-      (v/assert kb (list 'binary_predicate pred) CxTest)
-      (v/assert kb (list 'arg pred n 'string) CxTest))
-    (v/add-prover kb (bound-only-prover tagged 1 {Commented "a tag"}))
-    (v/add-prover kb (bound-only-prover tags 2 {Commented "a tag"}))
-    (v/add-prover kb (bound-only-prover refused 1 :throw))
-    (v/add-prover kb (bound-only-prover flaky 1 {Commented "a tag"}))
-    (v/add-prover kb (open-refusing-prover flaky 1))
-    (testing "the quoted tests' fixtures, a contract gap, and provers answering bound goals only"
-      (doseq [args [['comment 'symbol CxTest] ['comment 'symbol 'CxUniverse]
-                    [documents 'symbol CxTest :first] [untyped 'symbol CxTest]
-                    [tagged 'symbol CxTest] [tags 'symbol CxTest :first]
-                    [refused 'symbol CxTest] [flaky 'symbol CxTest]]]
-        (let [[table per-term] (apply quoted-paths kb args)]
-          (is (= per-term table) (pr-str args)))))
-    (testing "a filler only a bound goal finds still admits its term, the open read refused or not"
-      (doseq [pred [tagged flaky]
-              :let [vs (:violations (predall/quoted-specified-violations kb pred 'symbol CxTest))]]
-        (is (not (contains? vs Commented)) (str pred))
-        (is (contains? vs Uncommented) (str pred))))
-    (testing "the outcomes compared include a gap and a throw"
-      (is (= :missing-slot-typing
-             (:gap (first (quoted-paths kb untyped 'symbol CxTest)))))
-      (is (= "bound-only prover refuses"
-             (:thrown (first (quoted-paths kb refused 'symbol CxTest))))))))
+    (let [setup! (fn [kb]
+                   (quoted-fixture kb CxTest fictional_defined Commented Uncommented
+                                   JimboMcFallible)
+                   (doseq [sentence [(list 'binary_predicate documents)
+                                     (list 'arg documents 1 'string)
+                                     (list documents "a note" Commented)
+                                     (list 'binary_predicate untyped)]]
+                     (v/assert kb sentence CxTest))
+                   (doseq [[pred n] [[tagged 2] [tags 1] [refused 2] [flaky 2]]]
+                     (v/assert kb (list 'binary_predicate pred) CxTest)
+                     (v/assert kb (list 'arg pred n 'string) CxTest))
+                   (v/add-prover kb (bound-only-prover tagged 1 {Commented "a tag"}))
+                   (v/add-prover kb (bound-only-prover tags 2 {Commented "a tag"}))
+                   (v/add-prover kb (bound-only-prover refused 1 :throw))
+                   (v/add-prover kb (bound-only-prover flaky 1 {Commented "a tag"}))
+                   (v/add-prover kb (open-refusing-prover flaky 1)))
+          outcomes (into {}
+                         (map (fn [args] [args (quoted-case-paths setup! args)]))
+                         [['comment 'symbol CxTest] ['comment 'symbol 'CxUniverse]
+                          [documents 'symbol CxTest :first] [untyped 'symbol CxTest]
+                          [tagged 'symbol CxTest] [tags 'symbol CxTest :first]
+                          [refused 'symbol CxTest] [flaky 'symbol CxTest]])
+          table-of #(first (outcomes %))]
+      (testing "the quoted tests' fixtures, a contract gap, and provers answering bound goals only"
+        (doseq [[args [table per-term]] outcomes]
+          (is (= per-term table) (pr-str args))))
+      (testing "a filler only a bound goal finds still admits its term, the open read refused or not"
+        (doseq [pred [tagged flaky]
+                :let [vs (:violations (table-of [pred 'symbol CxTest]))]]
+          (is (not (contains? vs Commented)) (str pred))
+          (is (contains? vs Uncommented) (str pred))))
+      (testing "the outcomes compared include a gap and a throw"
+        (is (= :missing-slot-typing (:gap (table-of [untyped 'symbol CxTest]))))
+        (is (= "bound-only prover refuses" (:thrown (table-of [refused 'symbol CxTest]))))))))

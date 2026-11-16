@@ -252,7 +252,7 @@ resources/
 
 ## Not glossed above
 
-The map covers 164 of the 190 namespaces under `src/`. The other 26 are listed here by
+The map covers 164 of the 191 namespaces under `src/`. The other 27 are listed here by
 name rather than left out, and the two lists together are every one of them — `lein
 lint`'s **E18** fails on a file in neither and on a count that disagrees with them, so
 the number above stays a measurement. Named here: the engine's write path (`integrate`,
@@ -275,11 +275,12 @@ the table
 saying which of the engine's own vocabulary anything reads (`vocabulary`), the two
 process-wide dials — `config` (every environment variable and system property, read once
 and refused by name at `open-kb`, [operations.md](operations.md)) and `logging` (the
-level dial, which installs no backend unless asked) — and `progress`, the progress lines
-a long loop logs ([operations.md](operations.md#progress-lines)):
+level dial, which installs no backend unless asked) — `progress`, the progress lines
+a long loop logs ([operations.md](operations.md#progress-lines)), and `call-cap`, the
+per-KB counts of named expensive calls that the test run holds each to its cap:
 
 ```
-impl/assert_entry.clj  impl/chain.clj  impl/checks.clj  impl/config.clj
+impl/assert_entry.clj  impl/call_cap.clj  impl/chain.clj  impl/checks.clj  impl/config.clj
 impl/context_nat.clj
 impl/datetime.clj  host/gloss.clj  impl/handle_set.clj  impl/inherit.clj  impl/integrate.clj  impl/kb.clj
 impl/logging.clj  impl/modal.clj  impl/nat.clj  impl/nat_maintenance.clj  impl/nat_read.clj
