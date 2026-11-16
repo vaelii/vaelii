@@ -800,14 +800,18 @@
       (is (seq hs))
       (is (= '(comment dog) (take 2 (:sentence (v/sentex tu/*kb* (first hs)))))))))
 
-(deftest a-terms-own-comment-is-shown-in-its-block-and-not-in-its-group
-  (let [body  (:body (GET "/term" "q=dog"))
-        block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
-        grp   (second (re-find #"(?s)aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))]
+(deftest a-terms-own-comment-is-its-blocks-comment-line-and-the-first-row-of-its-group
+  ;; `(comment dog "…")` is what the term says it is, so it sorts first in its group: part
+  ;; of the sort key, never a row lifted out of the sequence, because paging re-slices
+  ;; this sequence at an offset (docs/web.md).
+  (let [body      (:body (GET "/term" "q=dog"))
+        block     (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+        grp       (second (re-find #"(?s)aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))
+        first-row (second (re-find #"(?s)<li[^>]*>(.*?)</li>" grp))]
     (is (re-find #"<dt>comment</dt><dd><span class=\"sx t-str\">" block)
         "the comment is the block's comment line")
-    (is (not (re-find #">comment</a>" grp))
-        "and the argument group does not show it again"))
+    (is (re-find #">comment</a>" first-row)
+        "and it leads the group it lands in"))
   (testing "the key is total, so the order is one a continuation reproduces"
     (let [rows (fn [off] (re-seq #"data-h=\"(\d+)\""
                                  (:body (GET "/term/rows" (str "q=dog&g=0&offset=" off)))))
@@ -4134,23 +4138,7 @@
           (System/setProperty "vaelii.browser.detach-ms" old)
           (System/clearProperty "vaelii.browser.detach-ms"))))))
 
-;; ---- each assertion about a term, shown once ------------------------------
-
-(defn- block-shown-as-text
-  "The sentences the definitional block of `d` (a `describe` answer about `term`) shows
-  as text rather than as a sentence row, with repeats: an annotation string, a parent and
-  a membership, each as the sentence that states it.  A sentence row is a handle badge,
-  which the page count reads off the body."
-  [term d]
-  (let [b     (into {} (map (juxt :part :value)) (:definitional-block d))
-        vals* (fn [k] (let [v (get b k)] (when (sequential? v) v)))
-        terms (fn [k] (let [v (get b k)] (when (map? v) (:terms v))))]
-    (concat (map #(list 'comment term %) (vals* :comment))
-            (map #(list 'positiveExampleComment term %) (vals* :positive-examples))
-            (map #(list 'negativeExampleComment term %) (vals* :negative-examples))
-            (map #(list 'genl term %) (terms :parents))
-            (map #(list % term) (terms :kind))
-            (map #(list % term) (terms :arity-class)))))
+;; ---- each assertion about a term, shown once by index ----------------------
 
 (defn- badges
   "How many handle badges for handle `h` the page `body` draws."
@@ -4180,29 +4168,27 @@
              (list 'implementationNote relP "a note no block part shows")]]
     (v/assert kb s 'CxUniverse)))
 
-(tu/deftest-kb a-term-page-accounts-for-each-assertion-about-its-term-exactly-once
-  ;; docs/web.md: the block or an index group shows each sentence naming the term, not both.
+(defn- page-sections
+  "A term page `body` split at its index section's heading: the part above it, which holds
+  the Definition block, and the Sentexes by index section."
+  [body]
+  (let [i (str/index-of body "Sentexes by index")]
+    [(subs body 0 i) (subs body i)]))
+
+(tu/deftest-kb the-index-section-shows-each-assertion-about-its-term-exactly-once
   (tu/with-terms [relP relQ kindT]
     (exactly-once-world! kb relP relQ kindT)
-    (let [d    (v/describe kb relP '?ctx)
-          text (frequencies (block-shown-as-text relP d))
-          body (:body (GET "/term" (str "q=" (name relP))))]
+    (let [[_ index] (page-sections (:body (GET "/term" (str "q=" (name relP)))))]
       (doseq [s (about-term kb relP)
               :let [h (v/handle-of kb s 'CxUniverse)]]
-        (is (= 1 (+ (get text s 0) (if h (badges body h) 0)))
-            (str (pr-str s) " is shown exactly once"))))))
+        (is (some? h) (pr-str s))
+        (is (= 1 (badges index h)) (str (pr-str s) " is shown once by index"))))))
 
-(tu/deftest-kb a-term-page-draws-each-block-sentence-once
-  ;; The rendered page: each sentence row of the block is one handle badge, and the index
-  ;; groups do not draw it again.
+(tu/deftest-kb the-definition-block-restates-sentences-the-index-shows
   (tu/with-terms [relP relQ kindT]
     (exactly-once-world! kb relP relQ kindT)
-    (let [body (:body (GET "/term" (str "q=" (name relP))))]
-      (doseq [s [(list 'argsGenl relP kindT) (list 'functionalInArg relP 2)
-                 (list 'irreflexive relP) (list 'seeAlso relP relQ)
-                 (list 'not_assertible relP)
-                 (list 'implementationNote relP "a note no block part shows")]
+    (let [[block index] (page-sections (:body (GET "/term" (str "q=" (name relP)))))]
+      (doseq [s [(list 'argsGenl relP kindT) (list 'functionalInArg relP 2)]
               :let [h (v/handle-of kb s 'CxUniverse)]]
-        (is (some? h) (pr-str s))
-        (is (= 1 (badges body h))
-            (str (pr-str s) " is drawn once"))))))
+        (is (= [1 1] [(badges block h) (badges index h)])
+            (str (pr-str s) " is in the block and in its index group"))))))

@@ -1859,31 +1859,6 @@
         (into [] (comp (take term-edit-cap) (map :id))
               (group-order (group-sentexes g) n))))))
 
-(defn- block-shown
-  "The sentences the definitional block of `about` (`describe`'s answer about `term`)
-  shows: an annotation string, a parent and a membership as the sentence that states
-  it, and a sentence row as itself.  The index groups leave these out, so the page shows
-  each assertion about the term once."
-  [term about]
-  (let [b     (into {} (map (juxt :part :value)) (:definitional-block about))
-        vals* (fn [k] (let [v (get b k)] (when (sequential? v) v)))
-        terms (fn [k] (let [v (get b k)] (when (map? v) (:terms v))))]
-    (into #{}
-          (concat (map #(list 'comment term %) (vals* :comment))
-                  (for [p '[positiveExampleComment positiveExample] x (vals* :positive-examples)]
-                    (list p term x))
-                  (for [p '[negativeExampleComment negativeExample] x (vals* :negative-examples)]
-                    (list p term x))
-                  (map #(list 'genl term %) (terms :parents))
-                  (map #(list % term) (terms :kind))
-                  (map #(list % term) (terms :arity-class))
-                  (map :sentence (mapcat vals* [:arg-declarations :props :links]))))))
-
-(defn- unshown
-  "`sentexes` less those whose sentence is in `shown`, the block's (`block-shown`)."
-  [shown sentexes]
-  (if (empty? shown) sentexes (remove #(contains? shown (:sentence %)) sentexes)))
-
 (defn- index-group
   "Render one index group as a framed region: its number, its name, the index key it
   reads and its stored count in the top border, then its sentexes a page at a time.
@@ -3559,9 +3534,8 @@
         ;; a large extent's first page is deferred with the rest of it, so rendering this
         ;; page reads no root it cannot afford: the group shows its O(1) count and fetches
         ;; its rows when a reader scrolls it into the viewport (`extent-defer-cap`)
-        shown  (block-shown term about)
         pages  (mapv #(when-not (:deferred? %)
-                        (group-page (group-order (unshown shown (group-sentexes %)) (:count %)) 0
+                        (group-page (group-order (group-sentexes %) (:count %)) 0
                                     (:hide-derived? env)))
                      groups)]
     ;; one belief read for the whole page: every group's first page of rows, **and** the
@@ -3613,11 +3587,10 @@
   sentinel fetches.  The groups are recomputed and indexed the same way the page built
   them, so `g` names the same group it did then."
   [{:keys [kb] :as env} term g offset]
-  (let [groups (vec (:groups (term-index-groups kb term)))
-        shown  (block-shown term (v/describe kb term '?ctx))]
+  (let [groups (vec (:groups (term-index-groups kb term)))]
     (frag (if-let [grp (get groups g)]
             (group-rows env term g
-                        (group-page (group-order (unshown shown (group-sentexes grp)) (:count grp))
+                        (group-page (group-order (group-sentexes grp) (:count grp))
                                     offset (:hide-derived? env))
                         (:count grp))
             ""))))
