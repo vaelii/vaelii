@@ -3484,6 +3484,16 @@
   (when (> total shown)
     [:span.muted " and " (commas (- total shown)) " more"]))
 
+(defn- sentence-rows
+  "A sentence part's `{:sentence :context}` rows, each drawn as its handle badge, or as the
+  sentence where no stored sentex holds it."
+  [env rows]
+  (interpose " " (map (fn [{:keys [sentence context]}]
+                        (if-let [h (v/handle-of (:kb env) sentence context)]
+                          (handle-ref env h)
+                          (render-form env sentence)))
+                      rows)))
+
 (defn- block-value
   "One present part of the definitional block of the term whose text is `text`, by the
   shape `describe` answers that part in."
@@ -3506,12 +3516,8 @@
             (more-note (:total v) (count (:rows v)))))
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
-    (#{:arg-declarations :props :links} part)
-                               (interpose " " (map (fn [{:keys [sentence context]}]
-                                                     (if-let [h (v/handle-of (:kb env) sentence context)]
-                                                       (handle-ref env h)
-                                                       (render-form env sentence)))
-                                                   v))
+    (#{:arg-declarations :props :links} part) (sentence-rows env v)
+    (= :comment part)          (interpose [:br] (map #(comment-text env % #{}) v))
     (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
 
@@ -3554,7 +3560,6 @@
         ;; a large extent's first page is deferred with the rest of it, so rendering this
         ;; page reads no root it cannot afford: the group shows its O(1) count and fetches
         ;; its rows when a reader scrolls it into the viewport (`extent-defer-cap`)
-        ;; the block already shows its sentences, so the groups' rows leave them out
         shown  (block-shown term about)
         pages  (mapv #(when-not (:deferred? %)
                         (group-page (group-order (unshown shown (group-sentexes %)) (:count %)) 0

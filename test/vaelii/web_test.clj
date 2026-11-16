@@ -799,16 +799,14 @@
       (is (seq hs))
       (is (= '(comment dog) (take 2 (:sentence (v/sentex tu/*kb* (first hs)))))))))
 
-(deftest a-terms-own-comment-is-the-first-row-of-its-group
-  ;; `(comment dog "…")` sits at argument position 1 like every declaration, and
-  ;; allocation order puts it wherever it was asserted.  It is what the term says it is,
-  ;; so it is read first — part of the sort key, never a row lifted out of the sequence,
-  ;; because paging re-slices this sequence at an offset.
+(deftest a-terms-own-comment-is-shown-in-its-block-and-not-in-its-group
   (let [body  (:body (GET "/term" "q=dog"))
-        grp   (second (re-find #"(?s)aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))
-        first-row (second (re-find #"(?s)<li[^>]*>(.*?)</li>" grp))]
-    (is (re-find #">comment</a>" first-row)
-        "the comment leads the group it lands in"))
+        block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+        grp   (second (re-find #"(?s)aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))]
+    (is (re-find #"<dt>comment</dt><dd><span class=\"sx t-str\">" block)
+        "the comment is the block's comment line")
+    (is (not (re-find #">comment</a>" grp))
+        "and the argument group does not show it again"))
   (testing "the key is total, so the order is one a continuation reproduces"
     (let [rows (fn [off] (re-seq #"data-h=\"(\d+)\""
                                  (:body (GET "/term/rows" (str "q=dog&g=0&offset=" off)))))
@@ -4182,10 +4180,7 @@
     (v/assert kb s 'CxUniverse)))
 
 (tu/deftest-kb a-term-page-accounts-for-each-assertion-about-its-term-exactly-once
-  ;; The page is the definitional block and then the sentexes grouped by index.  Each
-  ;; stored sentence naming the term is shown in exactly one of them: in the block when its
-  ;; predicate is definitional, in an index group otherwise, never in both and never in
-  ;; neither.
+  ;; docs/web.md: the block or an index group shows each sentence naming the term, not both.
   (tu/with-terms [relP relQ kindT]
     (exactly-once-world! kb relP relQ kindT)
     (let [d    (v/describe kb relP '?ctx)

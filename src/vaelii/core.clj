@@ -5555,23 +5555,14 @@
        (reduce (fn [m p] (if (contains? m p) m (assoc m p (count m)))) {})))
 
 (defn- definitional-block
-  "The definitional block `handbook/06-definitional-block.md` names, for the term
-  `described` (a `describe` answer of role `:type` or `:predicate`), as `{:part :value}`
-  rows.  A part the KB holds nothing for has the value `:missing`.
-  A sentence is in the block when the KB classifies its predicate `definitional_predicate`
-  in `context`, read through `block-members`, the reader the vocabulary audit uses.
-  `:kind` is the types asserted of the term (`types-of`) that are definitional, less the
-  arity classes, which `:arity-class` lists, filtered the same way.  `:siblings` is a row
-  list of `sibling-separation` rows, one per type sharing a direct parent.  A predicate's
-  `:arg-declarations` are its `wff_predicate` sentences and its `:props` its
-  `algebraic_predicate_property` sentences, each a `{:kind :sentence :context}` row.
-  `:links` is the term's `seeAlso` and `termsRelated` sentences (`links-on`).
-
-  **Order** is the KB's: each part shows the sentences of a set of predicates, and the
-  parts are sorted by the first position `predicateDisplayOrder` gives any of them
-  (`display-order`).  A part none of whose predicates is named follows the named ones, in
-  the role's default order below.  The rows of a sentence part are sorted the same way,
-  by their predicate's position and then in content order."
+  "The definitional block of the term `described` (a `describe` answer of role `:type` or
+  `:predicate`), as `{:part :value}` rows, `:missing` where the KB holds nothing.  A
+  sentence is in the block when the KB classifies its predicate `definitional_predicate`
+  in `context` (`block-members`).  `:kind` and `:arity-class` are the definitional types
+  asserted of the term that no other part shows.  `:arg-declarations`, `:props` and
+  `:links` are `{:kind :sentence :context}` rows.  The parts and their rows follow
+  `predicateDisplayOrder` (`display-order`); an unnamed part keeps the role's order below.
+  docs/web.md describes each part."
   [kb {:keys [term role context] :as described} limit]
   (let [tx      (reasoning/taxonomy kb)
         part    (fn [k v] {:part k :value (if (or (nil? v) (and (coll? v) (empty? v))
@@ -5598,8 +5589,6 @@
         wff          (block-members kb 'wff_predicate context)
         algebraic    (block-members kb 'algebraic_predicate_property context)
         classes      (into #{} (filter arity-classes) definitional)
-        ;; the predicates whose sentences each part shows; :kind's are the definitional
-        ;; predicates no other part claims, which is what a membership of the term is
         shows        {:comment           '#{comment}
                       :positive-examples '#{positiveExampleComment positiveExample}
                       :negative-examples '#{negativeExampleComment negativeExample}
@@ -5613,8 +5602,8 @@
         shows        (assoc shows :kind (reduce #(reduce disj %1 %2) definitional (vals shows)))
         rank         (fn [{k :part}] (reduce min unplaced (keep order (shows k))))
         asserted (into #{} (filter definitional) (types-of kb term context))
-        kind    (part :kind (bounded-terms (remove arity-classes asserted) limit))
-        aclass  (part :arity-class (bounded-terms (filter arity-classes asserted) limit))
+        kind    (part :kind (bounded-terms (filter (shows :kind) asserted) limit))
+        aclass  (part :arity-class (bounded-terms (filter classes asserted) limit))
         parents (part :parents (:genls-direct described))
         links   (part :links (by-order (links-on kb term context definitional)))
         parts   (case role
@@ -5633,7 +5622,6 @@
                               parents
                               (part :props (by-order (sentences-about kb term context algebraic)))
                               links])]
-    ;; `sort-by` is stable, so parts of one rank keep the role's default order
     (vec (sort-by rank parts))))
 
 (defn describe
