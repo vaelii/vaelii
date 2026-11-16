@@ -6,6 +6,7 @@
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.budget :as budget]
+            [vaelii.impl.call-cap :as call-cap]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.predall :as predall]
             [vaelii.impl.reads :as reads]
@@ -122,6 +123,7 @@
 
 (tu/deftest-kb every-answer-carries-the-work-and-time-it-spent
   (tu/with-terms [widget qualifies required]
+    (call-cap/allow predall/sweep kb 3 "three bounds, each answer's own meter read")
     (v/add-evaluatable kb qualifies (constantly true))
     (v/add-evaluatable kb required  (constantly false))
     (v/assert kb (list 'defnSufficient widget (list qualifies '?x)) 'CxUniverse)
@@ -570,6 +572,8 @@
 
 (tu/deftest-kb type-all-specified-reports-each-instance-no-classifier-member-holds
   (tu/with-terms [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree]
+    (call-cap/allow predall/sweep kb 4
+                    "the KB changes between audits, and one audit runs the default sweep")
     (classifier-world kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
                           :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
                           :GadgetThree GadgetThree})
@@ -1074,6 +1078,7 @@
 (tu/deftest-kb every-form-of-stated-separation-is-reported
   (tu/with-terms [left_kind right_kind upper_left upper_right parent_kind kind_metatype
                   sib_a sib_b]
+    (call-cap/allow predall/sweep kb 4 "the KB changes between the four audits")
     (testing "an explicit disjoint over the pair"
       (v/assert kb (list 'disjoint left_kind right_kind) 'CxUniverse)
       (v/assert kb (list 'orthogonal left_kind right_kind) 'CxUniverse)

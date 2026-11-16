@@ -3,6 +3,7 @@
 (ns vaelii.specified-context-test
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.call-cap :as call-cap]
             [vaelii.impl.defining :as defining]
             [vaelii.impl.predall :as predall]
             [vaelii.impl.sentex :as sx]
@@ -213,6 +214,7 @@
 (tu/deftest-kb classification-uses-ordinary-homes-not-quotes-or-nested-sentences
   (tu/with-terms [CxHome Subject Observer classifier_kind classified_kind item_kind
                   carriesSyntax DisplayFn]
+    (call-cap/allow predall/sweep kb 5 "the KB changes between the five audits")
     (classification-schema kb classifier_kind classified_kind item_kind)
     (v/assert kb (list 'genlCx CxHome 'CxUniverse) 'CxUniverse)
     (v/assert kb (list 'decontextualized_predicate item_kind) 'CxUniverse)
@@ -241,6 +243,7 @@
 
 (tu/deftest-kb classification-is-reader-local-and-a-child-can-except-the-requirement
   (tu/with-terms [CxParent CxLeft CxRight Subject classifier_kind classified_kind item_kind]
+    (call-cap/allow predall/sweep kb 4 "the KB changes between the four audits")
     (classification-schema kb classifier_kind classified_kind item_kind)
     (doseq [[sub super] [[CxParent 'CxUniverse] [CxLeft CxParent] [CxRight CxParent]]]
       (v/assert kb (list 'genlCx sub super) 'CxUniverse))
@@ -283,6 +286,7 @@
 (tu/deftest-kb classification-exempts-only-proven-skeletal-population
   (tu/with-terms [CxRequirement Namespace LookupFn lookupOf namespace_kind access_kind usedBy
                   Observer classifier_kind classified_kind]
+    (call-cap/allow predall/sweep kb 3 "the KB changes between the three audits")
     (classification-schema kb classifier_kind classified_kind namespace_kind)
     (v/assert kb (list 'genlCx CxRequirement 'CxUniverse) 'CxUniverse)
     (doseq [sentence [(list 'reifiable_function LookupFn)
@@ -326,6 +330,7 @@
 
 (tu/deftest-kb classification-accumulates-child-only-violations-for-one-declaration
   (tu/with-terms [CxParent CxLeft CxRight First Second classifier_kind classified_kind item_kind]
+    (call-cap/allow predall/sweep kb 3 "the KB changes between the three audits")
     (classification-schema kb classifier_kind classified_kind item_kind)
     (doseq [[sub super] [[CxParent 'CxUniverse] [CxLeft CxParent] [CxRight CxParent]]]
       (v/assert kb (list 'genlCx sub super) 'CxUniverse))

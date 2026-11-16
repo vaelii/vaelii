@@ -30,7 +30,9 @@
             [vaelii.host.guard :as guard]
             [vaelii.host.serve :as serve]
             [vaelii.host.subscribe :as sub]
+            [vaelii.impl.call-cap :as call-cap]
             [vaelii.impl.config :as config]
+            [vaelii.impl.predall :as predall]
             [vaelii.serve :as pserve]
             [vaelii.test-util :as tu])
   (:import [java.io ByteArrayInputStream File]
@@ -1320,6 +1322,8 @@
           (is (= 400 (:status r)) (str op " is a client error, not a 500")))))))
 (tu/deftest-kb integrity-requests-are-clamped-and-release-the-monitor-on-exhaustion
   (tu/with-terms [widget slowEnough required wrote CxServe]
+    (call-cap/allow predall/sweep kb 4
+                    "one request at three arities, then the request with both ceilings lifted")
     (let [entered (atom nil)]
       (v/add-evaluatable kb slowEnough
                          (fn [_]

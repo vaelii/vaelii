@@ -3,10 +3,11 @@
 (ns vaelii.impl.call-cap
   "Per-KB counts of named expensive calls, each name with the most calls one KB may take.
   While `count!` counts, `counted` adds one to the KB's count for its name, unless a call
-  under that name running on this thread has counted.  `entries` lists the counts.  A KB is
-  keyed by object identity and held weakly.  With counting off, `counted` costs one atom
-  read.  To guard a call, declare its name once as `(def name (call-cap/capped ::name n))`
-  and wrap each call site as `(call-cap/counted name kb #(...))`.")
+  under that name running on this thread has counted.  `allow` raises one KB's limit under
+  a name and records why, and `entries` lists the counts with any allowance.  A KB is keyed
+  by object identity and held weakly.  With counting off, `counted` costs one atom read.
+  To guard a call, declare its name once as `(def name (call-cap/capped ::name n))` and
+  wrap each call site as `(call-cap/counted name kb #(...))`.")
 
 (defonce ^:private caps
   (atom {}))
@@ -32,9 +33,9 @@
   ([] (reset! counts nil) nil)
   ([tag] (reset! counts {:tag tag :entries {}}) nil))
 
-(defn- add!
-  "Add one to `kb`'s count under `name`."
-  [name kb]
+(defn- update-entry!
+  "Apply `f` to `kb`'s entry under `name`, a new entry with count 0 when it has none."
+  [name kb f]
   (let [k    [name (System/identityHashCode kb)]
         mine #(identical? kb (.get ^java.lang.ref.WeakReference (:ref %)))]
     (swap! counts
@@ -45,9 +46,22 @@
                             (let [es (vec es)
                                   i  (first (keep-indexed #(when (mine %2) %1) es))]
                               (if i
-                                (update-in es [i :count] inc)
-                                (conj es {:ref (java.lang.ref.WeakReference. kb)
-                                          :tag (tag kb) :count 1}))))))))))
+                                (update es i f)
+                                (conj es (f {:ref (java.lang.ref.WeakReference. kb)
+                                             :tag (tag kb) :count 0})))))))))))
+
+(defn- add!
+  "Add one to `kb`'s count under `name`."
+  [name kb]
+  (update-entry! name kb #(update % :count inc)))
+
+(defn allow
+  "While counting, let `kb` take up to `n` calls under `name` in place of `name`'s cap,
+  `reason` saying why it takes them."
+  [name kb n reason]
+  (when @counts
+    (update-entry! name kb #(assoc % :allow n :reason reason)))
+  nil)
 
 (defn counted
   "Run `(f)` as one call under `name` on `kb`: while counting, add one to `kb`'s count for
@@ -78,7 +92,8 @@
 
 (defn entries
   "Each count as `{:name n :kb k :tag t :count c :cap m}`: `k` names the KB by its identity
-  hash, `t` is the `count!` tag's value at its first call, and `m` is `n`'s cap."
+  hash, `t` is the `count!` tag's value at its first call or allowance, and `m` is `n`'s
+  cap.  An entry given an `allow` also holds `:allow` and `:reason`."
   []
   (let [cs @caps]
     (into []

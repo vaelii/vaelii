@@ -25,17 +25,18 @@
   (if (instance? clojure.lang.Namespace x) (ns-name x) x))
 
 (defn test-ns-hook
-  "Require every KB's count under each name to be at most that name's cap.  A failure
-  prints one line per name, first caller and count, with the number of KBs it covers and
-  up to three of them."
+  "Require every KB's count under each name to be at most its `call-cap/allow` allowance,
+  or that name's cap where the KB has none.  A failure prints one line per name, first
+  caller, count and limit, with the number of KBs it covers and up to three of them."
   []
-  (let [over  (filter #(and (:cap %) (> (:count %) (:cap %))) (call-cap/entries))
-        lines (sort (for [[[n tag c cap] es] (group-by (juxt :name :tag :count :cap) over)]
-                      (format "  %s %d/%d %s, %d KB(s): %s" n c cap tag (count es)
+  (let [limit #(or (:allow %) (:cap %))
+        over  (filter #(and (limit %) (> (:count %) (limit %))) (call-cap/entries))
+        lines (sort (for [[[n tag c lim] es] (group-by (juxt :name :tag :count limit) over)]
+                      (format "  %s %d/%d %s, %d KB(s): %s" n c lim tag (count es)
                               (str/join " " (take 3 (sort (map :kb es)))))))]
     (t/testing "every counted call stays within its cap on each KB"
       (t/is (empty? over)
-            (str/join "\n" (cons "over-cap calls (name, count/cap, first caller, KBs):"
+            (str/join "\n" (cons "over-cap calls (name, count/limit, first caller, KBs):"
                                  lines))))))
 
 (defn install!
