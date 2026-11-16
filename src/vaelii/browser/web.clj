@@ -3525,10 +3525,42 @@
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
     (= :links part)            (interpose ", " (map #(term-link env %) (related-terms term v)))
-    (#{:arg-declarations :props} part) (sentence-rows env term v)
+    (= :props part)            (sentence-rows env term v)
     (= :comment part)          (interpose [:br] (map #(comment-text env % #{}) v))
     (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
+
+(def ^:private arg-projections
+  "The binary projections of `arg`, each with the position it types."
+  '{arg1 1 arg2 2 arg3 3 arg4 4 arg5 5})
+
+(defn- typed-position
+  "`[quoted? n type]` for an argument declaration row about `term` that types one numbered
+  position: `(arg term n type)`, `(argN term type)` or `(quotedArg term n type)`; nil for
+  any other row."
+  [term {s :sentence}]
+  (when (and (sequential? s) (= term (second s)))
+    (let [f (first s)]
+      (cond
+        (and (#{'arg 'quotedArg} f) (= 4 (count s)) (pos-int? (nth s 2)))
+        [(= 'quotedArg f) (nth s 2) (nth s 3)]
+        (and (arg-projections f) (= 3 (count s)))
+        [false (arg-projections f) (nth s 2)]))))
+
+(defn- arg-lines
+  "The argument declaration rows of `term` as block lines, `[label content]` each.  Each
+  numbered position an `arg`, `argN` or `quotedArg` row types has a line listing its
+  types, the quoted line after the plain one.  One last line holds every other
+  declaration as its sentence."
+  [env term rows]
+  (let [typed  (keep #(when-let [p (typed-position term %)] p) rows)
+        others (remove #(typed-position term %) rows)]
+    (concat
+     (for [[[quoted? n] ps] (sort-by (fn [[[q n]]] [n q]) (group-by (juxt first second) typed))]
+       [(str (when quoted? "quoted ") "arg" n " constraints")
+        (interpose ", " (map #(term-link env %) (distinct (map #(nth % 2) ps))))])
+     (when (seq others)
+       [[(first (block-parts :arg-declarations)) (sentence-rows env term others)]]))))
 
 (defn- shown-parts
   "`describe`'s block rows as the page draws them.  The arity class leads the kind line
@@ -3567,11 +3599,13 @@
        [:h3 "Definition"]
        [:dl.def-parts
         (for [{:keys [part value arity?]} (shown-parts definitional-block)
-              :let [[label] (block-parts part)]]
-          (list [:dt label]
-                [:dd (if (= :missing value)
-                       (missing-mark (seeds part arity?))
-                       (block-value env term text part value))]))]])))
+              [label content] (cond
+                                (= :missing value)
+                                [[(first (block-parts part)) (missing-mark (seeds part arity?))]]
+                                (= :arg-declarations part) (arg-lines env term value)
+                                :else
+                                [[(first (block-parts part)) (block-value env term text part value)]])]
+          (list [:dt label] [:dd content]))]])))
 
 (defn term-page
   "A term's page: the concept graph, the three type lines, the sentexes grouped by the
