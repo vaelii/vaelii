@@ -304,6 +304,12 @@
               "a named predicate is shown in the order named")
           (finally (v/retract! kb h)))))))
 
+(tu/deftest-kb an-unbounded-arity-predicates-block-has-no-arity-part
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unbounded_arity_predicate relP) 'CxUniverse)
+    (is (not-any? #(= :arity (:part %)) (:definitional-block (v/describe kb relP 'CxUniverse)))
+        "an arity would be ill-formed, so the block neither shows nor asks for one")))
+
 (tu/deftest-kb an-unlisted-definitional-predicate-is-shown-after-every-listed-one
   (tu/with-terms [relP kindT defRel]
     (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)

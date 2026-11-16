@@ -147,7 +147,8 @@ it — `git show v0.16.0:CHANGELOG.md`.
   the related terms, and each numbered position an `arg`, `argN` or `quotedArg` declaration
   types has a line of its own listing its types. The siblings line shows 12 siblings and
   opens the rest in place behind **+ N more**. A new `:other` part holds the definitional
-  sentences no other part shows, ranked by their predicates, so an unnamed one is last. `genl`'s comment says what `genl` means, and
+  sentences no other part shows, ranked by their predicates, so an unnamed one is last.
+  A `variable_arity` predicate's block has no `:arity` part. `genl`'s comment says what `genl` means, and
   an `implementationNote` on `genl` records that the engine caches its closure.
   `seeAlso` and `termsRelated` are classified enforced, since the block reads them.
   *Migration:* read the block's `:props` rows' `:sentence` in place of a keyword set; the

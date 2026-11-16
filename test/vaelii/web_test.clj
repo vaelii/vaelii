@@ -403,6 +403,15 @@
       (is (re-find (re-pattern (str "/sentex/" (h (list 'functionalInArg relP 2)) "\"")) line)
           "a sentence with more arguments is drawn whole"))))
 
+(tu/deftest-kb an-unbounded-arity-predicate-has-no-arity-line
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unbounded_arity_predicate relP) 'CxUniverse)
+    (let [body (:body (GET "/term" (str "q=" (name relP))))]
+      (is (re-find #"<h3>Definition</h3>" body))
+      (is (nil? (block-line body "arity")) "no arity line, missing or not")
+      (is (not (str/includes? body (str "text=%28arity+" (name relP))))
+          "and no link seeding an arity, which would be ill-formed"))))
+
 (tu/deftest-kb an-unlisted-definitional-predicate-is-the-last-line-of-the-definition
   (tu/with-terms [relP kindT defRel]
     (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)

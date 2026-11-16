@@ -5946,12 +5946,13 @@
                               parents (sibs) kind aclass links]
                   :predicate [(part :comment (:comment described))
                               kind aclass
-                              (part :arity (:arity described))
+                              (when-not (isa? kb term 'variable_arity context)
+                                (part :arity (:arity described)))
                               (part :arg-declarations (by-order (:arg-declarations described)))
                               parents
                               (part :props (by-order (sentences-about kb term context algebraic)))
                               links])
-        parts   (cond-> parts (seq other) (conj (part :other (by-order other))))]
+        parts   (cond-> (filterv some? parts) (seq other) (conj (part :other (by-order other))))]
     (vec (sort-by rank parts))))
 
 (defn describe

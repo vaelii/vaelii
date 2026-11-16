@@ -1891,7 +1891,8 @@ examples, the arity, the kind and then the rest. A line takes the first position
 predicate it shows is named at, and a line none of whose predicates is named follows the
 named ones. A definitional sentence about the term that no other line shows, such as one of
 a predicate the KB declares `definitional_predicate` and names in no `predicateDisplayOrder`
-fact, is on an **other** line, as its handle badge.
+fact, is on an **other** line, as its handle badge. A `variable_arity` predicate has no
+arity line, missing or not, since an `arity` sentence about it would be ill-formed.
 
 The kind line lists the definitional types asserted of the term, with its arity class
 (`unary_predicate`, `binary_predicate`, …) first. A predicate whose arity line shows its
