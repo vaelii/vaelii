@@ -2508,7 +2508,8 @@
   (quotedArg ?q 1 ?type)))
 
 (comment genl
-         "(genl ?subtype ?supertype) means that every ?subtype is a ?supertype. Transitive, and cached as a closure rather than run as a rule, since transitivity is the lifeblood of common sense and far too hot to chain. The type hierarchy it builds is rooted at thing. Types are unary predicates, so membership is written (dog Muffet) and never (isa Muffet Dog). The same relation relates predicate specializations of any arity: every tuple of the subtype is a tuple of the supertype, which is what a type reading of it is the unary case of, so neither argument is declared a subtype of thing.")
+         "(genl ?subtype ?supertype) means that every ?subtype is a ?supertype. The type hierarchy it builds is rooted at thing. Types are unary predicates, so membership is written (dog Muffet) and never (isa Muffet Dog). The same relation relates predicate specializations of any arity: every tuple of the subtype is a tuple of the supertype, which is what a type reading of it is the unary case of, so neither argument is declared a subtype of thing.")
+(implementationNote genl "The engine caches the genl closure rather than chaining a transitivity rule. Transitivity is the lifeblood of common sense, and a rule for it would be far too hot to chain.")
 (set/monotonic (type_relation_predicate genl))
 (set/monotonic (time_agnostic_relation genl))
 (not (eternal_predicate genl))
