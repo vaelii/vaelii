@@ -136,10 +136,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
   The block's `:props` part is every `algebraic_predicate_property` sentence as a
   `{:kind :sentence :context}` row, so `irreflexive` and the per-position
   `functionalInArg` show. A new `:links` part lists `seeAlso` and each `termsRelated`
-  cluster naming the term. core.txt declares `predicateDisplayOrder`, and the block's parts
-  and rows follow its order; a predicate's parents now follow its comment.
-  The term page's index groups leave out the sentences the block shows, so each assertion
-  about the term is shown once.
+  cluster naming the term. A `predicateDisplayOrder` fact in core.txt orders the block's
+  parts and rows. The comment and the examples lead, then the arity, the arity class and
+  the kinds. The parents, the separations, the argument declarations, the relation
+  properties and the links follow.
+  The term page heads the block **Definition** and draws it as a summary of the index
+  groups below it, which list each assertion about the term exactly once. The page's kind
+  line leads with the arity class, and leaves it out where the arity line shows the arity.
+  A unary sentence such as `(irreflexive P)` shows as its predicate, the links line lists
+  the related terms, and each numbered position an `arg`, `argN` or `quotedArg` declaration
+  types has a line of its own listing its types. The siblings line shows 12 siblings and
+  opens the rest in place behind **+ N more**. `genl`'s comment says what `genl` means, and
+  an `implementationNote` on `genl` records that the engine caches its closure.
   `seeAlso` and `termsRelated` are classified enforced, since the block reads them.
   *Migration:* read the block's `:props` rows' `:sentence` in place of a keyword set; the
   top-level `:props` keyword set is unchanged.

@@ -1879,33 +1879,48 @@ than the extent.
 ### A term page lists its definitional block
 
 A type's or a predicate's page opens its prose column with the term's **definitional
-block**: one line per part `handbook/06-definitional-block.md` names, read off
-`describe`'s `:definitional-block`. A sentence about the term is in the block when the KB
-classifies its predicate `definitional_predicate`. A type lists its comment, positive and
-negative examples, parents, siblings, kind, arity class and links; a predicate lists its
-comment, parents, kind, arity class, arity, argument declarations, relation properties and
-links. The argument declarations are the term's `wff_predicate` sentences and the relation
-properties its `algebraic_predicate_property` sentences, each drawn whole, so a
-per-position one such as `(functionalInArg P 2)` shows its position. The links are its
-`seeAlso` sentences and every `termsRelated` cluster that names it. The kind is the
-definitional types asserted of the term less its arity class (`unary_predicate`,
-`binary_predicate`, …), which has a line of its own, since the starter loader asserts
-`unary_predicate` of every type. A grant or a refusal mark such as `closed_extent_predicate`
-or `not_assertible` is no kind. A membership another line shows as a sentence, such as
-`(irreflexive P)` under the relation properties, is not also a kind. The lines follow `predicateDisplayOrder`: a line takes the
-first position any predicate it shows is named at, and a line none of whose predicates is
-named follows the named ones. The index groups below the block leave out the sentences the
-block shows, so the page shows each assertion about the term once; a group's stored count
-still counts them. A part the KB holds nothing for is tagged **missing**, beside an **add** link
+block**, under the heading **Definition**: one line per part `handbook/06-definitional-block.md`
+names, read off `describe`'s `:definitional-block`. A sentence about the term is in the
+block when the KB classifies its predicate `definitional_predicate`. The block is a
+summary: each sentence it draws is also listed in its index group below it, and the
+index groups list each sentence naming the term exactly once. A type lists
+its comment, positive and negative examples, kind, parents, siblings and links. A predicate
+lists its comment, arity, kind, parents, argument declarations, relation properties and
+links. The lines follow `predicateDisplayOrder`, which core.txt states as the comment, the
+examples, the arity, the kind and then the rest. A line takes the first position any
+predicate it shows is named at, and a line none of whose predicates is named follows the
+named ones.
+
+The kind line lists the definitional types asserted of the term, with its arity class
+(`unary_predicate`, `binary_predicate`, …) first. A predicate whose arity line shows its
+arity lists no arity class, since the arity says the same. A grant or a refusal mark such
+as `closed_extent_predicate` or `not_assertible` is no kind. A membership another line
+shows, such as `(irreflexive P)` under the relation properties, is not also a kind.
+
+A sentence line draws each `(P term)` sentence as its predicate `P`, linked, as the kind line
+does, and any other sentence as its handle badge. So a predicate's relation properties,
+its `algebraic_predicate_property` sentences, show `irreflexive` as a term, and a
+per-position one such as `(functionalInArg P 2)` as its sentence. The argument declarations
+are the predicate's `wff_predicate` sentences. An `(arg P n T)` or `(argN P T)` declaration
+shows its type `T` on an **argN constraints** line, one line per position, and a
+`(quotedArg P n T)` declaration on a **quoted argN constraints** line. A position with
+several types lists each of them. Every other argument declaration, such as `argsGenl`,
+shows as its sentence on the **arg declarations** line. The links line lists the terms the
+term's `seeAlso` sentences and every `termsRelated` cluster naming it relate it to, once
+each and in printed order.
+
+A part the KB holds nothing for is tagged **missing**, beside an **add** link
 that opens the assert form on a sentence supplying it (`(comment dog "")`, `(genl dog )`),
-deliberately incomplete as the assert form's term seed is; a predicate's arity class seed
-names the class of its arity. Each sibling carries what decides it against the term, as
+deliberately incomplete as the assert form's term seed is. A missing kind line where no
+arity shows also offers an **arity class** seed. Each sibling carries what decides it against the term, as
 `subsumption-statuses` reads the pair: `genl`, `spec`, `disjoint`, `orthogonal` for a
 declared overlap, or `overlaps` with the shared instance or shared subtype that shows one,
 which is what the `:open-sibling-pair` pass of `kb-integrity` reads as decided. A sibling
 nothing decides is tagged missing, with one link seeding `disjoint` and one seeding
 `orthogonal`. The siblings are the types sharing a direct parent with the term, capped at
-`describe`'s limit with the remainder counted.
+`describe`'s limit with the remainder counted. The line shows the first 12 siblings in
+order and folds the rest behind a **+ N more** control, a `<details>` that opens them in
+place without a request.
 
 ### Hiding what the engine concluded
 
