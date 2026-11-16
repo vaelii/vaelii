@@ -217,9 +217,10 @@
       (v/assert kb s 'CxUniverse))
     (let [d (v/describe kb kin_a 'CxUniverse)
           b (block d)]
-      (is (= [:comment :positive-examples :negative-examples :parents :siblings :kind
-              :arity-class :links]
-             (mapv :part (:definitional-block d))))
+      (is (= [:comment :positive-examples :negative-examples :arity-class :kind :parents
+              :siblings :links]
+             (mapv :part (:definitional-block d)))
+          "the annotations, then the arity class and the kinds, then the rest")
       (is (= :missing (:kind b)) "the arity class is not a kind")
       (is (= ['unary_predicate] (:terms (:arity-class b))))
       (is (= [kin_root] (:terms (:parents b))))
@@ -251,8 +252,9 @@
 (tu/deftest-kb a-predicates-block-holds-its-arity-declarations-and-properties
   (let [d (v/describe kb 'parentOf W)
         b (block d)]
-    (is (= [:comment :parents :kind :arity-class :arity :arg-declarations :props :links]
-           (mapv :part (:definitional-block d))))
+    (is (= [:comment :arity :arity-class :kind :parents :arg-declarations :props :links]
+           (mapv :part (:definitional-block d)))
+        "the comment, then the arity, the arity class and the kinds, then the rest")
     (is (= 2 (:arity b)))
     (is (= (:arg-declarations d) (:arg-declarations b)))
     (is (= :missing (:props b)) "parentOf states no algebraic property"))
