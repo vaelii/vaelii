@@ -1881,7 +1881,9 @@ lists its comment, arity, kind, parents, argument declarations, relation propert
 links. The lines follow `predicateDisplayOrder`, which core.txt states as the comment, the
 examples, the arity, the kind and then the rest. A line takes the first position any
 predicate it shows is named at, and a line none of whose predicates is named follows the
-named ones.
+named ones. A definitional sentence about the term that no other line shows, such as one of
+a predicate the KB declares `definitional_predicate` and names in no `predicateDisplayOrder`
+fact, is on an **other** line, as its handle badge.
 
 The kind line lists the definitional types asserted of the term, with its arity class
 (`unary_predicate`, `binary_predicate`, …) first. A predicate whose arity line shows its

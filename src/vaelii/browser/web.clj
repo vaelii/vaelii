@@ -3440,7 +3440,8 @@
    :arity             ["arity"               (fn [t _] (str "(arity " t " )"))]
    :arg-declarations  ["arg declarations"    (fn [t _] (str "(arg " t " 1 )"))]
    :props             ["relation properties" (fn [t _] (str "( " t ")"))]
-   :links             ["links"               (fn [t _] (str "(seeAlso " t " )"))]})
+   :links             ["links"               (fn [t _] (str "(seeAlso " t " )"))]
+   :other             ["other"               nil]})
 
 (def ^:private sibling-cap
   "How many siblings a Definition block's siblings line shows before the rest are folded
@@ -3513,7 +3514,7 @@
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
     (= :links part)            (interpose ", " (map #(term-link env %) (related-terms term v)))
-    (= :props part)            (sentence-rows env term v)
+    (#{:props :other} part)    (sentence-rows env term v)
     (= :comment part)          (interpose [:br] (map #(comment-text env % #{}) v))
     (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))

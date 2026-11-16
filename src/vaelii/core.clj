@@ -5559,10 +5559,10 @@
   `:predicate`), as `{:part :value}` rows, `:missing` where the KB holds nothing.  A
   sentence is in the block when the KB classifies its predicate `definitional_predicate`
   in `context` (`block-members`).  `:kind` and `:arity-class` are the definitional types
-  asserted of the term that no other part shows.  `:arg-declarations`, `:props` and
-  `:links` are `{:kind :sentence :context}` rows.  The parts and their rows follow
-  `predicateDisplayOrder` (`display-order`); an unnamed part keeps the role's order below.
-  docs/web.md describes each part."
+  asserted of the term that no other part shows, and `:other` its other such sentences.
+  `:arg-declarations`, `:props`, `:links` and `:other` are `{:kind :sentence :context}`
+  rows.  Parts and rows follow `predicateDisplayOrder` (`display-order`), unnamed ones
+  last in the role's order below.  docs/web.md describes each part."
   [kb {:keys [term role context] :as described} limit]
   (let [tx      (reasoning/taxonomy kb)
         part    (fn [k v] {:part k :value (if (or (nil? v) (and (coll? v) (empty? v))
@@ -5600,7 +5600,13 @@
                       :props             algebraic
                       :links             link-predicates}
         shows        (assoc shows :kind (reduce #(reduce disj %1 %2) definitional (vals shows)))
-        rank         (fn [{k :part}] (reduce min unplaced (keep order (shows k))))
+        rank         (fn [{k :part v :value}]
+                       (reduce min unplaced
+                               (keep order (if (= :other k)
+                                             (map (comp nm/functor :sentence) v)
+                                             (shows k)))))
+        other    (into [] (remove #(= 2 (count (:sentence %))))
+                       (sentences-about kb term context (shows :kind)))
         asserted (into #{} (filter definitional) (types-of kb term context))
         kind    (part :kind (bounded-terms (filter (shows :kind) asserted) limit))
         aclass  (part :arity-class (bounded-terms (filter classes asserted) limit))
@@ -5621,7 +5627,8 @@
                               (part :arg-declarations (by-order (:arg-declarations described)))
                               parents
                               (part :props (by-order (sentences-about kb term context algebraic)))
-                              links])]
+                              links])
+        parts   (cond-> parts (seq other) (conj (part :other (by-order other))))]
     (vec (sort-by rank parts))))
 
 (defn describe
