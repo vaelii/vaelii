@@ -3481,14 +3481,20 @@
     [:span.muted " and " (commas (- total shown)) " more"]))
 
 (defn- sentence-rows
-  "A sentence part's `{:sentence :context}` rows, each drawn as its handle badge, or as the
-  sentence where no stored sentex holds it."
-  [env rows]
-  (interpose " " (map (fn [{:keys [sentence context]}]
-                        (if-let [h (v/handle-of (:kb env) sentence context)]
-                          (handle-ref env h)
-                          (render-form env sentence)))
-                      rows)))
+  "A sentence part's `{:sentence :context}` rows about `term`.  A unary `(P term)` row is
+  drawn as its predicate, as a kind is, and the predicates lead; any other row is drawn as
+  its handle badge, or as the sentence where no stored sentex holds it."
+  [env term rows]
+  (let [unary? (fn [{s :sentence}] (and (= 2 (count s)) (= term (second s))))
+        preds  (distinct (map (comp first :sentence) (filter unary? rows)))
+        others (remove unary? rows)]
+    (list (interpose ", " (map #(term-link env %) preds))
+          (when (and (seq preds) (seq others)) " ")
+          (interpose " " (map (fn [{:keys [sentence context]}]
+                                (if-let [h (v/handle-of (:kb env) sentence context)]
+                                  (handle-ref env h)
+                                  (render-form env sentence)))
+                              others)))))
 
 (defn- related-terms
   "The terms a links part's `seeAlso` and `termsRelated` rows relate `term` to, deduped,
@@ -3519,7 +3525,7 @@
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
     (= :links part)            (interpose ", " (map #(term-link env %) (related-terms term v)))
-    (#{:arg-declarations :props} part) (sentence-rows env v)
+    (#{:arg-declarations :props} part) (sentence-rows env term v)
     (= :comment part)          (interpose [:br] (map #(comment-text env % #{}) v))
     (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
