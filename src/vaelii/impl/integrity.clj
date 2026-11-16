@@ -10,6 +10,7 @@
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [vaelii.impl.budget :as budget]
+            [vaelii.impl.call-cap :as call-cap]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.clashes :as clashes]
             [vaelii.impl.decide.arity :as arity]
@@ -2650,11 +2651,12 @@
    (let [candidate-count (count candidate-terms)
          m               (budget/meter options)
          at              (volatile! nil)
+         passes!         #(run-passes kb candidate-terms context
+                                      (:max-results options) (:categories options) at)
          reason          (binding [violations/*report-sink* (atom [])]
                            (budget/metered
                             m #(try (exc/with-reader-states
-                                      (run-passes kb candidate-terms context
-                                                  (:max-results options) (:categories options) at))
+                                      (call-cap/scope predall/sweep passes!))
                                     (catch clojure.lang.ExceptionInfo e
                                       (or (budget/exhausted e) (throw e))))))
          found           (report-categories (budget/found m))]

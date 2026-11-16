@@ -18,6 +18,8 @@
 # `--update` rewrites the entries and keeps this header and each line's reason, so an
 # interior divider would survive one refresh and be wrong after the next.
 
+vaelii.call-caps/install!  # REACHED resolve in project.clj's :test :injections
+vaelii.call-caps/test-ns-hook  # REACHED by name, clojure.test/test-ns runs a namespace's test-ns-hook
 vaelii.coverage/install!  # REACHED lein injection, scripts/coverage.sh
 vaelii.coverage/write-hits  # REACHED cloverage --custom-report symbol, scripts/coverage.sh
 vaelii.foreign-contract-test/marking-dump-reader  # REACHED quoted-symbol registry, foreign/register in the same test file

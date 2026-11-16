@@ -37,6 +37,7 @@
   all treated as determinate here, which is what makes `predAllSpecified` the exact
   antagonist of `predAllExists`."
   (:require [vaelii.impl.budget :as budget]
+            [vaelii.impl.call-cap :as call-cap]
             [vaelii.impl.defining :as defining]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
@@ -279,6 +280,14 @@
   (boolean (some #(or (= % qtype) (tax/genl? tax % qtype ctx))
                  (provers/shape-kinds (written-form kb x ctx)))))
 
+(def sweep
+  "The `call-cap` name of one full audit of a KB, capped at 2 per KB.  Each of these counts
+  once: `all-specified-violations`, `kb-integrity` reaching a Specified pass,
+  `type-specified-declaration-audits`, `specified-declaration-audits` running a quoted
+  section, and `quoted-specified-violations` reaching the written-term population.  An
+  audit inside a counted one adds nothing."
+  (call-cap/capped ::sweep 2))
+
 (defn quoted-specified-violations
   "Audit `(predAllQuotedSpecified pred qtype)` in `ctx`, `arg-pos` `:first` for
   `predSpecifiedAllQuoted`: `{:status :audited :violations #{x …}}`, each written term
@@ -307,22 +316,25 @@
        (let [typings (slot-typings kb pred n ctx)]
          (if (empty? typings)
            {:status :gap :gap :missing-slot-typing :pred pred :position n}
-           (let [table (filler-table kb pred n ctx)
-                 admitted? #(or (some (partial admissible-binding? kb typings ctx) (get table %))
-                                (admissible-filler? kb pred % typings n ctx))]
-             (try
-               {:status :audited
-                :violations
-                (into #{}
-                      (comp (filter #(of-written-kind? kb tax % qtype ctx))
-                            (remove admitted?)
-                            (filter eligible?))
-                      (written-terms kb ctx))}
-               (catch clojure.lang.ExceptionInfo e
-                 (if (= :incomplete-defining-contexts (:type (ex-data e)))
-                   (merge {:status :gap :gap :incomplete-defining-contexts :pred pred}
-                          (select-keys (ex-data e) [:term :handles]))
-                   (throw e)))))))))))
+           (call-cap/counted
+            sweep kb
+            #(let [table (filler-table kb pred n ctx)
+                   admitted? (fn [x]
+                               (or (some (partial admissible-binding? kb typings ctx) (get table x))
+                                   (admissible-filler? kb pred x typings n ctx)))]
+               (try
+                 {:status :audited
+                  :violations
+                  (into #{}
+                        (comp (filter (fn [x] (of-written-kind? kb tax x qtype ctx)))
+                              (remove admitted?)
+                              (filter eligible?))
+                        (written-terms kb ctx))}
+                 (catch clojure.lang.ExceptionInfo e
+                   (if (= :incomplete-defining-contexts (:type (ex-data e)))
+                     (merge {:status :gap :gap :incomplete-defining-contexts :pred pred}
+                            (select-keys (ex-data e) [:term :handles]))
+                     (throw e))))))))))))
 
 (defn- exists-reading
   "`[subjects goal filler-type placeholder]` for the *Exists* declaration `(functor pred a
@@ -460,7 +472,9 @@
   ([kb ctx opts]
    (let [functors (:functors opts)
          wanted?  (if functors #(contains? functors %) (constantly true))
-         only     (fn [f xs] (filter #(wanted? (f %)) xs))]
+         only     (fn [f xs] (filter #(wanted? (f %)) xs))
+         quoted   (only first [['predAllQuotedSpecified :second] ['predSpecifiedAllQuoted :first]])]
+     (when (seq quoted) (call-cap/counted sweep kb (constantly nil)))
      (concat
       (res/lazy-mapcat
        (fn [[functor arg-pos]]
@@ -475,9 +489,12 @@
          (res/lazy-mapcat
           #(declaration-context-audits
             kb functor (fn [pred qtype reader eligible?]
-                         (quoted-specified-violations kb pred qtype reader arg-pos eligible?)) %)
+                         (call-cap/uncounted
+                          sweep
+                          (fn []
+                            (quoted-specified-violations kb pred qtype reader arg-pos eligible?)))) %)
           (declaration-contexts kb functor ctx)))
-       (only first [['predAllQuotedSpecified :second] ['predSpecifiedAllQuoted :first]]))
+       quoted)
       (res/lazy-mapcat
        (fn [functor]
          (res/lazy-mapcat
@@ -534,6 +551,7 @@
   population and classifier memberships; cumulative findings share one declaration key.
   Native-only declaration answers retain `ctx`."
   [kb ctx]
+  (call-cap/counted sweep kb (constantly nil))
   (res/lazy-mapcat
    #(declaration-context-audits kb 'typeAllSpecified
                                 (fn [classifier indep reader eligible?]
@@ -551,6 +569,8 @@
   instances, and reports incomplete support. No-home/native answers retain the actual
   reader. Uses the same declaration stream as `kb-integrity`; see docs/integrity.md."
   [kb ctx]
-  (into {}
-        (filter (fn [[_ r]] (or (= :gap (:status r)) (seq (:violations r)))))
-        (specified-declaration-audits kb ctx)))
+  (call-cap/counted
+   sweep kb
+   #(into {}
+          (filter (fn [[_ r]] (or (= :gap (:status r)) (seq (:violations r)))))
+          (specified-declaration-audits kb ctx))))

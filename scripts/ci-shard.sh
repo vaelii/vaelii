@@ -57,6 +57,10 @@
 # row takes both builds.  scripts/ci-weights.sh --check judges no shard's first row.
 # A tree without that namespace packs and prints as before.
 #
+# EVERY SHARD'S JVM CHECKS THE CALL CAPS LAST.  The `:test` profile's injection runs
+# vaelii.call-caps (test/vaelii/call_caps.clj) after every namespace `lein test` is
+# given, so this script does not print it.
+#
 # The output is one namespace per line on stdout, ready for `lein test`; the
 # summary line goes to stderr so a caller can read the list from a pipe.
 { # one brace group, read whole before it runs: scripts/lint-shellcheck.sh says why

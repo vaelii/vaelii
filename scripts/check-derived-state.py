@@ -67,6 +67,8 @@ NOT_DERIVED: dict[tuple[str, str], str] = {
     ("caches.clj", "heap-mark"): "the heap mark's armed pool: JVM-wide listener state",
     ("caches.clj", "guard-lifecycle"): "a lock",
     ("caches.clj", "tallying"): "instrumentation: the derived-state event instrument's state",
+    ("call_cap.clj", "caps"): "instrumentation: the cap of each named counted call",
+    ("call_cap.clj", "counts"): "instrumentation: per-KB counts of named counted calls",
     ("columnar.clj", "state-spaces"): "storage: the columnar index spaces",
     ("dense_kv.clj", "index-spaces"): "storage: the dense index spaces",
     ("disk/backend.clj", "stores"): "storage: the open disk stores by directory",
