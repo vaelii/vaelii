@@ -240,6 +240,14 @@
     (is (= ["an insect, which has six legs"] (:negative-examples b))))
   (is (= :orthogonal (get (separations (block (v/describe kb 'electronic_device W))) 'machine))))
 
+(tu/deftest-kb genls-block-comment-says-what-genl-means-and-its-note-how-the-engine-runs-it
+  (let [b (block (v/describe kb 'genl W))]
+    (is (not-any? #(re-find #"closure|chain" %) (:comment b))
+        "the comment states what genl means and leaves the closure cache to a note"))
+  (is (some #(re-find #"caches the genl closure" (str (nth (:sentence %) 2)))
+            (v/sentexes-matching kb '(implementationNote genl ?note) 'CxUniverse))
+      "an implementationNote records that the engine caches the closure"))
+
 (tu/deftest-kb a-predicates-block-holds-its-arity-declarations-and-properties
   (let [d (v/describe kb 'parentOf W)
         b (block d)]
