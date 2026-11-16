@@ -2403,13 +2403,13 @@
 ;; ---- a correspondence stated in one context ---------------------------------
 
 (tu/deftest-kb a-correspondence-stated-in-one-context-does-not-merge-its-predicates-values-in-another
-  ;; A correspondence can hold only under a simplifying theory.  In an atlas where every
-  ;; country has one capital, `capitalOf` is functional and `CapitalFn` names its value;
-  ;; the world gives one country two.  An application written in the world before its
-  ;; values must not be retired onto each value in turn, which equates the two values
-  ;; through the placeholder.  The values are `:monotonic`, the strength that merges a
-  ;; value into the application's constant, so a merge the world's scoping let through
-  ;; would equate LaPaz and Sucre.
+  ;; A correspondence makes `capitalOf` functional in every context, and its reading of
+  ;; an application holds only where the correspondence is visible.  The atlas states the
+  ;; correspondence and names LaPaz, and the world, which does not see the atlas, names
+  ;; Sucre.  The application written in the world mints the one constant the atlas
+  ;; retires onto LaPaz, so a reading the world's scoping let through would retire that
+  ;; constant onto Sucre as well.  The values are `:monotonic`, the strength that merges
+  ;; a value into the application's constant.
   (tu/with-terms [CapitalFn capitalOf country city locatedIn Bolivia LaPaz Sucre Embassy
                   CxAtlas CxWorld]
     (doseq [s [(list 'genlCx CxAtlas 'CxUniverse) (list 'genlCx CxWorld 'CxUniverse)
@@ -2426,13 +2426,12 @@
       (v/assert kb (list locatedIn Embassy (list CapitalFn Bolivia)) CxAtlas)
       (is (v/ask? kb (list locatedIn Embassy LaPaz) CxAtlas))
       (is (v/same-class? kb (nat-read/dedup-constant kb (list CapitalFn Bolivia)) LaPaz CxAtlas)))
-    (v/assert kb (list capitalOf Bolivia LaPaz) CxWorld {:strength :monotonic})
     (v/assert kb (list capitalOf Bolivia Sucre) CxWorld {:strength :monotonic})
-    (testing "the world does not: its two values stay two, and nothing clashes"
+    (testing "the world does not: its value stays apart from the application, and nothing clashes"
       (is (not (v/same-class? kb LaPaz Sucre CxWorld)))
       (is (not-any? #(v/same-class? kb (nat-read/dedup-constant kb (list CapitalFn Bolivia)) % CxWorld)
                     [LaPaz Sucre]))
-      (is (= #{LaPaz Sucre} (set (map '?c (v/ask kb (list capitalOf Bolivia '?c) CxWorld)))))
+      (is (= #{Sucre} (set (map '?c (v/ask kb (list capitalOf Bolivia '?c) CxWorld)))))
       (is (empty? (v/conflicts kb)))
       (is (empty? (v/contradictions kb))))))
 
