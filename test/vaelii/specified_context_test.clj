@@ -4,6 +4,7 @@
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.defining :as defining]
+            [vaelii.impl.predall :as predall]
             [vaelii.impl.sentex :as sx]
             [vaelii.test-util :as tu]))
 
@@ -19,9 +20,18 @@
   (v/assert kb (list 'unary_predicate kind) 'CxUniverse)
   (v/assert kb (list 'arg pred (if (= functor 'predAllSpecified) 2 1) 'string) 'CxUniverse))
 
-(defn- result [kb functor pred kind context]
-  (get (v/all-specified-violations kb context) [functor pred kind]
-       {:status :audited :violations #{}}))
+(defn- result
+  "The sweep's result for the Specified declaration `[functor pred kind]` in `context`,
+  `{:status :audited :violations #{}}` where it holds, as `all-specified-violations`
+  reports it.  Read off `specified-declaration-audits` restricted to `functor`'s
+  declarations, whose last entry for a key is its combined result, so no quoted audit
+  runs."
+  [kb functor pred kind context]
+  (or (->> (predall/specified-declaration-audits kb context {:functors #{functor}})
+           (filter #(= [functor pred kind] (first %)))
+           last
+           second)
+      {:status :audited :violations #{}}))
 
 (tu/deftest-kb global-type-bookkeeping-does-not-require-a-child-definition-at-the-root
   (tu/with-terms [CxHome relation_kind nearbyRel notes]

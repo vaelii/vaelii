@@ -517,7 +517,8 @@
   ;; `islands` above counts names WITH a genl edge, so a unary predicate carrying none is
   ;; never an island.  The `:not-under-thing` sweep reads the declaration instead, over a
   ;; caller-owned candidate set, from CxWell, which sees every upper and middle context.
-  (let [report (v/kb-integrity kb placed-unary-predicates 'CxWell)]
+  (let [report (v/kb-integrity kb placed-unary-predicates 'CxWell
+                               {:categories #{:not-under-thing}})]
     (is (= (count placed-unary-predicates) (:candidate-count report)))
     (is (empty? (:not-under-thing report))
         (str "each reaches thing by a genl path visible from CxWell; "
@@ -1066,7 +1067,8 @@
     (is (true? (v/isa? kb 'and 'variable_arity)))
     (is (true? (v/isa? kb 'or 'variable_arity))))
   (testing "and so neither is a type the not-under-thing sweep asks to place"
-    (is (nil? (:not-under-thing (v/kb-integrity kb #{'not 'implies} 'CxWell))))))
+    (is (nil? (:not-under-thing (v/kb-integrity kb #{'not 'implies} 'CxWell
+                                                {:categories #{:not-under-thing}}))))))
 
 (tu/deftest-kb the-quantifiers-are-quantifiers-and-not-connectives
   ;; OE 6: forall, thereExists and exists are declared quantifier instances in CxUniverse —
