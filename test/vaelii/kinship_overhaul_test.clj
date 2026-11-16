@@ -323,19 +323,18 @@
                       (list 'kinOf Carrier Ann)]]
       (is (not (proves? kb sentence K)) (str sentence " has no proof from carrying")))))
 
-(tu/deftest-kb two-genetic-mothers-remain-distinct-and-the-function-does-not-choose
+(tu/deftest-kb two-genetic-mothers-remain-distinct
   (tu/with-terms [Ann FirstMother SecondMother]
     (doseq [sentence [(list (genetic 'motherOf) Ann FirstMother)
                       (list (genetic 'motherOf) Ann SecondMother)]]
       (v/assert kb sentence K))
-    (v/assert kb (list 'comment (list 'MotherFn Ann) "An unresolved mother name") K)
     (is (true? (v/ask? kb (list (genetic 'motherOf) Ann FirstMother) K)))
     (is (true? (v/ask? kb (list (genetic 'motherOf) Ann SecondMother) K)))
     (is (not (v/same-class? kb FirstMother SecondMother)))
-    (is (not (v/ask? kb (list 'functional 'motherOf) K)))
-    (is (not (v/ask? kb (list 'functional (genetic 'motherOf)) K)))
-    (doseq [mother [FirstMother SecondMother]]
-      (is (not (proves? kb (list 'equals (list 'MotherFn Ann) mother) K))))
+    (doseq [predicate ['motherOf (genetic 'motherOf)]]
+      (is (not (v/ask? kb (list 'functional predicate) K)))
+      (is (not (v/ask? kb (list 'functionalInArg predicate 2) K))))
+    (is (not (proves? kb (list 'equals FirstMother SecondMother) K)))
     (is (empty? (v/contradictions kb)))))
 
 (tu/deftest-kb a-reading-named-by-a-plain-symbol-gets-its-inputs-copied-properties

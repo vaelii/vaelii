@@ -90,22 +90,14 @@
 (arg eats 1 animal)
 (arg eats 2 food)
 
-(comment FatherFn
-         "(FatherFn ?animal) denotes the genetic father of ?animal when its genetic-parentage reading determines one.")
-(implementationNote FatherFn "A written application names its own opaque constant. The correspondence is to genetic fatherOf, not unqualified fatherOf. One visible monotonic genetic father reaches the constant through a supported rewriteOf merge; withdrawing its premise withdraws the restated uses. With several visible values the correspondence selects none and does not merge them. See docs/nat.md.")
-(reifiable_function FatherFn)
-(unary_function FatherFn)
-(set/monotonic (time_invariant_relation FatherFn))
-(functionCorrespondingBinaryPredicate FatherFn (GeneticKinFn fatherOf))
-(arg FatherFn 1 animal)
-(result FatherFn animal)
-
 (comment fatherOf
          "(fatherOf ?child ?father) means ?father is a father of ?child, genetically or by choice. The child is the first argument.")
 (set/monotonic (instance_relation_predicate fatherOf))
 (arg fatherOf 1 causal)
 (arg fatherOf 2 causal)
 (unqualified_kinship_predicate fatherOf)
+;; Not functional: a child can have more than one father.
+(not (functional fatherOf))
 
 (comment grandparentOf
          "(grandparentOf ?grandparent ?grandchild) means that ?grandparent is a parent of a parent of ?grandchild. Derived by a joined rule over two parentOf facts rather than asserted, so it is believed exactly as long as both links are.")
@@ -177,21 +169,15 @@
 (orthogonal animal dead)
 (orthogonal animal alive)
 
-(comment MotherFn
-         "(MotherFn ?animal) denotes the genetic mother of ?animal when its genetic-parentage reading determines one.")
-(reifiable_function MotherFn)
-(unary_function MotherFn)
-(set/monotonic (time_invariant_relation MotherFn))
-(functionCorrespondingBinaryPredicate MotherFn (GeneticKinFn motherOf))
-(arg MotherFn 1 animal)
-(result MotherFn animal)
-
 (comment motherOf
          "(motherOf ?child ?mother) means ?mother is a mother of ?child, genetically or by choice. The child is the first argument. One child may have more than one mother.")
 (set/monotonic (instance_relation_predicate motherOf))
 (arg motherOf 1 causal)
 (arg motherOf 2 causal)
 (unqualified_kinship_predicate motherOf)
+;; Not functional: a child can have more than one mother, and more than one genetic
+;; mother.
+(not (functional motherOf))
 
 (comment olderThan
          "(olderThan ?organism1 ?organism2) means that ?organism1 was born before ?organism2. CxKinship concludes it from two birthYearOf values in order, so it holds whenever both birth years are known and ordered. Declared transitive, the same instance-level strict order heavierThan and tallerThan are: born-before composes, so two stated comparisons carry the third with no birth year written down.")

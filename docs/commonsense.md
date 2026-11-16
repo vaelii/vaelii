@@ -49,7 +49,7 @@ vocabulary to make sense, it is a subsystem test wearing the wrong hat.
 | closed extents | told the sibling relation is completely known, are these two not siblings | [naf.md](naf.md) |
 | abduction | why would a dog not be awake | [abduction.md](abduction.md) |
 | equality | two names arrive for one person | [equality.md](equality.md) |
-| non-atomic terms | who is the mother of this dog, named or not | [nat.md](nat.md) |
+| non-atomic terms | the start of an interval, named or not | [nat.md](nat.md) |
 | skolemization | every dog had a mother, whether or not anyone knows who | [skolem.md](skolem.md) |
 | quantity | does a kilogram outweigh 999 grams; which animal is heavier | [quantity.md](quantity.md) |
 | mereology | where is the piston, given where the car is | [contexts.md](contexts.md) |
@@ -102,15 +102,6 @@ not make this dog heavier than that cat.
 measure cannot, because nobody has the figure. A tub fills while the tap beats the drain,
 and the KB says so from four sentences none of which mentions a litre
 ([sign.md](sign.md)).
-
-**`motherOf` / `fatherOf`, with `MotherFn` / `FatherFn` beside them.** The reified
-functions are what let a KB name somebody by their role before it knows their name, and
-each written application mints its own constant. A uniquely determined monotonic genetic
-parent reaches that constant through a supported `rewriteOf` merge; withdrawing its
-premise withdraws the restated uses, not the application's own constant. The shipped functions correspond to
-`(GeneticKinFn motherOf)` and `(GeneticKinFn fatherOf)`, not the unqualified family predicates.
-Several visible mothers remain distinct; without a unique admissible genetic value the correspondence
-selects none and does not merge them.
 
 **The event calculus, and the fluents to run it on.** `CxChange` ships the inertia
 axioms and `time.txt` the vocabulary they are stated in, so *asleep at four* is a question

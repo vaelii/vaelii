@@ -18,8 +18,6 @@
                   fatherOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
                   siblingOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
                   grandparentOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
-                  ancestorOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."
-                  MotherFn "Corresponds to genetic motherOf; several mothers select none."
-                  FatherFn "Corresponds to genetic fatherOf."}
- :retired        #{chosenSiblingOf}
+                  ancestorOf "Unqualified genetic-or-chosen reading; use GeneticKinFn for genetic descent."}
+ :retired        #{chosenSiblingOf FatherFn MotherFn}
  :api            {}}

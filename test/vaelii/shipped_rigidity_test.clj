@@ -141,10 +141,8 @@
 (tu/deftest-kb interpretation-predicates-are-time-agnostic
   (all-of-kind kb 'time_agnostic_relation '[means denotes] 'CxUniverse))
 
-(tu/deftest-kb biology-and-parent-functions-are-time-invariant
-  (all-of-kind kb 'time_invariant_relation
-               '[mortal warm_blooded MotherFn FatherFn]
-               'CxUniverse))
+(tu/deftest-kb biology-predicates-are-time-invariant
+  (all-of-kind kb 'time_invariant_relation '[mortal warm_blooded] 'CxUniverse))
 
 (tu/deftest-kb social-relations-are-time-varying
   (all-of-kind kb 'time_varying_relation

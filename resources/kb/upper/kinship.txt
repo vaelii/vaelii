@@ -152,8 +152,6 @@
 (set/monotonic (symmetric sharesGenesWith))
 (set/monotonic (eternal_predicate sharesGenesWith))
 
-(implementationNote MotherFn "A correspondence with more than one visible value resolves no function application to a selected mother. A child can have two genetic mothers; the values remain distinct and the function chooses neither.")
-
 ;; Chimerism blocks the ordinary genetic reading without denying shared genes.
 (exceptWhen (genetic_chimera ?first)
  (set/defaultRule

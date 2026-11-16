@@ -132,7 +132,7 @@
     (fn [x p _] (list 'transitiveInArg p 1 x))
     (fn [x p _] (list 'contextArgSubrelation x 1 p))
     (fn [x p _] (list 'functionCorrespondingPredicate x p 2))
-    (fn [x _ _] (list 'functionCorrespondingPredicate 'MotherFn x 2))]))
+    (fn [x _ _] (list 'functionCorrespondingPredicate 'StartFn x 2))]))
 
 (tu/deftest-kb a-value-in-a-relation-position-is-not-well-formed
   ;; a value denotes itself, so it names no predicate and no function

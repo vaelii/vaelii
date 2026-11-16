@@ -20,14 +20,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
   becomes `kinOf`; `GeneticKinFn` qualifies eternal genetic history and `ChosenKinFn`
   qualifies time-varying chosen ties. Unqualified kinship is time-agnostic. Gestational-only
   parenthood and surrogacy are not genetic kin and specialize no parent or mother predicate.
-  Mothers are not unique; `MotherFn` does not choose between several known mothers.
+  A child can have more than one mother or father, so `life.txt` states
+  `(not (functional motherOf))` and `(not (functional fatherOf))`, and `MotherFn` and
+  `FatherFn` are retired. `resources/renames/unreleased.edn` records both as retired, so
+  `upgrade --sync` reports a stored premise that names either.
   Named genetic/chosen predicates keep separately justified constructor results and
   correspondences; removing a use removes only the proofs that depend on it.
   `originatorOf` admits organisms and no longer specializes kinship.
   *Migration:* rename `relativeOf` to `kinOf`; use `GeneticKinFn` for genetic descent,
   and state gestational-only parenthood or surrogacy with `gestationalOnlyParentOf` or
   `surrogateMotherOf`. Unqualified facts no longer assert genetic descent or eternity.
-  `MotherFn` and `FatherFn` correspond to their genetic predicates.
+  State `motherOf` or `fatherOf` facts directly where a KB wrote `(MotherFn ?x)` or
+  `(FatherFn ?x)`.
   *Breaks:* `relativeOf`, `parentOf`, `childOf`, `motherOf`, `fatherOf`, `siblingOf`,
   `grandparentOf`, `ancestorOf`, `MotherFn`, `FatherFn`, `originatorOf`
 - **CxTra drops `chosenSiblingOf` for `(ChosenKinFn siblingOf)`.** `chosenSiblingOf`, a
@@ -52,6 +56,13 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Additive: shipped ontology
 
+- **A function's corresponding predicate is functional at the value position.** A
+  `core.txt` rule concludes `(functionalInArg ?predicate ?position)` from each
+  `(functionCorrespondingPredicate ?function ?predicate ?position)`, since a function has
+  one value for each argument tuple. Each shipped correspondence's predicate, `startOf`,
+  `calendarYear` and `listOf` among them, takes the mark, and two `:monotonic` symbol
+  values at the position merge.
+  [nat.md](docs/nat.md#the-corresponding-predicate)
 - **`injective_function`, `surjective_function` and `bijective_function` are types of
   function.** `core.txt` declares each below `function`, decontextualized, time-invariant
   and forced-monotonic, as its predicate twin is. `bijective_function` is below the other

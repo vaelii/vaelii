@@ -712,7 +712,7 @@
 ;; ---- 7. no-op cost -------------------------------------------------------
 
 (deftest with-no-reifiable-function-the-reify-pass-is-a-no-op
-  ;; life.txt declares FatherFn reifiable, so the KB here is an empty one of its own.
+  ;; kinship.txt declares GeneticKinFn reifiable, so the KB here is an empty one of its own.
   (tu/with-cleared-kb [kb tu/isolated-fresh]
     (tu/with-terms [FruitFn AppleTree]
       (testing "the presence check answers false and a plain compound is stored verbatim"
@@ -2543,8 +2543,8 @@
       (is (= :not-well-formed (:type (ex-data e)))))))
 
 (tu/deftest-kb the-shipped-correspondences-state-their-position
-  (is (true? (v/ask? kb '(functionCorrespondingBinaryPredicate MotherFn (GeneticKinFn motherOf)) 'CxUniverse)))
-  (is (true? (v/ask? kb '(functionCorrespondingPredicate MotherFn (GeneticKinFn motherOf) 2) 'CxUniverse)))
+  (is (true? (v/ask? kb '(functionCorrespondingBinaryPredicate StartFn startOf) 'CxUniverse)))
+  (is (true? (v/ask? kb '(functionCorrespondingPredicate StartFn startOf 2) 'CxUniverse)))
   (is (true? (v/ask? kb '(functionCorrespondingPredicate QuantityFn measureInUnit 3) 'CxUniverse)))
   (is (true? (v/ask? kb '(functionCorrespondingPredicate InstantFn calendarInstant 7) 'CxUniverse)))
   (is (empty? (filter #(and (= 'functionCorrespondingPredicate (first (:sentence %)))

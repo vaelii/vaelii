@@ -569,7 +569,7 @@
 (comment sentence "A closed formula. Every stored sentex holds one — checks/check-ground refuses an open non-rule sentence, and a rule's variables are implicitly universal.")
 (negativeExampleComment sentence "a possibly-open goal, which is a pattern")
 (comment non_atomic_term "A function applied to as many closed terms as it takes. The NAT of docs/nat.md, named here as a collection so a declaration can say an argument is one.")
-(positiveExampleComment non_atomic_term "the term (MotherFn Muffet)")
+(positiveExampleComment non_atomic_term "the term (GeneticKinFn motherOf)")
 (unary_predicate formula)
 (unary_predicate sentence)
 (unary_predicate non_atomic_term)
@@ -2507,7 +2507,7 @@
 (set/monotonic (genl bijective_function surjective_function))
 
 (comment functionCorrespondingPredicate
-         "(functionCorrespondingPredicate ?function ?predicate ?position) means that ?function and ?predicate state the same relationship: ?function maps some arguments to a value exactly when ?predicate holds of those same arguments with the value at ?position, 1-based over ?predicate's arguments. So (functionCorrespondingPredicate MotherFn motherOf 2) makes (MotherFn Muffet) resolve to the Mary of a believed (motherOf Muffet Mary), and, where no mother is known, projects the placeholder constant it mints back onto motherOf so the placeholder still answers questions about who Muffet's mother is. Reading it both ways is what stops the function and the predicate from being one claim the KB can reason with only half of, and a value arriving after its application is equated with the placeholder, so the order the two are asserted in does not decide the answer. A function may correspond to several predicates. A function and predicate pair has one position, and a predicate and position have one function. functionCorrespondingBinaryPredicate states the common case, a binary predicate with the value second. Read only for a reifiable_function, an undeclared function having no application to reify. See docs/nat.md.")
+         "(functionCorrespondingPredicate ?function ?predicate ?position) means that ?function and ?predicate state the same relationship: ?function maps some arguments to a value exactly when ?predicate holds of those same arguments with the value at ?position, 1-based over ?predicate's arguments. So (functionCorrespondingPredicate GeneticKinFn geneticVersionOf 2) makes (GeneticKinFn siblingOf) resolve to the ?genetic of a believed (geneticVersionOf siblingOf ?genetic), and, where none is known, projects the placeholder constant it mints back onto geneticVersionOf so the placeholder still answers questions about which relation is siblingOf's genetic reading. Reading it both ways is what stops the function and the predicate from being one claim the KB can reason with only half of, and a value arriving after its application is equated with the placeholder, so the order the two are asserted in does not decide the answer. A function may correspond to several predicates. A function and predicate pair has one position, and a predicate and position have one function. functionCorrespondingBinaryPredicate states the common case, a binary predicate with the value second. Read only for a reifiable_function, an undeclared function having no application to reify. See docs/nat.md.")
 (ternary_predicate functionCorrespondingPredicate)
 (set/monotonic (time_invariant_relation functionCorrespondingPredicate))
 (arg functionCorrespondingPredicate 1 function)
@@ -2517,7 +2517,7 @@
 (functionalInArg functionCorrespondingPredicate 1)
 
 (comment functionCorrespondingBinaryPredicate
-         "(functionCorrespondingBinaryPredicate ?function ?predicate) means (functionCorrespondingPredicate ?function ?predicate 2): ?predicate is binary and holds of ?function's argument and then its value. So (functionCorrespondingBinaryPredicate MotherFn motherOf) says (MotherFn Muffet) is the Mary of (motherOf Muffet Mary). The rule below concludes the ternary, which is the only form the engine reads. See docs/nat.md.")
+         "(functionCorrespondingBinaryPredicate ?function ?predicate) means (functionCorrespondingPredicate ?function ?predicate 2): ?predicate is binary and holds of ?function's argument and then its value. So (functionCorrespondingBinaryPredicate StartFn startOf) says (StartFn ?interval) is the ?instant of (startOf ?interval ?instant). The rule below concludes the ternary, which is the only form the engine reads. See docs/nat.md.")
 (binary_predicate functionCorrespondingBinaryPredicate)
 (set/monotonic (time_invariant_relation functionCorrespondingBinaryPredicate))
 (arg functionCorrespondingBinaryPredicate 1 function)
@@ -2526,6 +2526,15 @@
  (implies
   (functionCorrespondingBinaryPredicate ?function ?predicate)
   (functionCorrespondingPredicate ?function ?predicate 2)))
+
+;; A function maps its arguments to at most one value, so its corresponding predicate
+;; holds of those arguments with at most one thing at the value position.  The rule
+;; below states that, so a correspondence's predicate is functional at the position it
+;; names, whatever arity the predicate has.
+(set/forwardRule
+ (implies
+  (functionCorrespondingPredicate ?function ?predicate ?position)
+  (functionalInArg ?predicate ?position)))
 
 ;; A function's result type is the type of the value its corresponding predicate holds,
 ;; so the rule below types the predicate's argument at the stated position by the
@@ -2536,9 +2545,10 @@
    (functionCorrespondingPredicate ?function ?predicate ?position)
    (result ?function ?type))
   (arg ?predicate ?position ?type)))
-;; arg is forced-monotonic, and a rule concludes a forced-monotonic literal only from
-;; forced-monotonic antecedents, so the predicates these rules read are forced-monotonic
-;; too: functionCorrespondingPredicate and result for the typing rule, and
+;; arg and functionalInArg are forced-monotonic, and a rule concludes a forced-monotonic
+;; literal only from forced-monotonic antecedents, so the predicates these rules read are
+;; forced-monotonic too: functionCorrespondingPredicate for the functionality rule,
+;; functionCorrespondingPredicate and result for the typing rule, and
 ;; functionCorrespondingBinaryPredicate for the rule concluding a correspondence.
 ;; Without them every firing above is void.
 (forced_monotonic_predicate functionCorrespondingPredicate)
@@ -2610,7 +2620,7 @@
 (not_assertible maxCommonSpec)
 
 (comment reifiable_function
-         "(reifiable_function ?function) means that ?function denotes an object. A ground application of it is a non-atomic term, and reifies to an opaque nat/-namespaced constant before it reaches the index, so it autoindexes like an atomic symbol while every page still renders it as the expression it was minted from. Declare it when the applications are BOUNDED — one value per argument tuple, over a domain that does not run away: (FatherFn Muffet) is one constant per animal, and an AdultFn one per individual. That is the criterion the two marks are chosen by, reification storing a constant per distinct application and keeping it. Also a type: (reifiable_function F) classifies F as a function, so a KB can be queried for the functions it holds. See docs/nat.md.")
+         "(reifiable_function ?function) means that ?function denotes an object. A ground application of it is a non-atomic term, and reifies to an opaque nat/-namespaced constant before it reaches the index, so it autoindexes like an atomic symbol while every page still renders it as the expression it was minted from. Declare it when the applications are BOUNDED — one value per argument tuple, over a domain that does not run away: (GeneticKinFn motherOf) is one constant per kinship predicate, and an AdultFn one per individual. That is the criterion the two marks are chosen by, reification storing a constant per distinct application and keeping it. Also a type: (reifiable_function F) classifies F as a function, so a KB can be queried for the functions it holds. See docs/nat.md.")
 (unary_predicate reifiable_function)
 (set/monotonic (time_invariant_relation reifiable_function))
 

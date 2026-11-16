@@ -250,7 +250,7 @@
 11	44	test/vaelii/client_surface_test.clj
 16	79	test/vaelii/columnar_index_oracle_test.clj
 9	56	test/vaelii/common_sense_qualitative_test.clj
-8	156	test/vaelii/common_sense_test.clj
+8	147	test/vaelii/common_sense_test.clj
 20	121	test/vaelii/commutative_test.clj
 15	37	test/vaelii/computed_support_test.clj
 2	9	test/vaelii/computing_test.clj
