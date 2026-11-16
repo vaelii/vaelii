@@ -241,18 +241,25 @@
                     ;; is in place before the first one loads, and so the counting cannot
                     ;; depend on which namespace happened to require it.
                     ;; `VAELII_TEST_VERDICTS` prints one pass/fail line per test the same
-                    ;; way, which `lein test-red` reads.
+                    ;; way, which `lein test-red` reads.  `VAELII_TEST_NS_REPEAT=n` runs
+                    ;; each namespace n times in the one JVM, for scripts/lib/ns-timings.sh's
+                    ;; rerun.
                     :injections
                     [(require 'vaelii.impl.logging 'vaelii.impl.config)
                      ((resolve 'vaelii.impl.logging/set-level)
                       (keyword (or (some-> (System/getenv "VAELII_TEST_LOG_LEVEL") .trim not-empty) "error")))
-                     (let [prop-bool (resolve 'vaelii.impl.config/prop-bool)]
+                     (let [prop-bool (resolve 'vaelii.impl.config/prop-bool)
+                           prop-long (resolve 'vaelii.impl.config/prop-long)
+                           repeat-n  (prop-long "VAELII_TEST_NS_REPEAT" 1 1 100)]
                        (when (prop-bool "VAELII_TEST_NS_COUNTS" false)
                          (require 'vaelii.ns-counts)
                          ((resolve 'vaelii.ns-counts/install!)))
                        (when (prop-bool "VAELII_TEST_VERDICTS" false)
                          (require 'vaelii.ns-counts)
-                         ((resolve 'vaelii.ns-counts/install-verdicts!))))]}
+                         ((resolve 'vaelii.ns-counts/install-verdicts!)))
+                       (when (< 1 repeat-n)
+                         (require 'vaelii.ns-counts)
+                         ((resolve 'vaelii.ns-counts/install-repeat!) repeat-n)))]}
              ;; sampling profiler for a repl: `(prof/profile (…))`, flamegraphs under
              ;; /tmp/clj-async-profiler/results/, `(prof/serve-ui 8080)`. The -XX pair
              ;; keeps inlined frames off their caller's line; the attach flag is how it

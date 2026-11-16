@@ -123,8 +123,10 @@ jobs:
     # over two runs the slowest disk shard took 17m15s and the slowest memory
     # shard 15m51s. 25 minutes is 1.45x the slower of those, so a shard that
     # reaches it has grown, which is a change to investigate rather than a slow
-    # runner to wait out.
-    timeout-minutes: 25
+    # runner to wait out.  The rerun of the slow namespaces adds up to 10 minutes:
+    # three runs of the heaviest namespace, 159 s, and the 100 s dump build.  The
+    # suite step reads this figure as SHARD_TIMEOUT_MINUTES.
+    timeout-minutes: 35
     strategy:
       # Run every shard to completion: a bug living in one shard's namespaces
       # should not be hidden by another shard going red first.
@@ -132,6 +134,9 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      # The suite step measures the time the job has left from here.
+      - run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
       # No credentials left in .git/config: nothing here pushes, and a token
       # sitting in the workspace is reachable by anything the build runs.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -203,6 +208,7 @@ jobs:
         id: suite
         env:
           VAELII_TEST_BACKEND: memory
+          SHARD_TIMEOUT_MINUTES: 35  # the job's timeout-minutes
         run: |
           set -o pipefail
           mkdir -p target/ci/timings-memory
@@ -218,14 +224,16 @@ jobs:
           log="target/ci/test-memory-shard-${{ matrix.shard }}.log"
           # shellcheck disable=SC2086
           lein test $nss 2>&1 | ns_timings "$t" | tee "$log"
-          # A namespace slower than this runner's speed accounts for runs once more,
-          # and the smaller of its two times is the one the `weights` job reads
-          # (scripts/lib/ns-timings.sh, `ns_timings_rerun`).
+          # The namespaces slower than this runner's speed accounts for run three
+          # more times each in one JVM, and the smallest of a namespace's times is
+          # the one the `weights` job reads (scripts/lib/ns-timings.sh, `ns_timings_rerun`).
+          # The rerun runs when it is predicted to finish 2 minutes before the timeout.
           if [ -f target/ci-baseline/memory.tsv ]; then
             slow=$(scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --list target/ci-baseline/memory.tsv) \
               || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
+            left=$((SHARD_TIMEOUT_MINUTES * 60 - ($(date +%s) - JOB_STARTED) - 120))
             # shellcheck disable=SC2086
-            if ns_timings_rerun_fits target/ci-baseline/memory.tsv "$nss" $slow; then
+            if ns_timings_rerun_fits target/ci-baseline/memory.tsv "$left" $slow; then
               ns_timings_rerun "$t" $slow | tee -a "$log"
             fi
           fi
@@ -286,12 +294,14 @@ jobs:
     if: github.event_name != 'schedule' || github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
     # memory-shard's timeout, from the same figures
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      - run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -341,6 +351,7 @@ jobs:
           # (docs/storage.md) — the same end of the axis the retired single
           # `disk` leg ran.
           VAELII_TEST_BACKEND: disk-log
+          SHARD_TIMEOUT_MINUTES: 35  # the job's timeout-minutes
         run: |
           set -o pipefail
           export JVM_OPTS="-Dvaelii.disk.dir=$RUNNER_TEMP/vaelii-disk"
@@ -356,8 +367,9 @@ jobs:
           if [ -f target/ci-baseline/disk.tsv ]; then
             slow=$(scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --list target/ci-baseline/disk.tsv) \
               || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
+            left=$((SHARD_TIMEOUT_MINUTES * 60 - ($(date +%s) - JOB_STARTED) - 120))
             # shellcheck disable=SC2086
-            if ns_timings_rerun_fits target/ci-baseline/disk.tsv "$nss" $slow; then
+            if ns_timings_rerun_fits target/ci-baseline/disk.tsv "$left" $slow; then
               ns_timings_rerun "$t" $slow | tee -a "$log"
             fi
           fi
