@@ -128,30 +128,43 @@
     :type-position (or (ask? kb (list 'genl y type) ctx)
                        (ask? kb (list 'unary_predicate y) ctx))))
 
+(defn- admissible-binding?
+  "Does the binding `b` carry a determinate `?y` satisfying every slot constraint in
+  `typings` in `ctx`?  A binding that carries no `?y` is not a filler: the registry
+  answers a goal with `[{}]` where a prover proves it without binding anything, and a
+  typing question about nil is not a membership question."
+  [kb typings ctx b]
+  (let [y (get b '?y)]
+    (and (some? y)
+         (not (indeterminate-term? kb y ctx))
+         (every? #(satisfies-typing? kb y % ctx) typings))))
+
 (defn- admissible-filler?
   "Does at least one **determinate** filler `y`, believed at slot `n` of `pred`'s
-  tuples about `x` in `ctx`, satisfy every derived slot constraint in `typings`?
-  Named for both bites: a violation means no filler was determinate *and*
-  contract-satisfying — absence, a skolem, and a constraint-failing filler all read
-  the same from the caller's side.
+  tuples about `x` in `ctx`, satisfy every derived slot constraint in `typings`
+  (`admissible-binding?`)?  Named for both bites: a violation means no filler was
+  determinate *and* contract-satisfying — absence, a skolem, and a constraint-failing
+  filler all read the same from the caller's side.
 
-  `n` is the audited slot — 2 audits `(pred x ?y)`, 1 audits `(pred ?y x)` — the one
-  place the position is turned into a goal shape, fed by the same `n`
-  `specified-violations` derived the typings with.
-
-  A binding that carries no `?y` is not a filler: the registry answers a goal with
-  `[{}]` where a prover proves it without binding anything, and a typing question
-  about nil is not a membership question."
+  `n` is the audited slot — 2 audits `(pred x ?y)`, 1 audits `(pred ?y x)` — fed by the
+  same `n` `specified-violations` derived the typings with."
   [kb pred x typings n ctx]
-  (let [goal    (if (= n 2) (list pred x '?y) (list pred '?y x))
-        answers (quasiquote/ask-prepared kb goal ctx)]
-    (boolean
-     (some (fn [b]
-             (let [y (get b '?y)]
-               (and (some? y)
-                    (not (indeterminate-term? kb y ctx))
-                    (every? #(satisfies-typing? kb y % ctx) typings))))
-           answers))))
+  (let [goal (if (= n 2) (list pred x '?y) (list pred '?y x))]
+    (boolean (some #(admissible-binding? kb typings ctx %)
+                   (quasiquote/ask-prepared kb goal ctx)))))
+
+(defn- filler-table
+  "`pred`'s believed tuples in `ctx` read by one open goal, `(pred ?x ?y)` for slot `n`
+  2 or `(pred ?y ?x)` for 1, as the bindings grouped by their `?x`.  An answer with
+  `?x` bound to `x` answers the bound goal `admissible-filler?` asks about `x`, so a
+  term the table admits is admitted by that ask.  A budget or deadline signal from the
+  read propagates, and any other throw answers the empty table."
+  [kb pred n ctx]
+  (let [goal (if (= n 2) (list pred '?x '?y) (list pred '?y '?x))]
+    (try
+      (group-by #(get % '?x) (quasiquote/ask-prepared kb goal ctx))
+      (catch Exception e
+        (if (or (budget/exhausted e) (budget/unit-over? e)) (throw e) {})))))
 
 (defn- member-selector
   [kb]
@@ -273,8 +286,9 @@
   `specified-violations` judges one, kept where `eligible?` admits it.  `eligible?` is the
   unquoted twin's defining-home eligibility.  `{:status :gap :gap :non-syntactic-type :pred
   :type}` when `qtype` is below no `expression`, and `:missing-slot-typing` and
-  `:incomplete-defining-contexts` as the unquoted twin gives them.  See docs/predall.md,
-  \"Quoted Specified\"."
+  `:incomplete-defining-contexts` as the unquoted twin gives them.  A term whose
+  `filler-table` entry holds an admissible binding is admitted without its own ask, and
+  every other term takes `admissible-filler?`.  See docs/predall.md, \"Quoted Specified\"."
   ([kb pred qtype ctx] (quoted-specified-violations kb pred qtype ctx :second))
   ([kb pred qtype ctx arg-pos]
    (let [eligible? (member-selector kb)]
@@ -293,19 +307,22 @@
        (let [typings (slot-typings kb pred n ctx)]
          (if (empty? typings)
            {:status :gap :gap :missing-slot-typing :pred pred :position n}
-           (try
-             {:status :audited
-              :violations
-              (into #{}
-                    (comp (filter #(of-written-kind? kb tax % qtype ctx))
-                          (remove #(admissible-filler? kb pred % typings n ctx))
-                          (filter eligible?))
-                    (written-terms kb ctx))}
-             (catch clojure.lang.ExceptionInfo e
-               (if (= :incomplete-defining-contexts (:type (ex-data e)))
-                 (merge {:status :gap :gap :incomplete-defining-contexts :pred pred}
-                        (select-keys (ex-data e) [:term :handles]))
-                 (throw e))))))))))
+           (let [table (filler-table kb pred n ctx)
+                 admitted? #(or (some (partial admissible-binding? kb typings ctx) (get table %))
+                                (admissible-filler? kb pred % typings n ctx))]
+             (try
+               {:status :audited
+                :violations
+                (into #{}
+                      (comp (filter #(of-written-kind? kb tax % qtype ctx))
+                            (remove admitted?)
+                            (filter eligible?))
+                      (written-terms kb ctx))}
+               (catch clojure.lang.ExceptionInfo e
+                 (if (= :incomplete-defining-contexts (:type (ex-data e)))
+                   (merge {:status :gap :gap :incomplete-defining-contexts :pred pred}
+                          (select-keys (ex-data e) [:term :handles]))
+                   (throw e)))))))))))
 
 (defn- exists-reading
   "`[subjects goal filler-type placeholder]` for the *Exists* declaration `(functor pred a

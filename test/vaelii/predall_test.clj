@@ -1509,3 +1509,77 @@
     (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
     (is (= {:status :gap :gap :non-syntactic-type :pred 'comment :type fictional_defined}
            (predall/quoted-specified-violations kb 'comment fictional_defined CxTest)))))
+
+(defn- quoted-outcome
+  "`(f)`'s result, or the message and data of the `ExceptionInfo` it throws."
+  [f]
+  (try (f) (catch clojure.lang.ExceptionInfo e {:thrown (ex-message e) :data (ex-data e)})))
+
+(defn- quoted-paths
+  "`[table per-term]`: `quoted-specified-violations`' outcome on `args` as it runs, and
+  with `filler-table` answering the empty table, so every term takes its own ask."
+  [kb & args]
+  [(quoted-outcome #(apply predall/quoted-specified-violations kb args))
+   (with-redefs-fn {#'predall/filler-table (fn [& _] {})}
+     #(quoted-outcome (fn [] (apply predall/quoted-specified-violations kb args))))])
+
+(defn- bound-only-prover
+  "A prover for `pred` that answers a goal whose subject at slot `n` is ground, and no
+  open goal: `answer` maps a subject to the string filler, or throws when it is `:throw`."
+  [pred n answer]
+  (let [open? #(and (symbol? %) (= \? (first (name %))))]
+    (v/prover {:applicable? (fn [_ goal _]
+                              (and (seq? goal) (= pred (first goal)) (= 3 (count goal))
+                                   (not (open? (nth goal n)))))
+               :solve (fn [_ goal _]
+                        (let [x (nth goal n) y (nth goal (- 3 n))]
+                          (case answer
+                            :throw (throw (ex-info "bound-only prover refuses" {:pred pred}))
+                            (if-let [s (get answer x)] (if (open? y) [{y s}] []) []))))})))
+
+(defn- open-refusing-prover
+  "A prover for `pred` that throws on every goal whose subject at slot `n` is open."
+  [pred n]
+  (v/prover {:applicable? (fn [_ goal _]
+                            (and (seq? goal) (= pred (first goal)) (= 3 (count goal))
+                                 (symbol? (nth goal n)) (= \? (first (name (nth goal n))))))
+             :solve (fn [_ _ _] (throw (ex-info "open read refused" {:pred pred})))}))
+
+(tu/deftest-kb the-quoted-filler-table-agrees-with-the-per-term-asks
+  (tu/with-terms [CxTest fictional_defined Commented Uncommented JimboMcFallible documents
+                  tagged tags refused flaky untyped]
+    (testing "the core fixture KB, in both positions, and its gaps"
+      (doseq [args [['comment 'symbol 'CxUniverse] ['comment 'symbol 'CxUniverse :first]
+                    ['comment fictional_defined 'CxUniverse]]]
+        (let [[table per-term] (apply quoted-paths kb args)]
+          (is (= per-term table) (pr-str args)))))
+    (quoted-fixture kb CxTest fictional_defined Commented Uncommented JimboMcFallible)
+    (doseq [sentence [(list 'binary_predicate documents) (list 'arg documents 1 'string)
+                      (list documents "a note" Commented)
+                      (list 'binary_predicate untyped)]]
+      (v/assert kb sentence CxTest))
+    (doseq [[pred n] [[tagged 2] [tags 1] [refused 2] [flaky 2]]]
+      (v/assert kb (list 'binary_predicate pred) CxTest)
+      (v/assert kb (list 'arg pred n 'string) CxTest))
+    (v/add-prover kb (bound-only-prover tagged 1 {Commented "a tag"}))
+    (v/add-prover kb (bound-only-prover tags 2 {Commented "a tag"}))
+    (v/add-prover kb (bound-only-prover refused 1 :throw))
+    (v/add-prover kb (bound-only-prover flaky 1 {Commented "a tag"}))
+    (v/add-prover kb (open-refusing-prover flaky 1))
+    (testing "the quoted tests' fixtures, a contract gap, and provers answering bound goals only"
+      (doseq [args [['comment 'symbol CxTest] ['comment 'symbol 'CxUniverse]
+                    [documents 'symbol CxTest :first] [untyped 'symbol CxTest]
+                    [tagged 'symbol CxTest] [tags 'symbol CxTest :first]
+                    [refused 'symbol CxTest] [flaky 'symbol CxTest]]]
+        (let [[table per-term] (apply quoted-paths kb args)]
+          (is (= per-term table) (pr-str args)))))
+    (testing "a filler only a bound goal finds still admits its term, the open read refused or not"
+      (doseq [pred [tagged flaky]
+              :let [vs (:violations (predall/quoted-specified-violations kb pred 'symbol CxTest))]]
+        (is (not (contains? vs Commented)) (str pred))
+        (is (contains? vs Uncommented) (str pred))))
+    (testing "the outcomes compared include a gap and a throw"
+      (is (= :missing-slot-typing
+             (:gap (first (quoted-paths kb untyped 'symbol CxTest)))))
+      (is (= "bound-only prover refuses"
+             (:thrown (first (quoted-paths kb refused 'symbol CxTest))))))))
