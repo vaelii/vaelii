@@ -338,7 +338,7 @@
   (let [body (:body (GET "/term" "q=parentOf"))]
     (is (re-find #"<h3>Definition</h3>" body) "the block's section is headed Definition")
     (is (not (re-find #"Definitional block" body)))
-    (is (re-find #"<dt>arg declarations</dt>" body))
+    (is (re-find #"<dt>arg1 constraints</dt>" body))
     (is (re-find #"tag-missing\">missing</span> <a class=\"action\" href=\"/assert\?text=%28\+parentOf%29\">add</a>"
                  body)
         "parentOf carries no relation property, and the link seeds the form with one")))
@@ -401,6 +401,26 @@
           "and not as its sentence")
       (is (re-find (re-pattern (str "/sentex/" (h (list 'functionalInArg relP 2)) "\"")) line)
           "a sentence with more arguments is drawn whole"))))
+
+(tu/deftest-kb a-predicates-argument-types-are-drawn-one-line-per-position
+  (tu/with-terms [relP kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'unary_predicate kindU)
+               (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 1 kindU) (list 'arg relP 2 kindT)
+               (list 'quotedArg relP 2 'closed_expression) (list 'argsGenl relP kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body  (:body (GET "/term" (str "q=" (name relP))))
+          block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+          other (block-line body "arg declarations")]
+      (is (= ["arg1 constraints" "arg2 constraints" "quoted arg2 constraints"]
+             (filter #(re-find #"constraints" %) (map second (re-seq #"<dt>([^<]*)</dt>" block)))))
+      (is (= (vec (sort-by str [kindT kindU])) (vec (sort-by str (linked-terms (block-line body "arg1 constraints"))))))
+      (is (= [kindT] (linked-terms (block-line body "arg2 constraints"))))
+      (is (= '[closed_expression] (linked-terms (block-line body "quoted arg2 constraints"))))
+      (is (not (re-find #"badge-link" (block-line body "arg1 constraints"))) "a type, not a sentence")
+      (is (re-find (re-pattern (str "/sentex/" (v/handle-of kb (list 'argsGenl relP kindT) 'CxUniverse) "\""))
+                   (str other))
+          "argsGenl keeps its sentence"))))
 
 (deftest ^:slow the-stats-page-tallies-the-definitional-blocks-as-a-read-job
   (is (re-find #"action=\"/stats/blocks\"" (:body (GET "/stats"))))
