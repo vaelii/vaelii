@@ -1164,13 +1164,12 @@
 (defn- specified-result
   "The sweep's result for the Specified declaration `[functor pred kind]` in `context`,
   `{:status :audited :violations #{}}` where it holds, as `all-specified-violations`
-  reports it.  Read off `specified-declaration-audits`' Specified section, whose last
-  entry for a key is its combined result, and stop there: the quoted audits that follow
-  sweep every written symbol (core's `(predAllQuotedSpecified comment symbol)`) and
-  answer nothing these tests ask."
+  reports it.  Read off `specified-declaration-audits` restricted to `functor`'s
+  declarations, whose last entry for a key is its combined result.  The restriction
+  skips the quoted audits before any of them runs, since they sweep every written symbol
+  (core's `(predAllQuotedSpecified comment symbol)`) and answer nothing these tests ask."
   [kb functor pred kind context]
-  (or (->> (predall/specified-declaration-audits kb context)
-           (take-while #(contains? '#{predAllSpecified predSpecifiedAll} (ffirst %)))
+  (or (->> (predall/specified-declaration-audits kb context {:functors #{functor}})
            (filter #(= [functor pred kind] (first %)))
            last
            second)

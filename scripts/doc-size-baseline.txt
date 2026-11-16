@@ -142,7 +142,7 @@
 7	6	src/vaelii/impl/overlay/rebase.clj
 38	83	src/vaelii/impl/overlay/store.clj
 20	53	src/vaelii/impl/plan.clj
-77	2	src/vaelii/impl/predall.clj
+76	2	src/vaelii/impl/predall.clj
 137	148	src/vaelii/impl/predicates.clj
 3	12	src/vaelii/impl/profile.clj
 57	88	src/vaelii/impl/protocols.clj

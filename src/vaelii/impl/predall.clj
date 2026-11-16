@@ -431,49 +431,52 @@
 
 (defn specified-declaration-audits
   "Every declaration audit as a lazy stream of `[declaration result]` entries.
-
   A stored Specified declaration audits every known reader seeing that requirement and
   an ordinary defining home of an instance, each with its own population, contracts and
   fillers, and the results combine under one canonical key. Native-only registry answers
   retain the supplied context, since their binding maps carry no defining context.
-
-  The open reads are only the unavoidable declaration censuses. Each expensive audit
-  after that is focused on one declared predicate and independent collection. Keeping
-  the units lazy lets the integrity sweep checkpoint and retain progress between them."
-  [kb ctx]
-  (concat
-   (res/lazy-mapcat
-    (fn [[functor arg-pos]]
+  The open reads are the declaration censuses, and each audit after them reads one
+  declared predicate and collection. Laziness lets the integrity sweep checkpoint between
+  units. `opts`' `:functors` set keeps only the sections whose functor it names, and an
+  omitted section runs neither its census nor any audit."
+  ([kb ctx] (specified-declaration-audits kb ctx {}))
+  ([kb ctx opts]
+   (let [functors (:functors opts)
+         wanted?  (if functors #(contains? functors %) (constantly true))
+         only     (fn [f xs] (filter #(wanted? (f %)) xs))]
+     (concat
       (res/lazy-mapcat
-       #(declaration-context-audits
-         kb functor (fn [pred indep reader eligible?]
-                      (specified-violations kb pred indep reader arg-pos eligible?)) %)
-       (declaration-contexts kb functor ctx)))
-    [['predAllSpecified :second] ['predSpecifiedAll :first]])
-   (res/lazy-mapcat
-    (fn [[functor arg-pos]]
+       (fn [[functor arg-pos]]
+         (res/lazy-mapcat
+          #(declaration-context-audits
+            kb functor (fn [pred indep reader eligible?]
+                         (specified-violations kb pred indep reader arg-pos eligible?)) %)
+          (declaration-contexts kb functor ctx)))
+       (only first [['predAllSpecified :second] ['predSpecifiedAll :first]]))
       (res/lazy-mapcat
-       #(declaration-context-audits
-         kb functor (fn [pred qtype reader eligible?]
-                      (quoted-specified-violations kb pred qtype reader arg-pos eligible?)) %)
-       (declaration-contexts kb functor ctx)))
-    [['predAllQuotedSpecified :second] ['predSpecifiedAllQuoted :first]])
-   (res/lazy-mapcat
-    (fn [functor]
+       (fn [[functor arg-pos]]
+         (res/lazy-mapcat
+          #(declaration-context-audits
+            kb functor (fn [pred qtype reader eligible?]
+                         (quoted-specified-violations kb pred qtype reader arg-pos eligible?)) %)
+          (declaration-contexts kb functor ctx)))
+       (only first [['predAllQuotedSpecified :second] ['predSpecifiedAllQuoted :first]]))
       (res/lazy-mapcat
-       (fn [[pred a b]]
-         (list [[functor pred a b]
-                {:status :gap :gap :legacy-ternary-declaration
-                 :pred pred :sentence (list functor pred a b)}]))
-       (legacy-ternary-declarations kb functor ctx)))
-    '[predAllSpecified predSpecifiedAll])
-   (res/lazy-mapcat
-    (fn [functor]
+       (fn [functor]
+         (res/lazy-mapcat
+          (fn [[pred a b]]
+            (list [[functor pred a b]
+                   {:status :gap :gap :legacy-ternary-declaration
+                    :pred pred :sentence (list functor pred a b)}]))
+          (legacy-ternary-declarations kb functor ctx)))
+       (only identity '[predAllSpecified predSpecifiedAll]))
       (res/lazy-mapcat
-       (fn [declaration]
-         (list [declaration (exists-violations kb (apply list declaration) ctx)]))
-       (exists-declarations kb functor ctx)))
-    '[predAllExists predExistsAll predExistsInstance predInstanceExists])))
+       (fn [functor]
+         (res/lazy-mapcat
+          (fn [declaration]
+            (list [declaration (exists-violations kb (apply list declaration) ctx)]))
+          (exists-declarations kb functor ctx)))
+       (only identity '[predAllExists predExistsAll predExistsInstance predInstanceExists]))))))
 
 (defn type-specified-violations
   "Audit `(typeAllSpecified classifier indep)` in `ctx` using believed memberships.
