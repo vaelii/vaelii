@@ -21,8 +21,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   qualifies time-varying chosen ties. Unqualified kinship is time-agnostic. Gestational-only
   parenthood and surrogacy are not genetic kin and specialize no parent or mother predicate.
   A child can have more than one mother or father, so `life.txt` states
-  `(not (functional motherOf))` and `(not (functional fatherOf))`, and `MotherFn` and
-  `FatherFn` are retired. `resources/renames/unreleased.edn` records both as retired, so
+  `(not (functional motherOf))` and `(not (functional fatherOf))`, and `kinship.txt`
+  states the same of `(GeneticKinFn motherOf)` and `(GeneticKinFn fatherOf)`, each with a
+  `comment` giving a case. `MotherFn` and `FatherFn` are retired. `resources/renames/unreleased.edn` records both as retired, so
   `upgrade --sync` reports a stored premise that names either.
   Named genetic/chosen predicates keep separately justified constructor results and
   correspondences; removing a use removes only the proofs that depend on it.

@@ -55,4 +55,6 @@
       (is (empty? (v/ask kb (list 'functionCorrespondingPredicate '?function
                                   (list 'GeneticKinFn predicate) '?position) U))
           "no function corresponds to its genetic reading")
-      (is (not (v/ask? kb (list 'functionalInArg (list 'GeneticKinFn predicate) 2) U))))))
+      (is (not (v/ask? kb (list 'functionalInArg (list 'GeneticKinFn predicate) 2) U)))
+      (is (true? (v/ask? kb (list 'not (list 'functional (list 'GeneticKinFn predicate))) U))
+          "its genetic reading is stated not functional"))))

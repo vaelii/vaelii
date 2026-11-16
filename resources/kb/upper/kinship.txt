@@ -99,6 +99,11 @@
 (genlInverse (ChosenKinFn motherOf) (ChosenKinFn parentOf))
 (genlInverse (ChosenKinFn fatherOf) (ChosenKinFn parentOf))
 
+(not (functional (GeneticKinFn motherOf)))
+(comment (not (functional (GeneticKinFn motherOf))) "A child can have more than one genetic mother. A child conceived by mitochondrial donation has the nuclear DNA of one woman and the mitochondrial DNA of another. A chimera grown from two embryos of different mothers, as an aggregation chimera of mice is, has a genetic mother for each embryo.")
+(not (functional (GeneticKinFn fatherOf)))
+(comment (not (functional (GeneticKinFn fatherOf))) "A child can have more than one genetic father. A chimera grown from two fused embryos, each conceived with a different father's sperm, has a genetic father for each embryo.")
+
 (genl parentOf kinOf)
 (genl childOf kinOf)
 (genl motherOf kinOf)
