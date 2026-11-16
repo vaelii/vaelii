@@ -3463,6 +3463,11 @@
    :props             ["relation properties" (fn [t _] (str "( " t ")"))]
    :links             ["links"               (fn [t _] (str "(seeAlso " t " )"))]})
 
+(def ^:private sibling-cap
+  "How many siblings a Definition block's siblings line shows before the rest are folded
+  behind a \"+ N more\" control that opens them in place."
+  12)
+
 (def ^:private overlap-witness
   "How a sibling row's `:witness` reads beside `overlaps`."
   {:shared-instance "shared instance" :shared-spec "shared subtype"
@@ -3510,18 +3515,22 @@
     (= :siblings part)
     (if (empty? (:rows v))
       [:span.muted "none"]
-      (list (interpose
-             ", "
-             (for [{s :term sep :separation w :witness via :via} (:rows v)
-                   :let [pair (str text " " (term-text env s) ")")]]
-               (list (term-link env s) " "
-                     (case sep
-                       :missing  (missing-mark [["disjoint" (str "(disjoint " pair)]
-                                                ["orthogonal" (str "(orthogonal " pair)]])
-                       :overlaps [:span.muted "overlaps (" (overlap-witness w) " "
-                                  (term-link env via) ")"]
-                       [:span.muted (name sep)]))))
-            (more-note (:total v) (count (:rows v)))))
+      (let [items (for [{s :term sep :separation w :witness via :via} (:rows v)
+                        :let [pair (str text " " (term-text env s) ")")]]
+                    (list (term-link env s) " "
+                          (case sep
+                            :missing  (missing-mark [["disjoint" (str "(disjoint " pair)]
+                                                     ["orthogonal" (str "(orthogonal " pair)]])
+                            :overlaps [:span.muted "overlaps (" (overlap-witness w) " "
+                                       (term-link env via) ")"]
+                            [:span.muted (name sep)])))
+            [head tail] (split-at sibling-cap items)]
+        (list (interpose ", " head)
+              (when (seq tail)
+                (list ", " [:details.sib-more
+                            [:summary "+ " (commas (count tail)) " more"]
+                            (interpose ", " tail)]))
+              (more-note (:total v) (count (:rows v))))))
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
     (= :links part)            (interpose ", " (map #(term-link env %) (related-terms term v)))

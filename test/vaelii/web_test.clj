@@ -423,6 +423,19 @@
                    (str other))
           "argsGenl keeps its sentence"))))
 
+(tu/deftest-kb a-types-siblings-line-shows-twelve-and-opens-the-rest-in-place
+  (let [kids (vec (repeatedly 15 #(tu/tmp-type "sib")))
+        root (tu/tmp-type "sibroot")]
+    (doseq [s (cons (list 'genl root 'thing) (map #(list 'genl % root) kids))]
+      (v/assert kb s 'CxUniverse))
+    (let [line          (block-line (:body (GET "/term" (str "q=" (name (first kids))))) "siblings")
+          [shown folded] (str/split line #"<details" 2)
+          siblings      (vec (sort-by pr-str (rest kids)))]
+      (is (= (subvec siblings 0 12) (linked-terms shown)) "the first twelve, in order")
+      (is (re-find #"<summary>\+ 2 more</summary>" (str folded)))
+      (is (= (subvec siblings 12) (linked-terms (str folded)))
+          "and the other two on the page, behind the control"))))
+
 (deftest ^:slow the-stats-page-tallies-the-definitional-blocks-as-a-read-job
   (is (re-find #"action=\"/stats/blocks\"" (:body (GET "/stats"))))
   (is (nil? (jobs/latest :blocks)) "a page load runs no tally")
