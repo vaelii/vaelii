@@ -259,10 +259,6 @@
         [:arg-declarations :props :links]))
 
 (tu/deftest-kb a-predicates-block-reads-the-kbs-classification-of-its-sentences
-  ;; The parts are read off the KB's block collections, not off fixed tables: a
-  ;; per-position property, an algebraic property outside the five `describe` lists under
-  ;; :props, a well-formedness declaration outside arg's family and a link each land in
-  ;; their part, and a sentence whose predicate is not definitional lands in none.
   (tu/with-terms [relP relQ kindT]
     (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
                (list 'binary_predicate relQ) (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
@@ -284,9 +280,6 @@
       (is (= (set (:arg-declarations d)) (set (:arg-declarations b)))))))
 
 (tu/deftest-kb the-blocks-rows-follow-the-kbs-display-order
-  ;; core.txt's predicateDisplayOrder names transitive among the algebraic properties and
-  ;; neither irreflexive nor functionalInArg, so content order puts functionalInArg first.
-  ;; A second fact naming irreflexive before functionalInArg reverses the two rows.
   (tu/with-terms [relP kindT]
     (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
                (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)

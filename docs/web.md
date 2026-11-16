@@ -1891,7 +1891,8 @@ per-position one such as `(functionalInArg P 2)` shows its position. The links a
 definitional types asserted of the term less its arity class (`unary_predicate`,
 `binary_predicate`, …), which has a line of its own, since the starter loader asserts
 `unary_predicate` of every type. A grant or a refusal mark such as `closed_extent_predicate`
-or `not_assertible` is no kind. The lines follow `predicateDisplayOrder`: a line takes the
+or `not_assertible` is no kind. A membership another line shows as a sentence, such as
+`(irreflexive P)` under the relation properties, is not also a kind. The lines follow `predicateDisplayOrder`: a line takes the
 first position any predicate it shows is named at, and a line none of whose predicates is
 named follows the named ones. The index groups below the block leave out the sentences the
 block shows, so the page shows each assertion about the term once; a group's stored count
