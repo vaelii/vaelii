@@ -336,7 +336,8 @@
 
 (deftest a-term-page-opens-the-assert-form-on-each-missing-part-of-its-block
   (let [body (:body (GET "/term" "q=parentOf"))]
-    (is (re-find #"Definitional block" body))
+    (is (re-find #"<h3>Definition</h3>" body) "the block's section is headed Definition")
+    (is (not (re-find #"Definitional block" body)))
     (is (re-find #"<dt>arg declarations</dt>" body))
     (is (re-find #"tag-missing\">missing</span> <a class=\"action\" href=\"/assert\?text=%28\+parentOf%29\">add</a>"
                  body)
