@@ -3496,22 +3496,47 @@
     (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
 
+(defn- shown-parts
+  "`describe`'s block rows as the page draws them.  The arity class leads the kind line
+  and has no line of its own, and it is left out where the arity line shows the arity."
+  [rows]
+  (let [by     (into {} (map (juxt :part :value)) rows)
+        arity? (not (contains? #{nil :missing} (by :arity)))
+        aclass (by :arity-class)
+        kind   (by :kind)
+        kind*  (cond
+                 (or arity? (not (map? aclass))) kind
+                 (map? kind) (assoc kind :terms (into (vec (:terms aclass)) (:terms kind))
+                                         :total (+ (:total aclass) (:total kind)))
+                 :else       aclass)]
+    (into [] (keep #(case (:part %)
+                      :arity-class nil
+                      :kind        (assoc % :value kind* :arity? arity?)
+                      %))
+          rows)))
+
 (defn- definitional-block
   "The term's definitional block (`describe`'s `:definitional-block`, docs/web.md) under
-  the heading Definition, one line per part in the block's order.  A missing part is tagged, beside a link that
-  opens the assert form on the sentence that would supply it; so is a sibling no
-  declaration separates."
+  the heading Definition, one line per part in the block's order (`shown-parts`).  A
+  missing part is tagged, beside a link that opens the assert form on the sentence that
+  would supply it; so is a sibling no declaration separates."
   [env term {:keys [definitional-block] :as about}]
   (when (seq definitional-block)
-    (let [text (term-text env term)]
+    (let [text  (term-text env term)
+          seeds (fn [part arity?]
+                  (let [[_ seed] (block-parts part)
+                        [_ cls]  (block-parts :arity-class)]
+                    (cond-> (when seed [["add" (seed text about)]])
+                      (and (= :kind part) (not arity?))
+                      (conj ["arity class" (cls text about)]))))]
       [:div.def-block
        [:h3 "Definition"]
        [:dl.def-parts
-        (for [{:keys [part value]} definitional-block
-              :let [[label seed] (block-parts part)]]
+        (for [{:keys [part value arity?]} (shown-parts definitional-block)
+              :let [[label] (block-parts part)]]
           (list [:dt label]
                 [:dd (if (= :missing value)
-                       (missing-mark (when seed [["add" (seed text about)]]))
+                       (missing-mark (seeds part arity?))
                        (block-value env text part value))]))]])))
 
 (defn term-page

@@ -349,6 +349,34 @@
            [(seed "p" {:role :predicate :arity 3}) (seed "p" {:role :predicate :arity 2})
             (seed "p" {:role :predicate}) (seed "t" {:role :type})]))))
 
+(defn- block-line
+  "The `<dd>` the Definition block of the term page `body` draws beside the label `dt`,
+  or nil when the block draws no such line."
+  [body dt]
+  (let [block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))]
+    (second (re-find (re-pattern (str "(?s)<dt>" dt "</dt><dd>(.*?)</dd>")) block))))
+
+(defn- linked-terms
+  "The terms a block line links to, by their page links, in order."
+  [line]
+  (mapv #(symbol (java.net.URLDecoder/decode ^String (second %) "UTF-8"))
+        (re-seq #"href=\"/term\?q=([^\"]+)\"" line)))
+
+(deftest a-predicates-arity-line-stands-in-for-its-arity-class
+  (let [body (:body (GET "/term" "q=parentOf"))]
+    (is (= "2" (block-line body "arity")))
+    (is (nil? (block-line body "arity class")) "the arity class has no line of its own")
+    (is (not (some #{'binary_predicate} (linked-terms (or (block-line body "kind") ""))))
+        "nor is it a kind")))
+
+(tu/deftest-kb a-types-arity-class-is-the-first-of-its-kinds
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing) (list 'type kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body (:body (GET "/term" (str "q=" (name kindT))))]
+      (is (= '[unary_predicate type] (linked-terms (block-line body "kind"))))
+      (is (nil? (block-line body "arity class"))))))
+
 (deftest ^:slow the-stats-page-tallies-the-definitional-blocks-as-a-read-job
   (is (re-find #"action=\"/stats/blocks\"" (:body (GET "/stats"))))
   (is (nil? (jobs/latest :blocks)) "a page load runs no tally")
