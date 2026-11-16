@@ -3419,11 +3419,11 @@
 (set/monotonic (time_invariant_relation predicateDisplayOrder))
 (arityMin predicateDisplayOrder 2)
 (args predicateDisplayOrder predicate)
-;; The order the definitional block is shown in: the annotations, the parents and the
-;; separations, the kinds and the arity class, the arity, the well-formedness
+;; The order the definitional block is shown in: the annotations, the arity, the arity
+;; class and the kinds, the parents and the separations, the well-formedness
 ;; declarations, the algebraic properties, and the links.
 (predicateDisplayOrder comment positiveExampleComment positiveExample negativeExampleComment
-                       negativeExample genl disjoint type unary_predicate arity arg transitive
+                       negativeExample arity unary_predicate type genl disjoint arg transitive
                        seeAlso termsRelated)
 
 ;; ---- in-KB worked examples -----------------------------------------------
