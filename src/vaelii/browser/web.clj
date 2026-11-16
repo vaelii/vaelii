@@ -3543,16 +3543,15 @@
     :else                      (str v)))
 
 (defn- definitional-block
-  "The term's definitional block (`describe`'s `:definitional-block`, docs/web.md), one
-  line per part in the handbook's order.  A missing part is tagged, beside a link that
+  "The term's definitional block (`describe`'s `:definitional-block`, docs/web.md) under
+  the heading Definition, one line per part in the block's order.  A missing part is tagged, beside a link that
   opens the assert form on the sentence that would supply it; so is a sibling no
   declaration separates."
   [env term {:keys [definitional-block] :as about}]
   (when (seq definitional-block)
     (let [text (term-text env term)]
       [:div.def-block
-       [:h3 "Definitional block "
-        [:span.muted "(the parts a term ships with, and which of them the KB holds)"]]
+       [:h3 "Definition"]
        [:dl.def-parts
         (for [{:keys [part value]} definitional-block
               :let [[label seed] (block-parts part)]]
