@@ -22,6 +22,43 @@
   [report]
   (dissoc report :work :elapsed-ms))
 
+(defn- least-budget
+  "The least budget in `[lo, hi]` at which `ok?` holds, found by bisection.  `ok?` must
+  hold at `hi` and at every budget above the least."
+  [ok? lo hi]
+  (loop [lo lo, hi hi]
+    (if (< lo hi)
+      (let [mid (quot (+ lo hi) 2)]
+        (if (ok? mid) (recur lo mid) (recur (inc mid) hi)))
+      hi)))
+
+(defn- work-exhaustion-keeps-the-first-finding
+  "Assert that `run`, a `kb-integrity` report per `:max-work` budget, truncates below the
+  budget that completes it.  Bisection finds `needed`, the least budget below `limit` whose
+  report is `:gap`, and `found`, the least whose report has a `findings`.  Budgets 0, 1,
+  `found` - 1, `found` and `needed` - 1 must report `:truncated` by `:max-work`.  `found`
+  must lie below `needed`, and its report must satisfy `kept?`, which `message` names.
+  `scope` `:tiny`, the only scope, is the sampled budgets over `run`'s population: its
+  candidate terms bound the term-taking passes, and its `:categories` the KB-wide ones.
+  `run` is memoized, under an allowance on `kb` sized to the bisections and samples."
+  [kb run {:keys [scope limit findings kept? message]}]
+  (case scope :tiny nil)
+  (let [bits (- 64 (Long/numberOfLeadingZeros limit))
+        run  (memoize run)
+        gap? #(= :gap (:status (run %)))]
+    (call-cap/allow predall/sweep kb (+ 1 bits bits 5)
+                    "bisection over :max-work budgets and five sampled budgets")
+    (is (gap? (dec limit)) "some finite work budget completes the sweep")
+    (when (gap? (dec limit))
+      (let [needed (least-budget gap? 0 (dec limit))
+            found  (least-budget #(boolean (seq (findings (run %)))) 0 needed)]
+        (doseq [b (distinct [0 1 (dec found) found (dec needed)])
+                :when (< -1 b needed)]
+          (is (= [:truncated :max-work] [(:status (run b)) (:reason (run b))])
+              (str "budget " b " of " needed " is truncated by work")))
+        (is (< found needed) message)
+        (is (kept? (run found)) message)))))
+
 (defn- state-snapshot [kb]
   (let [handles (tu/sentex-ids kb)]
     {:sentexes handles
@@ -743,13 +780,13 @@
       (is (= :gap (:status (v/kb-integrity kb #{} 'CxUniverse {:max-results 2})))))
     (testing "work exhaustion inside the pass is truncated, never audited, and keeps the
               findings completed before it"
-      (let [run    #(v/kb-integrity kb #{} 'CxUniverse {:max-work %})
-            needed (first (filter #(= :gap (:status (run %))) (range 0 1000)))]
-        (is (some? needed) "some finite work budget completes the sweep")
-        (let [partials (map run (range 0 needed))]
-          (is (every? #(and (= :truncated (:status %)) (= :max-work (:reason %))) partials))
-          (is (some #(= 1 (count (:genl-arg-widening %))) partials)
-              "a budget exhausted between the two positions keeps the first finding"))))))
+      (work-exhaustion-keeps-the-first-finding
+       kb #(v/kb-integrity kb #{} 'CxUniverse {:max-work %})
+       {:scope    :tiny
+        :limit    1000
+        :findings :genl-arg-widening
+        :kept?    #(= 1 (count (:genl-arg-widening %)))
+        :message  "a budget exhausted between the two positions keeps the first finding"}))))
 
 ;; ---- not-under-thing ------------------------------------------------------
 
@@ -818,14 +855,13 @@
           (is (= in-order (:not-under-thing report)))))
       (testing "work exhaustion inside the pass is truncated, never audited, and keeps the
                 findings completed before it"
-        (let [run    #(v/kb-integrity kb terms 'CxUniverse {:max-work % :categories without-missing-arg})
-              needed (first (filter #(= :gap (:status (run %))) (range 0 1000)))]
-          (is (some? needed) "some finite work budget completes the sweep")
-          (let [partials (map run (range 0 (or needed 0)))]
-            (is (every? #(and (= :truncated (:status %)) (= :max-work (:reason %)))
-                        partials))
-            (is (some #(= (subvec in-order 0 1) (:not-under-thing %)) partials)
-                "a budget exhausted between the two terms keeps the first finding")))))))
+        (work-exhaustion-keeps-the-first-finding
+         kb #(v/kb-integrity kb terms 'CxUniverse {:max-work % :categories without-missing-arg})
+         {:scope    :tiny
+          :limit    1000
+          :findings :not-under-thing
+          :kept?    #(= (subvec in-order 0 1) (:not-under-thing %))
+          :message  "a budget exhausted between the two terms keeps the first finding"})))))
 
 ;; ---- implicit-genl --------------------------------------------------------
 
@@ -937,14 +973,13 @@
           (is (= in-order (shown report)))))
       (testing "work exhaustion inside the pass is truncated, never audited, and keeps the
                 findings completed before it"
-        (let [run    #(v/kb-integrity kb terms 'CxUniverse {:max-work %})
-              needed (first (filter #(= :gap (:status (run %))) (range 0 2000)))]
-          (is (some? needed) "some finite work budget completes the sweep")
-          (let [partials (map run (range 0 (or needed 0)))]
-            (is (every? #(and (= :truncated (:status %)) (= :max-work (:reason %)))
-                        partials))
-            (is (some #(= (subvec in-order 0 1) (shown %)) partials)
-                "a budget exhausted between the two terms keeps the first finding")))))))
+        (work-exhaustion-keeps-the-first-finding
+         kb #(v/kb-integrity kb terms 'CxUniverse {:max-work %})
+         {:scope    :tiny
+          :limit    2000
+          :findings :implicit-genl
+          :kept?    #(= (subvec in-order 0 1) (shown %))
+          :message  "a budget exhausted between the two terms keeps the first finding"})))))
 
 ;; ---- implicit-arity-class ---------------------------------------------------
 
@@ -1137,13 +1172,13 @@
                        (v/kb-integrity kb #{} 'CxUniverse {:max-results 2}))))))
     (testing "work exhaustion inside the pass is truncated, never audited, and keeps the
               findings completed before it"
-      (let [run    #(v/kb-integrity kb #{} 'CxUniverse {:max-work %})
-            needed (first (filter #(= :gap (:status (run %))) (range 0 2000)))]
-        (is (some? needed) "some finite work budget completes the sweep")
-        (let [partials (map run (range 0 (or needed 0)))]
-          (is (every? #(and (= :truncated (:status %)) (= :max-work (:reason %))) partials))
-          (is (some #(= 1 (count (:orthogonal-over-separation %))) partials)
-              "a budget exhausted between the two orthogonals keeps the first finding"))))))
+      (work-exhaustion-keeps-the-first-finding
+       kb #(v/kb-integrity kb #{} 'CxUniverse {:max-work %})
+       {:scope    :tiny
+        :limit    2000
+        :findings :orthogonal-over-separation
+        :kept?    #(= 1 (count (:orthogonal-over-separation %)))
+        :message  "a budget exhausted between the two orthogonals keeps the first finding"}))))
 
 ;; ---- twin-genls -------------------------------------------------------------
 
