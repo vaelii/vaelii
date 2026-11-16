@@ -402,6 +402,28 @@
       (is (re-find (re-pattern (str "/sentex/" (h (list 'functionalInArg relP 2)) "\"")) line)
           "a sentence with more arguments is drawn whole"))))
 
+(tu/deftest-kb an-unlisted-definitional-predicate-is-the-last-line-of-the-definition
+  (tu/with-terms [relP kindT defRel]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'comment relP "a relation") (list 'transitive relP)
+               (list 'irreflexive relP) (list 'seeAlso relP 'genl)
+               (list 'binary_predicate defRel) (list 'definitional_predicate defRel)
+               (list 'arg defRel 1 'predicate) (list 'arg defRel 2 'thing)
+               (list defRel relP kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body  (:body (GET "/term" (str "q=" (name relP))))
+          block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+          lines (re-seq #"(?s)<dt>([^<]*)</dt><dd>(.*?)</dd>" block)
+          h     (v/handle-of kb (list defRel relP kindT) 'CxUniverse)
+          shows (fn [[_ _ dd]] (re-find (re-pattern (str "/sentex/" h "\"")) dd))]
+      (is (some shows lines) "a definitional predicate no predicateDisplayOrder fact names is shown")
+      (is (shows (last lines)) "on the block's last line, after every listed one")
+      (is (= '[transitive irreflexive]
+             (filterv '#{transitive irreflexive}
+                      (linked-terms (block-line body "relation properties"))))
+          "and inside a line, an unlisted predicate follows the listed ones"))))
+
 (tu/deftest-kb a-predicates-argument-types-are-drawn-one-line-per-position
   (tu/with-terms [relP kindT kindU]
     (doseq [s [(list 'unary_predicate kindT) (list 'unary_predicate kindU)

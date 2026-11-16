@@ -289,6 +289,28 @@
               "a named predicate is shown in the order named")
           (finally (v/retract! kb h)))))))
 
+(tu/deftest-kb an-unlisted-definitional-predicate-is-shown-after-every-listed-one
+  (tu/with-terms [relP kindT defRel]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'comment relP "a relation") (list 'transitive relP)
+               (list 'irreflexive relP) (list 'seeAlso relP 'genl)
+               (list 'binary_predicate defRel) (list 'definitional_predicate defRel)
+               (list 'arg defRel 1 'predicate) (list 'arg defRel 2 'thing)
+               (list defRel relP kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [parts (:definitional-block (v/describe kb relP 'CxUniverse))
+          holds (fn [s] (first (keep-indexed
+                                (fn [i {v :value}]
+                                  (when (and (sequential? v) (some #{s} (map :sentence v))) i))
+                                parts)))
+          at    (holds (list defRel relP kindT))]
+      (is (some? at) "a definitional predicate no predicateDisplayOrder fact names is shown")
+      (is (= (dec (count parts)) at) "after every part a listed predicate is shown in")
+      (is (= [(list 'transitive relP) (list 'irreflexive relP)]
+             (mapv :sentence (:value (first (filter #(= :props (:part %)) parts)))))
+          "and inside a part, an unlisted row follows the listed ones"))))
+
 (tu/deftest-kb a-types-kind-shows-only-definitional-memberships
   (tu/with-terms [kindT]
     (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing) (list 'type kindT)
