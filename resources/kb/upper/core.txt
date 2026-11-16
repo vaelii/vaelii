@@ -1066,6 +1066,7 @@
 (set/monotonic (transitiveInArgInverse time_varying_relation 1 genl))
 ;; Each rigidity kind holds types and predicates alike, so the members of rigidity_kind
 ;; are of more than one order, and rigidity_kind is at_least_metatype, as arity_type is.
+(unary_predicate rigidity_kind)
 (at_least_metatype rigidity_kind)
 (set/monotonic (typeGenl rigidity_kind relation))
 (set/monotonic (rigidity_kind time_invariant_relation))
@@ -1158,6 +1159,200 @@
 (set/monotonic (genl documentation_predicate eternal_predicate))
 (set/monotonic (time_invariant_relation documentation_predicate))
 (not (decontextualized_predicate documentation_predicate))
+
+(comment definitional_predicate
+         "(definitional_predicate ?predicate) means that a (?predicate …) sentence about a term is part of that term's definitional block, the sentences a new term ships with (handbook/06-definitional-block.md): its comment and example annotations, its genl, its separations from its siblings, its order, its relation and rigidity kinds, its arity class and arity, its argument declarations, its relation properties and its termsRelated and seeAlso links. vocabulary-audit reads the members as its population: a member the engine's classification answers neither as enforced nor as inert is reported unclassified. The syncategorematic constants are the audit's second population, since they are syntax the engine reads and not predicates of a block. A membership says where a sentence belongs and not how it is believed: comment is a member and is not forced-monotonic. See docs/predicates.md.")
+(positiveExampleComment definitional_predicate "genl, since (genl dog mammal) is part of dog's block")
+(negativeExampleComment definitional_predicate "parentOf, since (parentOf Tom Bob) is a fact about two people and not a sentence about a term")
+(unary_predicate definitional_predicate)
+(set/monotonic (genl definitional_predicate predicate))
+(set/monotonic (time_invariant_relation definitional_predicate))
+(set/monotonic (orthogonal definitional_predicate forced_monotonic_predicate))
+(comment (orthogonal definitional_predicate forced_monotonic_predicate) "arg and arity are both, comment is a definitional predicate and not forced-monotonic, and equals is forced-monotonic and in no term's block.")
+;; A kinship tuple is a fact about two people, never a sentence about a term.
+(set/monotonic (disjoint definitional_predicate generic_kinship_predicate))
+(set/monotonic (disjoint definitional_predicate chosen_kinship_predicate))
+;; The KB states or derives every predicate a block is written in (below), so a predicate
+;; it does not make a member is in no term's block.
+(closed_extent_predicate definitional_predicate)
+;; order: a (type X), (metatype X) or (meta_metatype X) sentence is part of X's block
+(set/monotonic (genl type_type_by_order definitional_predicate))
+;; kind: an (instance_relation_predicate X) or (type_relation_predicate X) sentence, a rigidity
+;; kind sentence such as (time_invariant_relation X), and an (eternal_predicate X) sentence
+;; are part of X's block
+(set/monotonic (genl relation_kind definitional_predicate))
+(set/monotonic (genl rigidity_kind definitional_predicate))
+(definitional_predicate eternal_predicate)
+;; meaning and examples
+(definitional_predicate comment)
+(definitional_predicate positiveExampleComment)
+(definitional_predicate negativeExampleComment)
+(definitional_predicate positiveExample)
+(definitional_predicate negativeExample)
+;; parent and separations
+(comment ontology_predicate
+         "(ontology_predicate ?predicate) means that a (?predicate …) sentence places terms in the KB's hierarchy. The sentence names a parent that terms specialize, parts that cover a whole, a type defined as the intersection of others, a separation between terms, terms that are neither separated nor one below the other, or two predicates each of which holds of the other's tuples reversed. The terms it places are named directly, or they are the members of a classifier or the specializations of a parent that the sentence names. The sentence is part of the block of each term it names.")
+(positiveExampleComment ontology_predicate "disjoint, since (disjoint symmetric asymmetric) is part of symmetric's block")
+(negativeExampleComment ontology_predicate "arity, since (arity parentOf 2) fixes how many arguments parentOf takes and places no term in the hierarchy")
+(unary_predicate ontology_predicate)
+(set/monotonic (genl ontology_predicate definitional_predicate))
+(set/monotonic (time_invariant_relation ontology_predicate))
+(ontology_predicate genl)
+(ontology_predicate disjoint)
+(ontology_predicate separating)
+(ontology_predicate partition)
+(ontology_predicate orthogonal)
+(ontology_predicate covering)
+(ontology_predicate intersection)
+(ontology_predicate typeGenl)
+(ontology_predicate typeOrthogonal)
+(ontology_predicate diachronicallyDisjoint)
+(ontology_predicate disjoint_metatype)
+(ontology_predicate sibling_disjoint)
+(ontology_predicate siblingDisjointException)
+(ontology_predicate inverse)
+(ontology_predicate genlInverse)
+(ontology_predicate genlCx)
+(ontology_predicate orthogonalMetatypes)
+(ontology_predicate partitionedByType)
+(ontology_predicate negates)
+(not (ontology_predicate temporallyDisjoint))
+(not (ontology_predicate minCommonGenl))
+(not (ontology_predicate temporalIndexArg))
+(closed_extent_predicate ontology_predicate)
+;; arity: the binding and the arity classes describe lists under :arity-class.  Each
+;; exact-arity class a mapping fact names is definitional, so the three rules below make
+;; unary through quinary and their predicate and function specializations members.  An
+;; at_least class is the subject of no mapping fact, so no rule here reaches one.
+(set/forwardRule (implies (relationTypeByArity ?type ?arity) (definitional_predicate ?type)))
+(set/forwardRule (implies (predicateTypeByArity ?type ?arity) (definitional_predicate ?type)))
+(set/forwardRule (implies (functionTypeByArity ?type ?arity) (definitional_predicate ?type)))
+(definitional_predicate arity)
+(definitional_predicate variable_arity)
+(definitional_predicate variable_arity_predicate)
+(definitional_predicate variable_arity_function)
+;; well-formedness: what may fill a relation's positions, and what its terms satisfy
+(comment wff_predicate
+         "(wff_predicate ?predicate) means that a (?predicate ?relation …) sentence states part of what a well-formed sentence or application headed by ?relation is: which terms may fill its argument positions, or what a term in it satisfies. The sentence is part of ?relation's block.")
+(positiveExampleComment wff_predicate "arg, since (arg parentOf 1 causal) is part of parentOf's block")
+(negativeExampleComment wff_predicate "genl, since (genl dog mammal) places dog in the hierarchy and says nothing about how a sentence is written")
+(unary_predicate wff_predicate)
+(set/monotonic (genl wff_predicate definitional_predicate))
+(set/monotonic (genl wff_predicate eternal_predicate))
+(set/monotonic (time_invariant_relation wff_predicate))
+(closed_extent_predicate wff_predicate)
+(comment wff_constraint
+         "(wff_constraint ?predicate) means that a (?predicate ?relation …) sentence constrains which terms may fill one or more argument positions of ?relation. The constraint can name a type an argument must have, a genl it must specialize, a quoted form it must take, a role an argument position plays, or a relation it must bear to another argument. The sentence is part of ?relation's block.")
+(positiveExampleComment wff_constraint "arg, since (arg parentOf 1 causal) is part of parentOf's block")
+(negativeExampleComment wff_constraint "arity, since (arity parentOf 2) fixes how many arguments parentOf takes and not which terms may fill one")
+(unary_predicate wff_constraint)
+(set/monotonic (time_invariant_relation wff_constraint))
+(wff_constraint arg)
+(wff_constraint genlArg)
+(wff_constraint quotedArg)
+(wff_constraint interArg)
+(wff_constraint interArgEqual)
+(wff_constraint argArg)
+(wff_constraint argAndRestGenl)
+(wff_constraint args)
+(wff_constraint argsGenl)
+(wff_constraint argAndRest)
+(wff_constraint interArgs)
+(wff_constraint interArgAndRest)
+(wff_constraint quotedArgAndRest)
+(wff_constraint temporalIndexArg)
+(definitional_predicate temporalIndexArg)
+(closed_extent_predicate wff_constraint)
+(comment wff_satisfaction_predicate
+         "(wff_satisfaction_predicate ?predicate) means that a (?predicate ?relation …) sentence states what a term satisfies by its place in a sentence or application headed by ?relation, such as the value of an application of the function ?relation. The term can be required to be an instance or a subtype of a type, an instance of the type one of the application's arguments names, or a context below the context an argument names. The sentence is part of ?relation's block.")
+(positiveExampleComment wff_satisfaction_predicate "result, since (result QuantityFn measure) is part of QuantityFn's block")
+(negativeExampleComment wff_satisfaction_predicate "arg, since (arg parentOf 1 causal) constrains which terms may fill a position and states nothing a value satisfies")
+(unary_predicate wff_satisfaction_predicate)
+(set/monotonic (time_invariant_relation wff_satisfaction_predicate))
+(wff_satisfaction_predicate result)
+(wff_satisfaction_predicate resultArg)
+(wff_satisfaction_predicate genlResult)
+(wff_satisfaction_predicate contextArgGenlCx)
+(closed_extent_predicate wff_satisfaction_predicate)
+;; A well-formedness sentence constrains a position or states what a term satisfies, and never both.
+(set/monotonic (partition wff_predicate wff_constraint wff_satisfaction_predicate))
+;; relation properties
+(comment algebraic_predicate_property
+         "(algebraic_predicate_property ?property) means that ?property is an algebraic property of a relation: a (?property ?relation …) sentence states how the tuples or applications of ?relation constrain one another, over all of its argument positions or over the ones the sentence names. Such a property makes some tuples follow from others, rules some tuples out, alone or given others, requires some tuples to hold, or makes two applications denote one term. A (?property ?relation …) sentence is part of ?relation's block.")
+(positiveExampleComment algebraic_predicate_property "transitive, since (transitive genl) is part of genl's block")
+(negativeExampleComment algebraic_predicate_property "time_invariant_relation, since a relation's rigidity concerns how its members persist and not how its tuples constrain one another")
+(unary_predicate algebraic_predicate_property)
+(set/monotonic (genl algebraic_predicate_property definitional_predicate))
+(set/monotonic (time_invariant_relation algebraic_predicate_property))
+(algebraic_predicate_property transitive)
+(algebraic_predicate_property symmetric)
+(algebraic_predicate_property asymmetric)
+(algebraic_predicate_property reflexive)
+(algebraic_predicate_property functional)
+(algebraic_predicate_property irreflexive)
+(algebraic_predicate_property anti_symmetric)
+(algebraic_predicate_property anti_transitive)
+(algebraic_predicate_property equivalence_relation)
+(algebraic_predicate_property functionalInArg)
+(algebraic_predicate_property commutativeInArgs)
+(algebraic_predicate_property commutativeInArgAndRest)
+(algebraic_predicate_property distinctInArgAndRest)
+(algebraic_predicate_property injection)
+(algebraic_predicate_property surjection)
+(algebraic_predicate_property bijection)
+(algebraic_predicate_property associative)
+(algebraic_predicate_property commutative)
+(algebraic_predicate_property idempotent)
+(algebraic_predicate_property transitiveInArg)
+(algebraic_predicate_property transitiveInArgInverse)
+(algebraic_predicate_property functional_at_instant)
+(closed_extent_predicate algebraic_predicate_property)
+;; separations: a sentence places a term, states part of what is well formed, or states a
+;; property, never two of these
+(set/monotonic (disjoint ontology_predicate wff_predicate))
+(set/monotonic (disjoint ontology_predicate algebraic_predicate_property))
+(set/monotonic (disjoint wff_predicate algebraic_predicate_property))
+;; an at_least class is derived scaffolding, not part of any term's block
+(not (definitional_predicate at_least_binary))
+(not (definitional_predicate at_least_ternary))
+(not (definitional_predicate at_least_quaternary))
+(not (definitional_predicate at_least_quinary))
+;; the non-exact arity classes and the rigidity-adjacent marks, like the at_least classes
+(not (definitional_predicate fixed_arity))
+(not (definitional_predicate bounded_arity))
+(not (definitional_predicate unbounded_arity))
+(not (definitional_predicate fixed_arity_predicate))
+(not (definitional_predicate fixed_arity_function))
+(not (definitional_predicate unbounded_arity_predicate))
+(not (definitional_predicate unbounded_arity_function))
+(not (definitional_predicate arity_independent))
+(not (definitional_predicate time_indexed_relation))
+(not (definitional_predicate possibly_time_invariant_relation))
+;; implementation and metaknowledge predicates: what the engine does with a term, or what a theory
+;; assumes about an extent, is not part of the term's definition
+(not (definitional_predicate not_assertible))
+(not (definitional_predicate closed_extent_predicate))
+(not (definitional_predicate implementationNote))
+(not (definitional_predicate functionCorrespondingPredicate))
+(not (definitional_predicate functionCorrespondingBinaryPredicate))
+;; the quantified-population declarations and their placeholder predicates
+(not (definitional_predicate predAllExists))
+(not (definitional_predicate predAllExistsPlaceholder))
+(not (definitional_predicate predAllInstance))
+(not (definitional_predicate predAllQuotedSpecified))
+(not (definitional_predicate predAllSpecified))
+(not (definitional_predicate predExistsAll))
+(not (definitional_predicate predExistsAllPlaceholder))
+(not (definitional_predicate predExistsInstance))
+(not (definitional_predicate predExistsInstancePlaceholder))
+(not (definitional_predicate predInstanceAll))
+(not (definitional_predicate predInstanceExists))
+(not (definitional_predicate predInstanceExistsPlaceholder))
+(not (definitional_predicate predSpecifiedAll))
+(not (definitional_predicate predSpecifiedAllQuoted))
+;; links
+(definitional_predicate termsRelated)
+(definitional_predicate seeAlso)
 
 (comment situation_predicate "A predicate whose first argument is a situation and whose truth is fixed by that situation: a participant of an event, a part of a situation, an argument a call passed. A situation is a whole that timeOf places in time, so such a tuple records that whole and not what holds now, and every situation_predicate is an eternal_predicate. Taking a situation first does not by itself make a predicate one.")
 (unary_predicate situation_predicate)
@@ -1360,6 +1555,10 @@
 (unary_predicate decontextualized_predicate)
 (set/monotonic (time_invariant_relation decontextualized_predicate))
 (set/monotonic (genl decontextualized_predicate eternal_predicate))
+;; The lift runs only for a declared predicate, so a predicate the KB does not declare is not lifted.
+(closed_extent_predicate decontextualized_predicate)
+;; A sentence stored in CxUniverse by force is seen from every context, as a lifted one is.
+(set/monotonic (genl forced_decontextualized_predicate decontextualized_predicate))
 
 (comment disjoint
          "(disjoint ?type1 ?type2) means that the two types have no common instance. Inherited by subtypes through genl, so declaring it of dog and cat separates every breed from every breed. The declaration keeps its written strength: a :monotonic denial defeats a :default one at the denial's context and below, where the memberships it separated clash with nothing. A membership that violates it is stored, and the two memberships form a :disjoint contradiction; try-assert refuses the second instead. A clash that only becomes visible from some descendant context is reported by exposed-clashes.")
@@ -1369,15 +1568,6 @@
 (not (eternal_predicate disjoint))
 (genlArg disjoint 1 thing)
 (genlArg disjoint 2 thing)
-
-(comment diachronicallyDisjoint
-         "(diachronicallyDisjoint ?type1 ?type2) means that nothing is an instance of both types at the same time, though one thing can be an instance of each at different times: caterpillar and butterfly, a child and an adult. disjoint is a genl of it, because never sharing an instance means never sharing one at once. Stated and queryable, not enforced: memberships are checked without time, so the engine cannot yet tell an instance that is both at once from one that is each in turn.")
-(set/monotonic (symmetric diachronicallyDisjoint))
-(set/monotonic (type_relation_predicate diachronicallyDisjoint))
-(set/monotonic (time_agnostic_relation diachronicallyDisjoint))
-(genlArg diachronicallyDisjoint 1 thing)
-(genlArg diachronicallyDisjoint 2 thing)
-(genl disjoint diachronicallyDisjoint)
 
 (comment disjoint_metatype
          "(disjoint_metatype ?metatype) means that every pair of ?metatype's member types is disjoint. The clique is consulted rather than stored, so it adds no work quadratic and retraction reaches all of it: dropping ?metatype releases every pair at once, and dropping one member releases exactly that member's pairs.")
@@ -1855,9 +2045,10 @@
 ;; kind as the KB writes them, so (predAllQuotedSpecified comment symbol) asks a comment
 ;; of every name the KB writes, where (predAllSpecified comment ?indep) asks one of each
 ;; member of a collection.  A name is in the population while a stored sentex the reader
-;; sees writes it.  A compound is no name, so a quotation is never in symbol's population.
+;; sees writes it.  A compound is no name, so a quotation is never in symbol's population,
+;; and nor is a NAT, which KB text writes as the compound it reifies.
 (comment predAllQuotedSpecified
-         "(predAllQuotedSpecified ?pred ?qtype) declares the integrity requirement that every term of the expression kind ?qtype, taken as written, have a determinate filler at ?pred's second position: for every atomic name x a stored sentex writes, whose kind as written is ?qtype or below it, there is a believed (?pred x y) with y determinate and y satisfying ?pred's own slot-2 argument contract. The quoted twin of predAllSpecified: the population is the written terms of ?qtype, not the members of a collection, and the filler is audited exactly as predAllSpecified audits one. (predAllQuotedSpecified comment symbol) requires a comment of every symbol the KB writes. A ?qtype that is no kind of expression is a declaration-contract gap the audit reports. An audit, not an inference: kb-integrity reads the declaration and returns the written terms with no determinate filler. The declaration generates no rule and concludes nothing. See docs/predall.md.")
+         "(predAllQuotedSpecified ?pred ?qtype) declares the integrity requirement that every term of the expression kind ?qtype, taken as written, have a determinate filler at ?pred's second position: for every atomic name x a stored sentex writes, whose kind as written is ?qtype or below it, there is a believed (?pred x y) with y determinate and y satisfying ?pred's own slot-2 argument contract. The quoted twin of predAllSpecified: the population is the written terms of ?qtype, not the members of a collection, and the filler is audited exactly as predAllSpecified audits one. (predAllQuotedSpecified comment symbol) requires a comment of every symbol the KB writes. A NAT is taken as the compound it reifies, a non_atomic_expression, though the store spells it as a constant. A ?qtype that is no kind of expression is a declaration-contract gap the audit reports. An audit, not an inference: kb-integrity reads the declaration and returns the written terms with no determinate filler. The declaration generates no rule and concludes nothing. See docs/predall.md.")
 (binary_predicate predAllQuotedSpecified)
 (set/monotonic (time_varying_relation predAllQuotedSpecified))
 (not (eternal_predicate predAllQuotedSpecified))
@@ -1871,6 +2062,9 @@
 (not (eternal_predicate predSpecifiedAllQuoted))
 (arg predSpecifiedAllQuoted 1 binary_predicate)
 (genlArg predSpecifiedAllQuoted 2 expression)   ;; the expression kind whose written terms are audited
+;; Every name the KB writes has a comment.  A quotation is not a name, so a quoted
+;; sentence owes none.
+(predAllQuotedSpecified comment symbol)
 
 (comment typeAllSpecified
          "(typeAllSpecified ?classifier ?indep) declares the integrity requirement that every instance of collection ?indep have a believed membership in some member of the metatype ?classifier: for all x in ?indep there is a member K of ?classifier with (K x) believed, stated or reached through genl or argument preservation alike. predAllSpecified's counterpart for a classification rather than a filler. A partition of ?indep into ?classifier's members does not imply it: the partition says every instance IS in some member, and this requirement says the KB must KNOW which. An audit, not an inference: kb-integrity reads each visible declaration and reports the instances of ?indep no member of ?classifier is believed to hold, or a gap when ?classifier has no visible member. The declaration generates no rule and concludes nothing. e.g. (typeAllSpecified rigidity_kind relation) requires every relation to be classified time_invariant_relation, time_agnostic_relation or time_varying_relation. See docs/integrity.md.")
@@ -1904,7 +2098,8 @@
 ;; relation's stored sentences has no not_assertible member: abduction stores the sentence
 ;; it assumes, the forced and decontextualized marks place stored sentences, a
 ;; target_following_predicate's meta-sentex is retracted with the sentex it names, a
-;; documentation predicate's sentences are the documentation the KB stores, and a
+;; documentation predicate's sentences are the documentation the KB stores, a
+;; definitional predicate's sentences are the blocks the KB stores, and a
 ;; kinship predicate's tuples, generic, blood or chosen, are stored when asserted.
 (set/monotonic (disjoint not_assertible abducible_predicate))
 (set/monotonic (disjoint not_assertible decontextualized_predicate))
@@ -1913,6 +2108,7 @@
 (set/monotonic (disjoint not_assertible forced_monotonic_between_predicates))
 (set/monotonic (disjoint not_assertible target_following_predicate))
 (set/monotonic (disjoint not_assertible documentation_predicate))
+(set/monotonic (disjoint not_assertible definitional_predicate))
 (set/monotonic (disjoint not_assertible generic_kinship_predicate))
 (set/monotonic (disjoint not_assertible blood_kinship_predicate))
 (set/monotonic (disjoint not_assertible chosen_kinship_predicate))
@@ -2151,6 +2347,8 @@
 (forced_monotonic_predicate except)
 ;; except takes one argument, the sentexHandle of the sentence it hides, and that
 ;; argument is a non-atomic term.
+(comment except
+         "(except (sentexHandle ?h)) hides the stored sentence ?h from the context where the except is stated and every context that sees it, and sweeps the firings resting on ?h placed there. It does not retract ?h.")
 (unary_predicate except)
 (set/monotonic (time_varying_relation except))
 (not (eternal_predicate except))
@@ -2469,17 +2667,41 @@
 ;; The shipped contexts.  Every genlCx edge is stored in CxUniverse, and (arg genlCx 1
 ;; context) and (arg genlCx 2 context) type both of its arguments, so the memberships are
 ;; stated here.
+(comment CxAnatomy
+         "What kinds of thing have what kinds of part (partType claims). It concludes nothing about an individual.")
 (context CxAnatomy)
+(comment CxBiology
+         "A defeasible biology theory: flight, air breathing, being alive or awake, mortality and warm-bloodedness, concluded from an organism's kind or state.")
 (context CxBiology)
+(comment CxChange
+         "A simple event calculus: a fluent that an event starts holds at later instants until an event clips it.")
 (context CxChange)
+(comment CxKinship
+         "Kinship and age: ancestry derived from parenthood, relative age from birth years.")
 (context CxKinship)
+(comment CxMereology
+         "Parts, location and ownership: a part is where its whole is, and an owner of a whole owns its parts.")
 (context CxMereology)
+(comment CxNormalPhysicalConditions
+         "Opt-in: the states of matter of substances at ordinary room temperature and pressure in the real world.")
 (context CxNormalPhysicalConditions)
+(comment CxRealWorld
+         "The real world, as opposed to an invented setting, such as a fictional context. A context for an invented setting goes beside it, not under it.")
 (context CxRealWorld)
+(comment CxSize
+         "Comparative size: stated between kinds, computed from measures between two particular objects.")
 (context CxSize)
+(comment CxSocial
+         "Social relations between persons, including relationships and dwelling, with rules such as knowing from friendship or marriage and membership from employment.")
 (context CxSocial)
+(comment CxTra
+         "The opt-in middle context for vocabulary that is generally useful but specific to one domain, such as computing, perception and narrow relationship terms, and so is not in a starter context that CxWell sees. CxTra sees CxUniverse and CxSocial. CxWell does not see CxTra, so a context reads the vocabulary only by placing itself under CxTra.")
 (context CxTra)
+(comment CxUniverse
+         "The shared upper ontology: the most general vocabulary and rules, visible to every context of the starter.")
 (context CxUniverse)
+(comment CxWell
+         "The default context that sees the starter's always-on middle contexts. It does not see the opt-in contexts.")
 (context CxWell)
 
 (comment greaterThan

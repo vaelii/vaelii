@@ -44,6 +44,39 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Breaking: integrity
 
+- **`vocabulary-audit` reads its population from the KB.** core.txt declares
+  `definitional_predicate`. Its members are the predicates a term's definitional block is
+  written in. They are `comment` and the example annotations, `genl`, the separations,
+  the orders, the relation and rigidity kinds, `eternal_predicate`, `arity` and the arity
+  classes, and the argument declarations. The
+  algebraic relation properties, `termsRelated` and `seeAlso` are members too. The audit
+  classifies those members and the `syncategorematic` constants
+  (`Quote` and the `set/*` wrappers), answered in CxUniverse, where it classified every
+  term core.txt comments. A membership a `genl` edge or a rule derives counts as a stated
+  one: `(genl type_type_by_order definitional_predicate)` makes `type`, `metatype` and
+  `meta_metatype` members. New collections below `definitional_predicate` hold most of
+  the rest: `ontology_predicate` holds `genl`, `genlCx`, `inverse` and the separations,
+  `wff_predicate` the well-formedness declarations, and `algebraic_predicate_property` the
+  relation properties, including the per-position ones such as `functionalInArg`.
+  `wff_predicate` is partitioned into `wff_constraint`, the argument declarations, and
+  `wff_satisfaction_predicate`, the result declarations. A
+  forward rule over each of `relationTypeByArity`, `predicateTypeByArity` and
+  `functionTypeByArity` makes the fifteen exact-arity classes members. The `at_least`
+  classes are not members. `definitional_predicate`, the five collections below it and
+  `decontextualized_predicate` are each a `closed_extent_predicate`, so a predicate the KB
+  does not make a member is refuted as one: `(not (decontextualized_predicate P))` now
+  answers true of an undeclared `P`. `decontextualized_predicate` is now a `genl` of
+  `forced_decontextualized_predicate`. A grammar term in neither, such as `except` or `equals`, is no
+  longer listed under `:enforced` or `:inert`; `interpreted` still answers for it.
+  `:retired` names a classification entry for a term no believed `comment` in the KB names,
+  so a term commented in any upper file, such as time.txt's `functional_at_instant`, can be
+  classified.
+  `diachronicallyDisjoint` is declared in time.txt, which loads into CxUniverse beside core.txt.
+  *Migration:* ask `interpreted` of a grammar term outside the population, or mark a
+  block predicate a KB adds `definitional_predicate` so the audit asks it to be answered for.
+  *Breaks:* `vocabulary-audit`
+  [predicates.md](docs/predicates.md#reading-the-answer-back)
+
 - **The undeclared-arity sweep reports a `genl` node whose only length is inherited.** A
   node passes when the node itself is known to have an exact length, or when a
   `variable_arity` membership releases it. The node's own exact length comes from an
@@ -77,7 +110,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   defining homes, as the pair audits an instance, so an engine-made copy in CxUniverse
   adds no reader. `all-specified-violations` and `kb-integrity` sweep both twins,
   and `vaelii.impl.predall/quoted-specified-violations` audits one declaration. The
-  population grows by one term per name the KB writes. No shipped declaration uses them.
+  population grows by one term per name the KB writes. core.txt states
+  `(predAllQuotedSpecified comment symbol)`: every name the KB writes has a comment.
+  A NAT is no name: the audit takes it as the compound it reifies.
   [predall.md](docs/predall.md#quoted-specified-the-population-as-written)
 - **life.txt ships `may` and `can` beside `able`.** `(may ?doer ?kind)` is deontic
   permission to be the doer of a happening of kind `?kind`, and `(can ?doer ?kind)` is

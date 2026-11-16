@@ -13,7 +13,6 @@
 (genlCx CxTra CxUniverse)
 ;; CxTra builds on CxSocial's relations: its relationship terms specialize them.
 (genlCx CxTra CxSocial)
-(comment CxTra "The opt-in middle context for vocabulary that is generally useful but specific to one domain, such as computing, perception and narrow relationship terms, and so is not in a starter context that CxWell sees. CxTra sees CxUniverse and CxSocial. CxWell does not see CxTra, so a context reads the vocabulary only by placing itself under CxTra.")
 
 ;; ==== computing ===========================================================
 ;; The computing relations state one rule, the default that reads able from

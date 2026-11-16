@@ -880,6 +880,13 @@ and follows its label. A declaration that revives lifts the facts stored while i
 which its arrival could not reach (`special/revived-declaration-sweeps`, run by the
 settle for every revived datum).
 
+`core.txt` makes `decontextualized_predicate` a `closed_extent_predicate` in CxUniverse.
+A query for `(not (decontextualized_predicate P))` is answered true of every `P` that no
+context the asker sees declares lifted.
+`decontextualized_predicate` is a `genl` of `forced_decontextualized_predicate`, so a predicate
+stored in CxUniverse by force is a member as well. The membership classifies the predicate and
+adds no lift, since the lift reads only a stated declaration.
+
 The mechanism is documented in the KB by the `comment` on `decontextualized_predicate` in
 `core.txt`. It is implemented in code rather than as a rule, because a rule stating it
 would match every fact in the store and would name its target with an `ist` consequent,

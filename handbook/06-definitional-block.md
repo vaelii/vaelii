@@ -20,7 +20,9 @@ vocabulary change proposes and a reviewer reads.
 comment, ships as a block: its metatype or arity class, its `genl`, every `arg`, its
 `disjoint`, `separating` or `orthogonal` relations to its siblings, and its `comment`.
 Where they apply, the block also carries relation properties (`transitive`, `functional`,
-…), example annotations and `termsRelated` or `seeAlso` links.
+…), example annotations and `termsRelated` or `seeAlso` links. Each predicate a block is
+written in is a `definitional_predicate` in core.txt, and `vocabulary-audit` requires the
+engine to answer for each one as enforced or inert.
 
 **Example.** abstract.txt ships `electronic_device` as a complete type block:
 

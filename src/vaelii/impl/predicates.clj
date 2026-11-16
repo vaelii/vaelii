@@ -63,9 +63,9 @@
               facet vocabulary does not reach yet.
     :enforced prose naming the code path that reads the term — what a KB author is told
               by `core/interpreted` when they ask whether a declaration does anything.
-              Carried by the terms core.txt comments and by no others, which is why an
-              entry without it is not a defect: the grammar terms core.txt does not
-              comment are outside the question rather than unanswered.
+              Carried by grammar terms an upper file comments, and owed by every term of
+              `vocabulary/audit`'s population; an entry without it outside the population
+              is not a defect.
     :inert    prose recording that nothing reads the term **and that this is a
               decision**.  Written by the `inert` constructor, which sets the facet with
               it, so the class is never a second opinion about the facets.
@@ -310,8 +310,8 @@
   `vocabulary/classification` answers with and `core/interpreted` hands a KB author.  The prose
   is written by hand, since no facet set can name the path.  The class is read off `:facets` by
   `classification`, so a term the engine reads cannot be called inert by different prose.
-  Nil-tolerant: grammar terms core.txt does not comment pass through, and `vocabulary/audit`
-  notices a term the ontology names and this file answers with nothing."
+  Nil-tolerant: grammar terms outside the audit's population pass through, and
+  `vocabulary/audit` notices a population term this file answers with nothing."
   [spec where]
   (cond-> spec where (assoc :enforced where)))
 
@@ -575,6 +575,14 @@
                                      " believed converse forces equal, and chain/place-tuples! placing a"
                                      " converse no merge reconciles; also a"
                                      " binary_predicate type"))]
+     ['functional_at_instant
+      (enforced (collection :notes (str "declared in time.txt.  Read on demand by the fluent audit,"
+                                        " not at assert: whether two fluents overlap at an instant"
+                                        " follows from the clipping closure."))
+                (str "fluent/functional-at-instant-violations and"
+                     " fluent/all-functional-at-instant-violations, through"
+                     " core/functional-at-instant-violations — the per-instant clashes of each"
+                     " declared function"))]
      ['anti_transitive (enforced (assoc
                                   (prop :anti-transitive :facets #{:reach :convicts :arbitrable}
                                         :notes (str "the one nogood whose members are three rather"
@@ -1348,8 +1356,8 @@
     ;; under the root, or declare a position over a type a second domain file declares one
     ;; over.
     ;;
-    ;; They are here because core.txt comments them and `vocabulary/audit` answers for every
-    ;; term core.txt comments, not because the engine reads any of them.  It reads none: no
+    ;; They are here so `interpreted` answers for the terms core.txt comments, not because
+    ;; the engine reads any of them.  It reads none: no
     ;; check names one, and the kinds hanging off them are the domain files'.  `inert` is the
     ;; class, and the note is what a KB author asking `interpreted` is told.
     (map (fn [[t why]] [t (inert (collection :notes why) why)])
@@ -1365,7 +1373,7 @@
            [quantitative "ontology, not grammar: what a measurement is made of or yields, the whole above measure, unit_of_measure, physical_dimension and sign_value. core.txt states it so the separation from logical and linguistic reaches measure; no engine check names it."]])
 
     ;; ---- the space/time complements, nowhere_never, and the metatype ladder ----
-    ;; core.txt comments these too, beside their genl edges, so `vocabulary/audit` answers
+    ;; core.txt comments these too, beside their genl edges, so `interpreted` answers
     ;; for them and they are classified inert like the skeleton above: ontology the engine
     ;; reads by no name.  `temporal` is `spatial`'s
     ;; time twin; `aspatial` / `atemporal` are the not-in-any-space / not-in-time collections
@@ -1387,6 +1395,11 @@
            [fixed_order_type "ontology, not grammar: a type whose members are all of one order, on the metatype-order ladder. No engine check names it."]
            [variable_order_type "ontology, not grammar: a type holding members of any order, on the metatype-order ladder. No engine check names it."]
            [type_type_by_order "ontology, not grammar: the disjoint_metatype partitioning fixed_order_type by order. No engine check names it."]
+           [ontology_predicate "ontology, not grammar: a definitional_predicate whose sentences place terms in the hierarchy, by a parent, a cover, an intersection, a separation, an orthogonality or an inverse, named directly or over a classifier's members or a parent's specializations. vocabulary/audit reads its members through the genl edge to definitional_predicate; no engine check names it."]
+           [wff_predicate "ontology, not grammar: a definitional_predicate whose sentences state part of what a well-formed sentence or application headed by a relation is. vocabulary/audit reads its members through the genl edge to definitional_predicate; no engine check names it."]
+           [wff_constraint "ontology, not grammar: one part of the partition of wff_predicate, whose sentences constrain which terms may fill a relation's argument positions. vocabulary/audit reads its members through wff_predicate's genl edge to definitional_predicate; no engine check names it."]
+           [wff_satisfaction_predicate "ontology, not grammar: the other part of the partition of wff_predicate, whose sentences state what a term satisfies, such as the value of a function's application. vocabulary/audit reads its members through wff_predicate's genl edge to definitional_predicate; no engine check names it."]
+           [algebraic_predicate_property "ontology, not grammar: a definitional_predicate naming an algebraic property of a relation, over all its positions or named ones, such as transitivity or functionalInArg. vocabulary/audit reads its members through the genl edge to definitional_predicate; no engine check names it."]
            [spatiality_type "ontology, not grammar: the at_least_metatype holding spatial and aspatial. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
            [temporality_type "ontology, not grammar: the at_least_metatype holding temporal and atemporal. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
            [arity_type "ontology, not grammar: the at_least_metatype of the relation-level arity types, e.g. binary and variable_arity. The typeOrthogonal rule reads its memberships as any membership is; no engine check names it."]
@@ -1426,7 +1439,7 @@
                                 " functionCorrespondingPredicate and"
                                 " functionCorrespondingBinaryPredicate name"))]
      ;; The other half of relation, and the three levels below it.  core.txt comments them
-     ;; and `vocabulary/audit` answers for every term core.txt comments; no engine check names
+     ;; and `interpreted` answers for each; no engine check names
      ;; any of the four.  The connectives are read by their own names (the `implies`, `and`,
      ;; `or` and `not` entries above), never through `logical_connective`.
      ['truth_valued_relation (inert (collection :notes "ontology, not grammar: a relation whose applications are true or false, the complement of function within relation. No engine check names it.")
@@ -1641,7 +1654,15 @@
                                            " (exceptWhen Q (sentexHandle H)) naming the rule's handle.")}
                             (str "assert-entry/assert-exceptWhen-meta! — stores the exception;"
                                  " provers/rule-exceptions reads it per firing, and the recheck"
-                                 " queue re-evaluates it"))]]
+                                 " queue re-evaluates it"))]
+     ['except (enforced {:shape   {:args [:term]}
+                         :storage [:none] :checked false :family nil :facets #{}
+                         :notes   (str "asserted, unlike defeat: (except (sentexHandle H)) hides H"
+                                       " from its context and every context that sees it, and"
+                                       " retracting it restores H.")}
+                        (str "except/visible-exception-index — the excepts stated in a reader's"
+                             " ancestor contexts hide each named handle from it; on arrival or"
+                             " removal special/recheck-except sweeps the firings resting on H"))]]
 
     ;; ---- the evaluable comparisons ---------------------------------------
     [['lessThan    (enforced {:shape   {:args [:term :term] :variadic :term}
@@ -1712,10 +1733,19 @@
      ;; ---- documentation ---------------------------------------------------
      ['comment (enforced {:shape {:args [:term :term]} :storage [:none] :checked false
                           :family nil :facets #{}
-                          :notes (str "ordinary sentexes, queried like any fact — and the"
-                                      " population of vocabulary/audit is read off them.")}
+                          :notes (str "ordinary sentexes, queried like any fact — and"
+                                      " vocabulary/audit's :retired reads which terms core.txt"
+                                      " comments.")}
                          (str "gloss, core-context/comment-of, and the browser's term pages —"
                               " ordinary sentexes, queried like any fact"))]
+     ['definitional_predicate
+      (enforced (collection :notes (str "a predicate whose sentences about a term make up that term's"
+                                        " definitional block (handbook/06-definitional-block.md)."
+                                        " Its believed CxUniverse members are vocabulary/audit's"
+                                        " population, beside the syncategorematic constants."))
+                (str "vocabulary/audit — its believed CxUniverse members are the population the"
+                     " audit classifies, so a member with no :enforced or :inert answer is"
+                     " :unclassified"))]
 
      ;; ---- engine-derived meta-sentexes ---------------------------------------
      ['defeat (enforced {:shape {:args [:term]} :storage [:none] :checked false
@@ -1753,7 +1783,7 @@
      ['diachronicallyDisjoint
       (inert {:shape {:args [:term :term]} :storage [:none] :checked false
               :family nil :facets #{}
-              :notes (str "(diachronicallyDisjoint ?type1 ?type2): nothing is an instance of both"
+              :notes (str "declared in time.txt. (diachronicallyDisjoint ?type1 ?type2): nothing is an instance of both"
                           " at the same time, though one thing can be each in turn. disjoint is a"
                           " genl of it. Stated and queryable; memberships are checked without time,"
                           " so no clash check can read it yet.")}

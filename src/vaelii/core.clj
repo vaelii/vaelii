@@ -882,16 +882,17 @@
   "What the engine does with vocabulary term `term`: `{:enforced \"where\"}`,
   `{:inert \"why\"}`, or nil.  `:enforced` means a code path reads the term and the KB
   refuses, derives or answers differently because of it; the string names the path.
-  `:inert` means nothing does, and the string says why.  Nil means the term is not one
-  core.txt comments, so an ordinary domain predicate is out of scope.  `vocabulary-audit`
-  classifies every declared term."
+  `:inert` means nothing does, and the string says why.  Nil means the term is not one of
+  core.txt's grammar terms, so an ordinary domain predicate is out of scope.
+  `vocabulary-audit` classifies the population the KB names."
   [term] (vocab/classify term))
 
 (defn vocabulary-audit
-  "Every term core.txt comments in `kb`, classified: `{:enforced [[term why] …]
-  :inert [[term why] …] :unclassified [term …] :retired [term …] :contradicted [term
-  …]}`.  `:unclassified` is a declaration nobody classified, `:retired` a classification
-  of a term the KB no longer declares, `:contradicted` a term the special-predicate table
+  "The vocabulary population of `kb`, classified: every term a CxUniverse query of
+  `(definitional_predicate ?t)` or `(syncategorematic ?t)` answers, as `{:enforced [[term
+  why] …] :inert [[term why] …] :unclassified [term …] :retired [term …] :contradicted
+  [term …]}`.  `:unclassified` is a member nobody classified, `:retired` a classification
+  of a term no upper file comments, `:contradicted` a term the special-predicate table
   gives an arm to and the classification calls inert.  The three are empty on the shipped
   ontology."
   [kb] (vocab/audit kb))

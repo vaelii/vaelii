@@ -142,7 +142,7 @@
 7	6	src/vaelii/impl/overlay/rebase.clj
 38	83	src/vaelii/impl/overlay/store.clj
 20	53	src/vaelii/impl/plan.clj
-77	2	src/vaelii/impl/predall.clj
+72	2	src/vaelii/impl/predall.clj
 137	148	src/vaelii/impl/predicates.clj
 3	12	src/vaelii/impl/profile.clj
 57	88	src/vaelii/impl/protocols.clj
@@ -189,7 +189,7 @@
 6	104	src/vaelii/impl/types/trie.clj
 2	15	src/vaelii/impl/vantage.clj
 27	6	src/vaelii/impl/violations.clj
-64	2	src/vaelii/impl/vocabulary.clj
+60	2	src/vaelii/impl/vocabulary.clj
 99	72	src/vaelii/impl/wff.clj
 24	43	src/vaelii/impl/wiring.clj
 59	38	src/vaelii/koinii/adjudication.clj
@@ -528,7 +528,7 @@
 9	20	test/vaelii/vector_spelling_test.clj
 37	41	test/vaelii/violation_kinds_test.clj
 0	15	test/vaelii/violations_test.clj
-5	18	test/vaelii/vocabulary_audit_test.clj
+5	17	test/vaelii/vocabulary_audit_test.clj
 0	30	test/vaelii/web_caches_test.clj
 0	9	test/vaelii/web_closure_test.clj
 0	19	test/vaelii/web_funnel_test.clj

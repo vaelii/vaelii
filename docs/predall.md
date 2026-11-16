@@ -232,7 +232,9 @@ declared kind or below it. The names come from the index's term-name set
 (`reads/stored-terms-global`), and a name's term-index postings
 (`reads/as-stored-with-term`) say which contexts write it. A compound is no name, so a
 quotation such as `(Quote (genl dog animal))` is never in `symbol`'s population, though
-`dog` and `animal` are. The term-name set keys no string, number or other value, so the
+`dog` and `animal` are. A NAT is taken as the compound it reifies, so a
+`non_atomic_expression` and never a `symbol`, though the store spells it as a reified
+constant (`natFormula` maps the constant back). The term-name set keys no string, number or other value, so the
 population of `string` is empty. A declared kind that is not below `expression` is a
 `{:status :gap :gap :non-syntactic-type …}` result.
 
@@ -249,8 +251,8 @@ audit it.
 The population grows with the vocabulary. Each name a write adds is one more term the
 audit asks a filler of, so `(predAllQuotedSpecified comment symbol)` asks one per name the
 KB writes, predicates, types, individuals and contexts alike. The audit costs one
-term-index read per name, then the filler reads per term of the kind. No shipped
-declaration uses the twins.
+term-index read per name, then the filler reads per term of the kind. core.txt states
+`(predAllQuotedSpecified comment symbol)`, so every name the KB writes owes a comment.
 
 The *Instance* pair has no quoted twin. A generated rule ranging over written terms needs
 an antecedent that binds a variable to each term of a kind. No literal's extent is the

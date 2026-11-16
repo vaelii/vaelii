@@ -43,6 +43,13 @@
 
 (def ^:private U 'CxUniverse)
 
+(defn- sweep-of
+  "The entries of `all-specified-violations` in `ctx` whose declaration names one of
+  `preds`, the test's own.  Whether the whole KB sweeps clean is
+  `curation-test/kb-has-integrity`'s question, asked of a KB with no test terms."
+  [kb ctx & preds]
+  (into {} (filter (fn [[k _]] (some (set preds) k))) (v/all-specified-violations kb ctx)))
+
 (defn- typed-relation!
   "Declare `pred` a binary predicate from `d` to `r`, both types under `thing`, and return
   the handle of the domain `arg` declaration so a test can retract it."
@@ -174,7 +181,7 @@
     (v/assert kb (list 'bijection pRel) U)
     (is (v/ask? kb (list 'functional pRel) U)
         "the enforced half lands with no argument declarations")
-    (is (empty? (v/all-specified-violations kb U))
+    (is (empty? (sweep-of kb U pRel))
         "and the sweep has nothing to audit")))
 
 (tu/deftest-kb the-sweep-reports-a-domain-member-with-no-filler
@@ -185,11 +192,11 @@
     (testing "a country with no capital breaks totality"
       (is (= {['predAllSpecified capitalCityOf country]
               {:status :audited :violations #{Freedonia}}}
-             (v/all-specified-violations kb U))))
+             (sweep-of kb U capitalCityOf))))
     (testing "and stating its capital clears the sweep"
       (v/assert kb (list capital_city Fredopolis) U)
       (v/assert kb (list capitalCityOf Freedonia Fredopolis) U)
-      (is (empty? (v/all-specified-violations kb U))))))
+      (is (empty? (sweep-of kb U capitalCityOf))))))
 
 (tu/deftest-kb the-sweep-reports-a-range-member-nothing-reaches
   (tu/with-terms [capitalCityOf country capital_city Fredopolis]
@@ -199,7 +206,7 @@
     (testing "a capital that is the capital of nothing breaks ontoness"
       (is (= {['predSpecifiedAll capitalCityOf capital_city]
               {:status :audited :violations #{Fredopolis}}}
-             (v/all-specified-violations kb U))
+             (sweep-of kb U capitalCityOf))
           "the sweep keys the declaration [functor pred indep]"))))
 
 (tu/deftest-kb an-injection-is-audited-for-totality-and-not-for-ontoness
@@ -212,7 +219,7 @@
     (v/assert kb (list city Fredopolis) U)
     (v/assert kb (list city Sylvania) U)
     (v/assert kb (list capitalCityOf Freedonia Fredopolis) U)
-    (is (empty? (v/all-specified-violations kb U))
+    (is (empty? (sweep-of kb U capitalCityOf))
         "Sylvania being nobody's capital is no violation of an injection")))
 
 ;;; ── belief-following, in both halves ──────────────────────────────────
