@@ -91,6 +91,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [taxonomy.md](docs/taxonomy.md)
   *Migration:* none.
 
+### Fix: describe
+
+- **A type's disjoint line is sorted whenever the union of its partners' closures fits
+  the sort budget.** The choice used the sum of the closure sizes, which counts an overlap
+  twice, so a line whose union fit could come out unsorted and inexact, and a sorted
+  member such as `cat` under `dog` could fall off it. Past the budget the line stays
+  unsorted, with the sum as its `:total` and `:exact?` false.
+
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
 | Area | Change |
