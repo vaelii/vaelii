@@ -150,5 +150,6 @@ declaration does to storage describes the engine, so it is an `implementationNot
   written under it are typed by nothing until someone declares the types and the
   declarations reach back over them.
 
-**Audit.** `describe` on a new relation answers `:arity`, `:arg-declarations` and `:props`.
-Each empty one is a part of the block the change either supplies or explains.
+**Audit.** `describe` on a new relation answers `:arity` and `:arg-declarations`, and its
+`:definitional-block` lists its relation properties under `:props`. Each empty one is a part
+of the block the change either supplies or explains.

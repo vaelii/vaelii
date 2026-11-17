@@ -1865,22 +1865,27 @@
                      " as written, binding the term and the position; a forward join takes"
                      " the answer with no support of its own"))]
      ['termsRelated
-      (inert {:shape {:args [:term :term] :variadic :term} :storage [:none] :checked false
-              :family nil :facets #{}
-              :notes (str "documentation the engine stores and never reads: a grouping for"
-                          " a reader, drawing no inference, as comment's prose draws none.")}
-             (str "a curation grouping of related vocabulary terms (variable arity), for a"
-                  " reader. Nothing infers from it — the grouping is documentation, as"
-                  " comment's prose is."))]
+      (enforced {:shape {:args [:term :term] :variadic :term} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "documentation: a grouping for a reader, drawing no inference, as"
+                             " comment's prose draws none.")}
+                (str "core/describe's :links part and the browser's term pages, which show the"
+                     " cluster in the block of each term it names; nothing infers from it"))]
      ['seeAlso
-      (inert {:shape {:args [:term :term]} :storage [:none] :checked false
-              :family nil :facets #{}
-              :notes (str "documentation the engine stores and never reads, and directional"
-                          " on purpose: reading it symmetrically would be an inference, which"
-                          " is the one thing this term does not do.")}
-             (str "a documentation 'see also' cross-reference between two terms; read like"
-                  " comment and by nobody for inference. Directional — (seeAlso a b)"
-                  " does not imply (seeAlso b a); the reverse is a separate assertion."))]
+      (enforced {:shape {:args [:term :term]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "documentation, and directional on purpose: reading it"
+                             " symmetrically would be an inference, which is the one thing"
+                             " this term does not do.")}
+                (str "core/describe's :links part and the browser's term pages, in the block of"
+                     " its first argument; read like comment and by nobody for inference"))]
+     ['predicateDisplayOrder
+      (enforced {:shape {:args [:term :term] :variadic :term} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "presentation metadata: the order a term page shows a term's"
+                             " sentences in. Not definitional, and drawing no inference.")}
+                (str "core/display-order, which sorts describe's definitional block and the"
+                     " rows of its sentence parts"))]
      ['implementationNote
       (inert {:shape {:args [:term :term]} :storage [:none] :checked false
               :family nil :facets #{}

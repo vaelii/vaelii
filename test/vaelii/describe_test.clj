@@ -202,11 +202,10 @@
       (v/assert kb s 'CxUniverse))
     (let [d (v/describe kb kin_a 'CxUniverse)
           b (block d)]
-      (is (= [:comment :positive-examples :negative-examples :parents :siblings :kind
-              :arity-class]
-             (mapv :part (:definitional-block d))))
+      (is (= [:comment :positive-examples :negative-examples :kind :parents :siblings :links]
+             (mapv :part (:definitional-block d)))
+          "the annotations, then the kinds, then the rest; an arity class is no part")
       (is (= :missing (:kind b)) "the arity class is not a kind")
-      (is (= ['unary_predicate] (:terms (:arity-class b))))
       (is (= [kin_root] (:terms (:parents b))))
       (is (= {kin_b :disjoint kin_c :missing kin_d :overlaps} (separations b))
           "a sibling nothing decides is the missing part of the separations")
@@ -225,15 +224,270 @@
     (is (= ["an insect, which has six legs"] (:negative-examples b))))
   (is (= :orthogonal (get (separations (block (v/describe kb 'electronic_device W))) 'machine))))
 
+(tu/deftest-kb a-types-parents-are-its-minimal-direct-genls
+  (testing "a stored parent another parent is strictly below is left out"
+    (is (= ['temporal] (:terms (:parents (block (v/describe kb 'causal W)))))
+        "(genl causal thing) comes from the partition, and temporal is below thing"))
+  (tu/with-terms [kin_root kin_a kin_b]
+    (doseq [s [(list 'genl kin_root 'thing) (list 'genl kin_a kin_root)
+               (list 'genl kin_a 'thing) (list 'genl kin_b kin_root)]]
+      (v/assert kb s 'CxUniverse))
+    (let [b (block (v/describe kb kin_a 'CxUniverse))]
+      (is (= [kin_root] (:terms (:parents b))))
+      (is (= [kin_b] (mapv :term (:rows (:siblings b))))
+          "the siblings are the children of the minimal parents only"))))
+
+(tu/deftest-kb two-parents-that-subsume-each-other-show-as-one
+  (tu/with-terms [kin_a kin_b kin_c CxEdgeA CxEdgeB CxBoth]
+    (doseq [s [(list 'genlCx CxEdgeA 'CxUniverse) (list 'genlCx CxEdgeB 'CxUniverse)
+               (list 'genlCx CxBoth CxEdgeA) (list 'genlCx CxBoth CxEdgeB)
+               (list 'genl kin_a 'thing) (list 'genl kin_b 'thing)
+               (list 'genl kin_c kin_a) (list 'genl kin_c kin_b)]]
+      (v/assert kb s 'CxUniverse))
+    (v/assert kb (list 'genl kin_a kin_b) CxEdgeA)
+    (v/assert kb (list 'genl kin_b kin_a) CxEdgeB)
+    (is (= [(first (sort-by pr-str [kin_a kin_b]))]
+           (:terms (:parents (block (v/describe kb kin_c CxBoth)))))
+        "two contexts' opposite edges: neither is strictly below the other, so one stands for both")))
+
+(tu/deftest-kb genls-block-comment-says-what-genl-means-and-its-note-how-the-engine-runs-it
+  (let [b (block (v/describe kb 'genl W))]
+    (is (not-any? #(re-find #"closure|chain" %) (:comment b))
+        "the comment states what genl means and leaves the closure cache to a note"))
+  (is (some #(re-find #"caches the genl closure" (str (nth (:sentence %) 2)))
+            (v/sentexes-matching kb '(implementationNote genl ?note) 'CxUniverse))
+      "an implementationNote records that the engine caches the closure"))
+
+(defn- arg-table
+  "The block `b`'s argument constraint table as `[position quoted? rest? [[kind type] …]]`
+  columns."
+  [b]
+  (mapv (fn [{:keys [position quoted? rest? cell]}]
+          [position quoted? rest? (mapv (juxt :kind :type) cell)])
+        (:arg-constraints b)))
+
 (tu/deftest-kb a-predicates-block-holds-its-arity-declarations-and-properties
   (let [d (v/describe kb 'parentOf W)
         b (block d)]
-    (is (= [:comment :kind :arity-class :arity :arg-declarations :parents :props]
-           (mapv :part (:definitional-block d))))
-    (is (= 2 (:arity b)))
-    (is (= (:arg-declarations d) (:arg-declarations b)))
-    (is (= :missing (:props b)) "parentOf is neither transitive nor symmetric"))
-  (is (= #{:symmetric} (:props (block (v/describe kb 'siblingOf W))))))
+    (is (= [:comment :arity :kind :parents :arg-constraints :props :links]
+           (mapv :part (:definitional-block d)))
+        "the comment, then the arity and the kinds, then the rest")
+    (is (= {:exact 2 :via 'parentOf} (:arity b)))
+    (is (not-any? '#{binary_predicate} (:terms (:kind b))) "the arity says what the class would")
+    (is (= '[[1 false false [[:instance causal]]] [2 false false [[:instance causal]]]]
+           (arg-table b))
+        "both declarations are in the table, and no other one is left for its own line")
+    (is (= :missing (:props b)) "parentOf states no algebraic property"))
+  (is (= '[(symmetric siblingOf)] (mapv :sentence (:props (block (v/describe kb 'siblingOf W)))))
+      "a property row is the sentence that states it"))
+
+(defn- block-sentences
+  "The sentences the block `b` shows as sentence rows: its well-formedness declarations,
+  its properties and its links."
+  [b]
+  (into #{} (comp (mapcat #(let [v (get b %)] (when (vector? v) v))) (map :sentence))
+        [:arg-declarations :props :links]))
+
+(tu/deftest-kb a-predicates-block-reads-the-kbs-classification-of-its-sentences
+  (tu/with-terms [relP relQ kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'binary_predicate relQ) (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'irreflexive relP) (list 'functionalInArg relP 2)
+               (list 'argsGenl relP kindT) (list 'seeAlso relP relQ)
+               (list 'interArgEqual relP 2 7 1 kindT)
+               (list 'implementationNote relP "a note no block part shows")]]
+      (v/assert kb s 'CxUniverse))
+    (let [d (v/describe kb relP 'CxUniverse)
+          b (block d)]
+      (is (= #{(list 'irreflexive relP) (list 'functionalInArg relP 2)}
+             (set (map :sentence (:props b))))
+          "irreflexive and the per-position functionalInArg are algebraic properties")
+      (is (= [[1 false false [[:instance kindT] [:type kindT]]]
+              [2 false false [[:instance kindT] [:type kindT]]]]
+             (arg-table b))
+          "argsGenl is an argument constraint, in the table on every position")
+      (is (= [(list 'interArgEqual relP 2 7 1 kindT)] (mapv :sentence (:arg-declarations b)))
+          "a wff declaration the table does not hold keeps its sentence")
+      (is (= [(list 'seeAlso relP relQ)] (mapv :sentence (:links b))))
+      (is (not (contains? (block-sentences b)
+                          (list 'implementationNote relP "a note no block part shows")))
+          "implementationNote is not definitional")
+      (is (= (set (:arg-declarations d))
+             (into (set (:arg-declarations b))
+                   (filter #(not= 'interArgEqual (first (:sentence %))))
+                   (:arg-declarations d)))
+          "every declaration describe lists is in the table or on the line"))))
+
+(tu/deftest-kb a-predicates-argument-constraints-are-one-column-per-position
+  (tu/with-terms [relP kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'unary_predicate kindU) (list 'genl kindU kindT)
+               (list 'quinary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 1 kindU)
+               (list 'arg relP 2 'positive_integer)
+               (list 'quotedArg relP 4 'closed_expression) (list 'genlArg relP 5 kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [[1 false false [[:instance kindU]]]
+            [2 false false '[[:instance positive_integer]]]
+            [3 false false []]
+            [4 true false '[[:quoted closed_expression]]]
+            [5 false false [[:type kindT]]]]
+           (arg-table (block (v/describe kb relP 'CxUniverse))))
+        "a type another one in its cell is strictly below drops, an unconstrained position is an
+        empty cell, and a quoted one is its own column")))
+
+(tu/deftest-kb a-predicate-with-no-argument-constraint-has-no-table
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unary_predicate relP) 'CxUniverse)
+    (v/assert kb (list 'arity relP 1) 'CxUniverse)
+    (is (not-any? #(= :arg-constraints (:part %))
+                  (:definitional-block (v/describe kb relP 'CxUniverse))))))
+
+(tu/deftest-kb a-covering-constraint-fills-the-cells-it-covers
+  (tu/with-terms [relP relQ kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'unary_predicate kindU) (list 'genl kindU kindT)
+               (list 'binary_predicate relP) (list 'args relP kindT)
+               (list 'binary_predicate relQ) (list 'args relQ kindT) (list 'arg relQ 2 kindU)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [[1 false false [[:instance kindT]]] [2 false false [[:instance kindT]]]]
+           (arg-table (block (v/describe kb relP 'CxUniverse))))
+        "args alone types every position of a fixed-arity predicate")
+    (is (= [[1 false false [[:instance kindT]]] [2 false false [[:instance kindU]]]]
+           (arg-table (block (v/describe kb relQ 'CxUniverse))))
+        "a narrower arg2 stands for the covering type it is below")))
+
+(tu/deftest-kb an-unbounded-arity-predicates-tail-is-one-last-column
+  (tu/with-terms [relP relQ kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'unary_predicate kindU) (list 'genl kindU 'thing)
+               (list 'unbounded_arity_predicate relP)
+               (list 'arg relP 1 kindT) (list 'argAndRest relP 2 kindU)
+               (list 'unbounded_arity_predicate relQ) (list 'args relQ kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [[1 false false [[:instance kindT]]] [2 false true [[:instance kindU]]]]
+           (arg-table (block (v/describe kb relP 'CxUniverse))))
+        "argAndRest 2 is an arg2… column after the numbered ones")
+    (is (= [[1 false true [[:instance kindT]]]]
+           (arg-table (block (v/describe kb relQ 'CxUniverse))))
+        "args alone is a single arg1… column")))
+
+(tu/deftest-kb a-super-predicates-constraints-are-in-the-table
+  (tu/with-terms [relP relQ kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'binary_predicate relP) (list 'arg relP 1 kindT)
+               (list 'binary_predicate relQ) (list 'genl relQ relP)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [[1 false false [[:instance kindT]]] [2 false false []]]
+           (arg-table (block (v/describe kb relQ 'CxUniverse)))))))
+
+(tu/deftest-kb the-blocks-rows-follow-the-kbs-display-order
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'irreflexive relP) (list 'functionalInArg relP 2)]]
+      (v/assert kb s 'CxUniverse))
+    (let [props #(mapv :sentence (:props (block (v/describe kb relP 'CxUniverse))))]
+      (is (= [(list 'functionalInArg relP 2) (list 'irreflexive relP)] (props))
+          "unnamed predicates are shown in content order")
+      (let [h (v/assert kb '(predicateDisplayOrder irreflexive functionalInArg) 'CxUniverse)]
+        (try
+          (is (= [(list 'irreflexive relP) (list 'functionalInArg relP 2)] (props))
+              "a named predicate is shown in the order named")
+          (finally (v/retract! kb h)))))))
+
+(tu/deftest-kb a-predicates-arity-part-is-the-length-that-binds-it
+  (tu/with-terms [relP relQ relR relS relU]
+    (doseq [s [(list 'ternary_predicate relP)
+               (list 'binary_predicate relQ) (list 'genl relR relQ)
+               (list 'variable_arity_predicate relS) (list 'unbounded_arity_predicate relS)
+               (list 'arityMin relS 2)
+               (list 'unbounded_arity_predicate relU)]]
+      (v/assert kb s 'CxUniverse))
+    (let [arity #(:arity (block (v/describe kb % 'CxUniverse)))]
+      (is (= {:exact 3 :via relP} (arity relP)))
+      (is (= {:exact 2 :via relQ} (arity relR)) "a length a super-predicate binds")
+      (is (= {:min 2 :via relS} (arity relS))
+          "an unbounded predicate's least length, declared as core.txt declares contradicts")
+      (is (= {:any? true} (arity relU))
+          "an unbounded predicate no least length binds takes any number"))))
+
+(tu/deftest-kb a-predicate-no-length-binds-has-its-arity-part-missing
+  (tu/with-terms [relP]
+    (v/assert kb (list 'variable_arity_predicate relP) 'CxUniverse)
+    (is (= :missing (:arity (block (v/describe kb relP 'CxUniverse)))))))
+
+(tu/deftest-kb an-unlisted-definitional-predicate-is-shown-after-every-listed-one
+  (tu/with-terms [relP kindT defRel]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'comment relP "a relation") (list 'transitive relP)
+               (list 'irreflexive relP) (list 'seeAlso relP 'genl)
+               (list 'binary_predicate defRel) (list 'definitional_predicate defRel)
+               (list 'arg defRel 1 'predicate) (list 'arg defRel 2 'thing)
+               (list defRel relP kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [parts (:definitional-block (v/describe kb relP 'CxUniverse))
+          holds (fn [s] (first (keep-indexed
+                                (fn [i {v :value}]
+                                  (when (and (sequential? v) (some #{s} (map :sentence v))) i))
+                                parts)))
+          at    (holds (list defRel relP kindT))]
+      (is (some? at) "a definitional predicate no predicateDisplayOrder fact names is shown")
+      (is (= (dec (count parts)) at) "after every part a listed predicate is shown in")
+      (is (= [(list 'transitive relP) (list 'irreflexive relP)]
+             (mapv :sentence (:value (first (filter #(= :props (:part %)) parts)))))
+          "and inside a part, an unlisted row follows the listed ones"))))
+
+(tu/deftest-kb a-terms-kind-is-every-unary-predicate-it-holds
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing) (list 'type kindT)
+               (list 'closed_extent_predicate kindT) (list 'not_assertible kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [kinds (set (:terms (:kind (block (v/describe kb kindT 'CxUniverse)))))]
+      (is (contains? kinds 'type) "an order is a kind")
+      (is (contains? kinds 'closed_extent_predicate) "so is a grant")
+      (is (contains? kinds 'not_assertible) "and a refusal mark")
+      (is (not (contains? kinds 'unary_predicate)) "and an arity class is not")))
+  (let [kinds (set (:terms (:kind (block (v/describe kb 'made W)))))]
+    (is (contains? kinds 'origin_type) "a membership the KB does not classify definitional")
+    (is (contains? kinds 'time_invariant_relation))
+    (is (not-any? '#{unary_predicate binary_predicate} kinds))))
+
+(tu/deftest-kb a-kind-another-kind-is-strictly-below-is-left-out
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'eternal_predicate kindT) (list 'time_invariant_relation kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= ['eternal_predicate] (:terms (:kind (block (v/describe kb kindT 'CxUniverse)))))
+        "eternal_predicate is below time_invariant_relation"))
+  (let [kinds (set (:terms (:kind (block (v/describe kb 'algebraic_predicate_property W)))))]
+    (is (contains? kinds 'eternal_predicate))
+    (is (not-any? '#{time_invariant_relation unary_predicate} kinds))))
+
+(tu/deftest-kb a-relation-property-another-one-is-strictly-below-is-left-out
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'equivalence_relation relP) (list 'functionalInArg relP 2)]]
+      (v/assert kb s 'CxUniverse))
+    (let [props (set (map :sentence (:props (block (v/describe kb relP 'CxUniverse)))))]
+      (is (contains? props (list 'equivalence_relation relP)))
+      (is (not-any? props (for [p '[reflexive symmetric transitive]] (list p relP)))
+          "an equivalence relation is reflexive, symmetric and transitive by genl")
+      (is (contains? props (list 'functionalInArg relP 2))
+          "a property with more arguments than the predicate is not pruned"))))
+
+(tu/deftest-kb a-cluster-link-is-in-the-block-of-each-term-it-names
+  (tu/with-terms [kindA kindB kindC]
+    (doseq [t [kindA kindB kindC]]
+      (v/assert kb (list 'unary_predicate t) 'CxUniverse)
+      (v/assert kb (list 'genl t 'thing) 'CxUniverse))
+    (v/assert kb (list 'termsRelated kindA kindB kindC) 'CxUniverse)
+    (doseq [t [kindA kindB kindC]]
+      (is (= [(list 'termsRelated kindA kindB kindC)]
+             (mapv :sentence (:links (block (v/describe kb t 'CxUniverse)))))
+          (str t)))))
 
 (tu/deftest-kb an-individual-is-described-by-its-types-and-where-it-is-mentioned
   (let [d (v/describe kb 'Muffet N)]

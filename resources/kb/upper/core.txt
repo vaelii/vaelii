@@ -1333,6 +1333,7 @@
 (not (definitional_predicate not_assertible))
 (not (definitional_predicate closed_extent_predicate))
 (not (definitional_predicate implementationNote))
+(not (definitional_predicate predicateDisplayOrder))
 (not (definitional_predicate functionCorrespondingPredicate))
 (not (definitional_predicate functionCorrespondingBinaryPredicate))
 ;; the quantified-population declarations and their placeholder predicates
@@ -2507,7 +2508,8 @@
   (quotedArg ?q 1 ?type)))
 
 (comment genl
-         "(genl ?subtype ?supertype) means that every ?subtype is a ?supertype. Transitive, and cached as a closure rather than run as a rule, since transitivity is the lifeblood of common sense and far too hot to chain. The type hierarchy it builds is rooted at thing. Types are unary predicates, so membership is written (dog Muffet) and never (isa Muffet Dog). The same relation relates predicate specializations of any arity: every tuple of the subtype is a tuple of the supertype, which is what a type reading of it is the unary case of, so neither argument is declared a subtype of thing.")
+         "(genl ?subtype ?supertype) means that every ?subtype is a ?supertype. The type hierarchy it builds is rooted at thing. Types are unary predicates, so membership is written (dog Muffet) and never (isa Muffet Dog). The same relation relates predicate specializations of any arity: every tuple of the subtype is a tuple of the supertype, which is what a type reading of it is the unary case of, so neither argument is declared a subtype of thing.")
+(implementationNote genl "The engine caches the genl closure rather than chaining a transitivity rule. Transitivity is the lifeblood of common sense, and a rule for it would be far too hot to chain.")
 (set/monotonic (type_relation_predicate genl))
 (set/monotonic (time_agnostic_relation genl))
 (not (eternal_predicate genl))
@@ -3407,6 +3409,22 @@
 (quotedArg seeAlso 1 denotational_term)   ;; a cross-referenced term, taken as written
 (quotedArg seeAlso 2 denotational_term)
 (set/monotonic (time_invariant_relation seeAlso))
+
+(comment predicateDisplayOrder
+         "(predicateDisplayOrder ?predicate1 ?predicate2 …) means that a term page shows a term's sentences of the named predicates in the order named: a sentence of ?predicate1 above a sentence of ?predicate2. A part of the definitional block takes the first position any predicate it shows is named at. A predicate no fact names is shown after every named one. The order is presentation and says nothing about the term.")
+(positiveExampleComment predicateDisplayOrder "(predicateDisplayOrder comment genl), which shows a term's comment above its parents")
+(negativeExampleComment predicateDisplayOrder "termsRelated, which groups terms for a reader and orders nothing")
+(variable_arity_predicate predicateDisplayOrder)
+(unbounded_arity_predicate predicateDisplayOrder)
+(set/monotonic (time_invariant_relation predicateDisplayOrder))
+(arityMin predicateDisplayOrder 2)
+(args predicateDisplayOrder predicate)
+;; The order the definitional block is shown in: the annotations, the arity, the arity
+;; class and the kinds, the parents and the separations, the well-formedness
+;; declarations, the algebraic properties, and the links.
+(predicateDisplayOrder comment positiveExampleComment positiveExample negativeExampleComment
+                       negativeExample arity unary_predicate type genl disjoint arg transitive
+                       seeAlso termsRelated)
 
 ;; ---- in-KB worked examples -----------------------------------------------
 ;; Facts annotating a term with a true / false / borderline example of its usage.  The

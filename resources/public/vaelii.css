@@ -1421,6 +1421,10 @@ ul.why summary:focus-visible { outline: 2px solid var(--accent); outline-offset:
              column-gap: 1rem; row-gap: .2rem; margin: .3rem 0 1rem; }
 .def-parts dt { color: var(--muted); }
 .def-parts dd { margin: 0; overflow-wrap: anywhere; }
+/* the siblings past the first few, folded inline behind "+ N more" */
+.def-parts .sib-more { display: inline; }
+.def-parts .sib-more > summary { display: inline; cursor: pointer; color: var(--muted); }
+.def-parts .sib-more[open] > summary { display: none; }
 
 /* ---- redesign: collapsible proof, sticky/overflow safety --------------- */
 

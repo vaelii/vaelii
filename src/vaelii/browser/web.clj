@@ -2619,7 +2619,7 @@
              ["every listed sibling decided"
               (count* #(not-any? (comp #{:missing} :separation) (:rows (:siblings %))))]
              ["kind" (count* #(has? % :kind))]
-             ["arity class" (count* #(has? % :arity-class))]]}))
+             ["see also" (count* #(has? % :links))]]}))
 
 (defn- block-tally-job
   "Run `block-tally` over `kb`'s types as a read job and return its id.  The tally rides
@@ -3413,32 +3413,27 @@
                        "list only what the KB was told, not what it concluded")}
    (if hide-derived? "show derived" "hide derived")])
 
-(def ^:private arity-class-names
-  "The exact-arity predicate class for each length, which a predicate's arity-class seed
-  names."
-  {1 "unary_predicate" 2 "binary_predicate" 3 "ternary_predicate"
-   4 "quaternary_predicate" 5 "quinary_predicate"})
-
 (def ^:private block-parts
   "Each part of `describe`'s `:definitional-block`: its label, and the sentence the
   assert form opens on to add it, a template over the term's text `t` and the `describe`
-  answer `d`.  A predicate's arity-class seed names the class of its arity, and a blank
-  functor where the KB binds no arity."
+  answer `d`."
   {:comment           ["comment"             (fn [t _] (str "(comment " t " \"\")"))]
    :positive-examples ["positive examples"   (fn [t _] (str "(positiveExampleComment " t " \"\")"))]
    :negative-examples ["negative examples"   (fn [t _] (str "(negativeExampleComment " t " \"\")"))]
    :parents           ["parents"             (fn [t _] (str "(genl " t " )"))]
    :siblings          ["siblings"            nil]
    :kind              ["kind"                (fn [t _] (str "( " t ")"))]
-   :arity-class       ["arity class"         (fn [t d]
-                                               (str "("
-                                                    (if (= :predicate (:role d))
-                                                      (get arity-class-names (:arity d) " ")
-                                                      "unary_predicate")
-                                                    " " t ")"))]
    :arity             ["arity"               (fn [t _] (str "(arity " t " )"))]
+   :arg-constraints   ["arg constraints"     nil]
    :arg-declarations  ["arg declarations"    (fn [t _] (str "(arg " t " 1 )"))]
-   :props             ["relation properties" (fn [t _] (str "( " t ")"))]})
+   :props             ["relation properties" (fn [t _] (str "( " t ")"))]
+   :links             ["see also"            (fn [t _] (str "(seeAlso " t " )"))]
+   :other             ["other"               nil]})
+
+(def ^:private sibling-cap
+  "How many siblings a Definition block's siblings line shows before the rest are folded
+  behind a \"+ N more\" control that opens them in place."
+  12)
 
 (def ^:private overlap-witness
   "How a sibling row's `:witness` reads beside `overlaps`."
@@ -3457,55 +3452,108 @@
   (when (> total shown)
     [:span.muted " and " (commas (- total shown)) " more"]))
 
+(defn- sentence-rows
+  "A sentence part's `{:sentence :context}` rows about `term`.  A unary `(P term)` row is
+  drawn as its predicate, as a kind is, and the predicates lead; any other row is drawn as
+  its handle badge, or as the sentence where no stored sentex holds it."
+  [env term rows]
+  (let [unary? (fn [{s :sentence}] (and (= 2 (count s)) (= term (second s))))
+        preds  (distinct (map (comp first :sentence) (filter unary? rows)))
+        others (remove unary? rows)]
+    (list (interpose ", " (map #(term-link env %) preds))
+          (when (and (seq preds) (seq others)) " ")
+          (interpose " " (map (fn [{:keys [sentence context]}]
+                                (if-let [h (v/handle-of (:kb env) sentence context)]
+                                  (handle-ref env h)
+                                  (render-form env sentence)))
+                              others)))))
+
+(defn- related-terms
+  "The terms a links part's `seeAlso` and `termsRelated` rows relate `term` to, deduped,
+  in printed order, `term` itself left out."
+  [term rows]
+  (by-print-key (into #{} (comp (mapcat (comp rest :sentence)) (remove #{term})) rows)))
+
 (defn- block-value
-  "One present part of the definitional block of the term whose text is `text`, by the
+  "One present part of the definitional block of `term`, whose text is `text`, by the
   shape `describe` answers that part in."
-  [env text part v]
+  [env term text part v]
   (cond
     (= :siblings part)
     (if (empty? (:rows v))
       [:span.muted "none"]
-      (list (interpose
-             ", "
-             (for [{s :term sep :separation w :witness via :via} (:rows v)
-                   :let [pair (str text " " (term-text env s) ")")]]
-               (list (term-link env s) " "
-                     (case sep
-                       :missing  (missing-mark [["disjoint" (str "(disjoint " pair)]
-                                                ["orthogonal" (str "(orthogonal " pair)]])
-                       :overlaps [:span.muted "overlaps (" (overlap-witness w) " "
-                                  (term-link env via) ")"]
-                       [:span.muted (name sep)]))))
-            (more-note (:total v) (count (:rows v)))))
+      (let [items (for [{s :term sep :separation w :witness via :via} (:rows v)
+                        :let [pair (str text " " (term-text env s) ")")]]
+                    (list (term-link env s) " "
+                          (case sep
+                            :missing  (missing-mark [["disjoint" (str "(disjoint " pair)]
+                                                     ["orthogonal" (str "(orthogonal " pair)]])
+                            :overlaps [:span.muted "overlaps (" (overlap-witness w) " "
+                                       (term-link env via) ")"]
+                            [:span.muted (name sep)])))
+            [head tail] (split-at sibling-cap items)]
+        (list (interpose ", " head)
+              (when (seq tail)
+                (list ", " [:details.sib-more
+                            [:summary "+ " (commas (count tail)) " more"]
+                            (interpose ", " tail)]))
+              (more-note (:total v) (count (:rows v))))))
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
-    (= :arg-declarations part) (interpose " " (map (fn [{:keys [sentence context]}]
-                                                     (if-let [h (v/handle-of (:kb env) sentence context)]
-                                                       (handle-ref env h)
-                                                       (render-form env sentence)))
-                                                   v))
-    (= :props part)            (interpose ", " (map name v))
-    (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
+    (= :links part)            (interpose ", " (map #(term-link env %) (related-terms term v)))
+    (#{:arg-declarations :props :other} part) (sentence-rows env term v)
+    (= :comment part)          (interpose [:br] (map #(comment-text env % #{}) v))
+    (coll? v)                  (interpose ", " (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
 
+(defn- arg-table
+  "A predicate's argument constraint table (`describe`'s `:arg-constraints` part): a header
+  row naming each column's position, `quoted argN` for a quoted one and `argN…` for a tail,
+  over one row of cells.  A cell lists its types, an instance type as the type and a type a
+  `genlArg` declaration asks the argument to specialize as `⊆ type`."
+  [env cols]
+  [:table.arg-table
+   [:tr (for [{:keys [position quoted? rest?]} cols]
+          [:th (str (when quoted? "quoted ") "arg" position (when rest? "…"))])]
+   [:tr (for [{:keys [cell]} cols]
+          [:td (interpose ", " (for [{:keys [kind type]} cell]
+                                 (if (= :type kind)
+                                   (list "⊆ " (term-link env type))
+                                   (term-link env type))))])]])
+
+(defn- arity-text
+  "A predicate's arity line (`describe`'s block `:arity` part): the exact length, `≥m` for
+  a least length `m`, and `any` for a least length of at most one or an unbounded-arity
+  predicate no length binds."
+  [{:keys [exact min any?]}]
+  (cond exact        (str exact)
+        (or any? (and min (<= min 1))) "any"
+        min          (str "≥" min)))
+
 (defn- definitional-block
-  "The term's definitional block (`describe`'s `:definitional-block`, docs/web.md), one
-  line per part in the handbook's order.  A missing part is tagged, beside a link that
-  opens the assert form on the sentence that would supply it; so is a sibling no
-  declaration separates."
+  "The term's definitional block (`describe`'s `:definitional-block`, docs/web.md) under
+  the heading Definition, one line per part in the block's order.  A
+  missing part is tagged, beside a link that opens the assert form on the sentence that
+  would supply it; so is a sibling no declaration separates."
   [env term {:keys [definitional-block] :as about}]
   (when (seq definitional-block)
-    (let [text (term-text env term)]
+    (let [text  (term-text env term)
+          seeds (fn [part]
+                  (let [[_ seed] (block-parts part)]
+                    (when seed [["add" (seed text about)]])))]
       [:div.def-block
-       [:h3 "Definitional block "
-        [:span.muted "(the parts a term ships with, and which of them the KB holds)"]]
+       [:h3 "Definition"]
        [:dl.def-parts
         (for [{:keys [part value]} definitional-block
-              :let [[label seed] (block-parts part)]]
-          (list [:dt label]
-                [:dd (if (= :missing value)
-                       (missing-mark (when seed [["add" (seed text about)]]))
-                       (block-value env text part value))]))]])))
+              [label content] (cond
+                                (= :missing value)
+                                [[(first (block-parts part)) (missing-mark (seeds part))]]
+                                (= :arity part) [[(first (block-parts part)) (arity-text value)]]
+                                (= :arg-constraints part) [[(first (block-parts part))
+                                                            (arg-table env value)]]
+                                :else
+                                [[(first (block-parts part)) (block-value env term text part value)]])]
+          (list [:dt label] [:dd content]))]])))
 
 (defn term-page
   "A term's page: the concept graph, the three type lines, the sentexes grouped by the

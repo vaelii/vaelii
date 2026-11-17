@@ -336,17 +336,200 @@
 
 (deftest a-term-page-opens-the-assert-form-on-each-missing-part-of-its-block
   (let [body (:body (GET "/term" "q=parentOf"))]
-    (is (re-find #"Definitional block" body))
-    (is (re-find #"<dt>arg declarations</dt>" body))
+    (is (re-find #"<h3>Definition</h3>" body) "the block's section is headed Definition")
+    (is (not (re-find #"Definitional block" body)))
+    (is (re-find #"<dt>arg constraints</dt>" body))
     (is (re-find #"tag-missing\">missing</span> <a class=\"action\" href=\"/assert\?text=%28\+parentOf%29\">add</a>"
                  body)
         "parentOf carries no relation property, and the link seeds the form with one")))
 
-(deftest a-predicates-arity-class-seed-names-the-class-of-its-arity
-  (let [seed (second (@#'web/block-parts :arity-class))]
-    (is (= ["(ternary_predicate p)" "(binary_predicate p)" "(  p)" "(unary_predicate t)"]
-           [(seed "p" {:role :predicate :arity 3}) (seed "p" {:role :predicate :arity 2})
-            (seed "p" {:role :predicate}) (seed "t" {:role :type})]))))
+(defn- block-line
+  "The `<dd>` the Definition block of the term page `body` draws beside the label `dt`,
+  or nil when the block draws no such line."
+  [body dt]
+  (let [block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))]
+    (second (re-find (re-pattern (str "(?s)<dt>" dt "</dt><dd>(.*?)</dd>")) block))))
+
+(defn- linked-terms
+  "The terms a block line links to, by their page links, in order."
+  [line]
+  (mapv #(symbol (java.net.URLDecoder/decode ^String (second %) "UTF-8"))
+        (re-seq #"href=\"/term\?q=([^\"]+)\"" line)))
+
+(deftest a-predicates-arity-line-stands-in-for-its-arity-class
+  (let [body (:body (GET "/term" "q=parentOf"))]
+    (is (= "2" (block-line body "arity")))
+    (is (nil? (block-line body "arity class")) "the arity class has no line of its own")
+    (is (not (some #{'binary_predicate} (linked-terms (or (block-line body "kind") ""))))
+        "nor is it a kind")))
+
+(tu/deftest-kb a-types-kind-line-lists-no-arity-class
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing) (list 'type kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body (:body (GET "/term" (str "q=" (name kindT))))]
+      (is (= '[type] (linked-terms (block-line body "kind"))))
+      (is (nil? (block-line body "arity class"))))))
+
+(tu/deftest-kb a-predicates-arity-line-reads-the-length-that-binds-it
+  (tu/with-terms [relP relQ relR relS relT relU]
+    (doseq [s [(list 'ternary_predicate relP)
+               (list 'binary_predicate relQ) (list 'genl relR relQ)
+               (list 'variable_arity_predicate relS) (list 'unbounded_arity_predicate relS)
+               (list 'arityMin relS 2)
+               (list 'variable_arity_predicate relT) (list 'unbounded_arity_predicate relT)
+               (list 'arityMin relT 1)
+               (list 'unbounded_arity_predicate relU)]]
+      (v/assert kb s 'CxUniverse))
+    (let [line #(block-line (:body (GET "/term" (str "q=" (name %)))) "arity")]
+      (is (= "3" (line relP)))
+      (is (= "2" (line relR)) "a length a super-predicate binds")
+      (is (= "≥2" (line relS)))
+      (is (= "any" (line relT)) "a floor of one is no floor")
+      (is (= "any" (line relU)) "an unbounded predicate no floor binds"))))
+
+(tu/deftest-kb a-types-examples-are-one-comma-separated-line
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'positiveExampleComment kindT "one made up")
+               (list 'positiveExampleComment kindT "another made up")
+               (list 'negativeExampleComment kindT "none made up")]]
+      (v/assert kb s 'CxUniverse))
+    (let [body (:body (GET "/term" (str "q=" (name kindT))))]
+      (is (= "<q>another made up</q>, <q>one made up</q>" (block-line body "positive examples")))
+      (is (= "<q>none made up</q>" (block-line body "negative examples"))))))
+
+(tu/deftest-kb a-terms-see-also-line-lists-the-terms-it-is-linked-to
+  (tu/with-terms [relP relQ relR relS kindT]
+    (doseq [s (concat (for [r [relP relQ relR relS]] (list 'binary_predicate r))
+                      [(list 'unary_predicate kindT)
+                       (list 'seeAlso relP relS) (list 'termsRelated relP relR relQ)
+                       (list 'termsRelated relS relP)])]
+      (v/assert kb s 'CxUniverse))
+    (let [line (block-line (:body (GET "/term" (str "q=" (name relP)))) "see also")]
+      (is (= (vec (sort-by str [relQ relR relS])) (linked-terms line)))
+      (is (not (re-find #"badge-link" line)) "the line draws no sentence"))))
+
+(tu/deftest-kb a-unary-relation-property-is-drawn-as-the-property
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'irreflexive relP) (list 'functionalInArg relP 2)]]
+      (v/assert kb s 'CxUniverse))
+    (let [line (block-line (:body (GET "/term" (str "q=" (name relP)))) "relation properties")
+          h    #(v/handle-of kb % 'CxUniverse)]
+      (is (= 'irreflexive (first (linked-terms line))) "the unary property, as a term")
+      (is (not (re-find (re-pattern (str "/sentex/" (h (list 'irreflexive relP)) "\"")) line))
+          "and not as its sentence")
+      (is (re-find (re-pattern (str "/sentex/" (h (list 'functionalInArg relP 2)) "\"")) line)
+          "a sentence with more arguments is drawn whole"))))
+
+(tu/deftest-kb an-unbounded-arity-predicates-arity-line-offers-no-arity
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unbounded_arity_predicate relP) 'CxUniverse)
+    (let [body (:body (GET "/term" (str "q=" (name relP))))]
+      (is (re-find #"<h3>Definition</h3>" body))
+      (is (= "any" (block-line body "arity")) "never missing")
+      (is (not (str/includes? body (str "text=%28arity+" (name relP))))
+          "and no link seeding an arity, which would be ill-formed"))))
+
+(tu/deftest-kb an-unlisted-definitional-predicate-is-the-last-line-of-the-definition
+  (tu/with-terms [relP kindT defRel]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'comment relP "a relation") (list 'transitive relP)
+               (list 'irreflexive relP) (list 'seeAlso relP 'genl)
+               (list 'binary_predicate defRel) (list 'definitional_predicate defRel)
+               (list 'arg defRel 1 'predicate) (list 'arg defRel 2 'thing)
+               (list defRel relP kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body  (:body (GET "/term" (str "q=" (name relP))))
+          block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+          lines (re-seq #"(?s)<dt>([^<]*)</dt><dd>(.*?)</dd>" block)
+          h     (v/handle-of kb (list defRel relP kindT) 'CxUniverse)
+          shows (fn [[_ _ dd]] (re-find (re-pattern (str "/sentex/" h "\"")) dd))]
+      (is (some shows lines) "a definitional predicate no predicateDisplayOrder fact names is shown")
+      (is (shows (last lines)) "on the block's last line, after every listed one")
+      (is (= '[transitive irreflexive]
+             (filterv '#{transitive irreflexive}
+                      (linked-terms (block-line body "relation properties"))))
+          "and inside a line, an unlisted predicate follows the listed ones"))))
+
+(defn- arg-table
+  "The argument constraint table the Definition block of the term page `body` draws, as
+  `[[header …] [cell …]]`, the cells as the terms each links; nil where it draws none."
+  [body]
+  (when-let [line (block-line body "arg constraints")]
+    [(mapv second (re-seq #"<th>([^<]*)</th>" line))
+     (mapv #(linked-terms (second %)) (re-seq #"(?s)<td>(.*?)</td>" line))]))
+
+(tu/deftest-kb a-predicates-argument-types-are-one-table-with-a-column-per-position
+  (tu/with-terms [relP kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'unary_predicate kindU)
+               (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 1 kindU) (list 'arg relP 2 kindT)
+               (list 'quotedArg relP 2 'closed_expression)
+               (list 'interArgEqual relP 2 7 1 kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body  (:body (GET "/term" (str "q=" (name relP))))
+          block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+          other (block-line body "arg declarations")
+          [heads cells] (arg-table body)]
+      (is (= ["arg constraints"]
+             (filter #(re-find #"constraints" %) (map second (re-seq #"<dt>([^<]*)</dt>" block))))
+          "one line for every position")
+      (is (= ["arg1" "arg2" "quoted arg2"] heads))
+      (is (= [(vec (sort-by str [kindT kindU])) [kindT] '[closed_expression]] cells))
+      (is (not (re-find #"badge-link" (block-line body "arg constraints"))) "types, not sentences")
+      (is (re-find (re-pattern (str "/sentex/" (v/handle-of kb (list 'interArgEqual relP 2 7 1 kindT)
+                                                            'CxUniverse) "\""))
+                   (str other))
+          "a declaration the table does not hold keeps its sentence"))))
+
+(tu/deftest-kb a-five-place-predicates-table-has-a-cell-for-every-position
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'quinary_predicate relP) (list 'arg relP 1 'relation)
+               (list 'arg relP 2 'positive_integer) (list 'arg relP 4 'positive_integer)
+               (list 'genlArg relP 5 kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body (:body (GET "/term" (str "q=" (name relP))))
+          line (block-line body "arg constraints")]
+      (is (= [["arg1" "arg2" "arg3" "arg4" "arg5"]
+              ['[relation] '[positive_integer] [] '[positive_integer] [kindT]]]
+             (arg-table body))
+          "an unconstrained position is an empty cell")
+      (is (re-find #"⊆ <a" line) "a genlArg type is marked as the genl it must specialize")
+      (is (nil? (block-line body "arg declarations"))
+          "every declaration is in the table, so the line is not drawn"))))
+
+(tu/deftest-kb an-unbounded-arity-predicates-tail-column-says-where-it-starts
+  (tu/with-terms [relP kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'unary_predicate kindU)
+               (list 'unbounded_arity_predicate relP)
+               (list 'arg relP 1 kindT) (list 'argAndRest relP 2 kindU)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [["arg1" "arg2…"] [[kindT] [kindU]]]
+           (arg-table (:body (GET "/term" (str "q=" (name relP)))))))))
+
+(tu/deftest-kb a-predicate-with-no-argument-constraint-draws-no-table
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unary_predicate relP) 'CxUniverse)
+    (v/assert kb (list 'arity relP 1) 'CxUniverse)
+    (is (nil? (arg-table (:body (GET "/term" (str "q=" (name relP)))))))))
+
+(tu/deftest-kb a-types-siblings-line-shows-twelve-and-opens-the-rest-in-place
+  (let [kids (vec (repeatedly 15 #(tu/tmp-type "sib")))
+        root (tu/tmp-type "sibroot")]
+    (doseq [s (cons (list 'genl root 'thing) (map #(list 'genl % root) kids))]
+      (v/assert kb s 'CxUniverse))
+    (let [line          (block-line (:body (GET "/term" (str "q=" (name (first kids))))) "siblings")
+          [shown folded] (str/split line #"<details" 2)
+          siblings      (vec (sort-by pr-str (rest kids)))]
+      (is (= (subvec siblings 0 12) (linked-terms shown)) "the first twelve, in order")
+      (is (re-find #"<summary>\+ 2 more</summary>" (str folded)))
+      (is (= (subvec siblings 12) (linked-terms (str folded)))
+          "and the other two on the page, behind the control"))))
 
 (deftest ^:slow the-stats-page-tallies-the-definitional-blocks-as-a-read-job
   (is (re-find #"action=\"/stats/blocks\"" (:body (GET "/stats"))))
@@ -799,16 +982,18 @@
       (is (seq hs))
       (is (= '(comment dog) (take 2 (:sentence (v/sentex tu/*kb* (first hs)))))))))
 
-(deftest a-terms-own-comment-is-the-first-row-of-its-group
-  ;; `(comment dog "…")` sits at argument position 1 like every declaration, and
-  ;; allocation order puts it wherever it was asserted.  It is what the term says it is,
-  ;; so it is read first — part of the sort key, never a row lifted out of the sequence,
-  ;; because paging re-slices this sequence at an offset.
-  (let [body  (:body (GET "/term" "q=dog"))
-        grp   (second (re-find #"(?s)aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))
+(deftest a-terms-own-comment-is-its-blocks-comment-line-and-the-first-row-of-its-group
+  ;; `(comment dog "…")` is what the term says it is, so it sorts first in its group: part
+  ;; of the sort key, never a row lifted out of the sequence, because paging re-slices
+  ;; this sequence at an offset (docs/web.md).
+  (let [body      (:body (GET "/term" "q=dog"))
+        block     (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+        grp       (second (re-find #"(?s)aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))
         first-row (second (re-find #"(?s)<li[^>]*>(.*?)</li>" grp))]
+    (is (re-find #"<dt>comment</dt><dd><span class=\"sx t-str\">" block)
+        "the comment is the block's comment line")
     (is (re-find #">comment</a>" first-row)
-        "the comment leads the group it lands in"))
+        "and it leads the group it lands in"))
   (testing "the key is total, so the order is one a continuation reproduces"
     (let [rows (fn [off] (re-seq #"data-h=\"(\d+)\""
                                  (:body (GET "/term/rows" (str "q=dog&g=0&offset=" off)))))
@@ -4134,3 +4319,59 @@
         (if old
           (System/setProperty "vaelii.browser.detach-ms" old)
           (System/clearProperty "vaelii.browser.detach-ms"))))))
+
+;; ---- each assertion about a term, shown once by index ----------------------
+
+(defn- badges
+  "How many handle badges for handle `h` the page `body` draws."
+  [body h]
+  (count (re-seq (re-pattern (str "badge-link\" href=\"/sentex/" h "\"")) body)))
+
+(defn- about-term
+  "Every stored fact sentence naming `term` as a top-level argument."
+  [kb term]
+  (into #{}
+        (comp (remove :antecedent)
+              (map :sentence)
+              (filter #(and (sequential? %) (some #{term} (rest %)))))
+        (v/find-sentexes kb term)))
+
+(defn- exactly-once-world!
+  "A predicate `relP` with a sentence for each block part and beside them a refusal mark
+  and a plain non-definitional fact."
+  [kb relP relQ kindT]
+  (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+             (list 'binary_predicate relP) (list 'binary_predicate relQ)
+             (list 'comment relP "A relation made up for this test.")
+             (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+             (list 'argsGenl relP kindT) (list 'functionalInArg relP 2)
+             (list 'interArgEqual relP 2 7 1 kindT)
+             (list 'irreflexive relP) (list 'seeAlso relP relQ)
+             (list 'not_assertible relP)
+             (list 'implementationNote relP "a note no block part shows")]]
+    (v/assert kb s 'CxUniverse)))
+
+(defn- page-sections
+  "A term page `body` split at its index section's heading: the part above it, which holds
+  the Definition block, and the Sentexes by index section."
+  [body]
+  (let [i (str/index-of body "Sentexes by index")]
+    [(subs body 0 i) (subs body i)]))
+
+(tu/deftest-kb the-index-section-shows-each-assertion-about-its-term-exactly-once
+  (tu/with-terms [relP relQ kindT]
+    (exactly-once-world! kb relP relQ kindT)
+    (let [[_ index] (page-sections (:body (GET "/term" (str "q=" (name relP)))))]
+      (doseq [s (about-term kb relP)
+              :let [h (v/handle-of kb s 'CxUniverse)]]
+        (is (some? h) (pr-str s))
+        (is (= 1 (badges index h)) (str (pr-str s) " is shown once by index"))))))
+
+(tu/deftest-kb the-definition-block-restates-sentences-the-index-shows
+  (tu/with-terms [relP relQ kindT]
+    (exactly-once-world! kb relP relQ kindT)
+    (let [[block index] (page-sections (:body (GET "/term" (str "q=" (name relP)))))]
+      (doseq [s [(list 'interArgEqual relP 2 7 1 kindT) (list 'functionalInArg relP 2)]
+              :let [h (v/handle-of kb s 'CxUniverse)]]
+        (is (= [1 1] [(badges block h) (badges index h)])
+            (str (pr-str s) " is in the block and in its index group"))))))
