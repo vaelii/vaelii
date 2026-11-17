@@ -1662,22 +1662,22 @@
           [(res/matches-visible kb probe context)
            (filter far (res/match-pattern kb probe '?ctx))])))
 
-(defn- names-no-reified-constant?
-  "Does the equality supporter `h` name no reified constant?  `sole-constant?` reads two
-  constants as one only through such a merge, so a placeholder's own merges never make
-  two rivals one."
-  [kb h]
-  (not-any? nat-read/reified-nat-symbol? (some-> (p/get-sentex (:records kb) h) :sentence nm/args)))
+(defn- names-determinate-terms-only?
+  "Does the equality supporter `h` name only terms `provers/determinateness` reads as
+  `:determinate` at `context`?  `sole-constant?` reads two constants as one only through
+  such a merge, so an indeterminate filler's own merges never make two rivals one."
+  [kb context h]
+  (every? #(= :determinate (provers/determinateness kb % context))
+          (some-> (p/get-sentex (:records kb) h) :sentence nm/args)))
 
 (defn sole-constant?
   "Is no determinate filler of the functional slot `via` at position `n` under `args`
   that `context` reaches outside the class of the constant `c` (`slot-candidates`)?  The
-  class is read over the merges `context` sees that name no reified constant
-  (`names-no-reified-constant?`).  The guard on a placeholder filler's merge
-  (`functional-merges?`): with Mary and Jane in the slot, neither merges with the
-  placeholder."
+  class is read over the merges `context` sees that name determinate terms only
+  (`names-determinate-terms-only?`).  The guard on an indeterminate filler's merge
+  (`functional-merges?`): with Mary and Jane in the slot, neither merges with it."
   [kb c via n args context]
-  (let [admit? #(names-no-reified-constant? kb %)]
+  (let [admit? #(names-determinate-terms-only? kb context %)]
     (every? #(or (= c %) (and (symbol? %) (res/same-class-in? kb c % context admit?)))
             (slot-candidates kb via n args context))))
 
@@ -1686,19 +1686,19 @@
   and `o`, in the slot `via` at position `n` under `args`, merge the two at `context`
   (docs/equality.md, \"`functional` infers equality instead of throwing\")?  The fillers
   must be two symbols (`tuple/mergeable-values?`).  They merge when both members are
-  `:monotonic`, or either filler is `:indeterminate` (`provers/determinateness`).  They
-  merge when one is `:placeholder` and the other a `:determinate` constant that
-  is the slot's one candidate at `context` (`sole-constant?`)."
+  `:monotonic`.  Otherwise they merge when one is `:indeterminate` or a `:placeholder`
+  (`provers/determinateness`) and the other a `:determinate` constant that is the slot's
+  one candidate at `context` (`sole-constant?`).  Two determinate fillers, and two that
+  are not determinate, merge on monotonic evidence alone."
   [kb a b h o context via n args]
   (and (tuple/mergeable-values? a b)
        (let [tms (reasoning/tms kb)]
          (or (and (tuple/monotonic-member? tms h) (tuple/monotonic-member? tms o))
              (let [da (provers/determinateness kb a context)
-                   db (provers/determinateness kb b context)]
-               (or (= :indeterminate da) (= :indeterminate db)
-                   (let [c (cond (and (= :placeholder da) (= :determinate db)) b
-                                 (and (= :placeholder db) (= :determinate da)) a)]
-                     (boolean (and c (sole-constant? kb c via n args context))))))))))
+                   db (provers/determinateness kb b context)
+                   c  (cond (and (not= :determinate da) (= :determinate db)) b
+                            (and (not= :determinate db) (= :determinate da)) a)]
+               (boolean (and c (sole-constant? kb c via n args context))))))))
 
 (defn functional-declaration-supporters
   "The handles of every declaration constraining `via` at position `n`: the

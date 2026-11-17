@@ -2337,8 +2337,8 @@
         (is (true? (v/same-class? kb k namedPred 'CxUniverse)))))))
 
 (tu/deftest-kb an-indeterminate-filler-merges-on-default-evidence-once-declared
-  ;; an indeterminate_term merges at the slightest breeze, and a membership stated after
-  ;; the collision reaches it
+  ;; an indeterminate_term merges onto the one constant of its slot, and a membership
+  ;; stated after the collision reaches it
   (tu/with-terms [bestFriendOf Ann Mary Someone]
     (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list bestFriendOf Ann Mary) 'CxUniverse)
@@ -2351,6 +2351,47 @@
       (v/retract! kb h)
       (is (false? (v/same-class? kb Mary Someone 'CxUniverse))
           "retracting the membership takes the merge back"))))
+
+(defn- someone-kb
+  "`steps` over a `functional` bestFriendOf: `:someone`, `:mary` and `:jane` each a
+  `:default` filler of Ann's slot, `:decl` the membership making Someone indeterminate.
+  Returns `[Someone=Mary Someone=Jane Mary=Jane]`."
+  [kb [bestFriendOf Ann Mary Jane Someone] steps]
+  (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+  (doseq [step steps]
+    (case step
+      :someone (v/assert kb (list bestFriendOf Ann Someone) 'CxUniverse)
+      :mary    (v/assert kb (list bestFriendOf Ann Mary) 'CxUniverse)
+      :jane    (v/assert kb (list bestFriendOf Ann Jane) 'CxUniverse)
+      :decl    (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})))
+  (mapv true? [(v/same-class? kb Someone Mary 'CxUniverse) (v/same-class? kb Someone Jane 'CxUniverse)
+               (v/same-class? kb Mary Jane 'CxUniverse)]))
+
+(deftest an-indeterminate-filler-merges-with-neither-of-two-rival-constants-in-sampled-orders
+  ;; one guard for every indeterminate filler: with Mary and Jane in the slot, Someone
+  ;; merges with neither, so no merge chains Mary to Jane
+  (tu/with-terms [bestFriendOf Ann Mary Jane Someone]
+    (let [terms [bestFriendOf Ann Mary Jane Someone]
+          runs  (for [order [[:someone :mary :jane :decl] [:decl :jane :mary :someone]
+                             [:mary :decl :someone :jane] [:jane :someone :decl :mary]
+                             [:mary :jane :someone :decl] [:decl :someone :mary :jane]]]
+                  (on-core-kb (fn [kb] [(someone-kb kb terms order) (unnamed-content kb)])))]
+      (is (= #{[false false false]} (set (map first runs))))
+      (is (= 1 (count (set runs))) "one believed set in every order"))))
+
+(tu/deftest-kb two-indeterminate-fillers-do-not-merge-on-default-evidence
+  ;; an indeterminate filler merges onto a determinate constant only: Someone and the
+  ;; placeholder (<FriendFn Ann>) fill one slot and stay two
+  (tu/with-terms [FriendFn bestFriendOf Ann Someone]
+    (v/assert kb (list 'reifiable_function FriendFn) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})
+    (let [k (nth (v/sentence-of (v/sentex kb (v/assert kb (list bestFriendOf Ann (list FriendFn Ann))
+                                                       'CxUniverse)))
+                 2)]
+      (v/assert kb (list bestFriendOf Ann Someone) 'CxUniverse)
+      (is (nat-read/reified-object-symbol? k))
+      (is (false? (v/same-class? kb k Someone 'CxUniverse))))))
 
 (deftest retracting-a-default-value-or-its-declaration-is-net-neutral
   (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
