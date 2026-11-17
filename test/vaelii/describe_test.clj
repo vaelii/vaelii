@@ -370,6 +370,30 @@
       (is (not (contains? kinds 'closed_extent_predicate)) "a grant is not")
       (is (not (contains? kinds 'not_assertible)) "nor is a refusal mark"))))
 
+(tu/deftest-kb a-kind-another-kind-is-strictly-below-is-left-out
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'eternal_predicate kindT) (list 'time_invariant_relation kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= ['eternal_predicate] (:terms (:kind (block (v/describe kb kindT 'CxUniverse)))))
+        "eternal_predicate is below time_invariant_relation"))
+  (let [b (block (v/describe kb 'algebraic_predicate_property W))]
+    (is (= ['unary_predicate] (:terms (:arity-class b))))
+    (is (= ['eternal_predicate] (:terms (:kind b))))))
+
+(tu/deftest-kb a-relation-property-another-one-is-strictly-below-is-left-out
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'equivalence_relation relP) (list 'functionalInArg relP 2)]]
+      (v/assert kb s 'CxUniverse))
+    (let [props (set (map :sentence (:props (block (v/describe kb relP 'CxUniverse)))))]
+      (is (contains? props (list 'equivalence_relation relP)))
+      (is (not-any? props (for [p '[reflexive symmetric transitive]] (list p relP)))
+          "an equivalence relation is reflexive, symmetric and transitive by genl")
+      (is (contains? props (list 'functionalInArg relP 2))
+          "a property with more arguments than the predicate is not pruned"))))
+
 (tu/deftest-kb a-cluster-link-is-in-the-block-of-each-term-it-names
   (tu/with-terms [kindA kindB kindC]
     (doseq [t [kindA kindB kindC]]

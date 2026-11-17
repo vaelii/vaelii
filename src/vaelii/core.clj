@@ -5890,6 +5890,17 @@
             []
             (nm/by-print-key (tax/min-types tx ts context)))))
 
+(defn- minimal-unary
+  "The `{:sentence}` rows a block part shows of `rows`: a `(P term)` row is left out where
+  another such row's `P` is in `minimal-terms`' place of it, so `(reflexive P)` goes where
+  `(equivalence_relation P)` is shown, and every other row stays."
+  [kb term rows context]
+  (let [unary? (fn [{s :sentence}] (and (sequential? s) (= 2 (count s)) (= term (second s))))
+        kept   (set (minimal-terms kb (into #{} (comp (filter unary?) (map (comp first :sentence)))
+                                            rows)
+                                   context))]
+    (filterv #(or (not (unary? %)) (contains? kept (first (:sentence %)))) rows)))
+
 (defn- definitional-block
   "The definitional block of the term `described` (a `describe` answer of role `:type` or
   `:predicate`), as `{:part :value}` rows, `:missing` where the KB holds nothing.  A
@@ -5947,8 +5958,12 @@
         other    (into [] (remove #(= 2 (count (:sentence %))))
                        (sentences-about kb term context (shows :kind)))
         asserted (into #{} (filter definitional) (types-of kb term context))
-        kind    (part :kind (bounded-terms (filter (shows :kind) asserted) limit))
-        aclass  (part :arity-class (bounded-terms (filter classes asserted) limit))
+        kind    (part :kind (bounded-terms (minimal-terms kb (filter (shows :kind) asserted)
+                                                      context)
+                                       limit))
+        aclass  (part :arity-class (bounded-terms (minimal-terms kb (filter classes asserted)
+                                                                 context)
+                                                  limit))
         parents (part :parents (bounded-terms minimal limit))
         links   (part :links (by-order (links-on kb term context definitional)))
         parts   (case role
@@ -5966,7 +5981,10 @@
                                 (part :arity (:arity described)))
                               (part :arg-declarations (by-order (:arg-declarations described)))
                               parents
-                              (part :props (by-order (sentences-about kb term context algebraic)))
+                              (part :props (by-order (minimal-unary kb term
+                                                                    (sentences-about kb term context
+                                                                                     algebraic)
+                                                                    context)))
                               links])
         parts   (cond-> (filterv some? parts) (seq other) (conj (part :other (by-order other))))]
     (vec (sort-by rank parts))))

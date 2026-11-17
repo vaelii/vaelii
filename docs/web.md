@@ -1898,12 +1898,17 @@ The kind line lists the definitional types asserted of the term, with its arity 
 (`unary_predicate`, `binary_predicate`, …) first. A predicate whose arity line shows its
 arity lists no arity class, since the arity says the same. A grant or a refusal mark such
 as `closed_extent_predicate` or `not_assertible` is no kind. A membership another line
-shows, such as `(irreflexive P)` under the relation properties, is not also a kind.
+shows, such as `(irreflexive P)` under the relation properties, is not also a kind. A
+kind another listed kind is strictly below is left out, as a parent is (below): a
+predicate declared `eternal_predicate` and `time_invariant_relation` lists
+`eternal_predicate`, and the arity classes are pruned the same way among themselves.
 
 A sentence line draws each `(P term)` sentence as its predicate `P`, linked, as the kind line
 does, and any other sentence as its handle badge. So a predicate's relation properties,
 its `algebraic_predicate_property` sentences, show `irreflexive` as a term, and a
-per-position one such as `(functionalInArg P 2)` as its sentence. The argument declarations
+per-position one such as `(functionalInArg P 2)` as its sentence. A `(Q P)` property
+another shown `(R P)` is strictly below by `genl` is left out: `(equivalence_relation P)`
+stands for the `reflexive`, `symmetric` and `transitive` sentences its rules derive. The argument declarations
 are the predicate's `wff_predicate` sentences. An `(arg P n T)` or `(argN P T)` declaration
 shows its type `T` on an **argN constraints** line, one line per position, and a
 `(quotedArg P n T)` declaration on a **quoted argN constraints** line. A position with
