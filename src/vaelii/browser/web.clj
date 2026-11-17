@@ -3438,6 +3438,7 @@
                                                       "unary_predicate")
                                                     " " t ")"))]
    :arity             ["arity"               (fn [t _] (str "(arity " t " )"))]
+   :arg-constraints   ["arg constraints"     nil]
    :arg-declarations  ["arg declarations"    (fn [t _] (str "(arg " t " 1 )"))]
    :props             ["relation properties" (fn [t _] (str "( " t ")"))]
    :links             ["links"               (fn [t _] (str "(seeAlso " t " )"))]
@@ -3514,42 +3515,25 @@
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
     (= :links part)            (interpose ", " (map #(term-link env %) (related-terms term v)))
-    (#{:props :other} part)    (sentence-rows env term v)
+    (#{:arg-declarations :props :other} part) (sentence-rows env term v)
     (= :comment part)          (interpose [:br] (map #(comment-text env % #{}) v))
     (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
 
-(def ^:private arg-projections
-  "The binary projections of `arg`, each with the position it types."
-  '{arg1 1 arg2 2 arg3 3 arg4 4 arg5 5})
-
-(defn- typed-position
-  "`[quoted? n type]` for an argument declaration row about `term` that types one numbered
-  position: `(arg term n type)`, `(argN term type)` or `(quotedArg term n type)`; nil for
-  any other row."
-  [term {s :sentence}]
-  (when (and (sequential? s) (= term (second s)))
-    (let [f (first s)]
-      (cond
-        (and (#{'arg 'quotedArg} f) (= 4 (count s)) (pos-int? (nth s 2)))
-        [(= 'quotedArg f) (nth s 2) (nth s 3)]
-        (and (arg-projections f) (= 3 (count s)))
-        [false (arg-projections f) (nth s 2)]))))
-
-(defn- arg-lines
-  "The argument declaration rows of `term` as block lines, `[label content]` each.  Each
-  numbered position an `arg`, `argN` or `quotedArg` row types has a line listing its
-  types, the quoted line after the plain one.  One last line holds every other
-  declaration as its sentence."
-  [env term rows]
-  (let [typed  (keep #(when-let [p (typed-position term %)] p) rows)
-        others (remove #(typed-position term %) rows)]
-    (concat
-     (for [[[quoted? n] ps] (sort-by (fn [[[q n]]] [n q]) (group-by (juxt first second) typed))]
-       [(str (when quoted? "quoted ") "arg" n " constraints")
-        (interpose ", " (map #(term-link env %) (distinct (map #(nth % 2) ps))))])
-     (when (seq others)
-       [[(first (block-parts :arg-declarations)) (sentence-rows env term others)]]))))
+(defn- arg-table
+  "A predicate's argument constraint table (`describe`'s `:arg-constraints` part): a header
+  row naming each column's position, `quoted argN` for a quoted one and `argN…` for a tail,
+  over one row of cells.  A cell lists its types, an instance type as the type and a type a
+  `genlArg` declaration asks the argument to specialize as `⊆ type`."
+  [env cols]
+  [:table.arg-table
+   [:tr (for [{:keys [position quoted? rest?]} cols]
+          [:th (str (when quoted? "quoted ") "arg" position (when rest? "…"))])]
+   [:tr (for [{:keys [cell]} cols]
+          [:td (interpose ", " (for [{:keys [kind type]} cell]
+                                 (if (= :type kind)
+                                   (list "⊆ " (term-link env type))
+                                   (term-link env type))))])]])
 
 (defn- shown-parts
   "`describe`'s block rows as the page draws them.  The arity class leads the kind line
@@ -3591,7 +3575,8 @@
               [label content] (cond
                                 (= :missing value)
                                 [[(first (block-parts part)) (missing-mark (seeds part arity?))]]
-                                (= :arg-declarations part) (arg-lines env term value)
+                                (= :arg-constraints part) [[(first (block-parts part))
+                                                            (arg-table env value)]]
                                 :else
                                 [[(first (block-parts part)) (block-value env term text part value)]])]
           (list [:dt label] [:dd content]))]])))

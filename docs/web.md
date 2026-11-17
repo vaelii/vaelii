@@ -1901,11 +1901,21 @@ its `algebraic_predicate_property` sentences, show `irreflexive` as a term, and 
 per-position one such as `(functionalInArg P 2)` as its sentence. A `(Q P)` property
 another shown `(R P)` is strictly below by `genl` is left out: `(equivalence_relation P)`
 stands for the `reflexive`, `symmetric` and `transitive` sentences its rules derive. The argument declarations
-are the predicate's `wff_predicate` sentences. An `(arg P n T)` or `(argN P T)` declaration
-shows its type `T` on an **argN constraints** line, one line per position, and a
-`(quotedArg P n T)` declaration on a **quoted argN constraints** line. A position with
-several types lists each of them. Every other argument declaration, such as `argsGenl`,
-shows as its sentence on the **arg declarations** line. The links line lists the terms the
+are the predicate's `wff_predicate` sentences. The ones the argument constraint chokepoint
+`res/arg-constraints` reads, and the sugar stored as one of them (`args`, `argN`), are one
+**arg constraints** line holding a table: a header row naming each column, `arg1`,
+`arg2`, …, and one row of cells, each listing the types that constrain that position,
+including a super-predicate's. A `(genlArg P n T)`, `argsGenl` or `argAndRestGenl` type
+is marked `⊆ T`, since the argument must specialize it. A `quotedArg` position has a
+column of its own headed `quoted argN`. A covering `(args P T)` or `(argAndRest P k T)`
+puts `T` in every cell it covers, and a cell drops a type another of its types of the
+same kind is strictly below, with one representative for types that subsume each other,
+as the parents line does. A predicate has a column for each position up to its arity or
+the highest position a constraint names, an unconstrained one an empty cell; an
+`unbounded_arity_predicate` has a column for each position a constraint names and then
+one `argK…` column for the tail from `K`. A predicate no constraint types draws no table.
+Every other argument declaration, such as `interArgEqual`, shows as its sentence on the
+**arg declarations** line. The links line lists the terms the
 term's `seeAlso` sentences and every `termsRelated` cluster naming it relate it to, once
 each and in printed order.
 
