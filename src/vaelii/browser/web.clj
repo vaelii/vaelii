@@ -3538,7 +3538,7 @@
     (= :links part)            (interpose ", " (map #(term-link env %) (related-terms term v)))
     (#{:arg-declarations :props :other} part) (sentence-rows env term v)
     (= :comment part)          (interpose [:br] (map #(comment-text env % #{}) v))
-    (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
+    (coll? v)                  (interpose ", " (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
 
 (defn- arg-table

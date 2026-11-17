@@ -1903,6 +1903,10 @@ kind another listed kind is strictly below is left out, as a parent is (below): 
 predicate declared `eternal_predicate` and `time_invariant_relation` lists
 `eternal_predicate`, and the arity classes are pruned the same way among themselves.
 
+A line of several values lists them on one line, comma-separated: the examples lines
+list each example, a string quoted or a quoted form drawn, as the kind and parents lines
+list their terms.
+
 A sentence line draws each `(P term)` sentence as its predicate `P`, linked, as the kind line
 does, and any other sentence as its handle badge. So a predicate's relation properties,
 its `algebraic_predicate_property` sentences, show `irreflexive` as a term, and a
