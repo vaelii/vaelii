@@ -1630,7 +1630,9 @@
   (nth (vec (nm/args sentence)) (dec n)))
 
 (defn- seen-together?
-  "Does some context see both `m` and `s`, over the unscoped `genlCx` closure?"
+  "Does some context see both `m` and `s`, over the unscoped `genlCx` closure?  Unscoped
+  on purpose: the context that sees both is a descendant of `m`, and a read scoped to `m`
+  does not answer for it."
   [tax m s]
   (or (= m s) (tax/root-context? m) (tax/root-context? s)
       (let [down (tax/context-down-global tax s)]
@@ -1641,6 +1643,7 @@
   stored at `context` reaches.  They are the fillers of the stored facts visible at
   `context` (`res/matches-visible`), and of those stored in a context some context sees
   together with `context` (`seen-together?`), since a merge is read wherever `context` is.
+  The `genlCx` closures are read unscoped, since a descendant of `context` reads the merge.
   A filler stands for every member of its class as `context` sees the merges, since a
   merge electing a reified constant spells its members' facts with it.  A term counts
   when `provers/determinateness` reads it `:determinate`."
