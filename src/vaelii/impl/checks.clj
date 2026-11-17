@@ -1681,15 +1681,44 @@
     (every? #(or (= c %) (and (symbol? %) (res/same-class-in? kb c % context admit?)))
             (slot-candidates kb via n args context))))
 
+(defn- stored-expression
+  "The expression a stored `natFormula` map gives the reified constant `k`, believed or
+  not, since a merge electing another spelling supersedes `k`'s own map."
+  [kb k]
+  (or (nat/nat-expression kb k)
+      (some #(let [s (:sentence %)]
+               (when (and (= 'natFormula (nm/functor s)) (= k (second s))) (nth s 2 nil)))
+            (kb/find-sentexes-all kb ['natFormula k]))))
+
+(defn- corresponding-default-pair?
+  "Is the collision between the fillers `a` and `b` of the members `h` and `o` a reified
+  constant `K` of `(F x…)` against a `:default` value of its own correspondence?  A
+  declaration `(functionCorrespondingPredicate F P n)` `context` sees, one member stating
+  `(P x… K …)`, and the other not `:monotonic`.  The value's copies carry such a pair
+  (docs/nat.md, \"The corresponding predicate\"), so no merge joins the two."
+  [kb a b h o context]
+  (let [recs (:records kb)
+        tms  (reasoning/tms kb)
+        decl (delay (res/correspondence-declarations kb context))]
+    (boolean
+     (some (fn [k]
+             (when-let [e (and (nat-read/reified-nat-symbol? k) (stored-expression kb k))]
+               (when (seq? e)
+                 (some (fn [[f pr pos]]
+                         (when (= f (first e))
+                           (let [proj (apply list pr (res/insert-at (rest e) pos k))
+                                 [mk mv] (cond (= proj (:sentence (p/get-sentex recs h))) [h o]
+                                               (= proj (:sentence (p/get-sentex recs o))) [o h])]
+                             (and mk (not (tuple/monotonic-member? tms mv))))))
+                       @decl))))
+           [a b]))))
+
 (defn functional-merges?
-  "Does a functional collision between the fillers `a` and `b` of the stored members `h`
-  and `o`, in the slot `via` at position `n` under `args`, merge the two at `context`
-  (docs/equality.md, \"`functional` infers equality instead of throwing\")?  The fillers
-  must be two symbols (`tuple/mergeable-values?`).  They merge when both members are
-  `:monotonic`.  Otherwise they merge when one is `:indeterminate` or a `:placeholder`
-  (`provers/determinateness`) and the other a `:determinate` constant that is the slot's
-  one candidate at `context` (`sole-constant?`).  Two determinate fillers, and two that
-  are not determinate, merge on monotonic evidence alone."
+  "Does a functional collision between the symbols `a` and `b` of the members `h` and `o`,
+  in the slot `via` at `n` under `args`, merge them at `context` (docs/equality.md)?  Yes
+  when both members are `:monotonic`.  Else one filler must not be `:determinate`
+  (`provers/determinateness`), and the other a constant that is the slot's one candidate
+  (`sole-constant?`).  No pair `corresponding-default-pair?` names merges that way."
   [kb a b h o context via n args]
   (and (tuple/mergeable-values? a b)
        (let [tms (reasoning/tms kb)]
@@ -1698,7 +1727,9 @@
                    db (provers/determinateness kb b context)
                    c  (cond (and (not= :determinate da) (= :determinate db)) b
                             (and (not= :determinate db) (= :determinate da)) a)]
-               (boolean (and c (sole-constant? kb c via n args context))))))))
+               (boolean (and c
+                             (not (corresponding-default-pair? kb a b h o context))
+                             (sole-constant? kb c via n args context))))))))
 
 (defn functional-declaration-supporters
   "The handles of every declaration constraining `via` at position `n`: the

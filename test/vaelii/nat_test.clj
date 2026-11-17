@@ -1064,10 +1064,11 @@
       (testing "and each declaration projects the placeholder onto its own predicate"
         (is (some? (v/handle-of kb (list parentOf Muffet k) 'CxUniverse)))
         (is (some? (v/handle-of kb (list motherOf Muffet k) 'CxUniverse))))
-      (testing "and the placeholder merges with the one value of motherOf"
-        (is (true? (v/same-class? kb k Mary 'CxUniverse)))
-        (is (= [{'?m Mary}] (v/ask kb (list parentOf Muffet '?m) 'CxUniverse)))
-        (is (= [{'?m Mary}] (v/ask kb (list motherOf Muffet '?m) 'CxUniverse)))))))
+      (testing "and the :default value of motherOf is no collision with the placeholder"
+        (is (false? (v/same-class? kb k Mary 'CxUniverse)))
+        (is (= [{'?m k}] (v/ask kb (list parentOf Muffet '?m) 'CxUniverse)))
+        (is (= #{{'?m Mary} {'?m k}} (set (v/ask kb (list motherOf Muffet '?m) 'CxUniverse))))
+        (is (empty? (v/contradictions kb)))))))
 
 (tu/deftest-kb retracting-the-declaration-stops-the-application-resolving
   (tu/with-terms [MotherFn motherOf Muffet Mary Bob caresFor sees]
@@ -2207,10 +2208,10 @@
         (v/retract! kb jane)
         (is (same sk Mary) "retracting Jane gives the merge back")))))
 
-;; ---- a placeholder merges onto the one constant of its slot ----------------
-;; A non-skolem reified constant is a placeholder term (core.txt): a functional
-;; collision merges it with a determinate constant on `:default` evidence, while that
-;; constant is the one constant filling the slot (docs/equality.md).
+;; ---- a :default value is no collision with the placeholder ------------------
+;; The placeholder (<MomFn Muffet>) and a :default (momOf Muffet Mary) fill the slot its
+;; correspondence makes functional.  The copies carry Mary, so the pair is no collision:
+;; no equals merges the two, and no nogood holds them (docs/equality.md).
 
 (defn- on-core-kb
   "`(f kb)` on an isolated KB holding the upper ontology, cleared after: core.txt's rule
@@ -2219,42 +2220,90 @@
   (let [kb (doto (tu/isolated-fresh) (tu/load-core!))]
     (try (f kb) (finally (tu/clear-kb! kb)))))
 
-(defn- placeholder-merges
-  "`[placeholder=Mary placeholder=Jane Mary=Jane]` in CxStory, the placeholder being
-  `(<MomFn Muffet>)`, the constant of `(MomFn Muffet)`."
-  [kb [MomFn _ Muffet Mary Jane _ _ CxStory]]
-  (let [k (nat-read/dedup-constant kb (list MomFn Muffet))]
-    (mapv true? [(v/same-class? kb k Mary CxStory) (v/same-class? kb k Jane CxStory)
-                 (v/same-class? kb Mary Jane CxStory)])))
-
-(tu/deftest-kb a-default-value-merges-with-the-placeholder-and-places-no-nogood
-  ;; the correspondence makes `momOf` functional at 2, so the `:default` (momOf Muffet
-  ;; Mary) and the projected (momOf Muffet (<MomFn Muffet>)) fill one slot in CxStory,
-  ;; where Mary is the one constant
+(tu/deftest-kb a-default-value-merges-nothing-with-the-placeholder-and-places-no-nogood
   (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
     (let [terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
           _     (default-value-kb! kb terms [:decl :fact :use :rules])
           k     (nat-read/dedup-constant kb (list MomFn Muffet))]
       (is (v/ask? kb (list 'functionalInArg momOf 2) 'CxUniverse))
-      (is (true? (v/same-class? kb k Mary CxStory)))
-      (is (false? (v/same-class? kb k Mary 'CxUniverse)))
+      (is (nat-read/reified-object-symbol? k))
+      (is (false? (v/same-class? kb k Mary CxStory)) "no equals merges the two")
+      (is (v/ask? kb (list likes Tom Mary) CxStory) "the copy carries Mary")
       (is (v/ask? kb (list momOf Muffet Mary) CxStory))
       (is (empty? (v/contradictions kb)))
       (is (empty? (v/conflicts kb))))))
 
+(tu/deftest-kb a-default-value-beside-a-monotonic-projection-merges-nothing
+  ;; a :monotonic declaration projects (momOf Muffet (<MomFn Muffet>)) at :monotonic, and
+  ;; the :default value is still copied onto and not merged with
+  (tu/with-terms [MomFn momOf Muffet Mary Tom likes CxStory]
+    (v/assert kb (list 'reifiable_function MomFn) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'genlCx CxStory 'CxUniverse) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'functionCorrespondingPredicate MomFn momOf 2) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list likes Tom (list MomFn Muffet)) 'CxUniverse)
+    (v/assert kb (list momOf Muffet Mary) CxStory)
+    (let [k (nat-read/dedup-constant kb (list MomFn Muffet))]
+      (is (false? (v/same-class? kb k Mary CxStory)))
+      (is (v/ask? kb (list likes Tom Mary) CxStory))
+      (is (v/ask? kb (list momOf Muffet Mary) CxStory) "the :default value is not defeated")
+      (is (empty? (v/contradictions kb)))
+      (is (empty? (v/conflicts kb))))))
+
+;; ---- a placeholder merges onto the one constant of its slot ----------------
+;; A placeholder that is no corresponding value's own, (<FriendFn Ann>) in Ann's
+;; functional bestFriendOf slot, merges with a :default constant there while that
+;; constant is the one constant filling the slot (docs/equality.md).
+
+(defn- friend-kb
+  "`(genlCx CxStory CxUniverse)`, then `steps`: `:decl` the `functional` mark on
+  bestFriendOf, `:use` the placeholder `(<FriendFn Ann>)` filling Ann's slot and a use of
+  it in CxUniverse, `:mary` and `:jane` two `:default` fillers in CxStory.  Returns the
+  handles the steps wrote, by step."
+  [kb [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory] steps]
+  (v/assert kb (list 'reifiable_function FriendFn) 'CxUniverse {:strength :monotonic})
+  (v/assert kb (list 'genlCx CxStory 'CxUniverse) 'CxUniverse {:strength :monotonic})
+  (reduce (fn [hs step]
+            (assoc hs step
+                   (case step
+                     :decl (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+                     :use  (do (v/assert kb (list likes Tom (list FriendFn Ann)) 'CxUniverse)
+                               (v/assert kb (list bestFriendOf Ann (list FriendFn Ann)) 'CxUniverse))
+                     :mary (v/assert kb (list bestFriendOf Ann Mary) CxStory)
+                     :jane (v/assert kb (list bestFriendOf Ann Jane) CxStory))))
+          {} steps))
+
+(defn- placeholder-merges
+  "`[placeholder=Mary placeholder=Jane Mary=Jane]` in CxStory, the placeholder being
+  `(<FriendFn Ann>)`, the constant of `(FriendFn Ann)`."
+  [kb [FriendFn _ Ann Mary Jane _ _ CxStory]]
+  (let [k (nat-read/dedup-constant kb (list FriendFn Ann))]
+    (mapv true? [(v/same-class? kb k Mary CxStory) (v/same-class? kb k Jane CxStory)
+                 (v/same-class? kb Mary Jane CxStory)])))
+
+(tu/deftest-kb a-default-constant-merges-with-the-placeholder-and-places-no-nogood
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+          _     (friend-kb kb terms [:decl :use :mary])
+          k     (nat-read/dedup-constant kb (list FriendFn Ann))]
+      (is (= [true false false] (placeholder-merges kb terms)))
+      (is (false? (v/same-class? kb k Mary 'CxUniverse)) "the merge is read in CxStory")
+      (is (v/ask? kb (list likes Tom Mary) CxStory))
+      (is (empty? (v/contradictions kb)))
+      (is (empty? (v/conflicts kb))))))
+
 (tu/deftest-kb two-rival-default-values-merge-neither-with-the-placeholder
-  (tu/with-terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]
-    (let [terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]]
-      (rival-value-kb kb terms [:decl :mary :jane :use])
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]]
+      (friend-kb kb terms [:decl :mary :jane :use])
       (is (= [false false false] (placeholder-merges kb terms))))))
 
 (tu/deftest-kb a-rival-value-arriving-after-the-merge-withdraws-it-and-its-retraction-restores-it
-  (tu/with-terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]
-    (let [terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]
-          _     (rival-value-kb kb terms [:decl :use :mary])
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+          _     (friend-kb kb terms [:decl :use :mary])
           _     (is (= [true false false] (placeholder-merges kb terms)) "Mary alone merges")
           _     (is (v/ask? kb (list likes Tom Mary) CxStory))
-          jane  (v/assert kb (list momOf Muffet Jane) CxStory)]
+          jane  (v/assert kb (list bestFriendOf Ann Jane) CxStory)]
       (is (= [false false false] (placeholder-merges kb terms)) "Jane withdraws the merge")
       (is (not (v/ask? kb (list likes Tom Mary) CxStory))
           "and what the merge restated goes with it")
@@ -2263,19 +2312,19 @@
       (is (v/ask? kb (list likes Tom Mary) CxStory)))))
 
 (deftest a-rival-value-and-its-retraction-reach-one-state-in-every-order
-  ;; Mary settles before Jane arrives, Jane before Mary, or both before the declaration
-  (tu/with-terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]
-    (let [terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]
+  ;; Mary settles before Jane arrives, Jane before Mary, or both before the mark
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
           read  (fn [kb] [(placeholder-merges kb terms) (unnamed-content kb)])
           runs  (for [order [[:decl :use :mary :jane] [:decl :use :jane :mary]
                              [:mary :jane :decl :use] [:jane :decl :mary :use]]]
                   (on-core-kb (fn [kb]
-                                (let [hs   (rival-value-kb kb terms order)
+                                (let [hs   (friend-kb kb terms order)
                                       with (read kb)]
                                   (v/retract! kb (:jane hs))
                                   {:with with :after (read kb)}))))
           alone (for [order (tu/orders [:decl :use :mary])]
-                  (on-core-kb (fn [kb] (rival-value-kb kb terms (vec order)) (read kb))))]
+                  (on-core-kb (fn [kb] (friend-kb kb terms (vec order)) (read kb))))]
       (is (= 1 (count (set alone))) "Mary alone merges alike in every order")
       (is (= 1 (count (set runs))) "one believed set with the rival and one after it")
       (is (= [false false false] (first (:with (first runs)))) "with both values, nothing merges")
@@ -2283,37 +2332,37 @@
       (is (= (first alone) (:after (first runs))) "retracting the rival ends where never asserting it does"))))
 
 (tu/deftest-kb two-monotonic-values-still-merge-with-each-other-and-with-the-placeholder
-  (tu/with-terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]
-    (let [terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
           m     {:strength :monotonic}]
-      (rival-value-kb kb terms [:decl :use])
-      (v/assert kb (list momOf Muffet Mary) CxStory m)
-      (v/assert kb (list momOf Muffet Jane) CxStory m)
+      (friend-kb kb terms [:decl :use])
+      (v/assert kb (list bestFriendOf Ann Mary) CxStory m)
+      (v/assert kb (list bestFriendOf Ann Jane) CxStory m)
       (is (= [true true true] (placeholder-merges kb terms))))))
 
 (tu/deftest-kb a-placeholder-merges-with-no-other-reified-constant-on-default-evidence
-  ;; (<GuardianFn Muffet>) is a placeholder term too, and the merge is onto constants only
-  (tu/with-terms [MomFn GuardianFn momOf Muffet Mary Jane Tom likes CxStory]
-    (let [terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]]
+  ;; (<GuardianFn Ann>) is a placeholder term too, and the merge is onto constants only
+  (tu/with-terms [FriendFn GuardianFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]]
       (v/assert kb (list 'reifiable_function GuardianFn) 'CxUniverse {:strength :monotonic})
-      (rival-value-kb kb terms [:decl :use])
-      (v/assert kb (list momOf Muffet (list GuardianFn Muffet)) CxStory)
-      (let [k (nat-read/dedup-constant kb (list MomFn Muffet))
-            g (nat-read/dedup-constant kb (list GuardianFn Muffet))]
+      (friend-kb kb terms [:decl :use])
+      (v/assert kb (list bestFriendOf Ann (list GuardianFn Ann)) CxStory)
+      (let [k (nat-read/dedup-constant kb (list FriendFn Ann))
+            g (nat-read/dedup-constant kb (list GuardianFn Ann))]
         (is (nat-read/reified-object-symbol? g))
         (is (false? (v/same-class? kb k g CxStory)))))))
 
 (tu/deftest-kb a-rival-a-context-edge-brings-into-view-withdraws-the-merge
   ;; CxJane holds Jane's fact; the edge puts CxStory, where the placeholder merged with
   ;; Mary, under CxJane, so a reader sees both constants
-  (tu/with-terms [MomFn momOf Muffet Mary Jane Tom likes CxStory CxJane]
-    (let [terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]
-          _     (rival-value-kb kb terms [:decl :use :mary])
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory CxJane]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+          _     (friend-kb kb terms [:decl :use :mary])
           _     (v/assert kb (list 'genlCx CxJane 'CxUniverse) 'CxUniverse {:strength :monotonic})
-          _     (v/assert kb (list momOf Muffet Jane) CxJane)
+          _     (v/assert kb (list bestFriendOf Ann Jane) CxJane)
           _     (is (= [true false false] (placeholder-merges kb terms)))
           edge  (v/assert kb (list 'genlCx CxStory CxJane) 'CxUniverse {:strength :monotonic})
-          k     (nat-read/dedup-constant kb (list MomFn Muffet))]
+          k     (nat-read/dedup-constant kb (list FriendFn Ann))]
       (is (= [false false false] (placeholder-merges kb terms)) "CxStory sees both constants")
       (is (false? (v/same-class? kb k Jane CxJane)) "and no merge in CxJane reaches it")
       (v/retract! kb edge)
@@ -2323,15 +2372,16 @@
 (tu/deftest-kb a-placeholder-elected-the-representative-keeps-its-merge
   ;; the reified constant sorts before a tmp-named predicate, so the merge elects it and
   ;; spells the value's own fact with it: the slot then reads no constant at all
-  (tu/with-terms [VerFn verOf basePred namedPred otherPred notes Tom]
+  (tu/with-terms [VerFn latestOf basePred namedPred otherPred notes Tom]
     (v/assert kb (list 'reifiable_function VerFn) 'CxUniverse {:strength :monotonic})
-    (v/assert kb (list 'functionCorrespondingPredicate VerFn verOf 2) 'CxUniverse)
+    (v/assert kb (list 'functional latestOf) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list notes Tom (list VerFn basePred)) 'CxUniverse)
-    (v/assert kb (list verOf basePred namedPred) 'CxUniverse)
+    (v/assert kb (list latestOf basePred (list VerFn basePred)) 'CxUniverse)
+    (v/assert kb (list latestOf basePred namedPred) 'CxUniverse)
     (let [k (nat-read/dedup-constant kb (list VerFn basePred))]
       (is (= k (v/representative kb namedPred 'CxUniverse)))
       (is (true? (v/same-class? kb k namedPred 'CxUniverse)))
-      (let [h (v/assert kb (list verOf basePred otherPred) 'CxUniverse)]
+      (let [h (v/assert kb (list latestOf basePred otherPred) 'CxUniverse)]
         (is (false? (v/same-class? kb k namedPred 'CxUniverse)) "a rival withdraws it")
         (v/retract! kb h)
         (is (true? (v/same-class? kb k namedPred 'CxUniverse)))))))
