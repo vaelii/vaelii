@@ -2369,6 +2369,65 @@
       (is (= [true false false] (placeholder-merges kb terms)))
       (is (true? (v/same-class? kb k Jane CxJane))))))
 
+;; ---- a rival's reach over time slices ---------------------------------------
+;; Two slices of one monad, CxA at time A holding Mary and CxB at time B holding Jane.
+;; Every interval holds its start and not its end, so two that only meet share no moment.
+;; A rival in CxB reaches the merge in CxA when some context sees both slices.
+
+(defn- slice-kb
+  "Write `steps` over a `functional` bestFriendOf in the monad CxM: `:use` the placeholder
+  `(<FriendFn Ann>)` filling Ann's slot in CxUniverse, `:mary` a `:default` filler in the
+  slice of CxM at `a`, `:jane` one in the slice at `b`.  Returns whether the placeholder
+  and Mary are one class in the slice at `a`, with the believed set."
+  [kb [FriendFn bestFriendOf Ann Mary Jane CxM] a b steps]
+  (v/assert kb (list 'reifiable_function FriendFn) 'CxUniverse {:strength :monotonic})
+  (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+  (v/assert kb (list 'genlCx CxM 'CxUniverse) 'CxUniverse {:strength :monotonic})
+  (let [hs (into {} (for [step steps]
+                      [step (case step
+                              :use  (v/assert kb (list bestFriendOf Ann (list FriendFn Ann)) 'CxUniverse)
+                              :mary (v/assert kb (list bestFriendOf Ann Mary) (list 'CxTimeFn CxM a))
+                              :jane (v/assert kb (list bestFriendOf Ann Jane) (list 'CxTimeFn CxM b)))]))
+        ca (:context (v/sentex kb (:mary hs)))
+        k  (nat-read/dedup-constant kb (list FriendFn Ann))]
+    [(true? (v/same-class? kb k Mary ca)) (unnamed-content kb)]))
+
+(defn- slice-runs
+  "`slice-kb` at the times `a` and `b` on a KB of its own for each order of the three
+  writes, Jane arriving before the merge, after it, and before the placeholder."
+  [a b]
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane CxM]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane CxM]]
+      (doall (for [order [[:use :mary :jane] [:jane :use :mary] [:mary :jane :use]]]
+               (on-core-kb #(slice-kb % terms a b order)))))))
+
+(defn- slice-merges
+  "`[merges one-believed-set?]` over `slice-runs`.  `merges` is the set of whether the
+  placeholder and Mary are one class in the slice at `a`: `#{false}` when the rival in
+  the slice at `b` blocks the merge in every order.  The second says whether every order
+  ends in one believed set."
+  [a b]
+  (let [runs (slice-runs a b)]
+    [(set (map first runs)) (= 1 (count (set (map second runs))))]))
+
+(deftest ^:red a-rival-in-an-overlapping-slice-blocks-the-merge
+  ;; CxA [1999, 2001) and CxB [2000, 2002) share the year 2000, but no context the engine
+  ;; holds sees both: it mints no slice at the intersection until a write names one
+  (is (= [#{false} true] (slice-merges '(DatetimeRangeFn "1999" "2000") '(DatetimeRangeFn "2000" "2001")))))
+
+(deftest a-rival-in-a-disjoint-slice-does-not-block-the-merge
+  ;; CxA [1998, 1999) and CxB [2000, 2002) share no moment
+  (is (= [#{true} true] (slice-merges '(YearFn 1998) '(DatetimeRangeFn "2000" "2001")))))
+
+(deftest a-rival-in-a-slice-that-only-meets-does-not-block-the-merge
+  ;; CxA [1998, 2000) ends where CxB [2000, 2002) starts: the two meet and share no moment
+  (is (= [#{true} true] (slice-merges '(DatetimeRangeFn "1998" "1999") '(DatetimeRangeFn "2000" "2001")))))
+
+(deftest a-rival-at-an-instant-inside-the-slice-blocks-the-merge
+  ;; CxB is the instant 2000-06-01 inside CxA [1999, 2001): the slice at the instant is
+  ;; ordered below the slice at the interval, so CxB sees both constants
+  (is (= [#{false} true] (slice-merges '(DatetimeRangeFn "1999" "2000") '(InstantFn 2000 6 1 0 0 0)))))
+
 (defn- version-kb
   "`steps` over a `functional` latestOf: `:mark` the mark, `:use` the placeholder
   `(<VerFn basePred>)` filling basePred's slot and a use of it, `:value` the `:default`
