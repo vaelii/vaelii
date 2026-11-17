@@ -314,10 +314,12 @@
           (noted (conj ps h) [h])))))
 
 (defn- add-det-member
-  "`c` with `h`, filling `v` in context `cx`, a member of determinant `key`."
+  "`c` with `h`, filling `v` in context `cx`, a member of determinant `key`, and queued
+  under `::slot-moved` for its merges to be asked (`take-slot-moves!`)."
   [w c key h v cx]
   (as-> c c
     (assoc-in c [::det key h] [v cx])
+    (update c ::slot-moved (fnil conj #{}) h)
     (update-in c [::det-ctx key cx] (fnil conj #{}) h)
     (link c [h] [::det key])
     (classify-det-member w c key h)))
@@ -439,7 +441,9 @@
 
 (defn- drop-det-member
   "`c` with `h` gone from determinant `key`: the determinant goes when one filler is
-  left, and a partner left with none is no longer live."
+  left, and a partner left with none is no longer live.  The members left are queued
+  under `::slot-moved`, since a rival leaving can leave a slightly determinate filler one
+  constant to merge onto (`take-slot-moves!`)."
   [w c key h]
   (let [[_ cx] (get-in c [::det key h])
         ps     (det-partners w c key h)
@@ -453,7 +457,8 @@
       (reduce (fn [c h'] (if (seq (det-partners w c key h'))
                            c
                            (update-in c [::live key] disj h')))
-              c ps)
+              (update c ::slot-moved (fnil into #{}) (keys g))
+              ps)
       (-> c
           (update ::det dissoc key)
           (update ::det-ctx dissoc key)
@@ -472,12 +477,30 @@
           (update c ::member-of dissoc h)
           (get-in c [::member-of h])))
 
+(def ^:private determinacy-categories
+  "The categories whose memberships move a filler's determinateness level
+  (`provers/determinateness`), so a member's arrival or departure re-asks the functional
+  merges of the slots its term fills (`take-slot-moves!`)."
+  '[indeterminate_term slightly_determinate_term])
+
+(defn- determinacy-term
+  "The term `sx` makes a member of a `determinacy-categories` category or a subkind of
+  one, read over the unscoped spec closure, else nil."
+  [w sx]
+  (let [s (:sentence sx)]
+    (when (and (nil? (:antecedent sx)) (seq? s) (= 2 (count s)) (symbol? (first s)))
+      (when (some #(contains? ((:specs-global w) %) (first s)) determinacy-categories)
+        (second s)))))
+
 (defn- note-tuple!
   "Keep the tuple-mark candidates in step with the fact `sx` arriving (`stored?` true) or
   leaving.  An arriving tuple reads its determinants and chains (`found-for`) while the
-  taxonomy holds a tuple mark; a leaving one reads nothing."
+  taxonomy holds a tuple mark; a leaving one reads nothing.  A membership moving a term's
+  determinateness queues the term under `::determinacy-moved` while a tuple mark is held."
   [kb w sx stored?]
   (let [cands (reasoning/nogood-candidates kb)]
+    (when-let [t (and (tuple-marks? (:tax w)) (determinacy-term w sx))]
+      (swap! cands update ::determinacy-moved (fnil conj #{}) t))
     (if stored?
       (when (tuple-marks? (:tax w))
         (when-let [[q args] (fact-tuple sx)]
@@ -615,6 +638,68 @@
   [kb]
   (let [[old _] (swap-vals! (reasoning/nogood-candidates kb) dissoc ::moved)]
     (::moved old #{})))
+
+(defn slot-moves?
+  "Has the candidate index queued a slot `take-slot-moves!` hands back?"
+  [kb]
+  (let [c @(reasoning/nogood-candidates kb)]
+    (boolean (or (seq (::slot-moved c)) (seq (::determinacy-moved c))))))
+
+(defn take-slot-moves!
+  "`[handles terms]` queued since the last call, and both queues emptied: the members a
+  departed determinant member left behind (`drop-det-member`), and the terms a membership
+  moved the determinateness of (`note-tuple!`).  `special/class-moved-merges` re-asks
+  the functional merges of their slots."
+  [kb]
+  (let [[old _] (swap-vals! (reasoning/nogood-candidates kb) dissoc ::slot-moved ::determinacy-moved)]
+    [(::slot-moved old #{}) (::determinacy-moved old #{})]))
+
+(defn note-slots-moved!
+  "Queue under `::slot-moved` the handles of `hs` the index keeps in a determinant, whose
+  visibility moved with no relabel (`special/class-moved-merges`)."
+  [kb hs]
+  (when (seq hs)
+    (let [cands (reasoning/nogood-candidates kb)
+          in    (into #{} (filter #(some (fn [[kind]] (= ::det kind)) (get-in @cands [::member-of %]))) hs)]
+      (when (seq in)
+        (swap! cands update ::slot-moved (fnil into #{}) in)))))
+
+(defn note-contexts-moved!
+  "Queue under `::slot-moved` the determinant members stored in a context of `ctxs`,
+  whose visibility a `genlCx` move changed: a rival there can reach a merge it did not
+  reach, or stop reaching one (`special/class-moved-merges`)."
+  [kb ctxs]
+  (when (seq ctxs)
+    (swap! (reasoning/nogood-candidates kb)
+           (fn [c]
+             (let [hs (into #{} (comp (mapcat (fn [by] (keep #(get by %) ctxs))) cat)
+                            (vals (::det-ctx c)))]
+               (cond-> c (seq hs) (update ::slot-moved (fnil into #{}) hs)))))))
+
+(defn determinant-member?
+  "Does the candidate index keep the stored fact `h` in a determinant: does another
+  filler share a slot `h` fills?"
+  [kb h]
+  (boolean (some (fn [[kind]] (= ::det kind)) (get-in @(reasoning/nogood-candidates kb) [::member-of h]))))
+
+(defn determinant-fillers
+  "The fillers of every determinant the candidate index keeps `h` in, at the determined
+  position: the values the slots `h` fills hold."
+  [kb h]
+  (let [c @(reasoning/nogood-candidates kb)]
+    (into #{} (comp (keep (fn [[kind key]] (when (= ::det kind) (get-in c [::det key]))))
+                    (mapcat vals)
+                    (map first))
+          (get-in c [::member-of h]))))
+
+(defn determinant-rows
+  "The handles of every member of each determinant the candidate index keeps `h` in,
+  `h` among them when it is in one: the stored facts filling a slot `h` fills."
+  [kb h]
+  (let [c @(reasoning/nogood-candidates kb)]
+    (into #{} (comp (keep (fn [[kind key]] (when (= ::det kind) (get-in c [::det key]))))
+                    (mapcat keys))
+          (get-in c [::member-of h]))))
 
 (defn- note-placement-left!
   "Queue the tuple members a `(contradicts …)` sentex `sx` leaving the store names, so the

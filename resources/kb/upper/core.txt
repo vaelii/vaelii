@@ -2015,6 +2015,18 @@
 (genlArg predInstanceExists 3 thing)
 (arg predInstanceExists 2 thing)   ;; the fixed filler: a term of any kind
 
+;; --- three levels of determinateness ---------------------------------------
+;; A term is at one of three levels, read off the term as mentioned and not off its
+;; equality class.  A determinate term, the default level, is one the unique-name
+;; assumption holds for: two determinate symbols in one functional slot merge only when
+;; both facts are monotonic.  An indeterminate_term is one the assumption is suspended for:
+;; a functional collision merges it on any evidence.  A slightly_determinate_term, a
+;; reified constant whose minting expression is no skolem, is determinate everywhere
+;; except a functional or functionalInArg collision with a determinate constant: there it
+;; merges as an indeterminate term does, and only while that constant is the one
+;; determinate filler of the slot its reader sees.  The engine reads both categories
+;; through provers/determinateness.
+
 ;; --- indeterminate_term: the determinacy category the Specified audit reads ---
 ;; An EXTENSIBLE category of terms whose identity is not determined: a term that stands
 ;; for some object without determining which.  It is what the *Specified* audit excludes
@@ -2031,9 +2043,15 @@
 ;; demand from an argument type.
 
 (comment indeterminate_term
-         "(indeterminate_term ?term) means that ?term is an indeterminate filler: it stands for some object without determining which, so it is not a determinate filler for a predAllSpecified audit, and the unique-name assumption is suspended for it — neither (equals ?term x) nor (different ?term x) is provable against a determinate term x until a rewriteOf identifies it. An extensible category the predAllSpecified audit and the different prover read through one implementation, so they cannot disagree about a term. Skolem constants are the built-in first member, detected by their SkolemFn minting expression rather than a stored membership; a further kind is added with (genl NewKind indeterminate_term). See docs/skolem.md.")
+         "(indeterminate_term ?term) means that ?term is an indeterminate filler: it stands for some object without determining which, so it is not a determinate filler for a predAllSpecified audit, and the unique-name assumption is suspended for it — neither (equals ?term x) nor (different ?term x) is provable against a determinate term x until a rewriteOf identifies it. A functional or functionalInArg collision merges a member with the other filler whatever the facts' strength, read off the member as written. An extensible category the predAllSpecified audit and the different prover read through one implementation, so they cannot disagree about a term. Skolem constants are the built-in first member, detected by their SkolemFn minting expression rather than a stored membership; a further kind is added with (genl NewKind indeterminate_term). See docs/skolem.md.")
 (unary_predicate indeterminate_term)
 (set/monotonic (time_varying_relation indeterminate_term))
+
+(comment slightly_determinate_term
+         "(slightly_determinate_term ?term) means that the name ?term fixes how its value is reached and not which object the value is. The reified constant (<MomFn Muffet>) of the application (MomFn Muffet) names whatever (MomFn Muffet) denotes, so a :default (momOf Muffet Mary) is evidence that it names Mary. The unique-name assumption holds for a member, so different and the predAllSpecified audit read it as determinate. A functional or functionalInArg collision between a member and a determinate constant, a symbol that is no reified constant, merges the two on any evidence while the constant is the one determinate filler of the slot the reader sees. A second constant in the slot, such as a :default (momOf Muffet Jane), withdraws that merge, so no merge equates Mary and Jane, and the merge returns when the rival leaves. Two members in one slot merge only on monotonic evidence. A reified constant whose minting expression is no skolem is a built-in member, read off the term rather than a stored membership; a further kind is added with (genl NewKind slightly_determinate_term). See docs/equality.md.")
+(unary_predicate slightly_determinate_term)
+(set/monotonic (time_varying_relation slightly_determinate_term))
+(set/monotonic (disjoint slightly_determinate_term indeterminate_term))
 
 ;; --- Specified class: integrity audit, no inference -----------------------
 ;; The antagonist of the *Exists* class.  Where *Exists* mints a placeholder to stand for
@@ -2042,8 +2060,8 @@
 ;; audit that reports the instances with no determinate filler, run through
 ;; vaelii.core/specified-violations (not a stored rule).  The indeterminate terms are the
 ;; skolems plus any declared indeterminate_term kind, of which none ships by default.  A
-;; non-skolem NAT is determinate, an *Exists* placeholder among them, so the two classes
-;; are exact antagonists.  The declaration is a plain stored fact the audit reads; it
+;; non-skolem NAT is slightly determinate, which the audit reads as determinate, an
+;; *Exists* placeholder among them, so the two classes are exact antagonists.  The declaration is a plain stored fact the audit reads; it
 ;; generates no rule and concludes nothing on its own.
 
 (comment predAllSpecified
@@ -2406,7 +2424,7 @@
 (forced_monotonic_between_predicates genlInverse)
 
 (comment functional
-         "(functional ?predicate) means that ?predicate maps its first argument to at most one value. A second, different value collides with the first: two symbols both known true (monotonic) derive (equals V1 V2) and merge, so retracting either fact or the declaration un-merges them. Any other collision is a nogood each context reading the pair decides, a default fact losing to a monotonic one and two default facts being a dilemma: two non-symbols such as 1980 and 1990, since no merge can make two numbers one thing, and a pair with a default fact, since a merge rests on monotonic evidence alone. Also a type: (functional P) classifies P as a binary_predicate, so a KB can be queried for the predicates carrying the property. A forward rule concludes (functionalInArg ?predicate 2) from it: functional is that mark's binary spelling.")
+         "(functional ?predicate) means that ?predicate maps its first argument to at most one value. A second, different value collides with the first. How two symbols collide depends on their determinateness level, read off each symbol as written. Two determinate symbols derive (equals V1 V2) and merge when both facts are known true (monotonic). An indeterminate_term merges with the other symbol whatever the facts' strength. A slightly_determinate_term, such as the reified constant (<MomFn Muffet>), merges with a determinate constant whatever the facts' strength while that constant is the one determinate filler of the slot the reader sees, so a :default (momOf Muffet Mary) merges (<MomFn Muffet>) with Mary. A second constant in the slot, such as a :default (momOf Muffet Jane), withdraws that merge, and neither Mary nor Jane merges with the placeholder. Retracting either fact or the declaration un-merges a merge. Any other collision is a nogood each context reading the pair decides, a default fact losing to a monotonic one and two default facts being a dilemma. Two non-symbols such as 1980 and 1990 are such a collision, since no merge can make two numbers one thing. Two determinate symbols with a default fact are one too, since a merge of two determinate names rests on monotonic evidence alone. Also a type: (functional P) classifies P as a binary_predicate, so a KB can be queried for the predicates carrying the property. A forward rule concludes (functionalInArg ?predicate 2) from it: functional is that mark's binary spelling.")
 (positiveExample functional (Quote (functional birthYearOf)))
 (unary_predicate functional)
 (decontextualized_predicate functional)
@@ -2414,7 +2432,7 @@
 (set/monotonic (genl functional binary_predicate))
 
 (comment functionalInArg
-         "(functionalInArg ?predicate ?n) means that the argument of ?predicate at position ?n is determined by the others: two applications agreeing everywhere but at ?n name one thing there. functional read at another position, and enforced the same way: two monotonic symbols derive (equals V1 V2) and merge, and any other collision, such as 1980 and 1990 or a pair with a default fact, is a nogood. Read up the predicate hierarchy, so a mark on a predicate governs its specs. Decontextualized like functional, so a mark stated in one theory merges from every context. See docs/taxonomy.md.")
+         "(functionalInArg ?predicate ?n) means that the argument of ?predicate at position ?n is determined by the others: two applications agreeing everywhere but at ?n name one thing there. functional read at another position, and enforced the same way. Two determinate symbols derive (equals V1 V2) and merge when both facts are monotonic. An indeterminate_term merges on any evidence. A slightly_determinate_term merges on any evidence with a determinate constant that is the slot's one determinate filler where the reader sees it. Any other collision, such as 1980 and 1990 or two determinate symbols with a default fact, is a nogood. Read up the predicate hierarchy, so a mark on a predicate governs its specs. Decontextualized like functional, so a mark stated in one theory merges from every context. See docs/taxonomy.md.")
 (positiveExampleComment functionalInArg "capitalCityOf at position 1, beside (functional capitalCityOf): one capital per country and one country per capital")
 (binary_predicate functionalInArg)
 (decontextualized_predicate functionalInArg)
@@ -2756,7 +2774,7 @@
 (set/monotonic (eternal_predicate sameAs))
 
 (comment equals
-         "(equals ?term1 ?term2) means that ?term1 and ?term2 denote one thing. Any two terms may be equated, where sameAs follows OWL in equating individuals. The merge feeds the one equivalence closure rewriteOf and sameAs feed. A goal of equals is answered from the closure. A collision under functional, functionalInArg or anti_symmetric between two monotonic symbols derives an equals. See docs/equality.md.")
+         "(equals ?term1 ?term2) means that ?term1 and ?term2 denote one thing. Any two terms may be equated, where sameAs follows OWL in equating individuals. The merge feeds the one equivalence closure rewriteOf and sameAs feed. A goal of equals is answered from the closure. A collision under functional, functionalInArg or anti_symmetric between two monotonic symbols derives an equals. So does a collision under functional or functionalInArg with an indeterminate_term, and one between a slightly_determinate_term and the slot's one determinate constant. See docs/equality.md.")
 (implementationNote equals "The rule stating injective_function's definition for a unary function concludes an equals and is inert. Its antecedent (equals (?function ?first) (?function ?second)) applies the variable ?function, and no rule reads a variable-functor application in an antecedent. Written as a forward or a backward rule, it would be held and fire nothing. See docs/nat.md.")
 (binary_predicate equals)
 (arg equals 1 thing)   ;; either side of an equals: a term of any kind

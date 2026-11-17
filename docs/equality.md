@@ -476,16 +476,68 @@ alike.
 
 `(functional P)` plus two different **symbols** for the same first argument, both
 facts `:monotonic`, **derives `(equals V1 V2)`**, with antecedents `[both facts, the
-functional declaration]`. Every other collision is a nogood the settle decides: two
-numbers, two strings or a compound, because no merge can make two numbers one thing, and
-a pair with a `:default` fact, because a merge is never defeated and is undone only by
-retracting a premise it rests on, so it rests on `:monotonic` evidence alone
-([reference.md](reference.md#decisions), decisions 6 and 13). Two measures that can
-denote one magnitude are no collision
+functional declaration]`. Whether two symbols merge on weaker evidence depends on their
+**determinateness**, one of three levels core.txt declares and
+`provers/determinateness` reads off each symbol as written, not off its equality class:
+
+| Level | Members | A functional collision with a `:default` fact |
+|---|---|---|
+| determinate | every term no category below names | merges with no other filler |
+| `indeterminate_term` | a skolem constant, a declared member or subkind member | merges with the other symbol |
+| `slightly_determinate_term` | a reified constant whose minting expression is no skolem, a declared member or subkind member | merges with a determinate constant that is the one candidate of its slot |
+
+`checks/functional-merges?` decides each pair. The reified constant `(<MomFn Muffet>)`
+of the application `(MomFn Muffet)` is slightly determinate: its name says how its value
+is reached and not which object the value is. So a `:default` `(momOf Muffet Mary)` and
+the projected `(momOf Muffet (<MomFn Muffet>))` under a correspondence's
+`functionalInArg` mark merge in CxStory
+(`nat_test/a-default-value-merges-with-the-placeholder-and-places-no-nogood`). The unique-name assumption still
+holds for a slightly determinate term, so `different` and the `predAllSpecified` audit
+read it as determinate. A slightly determinate term merges with no other reified constant
+on `:default` evidence
+(`nat_test/a-placeholder-merges-with-no-other-reified-constant-on-default-evidence`).
+
+**The placeholder merges only onto the one candidate of its slot.** A slot's candidates
+are its determinate fillers that a merge stored at the reader reaches
+(`checks/sole-constant?`). They are the fillers of the stored facts the reader sees. They
+are also the fillers of the stored facts in a context some context sees together with the
+reader, since that context reads the merge and the filler at once. A filler stands for
+every name of its class, since a merge that elects the placeholder its class's
+representative spells the constant's fact with the placeholder. Two constants count as
+one candidate only through a merge naming no reified constant, so the placeholder's own
+merges never make two rivals one. The candidates are read off the store, as the
+collision sweep reads it. A filler an `except` or a placed
+`defeat` hides at the reader is no candidate. With a `:default` `(momOf Muffet Mary)` and
+a `:default` `(momOf Muffet Jane)` in one slot, neither merges with the placeholder, so no
+merge equates Mary and Jane on `:default` evidence
+(`nat_test/two-rival-default-values-merge-neither-with-the-placeholder`). The merge rests
+on the absence of a rival, so it is withdrawn when one arrives. `special/class-moved-merges`
+re-asks every slot a settle moved. A slot moves when a fact arrives in it or is
+relabelled, or a member leaves it (`tuple/take-slot-moves!`). It moves when an `except` or
+a `defeat` hides or shows a filler, and when a `genlCx` move reaches a context storing a
+member (`tuple/note-contexts-moved!`). It moves when a membership moves a filler's level.
+Each collision justification whose merge no
+longer holds there is dropped, with everything derived from it, and each fact of a slot
+holding a filler that is not determinate is derived from again. So Mary asserted and
+settled before Jane arrives ends where Jane before Mary ends, and retracting Jane brings
+the merge back
+(`nat_test/a-rival-value-and-its-retraction-reach-one-state-in-every-order`,
+`nat_test/a-rival-a-context-edge-brings-into-view-withdraws-the-merge`).
+
+An indeterminate term merges at the slightest breeze: with any other symbol, whatever the
+facts' classes and whatever else fills the slot. A membership in `indeterminate_term`
+stated after the collision reaches it, and retracting the membership takes the merge back
+(`nat_test/an-indeterminate-filler-merges-on-default-evidence-once-declared`).
+
+Every other collision is a nogood the settle decides. Two numbers, two strings or a
+compound are one, because no merge can make two numbers one thing. Two determinate
+symbols with a `:default` fact are one, because a merge of two determinate names rests on
+`:monotonic` evidence alone ([reference.md](reference.md#decisions), decisions 6 and 13). Two measures
+that can denote one magnitude are no collision
 ([quantity.md](quantity.md#a-functional-measure-slot)). The settle places the
 `defeat` of the unique `:default` fact of such a pair, and two `:default` facts are a
-dilemma. A defeasible identity is
-written with a predicate that does not merge.
+dilemma. A defeasible identity of two determinate names is written with a predicate that
+does not merge.
 
 **The merge follows each member's class, not only its arrival.** A member's class moves
 under an unchanged label when a justification of it arrives or leaves: a `:monotonic` rule
@@ -494,8 +546,11 @@ settle pass `special/class-moved-merges` re-asks the collisions of the relabelle
 (`jtms/touched`) whose class can have moved, conditional on the marks as the write path is. A
 member IN at `:monotonic` goes back through the write-path derivation, so the merge is the
 one the member would have met arriving at that class. A collision justification with a
-member IN at `:default` is dropped, as retracting that member drops it, and an equality
-with another justification stands on it. A settle whose own defeats stand when a merge
+member IN at `:default` is dropped when its merge no longer holds, as retracting that
+member drops it, and an equality with another justification stands on it. A member IN at
+`:default` in a slot holding a filler that is not determinate goes back through the
+derivation as well, so the merge a slightly determinate placeholder holds does not depend
+on which value arrived first. A settle whose own defeats stand when a merge
 moves settles again from no defeat (`settle/*unmerged-sink*`). `core/preview` keeps every
 handle, so it leaves a dropped merge standing.
 

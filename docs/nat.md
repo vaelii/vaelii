@@ -574,7 +574,7 @@ declaration — and each of the three landing last has an arm:
 |---|---|
 | the application | mints `K`, which the visible value reaches as the next two rows say: a merge from a `:monotonic` value, copies from a `:default` one |
 | a `:monotonic` fact | `(rewriteOf V K)`, derived from the fact and the declaration and placed where their contexts meet, retires the placeholder there, and the equality migration folds every use of `K` — its `natFormula` map included — onto `V` |
-| a `:default` fact | each fact and each rule naming `K` takes a copy with `V` in `K`'s place, derived from the use, the fact and the declaration and placed where the three contexts meet; nothing is merged, so `K`'s own sentexes stay believed |
+| a `:default` fact | each fact and each rule naming `K` takes a copy with `V` in `K`'s place, derived from the use, the fact and the declaration and placed where the three contexts meet; no `rewriteOf` is derived. The correspondence's `functionalInArg` mark merges `K` with `V` by an `equals` where `V` is the one candidate of the slot, since `K` is slightly determinate ([equality.md](equality.md#functional-infers-equality-instead-of-throwing)) |
 | the declaration | each constant already minted for `F` is projected, then merged with or copied onto its value as the two rows above say |
 | a use of `K` | takes its copy beside each visible `:default` value, as the `:default` row says |
 
@@ -619,7 +619,7 @@ a single visible `(capitalCityOf Freedonia Fredville)` in `CxStory` and a write 
 | The fact's class | A write in `CxStory` | The placeholder minted in `CxUniverse` | A goal in `CxStory` naming the application or `K` |
 |---|---|---|---|
 | `:monotonic` | stores `K`, restated as `Fredville` under the merge | retired in `CxStory` by `(rewriteOf Fredville K)`; `CxUniverse` reads `K` | reads `Fredville`, the representative |
-| `:default` | mints `K` | stays; each use of `K` has a copy naming `Fredville` in `CxStory` | reads both spellings, `K` and `Fredville` |
+| `:default` | mints `K` | stays, and the functional mark merges it with `Fredville` in `CxStory` by an `equals`; each use of `K` also has a copy naming `Fredville` there | reads `K` and `Fredville` as one class |
 
 Both hold in every arrival order, a `genlCx` edge included
 (`nat_test/a-value-in-a-context-retires-the-placeholder-there-alone-in-every-order`). A

@@ -169,7 +169,7 @@
 5	8	src/vaelii/impl/solve.clj
 2	19	src/vaelii/impl/source_identity.clj
 33	86	src/vaelii/impl/spec.clj
-96	343	src/vaelii/impl/special.clj
+95	343	src/vaelii/impl/special.clj
 8	31	src/vaelii/impl/stp.clj
 0	2	src/vaelii/impl/strength.clj
 47	8	src/vaelii/impl/tactics.clj

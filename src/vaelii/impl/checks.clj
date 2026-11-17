@@ -1629,6 +1629,74 @@
   [sentence [_ _ _ n]]
   (nth (vec (nm/args sentence)) (dec n)))
 
+(defn- seen-together?
+  "Does some context see both `m` and `s`, over the unscoped `genlCx` closure?"
+  [tax m s]
+  (or (= m s) (tax/root-context? m) (tax/root-context? s)
+      (let [down (tax/context-down-global tax s)]
+        (boolean (some #(contains? down %) (tax/context-down-global tax m))))))
+
+(defn- slot-candidates
+  "The determinate fillers of the slot `via` at position `n` under `args` that a merge
+  stored at `context` reaches.  They are the fillers of the stored facts visible at
+  `context` (`res/matches-visible`), and of those stored in a context some context sees
+  together with `context` (`seen-together?`), since a merge is read wherever `context` is.
+  A filler stands for every member of its class as `context` sees the merges, since a
+  merge electing a reified constant spells its members' facts with it.  A term counts
+  when `provers/determinateness` reads it `:determinate`."
+  [kb via n args context]
+  (let [tax   (reasoning/taxonomy kb)
+        vis   (res/visible-supporter-fn kb context)
+        probe (apply list via (assoc (vec args) (dec n) '?fv))
+        up    (tax/context-up-global tax context)
+        far   (fn [[h _]] (let [s (:context (p/get-sentex (:records kb) h))]
+                            (and s (not= s context) (not (contains? up s)) (seen-together? tax context s))))
+        names (fn [v] (if (and (symbol? v) (tax/merged? tax v)) (first (tax/scoped-class tax v vis)) [v]))]
+    (into #{} (comp cat
+                    (keep (fn [[_ b]] (get b '?fv)))
+                    (mapcat names)
+                    (filter #(= :determinate (provers/determinateness kb % context))))
+          [(res/matches-visible kb probe context)
+           (filter far (res/match-pattern kb probe '?ctx))])))
+
+(defn- names-no-reified-constant?
+  "Does the equality supporter `h` name no reified constant?  `sole-constant?` reads two
+  constants as one only through such a merge, so a placeholder's own merges never make
+  two rivals one."
+  [kb h]
+  (not-any? nat-read/reified-nat-symbol? (some-> (p/get-sentex (:records kb) h) :sentence nm/args)))
+
+(defn sole-constant?
+  "Is no determinate filler of the functional slot `via` at position `n` under `args`
+  that `context` reaches outside the class of the constant `c` (`slot-candidates`)?  The
+  class is read over the merges `context` sees that name no reified constant
+  (`names-no-reified-constant?`).  The guard on a slightly determinate filler's merge
+  (`functional-merges?`): with Mary and Jane in the slot, neither merges with the
+  placeholder."
+  [kb c via n args context]
+  (let [admit? #(names-no-reified-constant? kb %)]
+    (every? #(or (= c %) (and (symbol? %) (res/same-class-in? kb c % context admit?)))
+            (slot-candidates kb via n args context))))
+
+(defn functional-merges?
+  "Does a functional collision between the fillers `a` and `b` of the stored members `h`
+  and `o`, in the slot `via` at position `n` under `args`, merge the two at `context`
+  (docs/equality.md, \"`functional` infers equality instead of throwing\")?  The fillers
+  must be two symbols (`tuple/mergeable-values?`).  They merge when both members are
+  `:monotonic`, or either filler is `:indeterminate` (`provers/determinateness`).  They
+  merge when one is `:slightly-determinate` and the other a `:determinate` constant that
+  is the slot's one candidate at `context` (`sole-constant?`)."
+  [kb a b h o context via n args]
+  (and (tuple/mergeable-values? a b)
+       (let [tms (reasoning/tms kb)]
+         (or (and (tuple/monotonic-member? tms h) (tuple/monotonic-member? tms o))
+             (let [da (provers/determinateness kb a context)
+                   db (provers/determinateness kb b context)]
+               (or (= :indeterminate da) (= :indeterminate db)
+                   (let [c (cond (and (= :slightly-determinate da) (= :determinate db)) b
+                                 (and (= :slightly-determinate db) (= :determinate da)) a)]
+                     (boolean (and c (sole-constant? kb c via n args context))))))))))
+
 (defn functional-declaration-supporters
   "The handles of every declaration constraining `via` at position `n`: the
   `(functional via)` sentexes when `n` is 2 and the `(functionalInArg via n)` sentexes,

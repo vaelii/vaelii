@@ -2180,7 +2180,14 @@
                                         " genl."))
                 (str "one implementation behind both the predAllSpecified audit and the"
                      " different prover's identity exemption — a filler that is a member"
-                     " is not determinate and is exempt from the unique-name assumption"))]])))
+                     " is not determinate and is exempt from the unique-name assumption"))]
+     ['slightly_determinate_term
+      (enforced (collection :notes (str "an extensible determinacy category: a non-skolem"
+                                        " reified constant is the built-in member, a future"
+                                        " kind joins by genl."))
+                (str "read by provers/determinateness: a member merges onto the one"
+                     " determinate constant of a functional slot on any evidence, and is"
+                     " determinate for different and the predAllSpecified audit"))]])))
 
 (def ^:private lane-facets
   "The facets `facet-contract` marks as lanes a mark family moves through together."

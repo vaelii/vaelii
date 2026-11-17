@@ -1235,18 +1235,21 @@ fact names the value `V` of an application already minted as `K`, the engine der
 sorts first, which can be `K`, and every use of `V` would then migrate onto the opaque
 constant.
 
-### A `:default` value copies the placeholder's uses instead of merging
+### A `:default` value copies the placeholder's uses and derives no `rewriteOf`
 
 Defends [nat.md](nat.md#the-corresponding-predicate). A `:default` corresponding fact
 gives each sentex and rule naming `K` a derived copy with `V` in `K`'s place, and stores
 no `(rewriteOf V K)`. `rewriteOf` stays in the forced-monotonic set
 ([nmtms.md](nmtms.md#the-forced-monotonic-set)).
 
-A merge resting on a `:default` fact would be defeasible, and a merge supersedes `K`'s
-spellings. A defeat of the fact would then withdraw the merge and bring `K`'s superseded
-sentexes back IN: the defeat of one fact would add belief. A copy supersedes nothing, so
-`K`'s own sentexes stay believed whatever the fact's label, and a defeat of the fact takes
-only the copies OUT. A write in a context that reads only a `:default` value mints `K` for
+A `rewriteOf` resting on a `:default` fact would be defeasible, and a merge supersedes
+`K`'s spellings. A copy supersedes nothing, so `K`'s own sentexes stay believed whatever
+the fact's label, and a defeat of the fact takes only the copies OUT. The correspondence's
+functional mark does merge `K` with `V` by an `equals` where `V` is the one candidate of
+the slot, since `K` is slightly determinate
+([equality.md](equality.md#functional-infers-equality-instead-of-throwing)). That merge is
+withdrawn when a rival arrives or a defeat hides `V`, and `K`'s superseded spellings come
+back IN with the withdrawal: a reader that loses `V` reads `K` again. A write in a context that reads only a `:default` value mints `K` for
 the same reason: a stored sentence spelled `V` keeps that spelling after the fact loses,
 with nothing left to say why it names `V`. The cost is one copy per use and per rule
 naming `K` while the value is visible, and one extra lookup per goal naming the

@@ -75,6 +75,7 @@
 (set/monotonic (partition literal predication negated_predication))
 (set/monotonic (genl closed_predication sentence))
 (set/monotonic (genl indeterminate_term denotational_term))
+(set/monotonic (genl slightly_determinate_term denotational_term))
 
 ;; Well-formedness crosses the kinds: an expression is wff or ill-formed whatever its
 ;; shape, and formula and sentence split the same way, each half the intersection of

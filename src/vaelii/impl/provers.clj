@@ -1412,6 +1412,23 @@
   [kb term context]
   (class-indeterminate? kb (res/visible-supporter-fn kb context) term context))
 
+(defn determinateness
+  "The determinateness level of `term` as mentioned at `context`, read off the term and
+  not its equality class (core.txt, \"three levels of determinateness\").
+  `:indeterminate` is a skolem constant or a believed member of `indeterminate_term` or a
+  subkind.  `:slightly-determinate` is any other reified constant, such as
+  `(<MomFn Muffet>)` for `(MomFn Muffet)`, or a believed member of
+  `slightly_determinate_term` or a subkind.  `:determinate` is every other term.
+  `checks/functional-merges?` reads it."
+  [kb term context]
+  (cond
+    (not (symbol? term)) :determinate
+    (or (skolem-indeterminate? kb term context)
+        (category-indeterminate? kb term context)) :indeterminate
+    (or (nat-read/reified-nat-symbol? term)
+        (seq (res/matches-visible kb (list 'slightly_determinate_term term) context))) :slightly-determinate
+    :else :determinate))
+
 (defn indeterminacy-supports
   "The handles of the stored sentexes, in any context, that make `term` an indeterminate
   term where they are visible: its `SkolemFn` minting expression and its memberships of
