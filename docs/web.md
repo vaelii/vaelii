@@ -1891,17 +1891,22 @@ examples, the arity, the kind and then the rest. A line takes the first position
 predicate it shows is named at, and a line none of whose predicates is named follows the
 named ones. A definitional sentence about the term that no other line shows, such as one of
 a predicate the KB declares `definitional_predicate` and names in no `predicateDisplayOrder`
-fact, is on an **other** line, as its handle badge. An `unbounded_arity_predicate` has no
-arity line, missing or not, since an `arity` sentence about it would be ill-formed.
+fact, is on an **other** line, as its handle badge.
 
-The kind line lists the definitional types asserted of the term, with its arity class
-(`unary_predicate`, `binary_predicate`, …) first. A predicate whose arity line shows its
-arity lists no arity class, since the arity says the same. A grant or a refusal mark such
-as `closed_extent_predicate` or `not_assertible` is no kind. A membership another line
+A predicate's arity line is the length `relation-length` binds, the one that binds the
+predicate's tuples, read through `genl` from a super-predicate as well: the exact length,
+`≥m` for a least length `m` (an `arityMin`), and `any` for a least length of at most one.
+An `unbounded_arity_predicate` no length binds shows `any`, never missing, since an
+`arity` sentence about it would be ill-formed.
+
+The kind line lists the definitional types asserted of the term. It lists no arity class
+(`unary_predicate`, `binary_predicate`, `at_least_binary`, an `arity_type`, …), since the
+arity line says the same, and the block has no arity class line. A grant or a refusal mark
+such as `closed_extent_predicate` or `not_assertible` is no kind. A membership another line
 shows, such as `(irreflexive P)` under the relation properties, is not also a kind. A
 kind another listed kind is strictly below is left out, as a parent is (below): a
 predicate declared `eternal_predicate` and `time_invariant_relation` lists
-`eternal_predicate`, and the arity classes are pruned the same way among themselves.
+`eternal_predicate`.
 
 A line of several values lists them on one line, comma-separated: the examples lines
 list each example, a string quoted or a quoted form drawn, as the kind and parents lines
@@ -1940,8 +1945,7 @@ contexts with opposite `genl` edges sees them, the first in printed order stands
 
 A part the KB holds nothing for is tagged **missing**, beside an **add** link
 that opens the assert form on a sentence supplying it (`(comment dog "")`, `(genl dog )`),
-deliberately incomplete as the assert form's term seed is. A missing kind line where no
-arity shows also offers an **arity class** seed. Each sibling carries what decides it against the term, as
+deliberately incomplete as the assert form's term seed is. Each sibling carries what decides it against the term, as
 `subsumption-statuses` reads the pair: `genl`, `spec`, `disjoint`, `orthogonal` for a
 declared overlap, or `overlaps` with the shared instance or shared subtype that shows one,
 which is what the `:open-sibling-pair` pass of `kb-integrity` reads as decided. A sibling

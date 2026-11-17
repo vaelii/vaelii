@@ -344,12 +344,6 @@
                  body)
         "parentOf carries no relation property, and the link seeds the form with one")))
 
-(deftest a-predicates-arity-class-seed-names-the-class-of-its-arity
-  (let [seed (second (@#'web/block-parts :arity-class))]
-    (is (= ["(ternary_predicate p)" "(binary_predicate p)" "(  p)" "(unary_predicate t)"]
-           [(seed "p" {:role :predicate :arity 3}) (seed "p" {:role :predicate :arity 2})
-            (seed "p" {:role :predicate}) (seed "t" {:role :type})]))))
-
 (defn- block-line
   "The `<dd>` the Definition block of the term page `body` draws beside the label `dt`,
   or nil when the block draws no such line."
@@ -370,13 +364,30 @@
     (is (not (some #{'binary_predicate} (linked-terms (or (block-line body "kind") ""))))
         "nor is it a kind")))
 
-(tu/deftest-kb a-types-arity-class-is-the-first-of-its-kinds
+(tu/deftest-kb a-types-kind-line-lists-no-arity-class
   (tu/with-terms [kindT]
     (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing) (list 'type kindT)]]
       (v/assert kb s 'CxUniverse))
     (let [body (:body (GET "/term" (str "q=" (name kindT))))]
-      (is (= '[unary_predicate type] (linked-terms (block-line body "kind"))))
+      (is (= '[type] (linked-terms (block-line body "kind"))))
       (is (nil? (block-line body "arity class"))))))
+
+(tu/deftest-kb a-predicates-arity-line-reads-the-length-that-binds-it
+  (tu/with-terms [relP relQ relR relS relT relU]
+    (doseq [s [(list 'ternary_predicate relP)
+               (list 'binary_predicate relQ) (list 'genl relR relQ)
+               (list 'variable_arity_predicate relS) (list 'unbounded_arity_predicate relS)
+               (list 'arityMin relS 2)
+               (list 'variable_arity_predicate relT) (list 'unbounded_arity_predicate relT)
+               (list 'arityMin relT 1)
+               (list 'unbounded_arity_predicate relU)]]
+      (v/assert kb s 'CxUniverse))
+    (let [line #(block-line (:body (GET "/term" (str "q=" (name %)))) "arity")]
+      (is (= "3" (line relP)))
+      (is (= "2" (line relR)) "a length a super-predicate binds")
+      (is (= "≥2" (line relS)))
+      (is (= "any" (line relT)) "a floor of one is no floor")
+      (is (= "any" (line relU)) "an unbounded predicate no floor binds"))))
 
 (tu/deftest-kb a-types-examples-are-one-comma-separated-line
   (tu/with-terms [kindT]
@@ -414,12 +425,12 @@
       (is (re-find (re-pattern (str "/sentex/" (h (list 'functionalInArg relP 2)) "\"")) line)
           "a sentence with more arguments is drawn whole"))))
 
-(tu/deftest-kb an-unbounded-arity-predicate-has-no-arity-line
+(tu/deftest-kb an-unbounded-arity-predicates-arity-line-offers-no-arity
   (tu/with-terms [relP]
     (v/assert kb (list 'unbounded_arity_predicate relP) 'CxUniverse)
     (let [body (:body (GET "/term" (str "q=" (name relP))))]
       (is (re-find #"<h3>Definition</h3>" body))
-      (is (nil? (block-line body "arity")) "no arity line, missing or not")
+      (is (= "any" (block-line body "arity")) "never missing")
       (is (not (str/includes? body (str "text=%28arity+" (name relP))))
           "and no link seeding an arity, which would be ill-formed"))))
 

@@ -217,12 +217,10 @@
       (v/assert kb s 'CxUniverse))
     (let [d (v/describe kb kin_a 'CxUniverse)
           b (block d)]
-      (is (= [:comment :positive-examples :negative-examples :arity-class :kind :parents
-              :siblings :links]
+      (is (= [:comment :positive-examples :negative-examples :kind :parents :siblings :links]
              (mapv :part (:definitional-block d)))
-          "the annotations, then the arity class and the kinds, then the rest")
+          "the annotations, then the kinds, then the rest; an arity class is no part")
       (is (= :missing (:kind b)) "the arity class is not a kind")
-      (is (= ['unary_predicate] (:terms (:arity-class b))))
       (is (= [kin_root] (:terms (:parents b))))
       (is (= {kin_b :disjoint kin_c :missing kin_d :overlaps} (separations b))
           "a sibling nothing decides is the missing part of the separations")
@@ -288,10 +286,11 @@
 (tu/deftest-kb a-predicates-block-holds-its-arity-declarations-and-properties
   (let [d (v/describe kb 'parentOf W)
         b (block d)]
-    (is (= [:comment :arity :arity-class :kind :parents :arg-constraints :props :links]
+    (is (= [:comment :arity :kind :parents :arg-constraints :props :links]
            (mapv :part (:definitional-block d)))
-        "the comment, then the arity, the arity class and the kinds, then the rest")
-    (is (= 2 (:arity b)))
+        "the comment, then the arity and the kinds, then the rest")
+    (is (= {:exact 2 :via 'parentOf} (:arity b)))
+    (is (not-any? '#{binary_predicate} (:terms (:kind b))) "the arity says what the class would")
     (is (= '[[1 false false [[:instance causal]]] [2 false false [[:instance causal]]]]
            (arg-table b))
         "both declarations are in the table, and no other one is left for its own line")
@@ -414,17 +413,27 @@
               "a named predicate is shown in the order named")
           (finally (v/retract! kb h)))))))
 
-(tu/deftest-kb an-unbounded-arity-predicates-block-has-no-arity-part
-  (tu/with-terms [relP]
-    (v/assert kb (list 'unbounded_arity_predicate relP) 'CxUniverse)
-    (is (not-any? #(= :arity (:part %)) (:definitional-block (v/describe kb relP 'CxUniverse)))
-        "an arity would be ill-formed, so the block neither shows nor asks for one")))
+(tu/deftest-kb a-predicates-arity-part-is-the-length-that-binds-it
+  (tu/with-terms [relP relQ relR relS relU]
+    (doseq [s [(list 'ternary_predicate relP)
+               (list 'binary_predicate relQ) (list 'genl relR relQ)
+               ;; as core.txt declares contradicts: relation-length reads the floor under a
+               ;; stored variable_arity release, which unbounded_arity_predicate alone is not
+               (list 'variable_arity_predicate relS) (list 'unbounded_arity_predicate relS)
+               (list 'arityMin relS 2)
+               (list 'unbounded_arity_predicate relU)]]
+      (v/assert kb s 'CxUniverse))
+    (let [arity #(:arity (block (v/describe kb % 'CxUniverse)))]
+      (is (= {:exact 3 :via relP} (arity relP)))
+      (is (= {:exact 2 :via relQ} (arity relR)) "a length a super-predicate binds")
+      (is (= {:min 2 :via relS} (arity relS)) "an unbounded predicate's least length")
+      (is (= {:any? true} (arity relU))
+          "an unbounded predicate no least length binds takes any number"))))
 
-(tu/deftest-kb a-variable-arity-predicate-that-is-not-unbounded-keeps-its-arity-part
+(tu/deftest-kb a-predicate-no-length-binds-has-its-arity-part-missing
   (tu/with-terms [relP]
     (v/assert kb (list 'variable_arity_predicate relP) 'CxUniverse)
-    (is (some #(= :arity (:part %)) (:definitional-block (v/describe kb relP 'CxUniverse)))
-        "only an unbounded-arity predicate has no arity part")))
+    (is (= :missing (:arity (block (v/describe kb relP 'CxUniverse)))))))
 
 (tu/deftest-kb an-unlisted-definitional-predicate-is-shown-after-every-listed-one
   (tu/with-terms [relP kindT defRel]
@@ -465,9 +474,7 @@
       (v/assert kb s 'CxUniverse))
     (is (= ['eternal_predicate] (:terms (:kind (block (v/describe kb kindT 'CxUniverse)))))
         "eternal_predicate is below time_invariant_relation"))
-  (let [b (block (v/describe kb 'algebraic_predicate_property W))]
-    (is (= ['unary_predicate] (:terms (:arity-class b))))
-    (is (= ['eternal_predicate] (:terms (:kind b))))))
+  (is (= ['eternal_predicate] (:terms (:kind (block (v/describe kb 'algebraic_predicate_property W)))))))
 
 (tu/deftest-kb a-relation-property-another-one-is-strictly-below-is-left-out
   (tu/with-terms [relP kindT]

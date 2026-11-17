@@ -609,7 +609,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; line can name most of them where the declared
                                                ; reading names a handful
                                                ; :predicate adds :arity (inherited through genl
-                                               ;   included) :arity-via :arg-declarations :props
+                                               ;   included) :arity-via :arity-length (the
+                                               ;   exact or least length) :arg-declarations :props
                                                ;   :inverse :extent-count and the four grants
                                                ;   :closed-extent? :abducible? :modal?
                                                ;   :decontextualized?
