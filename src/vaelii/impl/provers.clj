@@ -1416,9 +1416,9 @@
   "The determinateness level of `term` as mentioned at `context`, read off the term and
   not its equality class (core.txt, \"three levels of determinateness\").
   `:indeterminate` is a skolem constant or a believed member of `indeterminate_term` or a
-  subkind.  `:slightly-determinate` is any other reified constant, such as
+  subkind.  `:placeholder` is any other reified constant, such as
   `(<MomFn Muffet>)` for `(MomFn Muffet)`, or a believed member of
-  `slightly_determinate_term` or a subkind.  `:determinate` is every other term.
+  `placeholder_term` or a subkind.  `:determinate` is every other term.
   `checks/functional-merges?` reads it."
   [kb term context]
   (cond
@@ -1426,7 +1426,7 @@
     (or (skolem-indeterminate? kb term context)
         (category-indeterminate? kb term context)) :indeterminate
     (or (nat-read/reified-nat-symbol? term)
-        (seq (res/matches-visible kb (list 'slightly_determinate_term term) context))) :slightly-determinate
+        (seq (res/matches-visible kb (list 'placeholder_term term) context))) :placeholder
     :else :determinate))
 
 (defn indeterminacy-supports

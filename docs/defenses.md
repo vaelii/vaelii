@@ -1246,7 +1246,7 @@ A `rewriteOf` resting on a `:default` fact would be defeasible, and a merge supe
 `K`'s spellings. A copy supersedes nothing, so `K`'s own sentexes stay believed whatever
 the fact's label, and a defeat of the fact takes only the copies OUT. The correspondence's
 functional mark does merge `K` with `V` by an `equals` where `V` is the one candidate of
-the slot, since `K` is slightly determinate
+the slot, since `K` is a placeholder term
 ([equality.md](equality.md#functional-infers-equality-instead-of-throwing)). That merge is
 withdrawn when a rival arrives or a defeat hides `V`, and `K`'s superseded spellings come
 back IN with the withdrawal: a reader that loses `V` reads `K` again. A write in a context that reads only a `:default` value mints `K` for

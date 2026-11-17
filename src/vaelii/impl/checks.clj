@@ -1673,7 +1673,7 @@
   "Is no determinate filler of the functional slot `via` at position `n` under `args`
   that `context` reaches outside the class of the constant `c` (`slot-candidates`)?  The
   class is read over the merges `context` sees that name no reified constant
-  (`names-no-reified-constant?`).  The guard on a slightly determinate filler's merge
+  (`names-no-reified-constant?`).  The guard on a placeholder filler's merge
   (`functional-merges?`): with Mary and Jane in the slot, neither merges with the
   placeholder."
   [kb c via n args context]
@@ -1687,7 +1687,7 @@
   (docs/equality.md, \"`functional` infers equality instead of throwing\")?  The fillers
   must be two symbols (`tuple/mergeable-values?`).  They merge when both members are
   `:monotonic`, or either filler is `:indeterminate` (`provers/determinateness`).  They
-  merge when one is `:slightly-determinate` and the other a `:determinate` constant that
+  merge when one is `:placeholder` and the other a `:determinate` constant that
   is the slot's one candidate at `context` (`sole-constant?`)."
   [kb a b h o context via n args]
   (and (tuple/mergeable-values? a b)
@@ -1696,8 +1696,8 @@
              (let [da (provers/determinateness kb a context)
                    db (provers/determinateness kb b context)]
                (or (= :indeterminate da) (= :indeterminate db)
-                   (let [c (cond (and (= :slightly-determinate da) (= :determinate db)) b
-                                 (and (= :slightly-determinate db) (= :determinate da)) a)]
+                   (let [c (cond (and (= :placeholder da) (= :determinate db)) b
+                                 (and (= :placeholder db) (= :determinate da)) a)]
                      (boolean (and c (sole-constant? kb c via n args context))))))))))
 
 (defn functional-declaration-supporters

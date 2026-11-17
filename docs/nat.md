@@ -574,7 +574,7 @@ declaration — and each of the three landing last has an arm:
 |---|---|
 | the application | mints `K`, which the visible value reaches as the next two rows say: a merge from a `:monotonic` value, copies from a `:default` one |
 | a `:monotonic` fact | `(rewriteOf V K)`, derived from the fact and the declaration and placed where their contexts meet, retires the placeholder there, and the equality migration folds every use of `K` — its `natFormula` map included — onto `V` |
-| a `:default` fact | each fact and each rule naming `K` takes a copy with `V` in `K`'s place, derived from the use, the fact and the declaration and placed where the three contexts meet; no `rewriteOf` is derived. The correspondence's `functionalInArg` mark merges `K` with `V` by an `equals` where `V` is the one candidate of the slot, since `K` is slightly determinate ([equality.md](equality.md#functional-infers-equality-instead-of-throwing)) |
+| a `:default` fact | each fact and each rule naming `K` takes a copy with `V` in `K`'s place, derived from the use, the fact and the declaration and placed where the three contexts meet; no `rewriteOf` is derived. The correspondence's `functionalInArg` mark merges `K` with `V` by an `equals` where `V` is the one candidate of the slot, since `K` is a placeholder term ([equality.md](equality.md#functional-infers-equality-instead-of-throwing)) |
 | the declaration | each constant already minted for `F` is projected, then merged with or copied onto its value as the two rows above say |
 | a use of `K` | takes its copy beside each visible `:default` value, as the `:default` row says |
 

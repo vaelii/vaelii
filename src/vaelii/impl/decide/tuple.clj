@@ -442,7 +442,7 @@
 (defn- drop-det-member
   "`c` with `h` gone from determinant `key`: the determinant goes when one filler is
   left, and a partner left with none is no longer live.  The members left are queued
-  under `::slot-moved`, since a rival leaving can leave a slightly determinate filler one
+  under `::slot-moved`, since a rival leaving can leave a placeholder filler one
   constant to merge onto (`take-slot-moves!`)."
   [w c key h]
   (let [[_ cx] (get-in c [::det key h])
@@ -481,7 +481,7 @@
   "The categories whose memberships move a filler's determinateness level
   (`provers/determinateness`), so a member's arrival or departure re-asks the functional
   merges of the slots its term fills (`take-slot-moves!`)."
-  '[indeterminate_term slightly_determinate_term])
+  '[indeterminate_term placeholder_term])
 
 (defn- determinacy-term
   "The term `sx` makes a member of a `determinacy-categories` category or a subkind of

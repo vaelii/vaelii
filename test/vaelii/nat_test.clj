@@ -1063,7 +1063,7 @@
       (testing "and each declaration projects the placeholder onto its own predicate"
         (is (some? (v/handle-of kb (list parentOf Muffet k) 'CxUniverse)))
         (is (some? (v/handle-of kb (list motherOf Muffet k) 'CxUniverse))))
-      (testing "and the placeholder, slightly determinate, merges with the one value of motherOf"
+      (testing "and the placeholder merges with the one value of motherOf"
         (is (true? (v/same-class? kb k Mary 'CxUniverse)))
         (is (= [{'?m Mary}] (v/ask kb (list parentOf Muffet '?m) 'CxUniverse)))
         (is (= [{'?m Mary}] (v/ask kb (list motherOf Muffet '?m) 'CxUniverse)))))))
@@ -2157,7 +2157,7 @@
       (is (= start (believed-content kb))))))
 
 ;; ---- a placeholder merges onto the one constant of its slot ----------------
-;; A non-skolem reified constant is slightly determinate (core.txt): a functional
+;; A non-skolem reified constant is a placeholder term (core.txt): a functional
 ;; collision merges it with a determinate constant on `:default` evidence, while that
 ;; constant is the one constant filling the slot (docs/equality.md).
 
@@ -2241,7 +2241,7 @@
       (is (= [true true true] (placeholder-merges kb terms))))))
 
 (tu/deftest-kb a-placeholder-merges-with-no-other-reified-constant-on-default-evidence
-  ;; (<GuardianFn Muffet>) is slightly determinate too, and the merge is onto constants only
+  ;; (<GuardianFn Muffet>) is a placeholder term too, and the merge is onto constants only
   (tu/with-terms [MomFn GuardianFn momOf Muffet Mary Jane Tom likes CxStory]
     (let [terms [MomFn momOf Muffet Mary Jane Tom likes CxStory]]
       (v/assert kb (list 'reifiable_function GuardianFn) 'CxUniverse {:strength :monotonic})

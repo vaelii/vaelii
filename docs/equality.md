@@ -484,16 +484,16 @@ functional declaration]`. Whether two symbols merge on weaker evidence depends o
 |---|---|---|
 | determinate | every term no category below names | merges with no other filler |
 | `indeterminate_term` | a skolem constant, a declared member or subkind member | merges with the other symbol |
-| `slightly_determinate_term` | a reified constant whose minting expression is no skolem, a declared member or subkind member | merges with a determinate constant that is the one candidate of its slot |
+| `placeholder_term` | a reified constant whose minting expression is no skolem, a declared member or subkind member | merges with a determinate constant that is the one candidate of its slot |
 
 `checks/functional-merges?` decides each pair. The reified constant `(<MomFn Muffet>)`
-of the application `(MomFn Muffet)` is slightly determinate: its name says how its value
+of the application `(MomFn Muffet)` is a placeholder term: its name says how its value
 is reached and not which object the value is. So a `:default` `(momOf Muffet Mary)` and
 the projected `(momOf Muffet (<MomFn Muffet>))` under a correspondence's
 `functionalInArg` mark merge in CxStory
 (`nat_test/a-default-value-merges-with-the-placeholder-and-places-no-nogood`). The unique-name assumption still
-holds for a slightly determinate term, so `different` and the `predAllSpecified` audit
-read it as determinate. A slightly determinate term merges with no other reified constant
+holds for a placeholder term, so `different` and the `predAllSpecified` audit
+read it as determinate. A placeholder term merges with no other reified constant
 on `:default` evidence
 (`nat_test/a-placeholder-merges-with-no-other-reified-constant-on-default-evidence`).
 
@@ -549,7 +549,7 @@ one the member would have met arriving at that class. A collision justification 
 member IN at `:default` is dropped when its merge no longer holds, as retracting that
 member drops it, and an equality with another justification stands on it. A member IN at
 `:default` in a slot holding a filler that is not determinate goes back through the
-derivation as well, so the merge a slightly determinate placeholder holds does not depend
+derivation as well, so the merge a placeholder holds does not depend
 on which value arrived first. A settle whose own defeats stand when a merge
 moves settles again from no defeat (`settle/*unmerged-sink*`). `core/preview` keeps every
 handle, so it leaves a dropped merge standing.

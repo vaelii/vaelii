@@ -2181,7 +2181,7 @@
                 (str "one implementation behind both the predAllSpecified audit and the"
                      " different prover's identity exemption — a filler that is a member"
                      " is not determinate and is exempt from the unique-name assumption"))]
-     ['slightly_determinate_term
+     ['placeholder_term
       (enforced (collection :notes (str "an extensible determinacy category: a non-skolem"
                                         " reified constant is the built-in member, a future"
                                         " kind joins by genl."))

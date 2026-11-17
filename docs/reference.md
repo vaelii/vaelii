@@ -218,10 +218,10 @@ page that holds it.
    ([inherit.md](inherit.md#forward-chaining-on-a-claim-nobody-stored)).
 6. **Is a `functional` clash between two symbol fillers a nogood?** Yes, unless it is a
    merge (invariant 4). It is a merge when every member is `:monotonic`, or a filler is
-   an `indeterminate_term`. It is one when a filler is a `slightly_determinate_term` and
+   an `indeterminate_term`. It is one when a filler is a `placeholder_term` and
    the other a determinate constant that is the one candidate of the slot where the merge
    is read.
-   A rival candidate arriving withdraws a slightly determinate filler's merge. Sections:
+   A rival candidate arriving withdraws a placeholder filler's merge. Sections:
    [taxonomy.md](taxonomy.md#predicate-metadata),
    [equality.md](equality.md#functional-infers-equality-instead-of-throwing).
 7. **What does the reference do with `irreflexive` and `anti_symmetric`?** Both marks are
@@ -260,7 +260,7 @@ page that holds it.
     [contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree).
 13. **Can a merge be defeated?** No (invariant 8). A defeasible identity of two
     determinate names is written with a predicate that does not merge. A functional merge
-    of a slightly determinate filler is withdrawn, not defeated: its justification is
+    of a placeholder filler is withdrawn, not defeated: its justification is
     dropped when a rival candidate arrives, and drawn again when the rival leaves
     (decision 6). The reference leaves equality outside v1. Sections:
     [equality.md](equality.md#what-a-merge-does),
@@ -355,7 +355,7 @@ members of the forced-monotonic set and the mechanism that holds each are
    `functionalInArg` collision between two symbol fillers, or an `anti_symmetric`
    converse pair of symbols, merges the two terms only when every member is
    `:monotonic`. A `functional` or `functionalInArg` filler that is an indeterminate or a
-   slightly determinate term also merges (decision 6), and the reference's generated
+   placeholder term also merges (decision 6), and the reference's generated
    worlds name no such term. Otherwise the collision is a nogood: the unique weakest member loses,
    and a tie at `:default` is a dilemma. The reference gives the all-`:monotonic` pair the
    verdict `:merge` and leaves equality outside v1, so the harness skips the belief
@@ -389,8 +389,8 @@ members of the forced-monotonic set and the mechanism that holds each are
    `except`, so the settle watches no `except` for a belief flip.
 8. **Equality is monotonic.** A `rewriteOf`, `sameAs` or `equals` merge rests on
    `:monotonic` evidence, unless a functional collision names an indeterminate or a
-   slightly determinate filler (decision 6). A merge is never defeated. It is undone by
-   retracting a premise it rests on, or, for a slightly determinate filler, by a rival
+   placeholder filler (decision 6). A merge is never defeated. It is undone by
+   retracting a premise it rests on, or, for a placeholder filler, by a rival
    candidate arriving. Equality is outside v1 ([equality.md](equality.md#what-a-merge-does)).
 9. **A guarded firing confers `:default`.** A firing whose rule has an `unknown`
    antecedent or an `exceptWhen` confers `:default` on its conclusion, whatever the

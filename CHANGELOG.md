@@ -59,16 +59,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 - **A functional collision reads three levels of determinateness.** A `functional` or
   `functionalInArg` collision between two symbols merged only when both facts were
-  `:monotonic`. core.txt now declares `slightly_determinate_term` beside
+  `:monotonic`. core.txt now declares `placeholder_term` beside
   `indeterminate_term`, and `provers/determinateness` reads each filler's level off the
   symbol as written. An `indeterminate_term` merges with the other filler whatever the
-  facts' strength. A `slightly_determinate_term`, which a reified constant such as
+  facts' strength. A `placeholder_term`, which a reified constant such as
   `(<MomFn Muffet>)` is unless it is a skolem, merges whatever the facts' strength with a
   determinate constant that is the one candidate of its slot. So a `:default`
   `(momOf Muffet Mary)` merges the placeholder with Mary, and a `:default`
   `(momOf Muffet Jane)` beside it withdraws the merge, so Mary and Jane never merge on
   `:default` evidence. The merge comes back when the rival leaves, in every arrival order.
-  `different` and the `predAllSpecified` audit read a slightly determinate term as
+  `different` and the `predAllSpecified` audit read a placeholder term as
   determinate. A late `indeterminate_term` membership reaches a collision stored before it.
   [equality.md](docs/equality.md#functional-infers-equality-instead-of-throwing)
   *Breaks:* `equals`, `contradictions`
