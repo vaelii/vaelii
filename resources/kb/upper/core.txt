@@ -2020,12 +2020,12 @@
 ;; equality class.  A determinate term, the default level, is one the unique-name
 ;; assumption holds for: two determinate symbols in one functional slot merge only when
 ;; both facts are monotonic.  An indeterminate_term is one the assumption is suspended for:
-;; a functional collision merges it on any evidence.  A placeholder_term, a
-;; reified constant whose minting expression is no skolem, is determinate everywhere
-;; except a functional or functionalInArg collision with a determinate constant: there it
-;; merges as an indeterminate term does, and only while that constant is the one
-;; determinate filler of the slot its reader sees.  The engine reads both categories
-;; through provers/determinateness.
+;; a functional collision merges it on any evidence.  A placeholder_term is an
+;; indeterminate_term whose name records how its value is reached: a skolem constant, or
+;; a reified constant such as (<MomFn Muffet>).  A functional or functionalInArg
+;; collision merges a placeholder with a determinate constant only while that constant
+;; is the one determinate filler of the slot its reader sees.  The engine reads both
+;; categories through provers/determinateness.
 
 ;; --- indeterminate_term: the determinacy category the Specified audit reads ---
 ;; An EXTENSIBLE category of terms whose identity is not determined: a term that stands
@@ -2048,10 +2048,9 @@
 (set/monotonic (time_varying_relation indeterminate_term))
 
 (comment placeholder_term
-         "(placeholder_term ?term) means that the name ?term fixes how its value is reached and not which object the value is. The reified constant (<MomFn Muffet>) of the application (MomFn Muffet) names whatever (MomFn Muffet) denotes, so a :default (momOf Muffet Mary) is evidence that it names Mary. The unique-name assumption holds for a member, so different and the predAllSpecified audit read it as determinate. A functional or functionalInArg collision between a member and a determinate constant, a symbol that is no reified constant, merges the two on any evidence while the constant is the one determinate filler of the slot the reader sees. A second constant in the slot, such as a :default (momOf Muffet Jane), withdraws that merge, so no merge equates Mary and Jane, and the merge returns when the rival leaves. Two members in one slot merge only on monotonic evidence. A reified constant whose minting expression is no skolem is a built-in member, read off the term rather than a stored membership; a further kind is added with (genl NewKind placeholder_term). See docs/equality.md.")
+         "(placeholder_term ?term) means that the name ?term records how its value is reached and not which object the value is. The reified constant (<MomFn Muffet>) of the application (MomFn Muffet) names whatever (MomFn Muffet) denotes, and a skolem constant's name records its rule and its bindings. A member is an indeterminate_term. A functional or functionalInArg collision between a member and a determinate constant merges the two on any evidence while the constant is the one determinate filler of the slot the reader sees. A second constant in the slot, such as a :default (momOf Muffet Jane), withdraws that merge, so no merge equates Mary and Jane, and the merge returns when the rival leaves. Two members in one slot merge only on monotonic evidence. Skolem constants and the nat/ and cx/ reified constants are built-in members, read off the term rather than a stored membership; a further kind is added with (genl NewKind placeholder_term). The different prover and the predAllSpecified audit read a built-in member that is no skolem as determinate. See docs/equality.md.")
 (unary_predicate placeholder_term)
 (set/monotonic (time_varying_relation placeholder_term))
-(set/monotonic (disjoint placeholder_term indeterminate_term))
 
 ;; --- Specified class: integrity audit, no inference -----------------------
 ;; The antagonist of the *Exists* class.  Where *Exists* mints a placeholder to stand for
@@ -2059,10 +2058,10 @@
 ;; filler already — a believed (?pred x y) whose y is not an indeterminate term.  It is an
 ;; audit that reports the instances with no determinate filler, run through
 ;; vaelii.core/specified-violations (not a stored rule).  The indeterminate terms are the
-;; skolems plus any declared indeterminate_term kind, of which none ships by default.  A
-;; non-skolem NAT is a placeholder term, which the audit reads as determinate, an
-;; *Exists* placeholder among them, so the two classes are exact antagonists.  The declaration is a plain stored fact the audit reads; it
-;; generates no rule and concludes nothing on its own.
+;; skolems plus any declared indeterminate_term kind, of which none ships by default.  The
+;; audit reads a non-skolem NAT as determinate, an *Exists* placeholder among them, so
+;; the two classes are exact antagonists.  The declaration is a plain stored fact the
+;; audit reads; it generates no rule and concludes nothing on its own.
 
 (comment predAllSpecified
          "(predAllSpecified ?pred ?indep) declares the integrity requirement that every instance of collection ?indep have a determinate filler at ?pred's second position: for all x in ?indep there is a believed (?pred x y) with y determinate and y satisfying ?pred's own slot-2 argument contract. The required filler type is DERIVED, never restated: every visible (arg ?pred 2 ?t) constrains y to be a member of ?t, every visible (genlArg ?pred 2 ?t) constrains y to be a subtype of ?t, and the constraints compose as the assert-time checker composes them. A ?pred with no visible slot-2 typing is a declaration-contract gap the audit reports explicitly — never silently audited unconstrained. An audit, not an inference — vaelii.core/specified-violations reads the declaration and returns the instances of ?indep with no determinate filler. Indeterminate terms are skolems plus any declared indeterminate_term kind (none ships by default); an author-asserted *Exists* placeholder is a determinate filler, so predAllSpecified is the antagonist of predAllExists. The declaration generates no rule and concludes nothing.")

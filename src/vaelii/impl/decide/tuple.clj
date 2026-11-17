@@ -477,19 +477,13 @@
           (update c ::member-of dissoc h)
           (get-in c [::member-of h])))
 
-(def ^:private determinacy-categories
-  "The categories whose memberships move a filler's determinateness level
-  (`provers/determinateness`), so a member's arrival or departure re-asks the functional
-  merges of the slots its term fills (`take-slot-moves!`)."
-  '[indeterminate_term placeholder_term])
-
 (defn- determinacy-term
-  "The term `sx` makes a member of a `determinacy-categories` category or a subkind of
-  one, read over the unscoped spec closure, else nil."
+  "The term `sx` makes a member of `indeterminate_term` or a subkind (unscoped), else nil."
   [w sx]
   (let [s (:sentence sx)]
     (when (and (nil? (:antecedent sx)) (seq? s) (= 2 (count s)) (symbol? (first s)))
-      (when (some #(contains? ((:specs-global w) %) (first s)) determinacy-categories)
+      (when (or (= 'indeterminate_term (first s))
+                (contains? ((:specs-global w) 'indeterminate_term) (first s)))
         (second s)))))
 
 (defn- note-tuple!

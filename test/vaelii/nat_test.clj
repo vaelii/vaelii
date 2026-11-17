@@ -9,6 +9,7 @@
             [vaelii.impl.naming :as nm]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
+            [vaelii.impl.provers :as provers]
             [vaelii.impl.reads :as reads]
             [vaelii.test-util :as tu]))
 
@@ -2155,6 +2156,56 @@
       (v/retract! kb fact)
       (v/assert kb (list momOf Muffet Mary) CxStory)
       (is (= start (believed-content kb))))))
+
+;; ---- the determinateness levels -------------------------------------------
+;; A placeholder_term is an indeterminate_term (core.txt): a skolem, a `nat/` handle and
+;; a `cx/` handle are built-in placeholders, and a declared indeterminate_term member is
+;; indeterminate and no placeholder.
+
+(tu/deftest-kb a-placeholder-term-is-an-indeterminate-term
+  (tu/with-terms [FriendFn bestFriendOf pal Ann Sketch Someone Mary CxM]
+    (is (v/ask? kb '(genl placeholder_term indeterminate_term) 'CxUniverse))
+    (is (not (v/ask? kb '(disjoint placeholder_term indeterminate_term) 'CxUniverse)))
+    (v/assert kb (list 'placeholder_term Sketch) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})
+    (is (v/ask? kb (list 'indeterminate_term Sketch) 'CxUniverse)
+        "a declared placeholder is an indeterminate term")
+    (v/assert kb (list 'reifiable_function FriendFn) 'CxUniverse {:strength :monotonic})
+    (v/assert-rule kb [(list pal '?x)] (list 'exists '?y (list bestFriendOf '?x '?y)) 'CxUniverse
+                   {:direction :forward})
+    (v/assert kb (list pal Ann) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'genlCx CxM 'CxUniverse) 'CxUniverse {:strength :monotonic})
+    (let [sk  (some #(get % '?y) (v/ask kb (list bestFriendOf Ann '?y) 'CxUniverse))
+          nat (nth (v/sentence-of (v/sentex kb (v/assert kb (list bestFriendOf Mary (list FriendFn Mary))
+                                                         'CxUniverse)))
+                   2)
+          cx  (:context (v/sentex kb (v/assert kb (list pal Mary) (list 'CxTimeFn CxM '(YearFn 2000)))))
+          lvl #(provers/determinateness kb % 'CxUniverse)]
+      (is (= 'SkolemFn (first (nat/nat-expression kb sk))))
+      (is (nat-read/reified-context-symbol? cx))
+      (is (= {:skolem :placeholder :nat :placeholder :cx :placeholder :declared :placeholder
+              :someone :indeterminate :mary :determinate}
+             {:skolem (lvl sk) :nat (lvl nat) :cx (lvl cx) :declared (lvl Sketch)
+              :someone (lvl Someone) :mary (lvl Mary)})))))
+
+(tu/deftest-kb a-skolem-merges-onto-the-one-constant-of-its-slot-and-never-onto-two
+  ;; the skolem witness of (exists ?y (bestFriendOf Ann ?y)) is a placeholder: with Mary
+  ;; alone in the slot it merges with her, and with Jane beside her it merges with neither,
+  ;; so no merge chains Mary to Jane
+  (tu/with-terms [bestFriendOf pal Ann Mary Jane]
+    (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+    (v/assert-rule kb [(list pal '?x)] (list 'exists '?y (list bestFriendOf '?x '?y)) 'CxUniverse
+                   {:direction :forward})
+    (v/assert kb (list pal Ann) 'CxUniverse)
+    (let [sk   (some #(get % '?y) (v/ask kb (list bestFriendOf Ann '?y) 'CxUniverse))
+          same #(true? (v/same-class? kb %1 %2 'CxUniverse))]
+      (v/assert kb (list bestFriendOf Ann Mary) 'CxUniverse)
+      (is (same sk Mary) "Mary alone: the skolem merges with her")
+      (let [jane (v/assert kb (list bestFriendOf Ann Jane) 'CxUniverse)]
+        (is (= [false false false] [(same sk Mary) (same sk Jane) (same Mary Jane)])
+            "Mary and Jane: the skolem merges with neither")
+        (v/retract! kb jane)
+        (is (same sk Mary) "retracting Jane gives the merge back")))))
 
 ;; ---- a placeholder merges onto the one constant of its slot ----------------
 ;; A non-skolem reified constant is a placeholder term (core.txt): a functional

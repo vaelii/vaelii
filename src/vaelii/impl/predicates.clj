@@ -2182,12 +2182,12 @@
                      " different prover's identity exemption — a filler that is a member"
                      " is not determinate and is exempt from the unique-name assumption"))]
      ['placeholder_term
-      (enforced (collection :notes (str "an extensible determinacy category: a non-skolem"
-                                        " reified constant is the built-in member, a future"
+      (enforced (collection :notes (str "an extensible determinacy category below"
+                                        " indeterminate_term: a skolem and a nat/ or cx/"
+                                        " reified constant are built-in members, a future"
                                         " kind joins by genl."))
                 (str "read by provers/determinateness: a member merges onto the one"
-                     " determinate constant of a functional slot on any evidence, and is"
-                     " determinate for different and the predAllSpecified audit"))]])))
+                     " determinate constant of a functional slot on any evidence"))]])))
 
 (def ^:private lane-facets
   "The facets `facet-contract` marks as lanes a mark family moves through together."
