@@ -277,14 +277,24 @@
             (v/sentexes-matching kb '(implementationNote genl ?note) 'CxUniverse))
       "an implementationNote records that the engine caches the closure"))
 
+(defn- arg-table
+  "The block `b`'s argument constraint table as `[position quoted? rest? [[kind type] …]]`
+  columns."
+  [b]
+  (mapv (fn [{:keys [position quoted? rest? cell]}]
+          [position quoted? rest? (mapv (juxt :kind :type) cell)])
+        (:arg-constraints b)))
+
 (tu/deftest-kb a-predicates-block-holds-its-arity-declarations-and-properties
   (let [d (v/describe kb 'parentOf W)
         b (block d)]
-    (is (= [:comment :arity :arity-class :kind :parents :arg-declarations :props :links]
+    (is (= [:comment :arity :arity-class :kind :parents :arg-constraints :props :links]
            (mapv :part (:definitional-block d)))
         "the comment, then the arity, the arity class and the kinds, then the rest")
     (is (= 2 (:arity b)))
-    (is (= (:arg-declarations d) (:arg-declarations b)))
+    (is (= '[[1 false false [[:instance causal]]] [2 false false [[:instance causal]]]]
+           (arg-table b))
+        "both declarations are in the table, and no other one is left for its own line")
     (is (= :missing (:props b)) "parentOf states no algebraic property"))
   (is (= '[(symmetric siblingOf)] (mapv :sentence (:props (block (v/describe kb 'siblingOf W)))))
       "a property row is the sentence that states it"))
@@ -302,6 +312,7 @@
                (list 'binary_predicate relQ) (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
                (list 'irreflexive relP) (list 'functionalInArg relP 2)
                (list 'argsGenl relP kindT) (list 'seeAlso relP relQ)
+               (list 'interArgEqual relP 2 7 1 kindT)
                (list 'implementationNote relP "a note no block part shows")]]
       (v/assert kb s 'CxUniverse))
     (let [d (v/describe kb relP 'CxUniverse)
@@ -309,13 +320,84 @@
       (is (= #{(list 'irreflexive relP) (list 'functionalInArg relP 2)}
              (set (map :sentence (:props b))))
           "irreflexive and the per-position functionalInArg are algebraic properties")
-      (is (contains? (set (map :sentence (:arg-declarations b))) (list 'argsGenl relP kindT))
-          "argsGenl is a wff_constraint")
+      (is (= [[1 false false [[:instance kindT] [:type kindT]]]
+              [2 false false [[:instance kindT] [:type kindT]]]]
+             (arg-table b))
+          "argsGenl is an argument constraint, in the table on every position")
+      (is (= [(list 'interArgEqual relP 2 7 1 kindT)] (mapv :sentence (:arg-declarations b)))
+          "a wff declaration the table does not hold keeps its sentence")
       (is (= [(list 'seeAlso relP relQ)] (mapv :sentence (:links b))))
       (is (not (contains? (block-sentences b)
                           (list 'implementationNote relP "a note no block part shows")))
           "implementationNote is not definitional")
-      (is (= (set (:arg-declarations d)) (set (:arg-declarations b)))))))
+      (is (= (set (:arg-declarations d))
+             (into (set (:arg-declarations b))
+                   (filter #(not= 'interArgEqual (first (:sentence %))))
+                   (:arg-declarations d)))
+          "every declaration describe lists is in the table or on the line"))))
+
+(tu/deftest-kb a-predicates-argument-constraints-are-one-column-per-position
+  (tu/with-terms [relP kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'unary_predicate kindU) (list 'genl kindU kindT)
+               (list 'quinary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 1 kindU)
+               (list 'arg relP 2 'positive_integer)
+               (list 'quotedArg relP 4 'closed_expression) (list 'genlArg relP 5 kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [[1 false false [[:instance kindU]]]
+            [2 false false '[[:instance positive_integer]]]
+            [3 false false []]
+            [4 true false '[[:quoted closed_expression]]]
+            [5 false false [[:type kindT]]]]
+           (arg-table (block (v/describe kb relP 'CxUniverse))))
+        "a type another one in its cell is strictly below drops, an unconstrained position is an
+        empty cell, and a quoted one is its own column")))
+
+(tu/deftest-kb a-predicate-with-no-argument-constraint-has-no-table
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unary_predicate relP) 'CxUniverse)
+    (v/assert kb (list 'arity relP 1) 'CxUniverse)
+    (is (not-any? #(= :arg-constraints (:part %))
+                  (:definitional-block (v/describe kb relP 'CxUniverse))))))
+
+(tu/deftest-kb a-covering-constraint-fills-the-cells-it-covers
+  (tu/with-terms [relP relQ kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'unary_predicate kindU) (list 'genl kindU kindT)
+               (list 'binary_predicate relP) (list 'args relP kindT)
+               (list 'binary_predicate relQ) (list 'args relQ kindT) (list 'arg relQ 2 kindU)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [[1 false false [[:instance kindT]]] [2 false false [[:instance kindT]]]]
+           (arg-table (block (v/describe kb relP 'CxUniverse))))
+        "args alone types every position of a fixed-arity predicate")
+    (is (= [[1 false false [[:instance kindT]]] [2 false false [[:instance kindU]]]]
+           (arg-table (block (v/describe kb relQ 'CxUniverse))))
+        "a narrower arg2 stands for the covering type it is below")))
+
+(tu/deftest-kb an-unbounded-arity-predicates-tail-is-one-last-column
+  (tu/with-terms [relP relQ kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'unary_predicate kindU) (list 'genl kindU 'thing)
+               (list 'unbounded_arity_predicate relP)
+               (list 'arg relP 1 kindT) (list 'argAndRest relP 2 kindU)
+               (list 'unbounded_arity_predicate relQ) (list 'args relQ kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [[1 false false [[:instance kindT]]] [2 false true [[:instance kindU]]]]
+           (arg-table (block (v/describe kb relP 'CxUniverse))))
+        "argAndRest 2 is an arg2… column after the numbered ones")
+    (is (= [[1 false true [[:instance kindT]]]]
+           (arg-table (block (v/describe kb relQ 'CxUniverse))))
+        "args alone is a single arg1… column")))
+
+(tu/deftest-kb a-super-predicates-constraints-are-in-the-table
+  (tu/with-terms [relP relQ kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'binary_predicate relP) (list 'arg relP 1 kindT)
+               (list 'binary_predicate relQ) (list 'genl relQ relP)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [[1 false false [[:instance kindT]]] [2 false false []]]
+           (arg-table (block (v/describe kb relQ 'CxUniverse)))))))
 
 (tu/deftest-kb the-blocks-rows-follow-the-kbs-display-order
   (tu/with-terms [relP kindT]

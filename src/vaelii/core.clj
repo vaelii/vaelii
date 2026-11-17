@@ -5901,6 +5901,54 @@
                                    context))]
     (filterv #(or (not (unary? %)) (contains? kept (first (:sentence %)))) rows)))
 
+(def ^:private table-declarations
+  "The declarations the block's argument constraint table holds: those
+  `res/arg-constraints` reads, and the sugar whose forward rules store one of them (`args`,
+  the `argN` projections)."
+  (into (set (keys res/arg-constraint-kinds)) '#{args arg1 arg2 arg3 arg4 arg5}))
+
+(defn- arg-constraint-table
+  "The argument constraint table of predicate `pred` (arity `arity`, nil where none binds),
+  as columns `{:position n :quoted? q :rest? r :cell [{:kind K :type T} …]}`, read off the
+  chokepoint `res/arg-constraints`, so a super-predicate's declarations are in it.  A cell
+  holds every entry typing its position, the `:quoted` ones in a quoted column of their own,
+  pruned kind by kind to `minimal-terms`.  An `unbounded_arity_predicate` has a column per
+  position an `:at` entry names, then a rest column per tail start (`:rest? true`) holding
+  the tails starting there or before.  Any other predicate has the columns 1 to its arity
+  or to the highest position an entry names, an untyped position an empty plain cell.  nil
+  where every cell is empty."
+  [kb pred arity context]
+  (let [es        (res/arg-constraints kb pred context)
+        unbounded (isa? kb pred 'unbounded_arity_predicate context)
+        quoted?   #(= :quoted (:kind %))
+        covers?   (fn [n e] (and (<= (:from e) n) (or (nil? (:to e)) (<= n (:to e)))))
+        cell      (fn [sel]
+                    (vec (for [k [:instance :type :quoted]
+                               t (minimal-terms kb (into #{} (comp (filter #(= k (:kind %)))
+                                                                   (map :type))
+                                                         sel)
+                                                context)]
+                           {:kind k :type t})))
+        at-col    (fn [n] (let [hits (filter #(covers? n %) es)
+                                plain (cell (remove quoted? hits))
+                                quote (cell (filter quoted? hits))]
+                            (cond-> []
+                              (or (seq plain) (empty? quote))
+                              (conj {:position n :quoted? false :rest? false :cell plain})
+                              (seq quote)
+                              (conj {:position n :quoted? true :rest? false :cell quote}))))
+        tails     (filter #(nil? (:to %)) es)
+        cols      (if unbounded
+                    (concat
+                     (mapcat at-col (sort (distinct (keep #(when (:to %) (:from %)) es))))
+                     (for [q? [false true]
+                           k  (sort (distinct (map :from (filter #(= q? (quoted? %)) tails))))]
+                       {:position k :quoted? q? :rest? true
+                        :cell (cell (filter #(and (= q? (quoted? %)) (<= (:from %) k)) tails))}))
+                    (mapcat at-col (range 1 (inc (reduce max (or arity 0)
+                                                         (keep identity (mapcat (juxt :from :to) es)))))))]
+    (when (some (comp seq :cell) cols) (vec cols))))
+
 (defn- definitional-block
   "The definitional block of the term `described` (a `describe` answer of role `:type` or
   `:predicate`), as `{:part :value}` rows, `:missing` where the KB holds nothing.  A
@@ -5946,7 +5994,8 @@
                       :siblings          (disj ontology 'genl)
                       :arity-class       classes
                       :arity             '#{arity}
-                      :arg-declarations  wff
+                      :arg-constraints   (into #{} (filter table-declarations) wff)
+                      :arg-declarations  (into #{} (remove table-declarations) wff)
                       :props             algebraic
                       :links             link-predicates}
         shows        (assoc shows :kind (reduce #(reduce disj %1 %2) definitional (vals shows)))
@@ -5965,6 +6014,10 @@
                                                                  context)
                                                   limit))
         parents (part :parents (bounded-terms minimal limit))
+        table   (when (= :predicate role)
+                  (arg-constraint-table kb term (:arity described) context))
+        declared (into [] (remove #(table-declarations (nm/functor (:sentence %))))
+                       (:arg-declarations described))
         links   (part :links (by-order (links-on kb term context definitional)))
         parts   (case role
                   :type      [(part :comment (:comment described))
@@ -5979,7 +6032,9 @@
                               kind aclass
                               (when-not (isa? kb term 'unbounded_arity_predicate context)
                                 (part :arity (:arity described)))
-                              (part :arg-declarations (by-order (:arg-declarations described)))
+                              (when table {:part :arg-constraints :value table})
+                              (when-not (and table (empty? declared))
+                                (part :arg-declarations (by-order declared)))
                               parents
                               (part :props (by-order (minimal-unary kb term
                                                                     (sentences-about kb term context

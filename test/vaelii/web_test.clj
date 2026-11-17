@@ -339,7 +339,7 @@
   (let [body (:body (GET "/term" "q=parentOf"))]
     (is (re-find #"<h3>Definition</h3>" body) "the block's section is headed Definition")
     (is (not (re-find #"Definitional block" body)))
-    (is (re-find #"<dt>arg1 constraints</dt>" body))
+    (is (re-find #"<dt>arg constraints</dt>" body))
     (is (re-find #"tag-missing\">missing</span> <a class=\"action\" href=\"/assert\?text=%28\+parentOf%29\">add</a>"
                  body)
         "parentOf carries no relation property, and the link seeds the form with one")))
@@ -434,25 +434,68 @@
                       (linked-terms (block-line body "relation properties"))))
           "and inside a line, an unlisted predicate follows the listed ones"))))
 
-(tu/deftest-kb a-predicates-argument-types-are-drawn-one-line-per-position
+(defn- arg-table
+  "The argument constraint table the Definition block of the term page `body` draws, as
+  `[[header …] [cell …]]`, the cells as the terms each links; nil where it draws none."
+  [body]
+  (when-let [line (block-line body "arg constraints")]
+    [(mapv second (re-seq #"<th>([^<]*)</th>" line))
+     (mapv #(linked-terms (second %)) (re-seq #"(?s)<td>(.*?)</td>" line))]))
+
+(tu/deftest-kb a-predicates-argument-types-are-one-table-with-a-column-per-position
   (tu/with-terms [relP kindT kindU]
     (doseq [s [(list 'unary_predicate kindT) (list 'unary_predicate kindU)
                (list 'binary_predicate relP)
                (list 'arg relP 1 kindT) (list 'arg relP 1 kindU) (list 'arg relP 2 kindT)
-               (list 'quotedArg relP 2 'closed_expression) (list 'argsGenl relP kindT)]]
+               (list 'quotedArg relP 2 'closed_expression)
+               (list 'interArgEqual relP 2 7 1 kindT)]]
       (v/assert kb s 'CxUniverse))
     (let [body  (:body (GET "/term" (str "q=" (name relP))))
           block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
-          other (block-line body "arg declarations")]
-      (is (= ["arg1 constraints" "arg2 constraints" "quoted arg2 constraints"]
-             (filter #(re-find #"constraints" %) (map second (re-seq #"<dt>([^<]*)</dt>" block)))))
-      (is (= (vec (sort-by str [kindT kindU])) (vec (sort-by str (linked-terms (block-line body "arg1 constraints"))))))
-      (is (= [kindT] (linked-terms (block-line body "arg2 constraints"))))
-      (is (= '[closed_expression] (linked-terms (block-line body "quoted arg2 constraints"))))
-      (is (not (re-find #"badge-link" (block-line body "arg1 constraints"))) "a type, not a sentence")
-      (is (re-find (re-pattern (str "/sentex/" (v/handle-of kb (list 'argsGenl relP kindT) 'CxUniverse) "\""))
+          other (block-line body "arg declarations")
+          [heads cells] (arg-table body)]
+      (is (= ["arg constraints"]
+             (filter #(re-find #"constraints" %) (map second (re-seq #"<dt>([^<]*)</dt>" block))))
+          "one line for every position")
+      (is (= ["arg1" "arg2" "quoted arg2"] heads))
+      (is (= [(vec (sort-by str [kindT kindU])) [kindT] '[closed_expression]] cells))
+      (is (not (re-find #"badge-link" (block-line body "arg constraints"))) "types, not sentences")
+      (is (re-find (re-pattern (str "/sentex/" (v/handle-of kb (list 'interArgEqual relP 2 7 1 kindT)
+                                                             'CxUniverse) "\""))
                    (str other))
-          "argsGenl keeps its sentence"))))
+          "a declaration the table does not hold keeps its sentence"))))
+
+(tu/deftest-kb a-five-place-predicates-table-has-a-cell-for-every-position
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'quinary_predicate relP) (list 'arg relP 1 'relation)
+               (list 'arg relP 2 'positive_integer) (list 'arg relP 4 'positive_integer)
+               (list 'genlArg relP 5 kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body (:body (GET "/term" (str "q=" (name relP))))
+          line (block-line body "arg constraints")]
+      (is (= [["arg1" "arg2" "arg3" "arg4" "arg5"]
+              ['[relation] '[positive_integer] [] '[positive_integer] [kindT]]]
+             (arg-table body))
+          "an unconstrained position is an empty cell")
+      (is (re-find #"⊆ <a" line) "a genlArg type is marked as the genl it must specialize")
+      (is (nil? (block-line body "arg declarations"))
+          "every declaration is in the table, so the line is not drawn"))))
+
+(tu/deftest-kb an-unbounded-arity-predicates-tail-column-says-where-it-starts
+  (tu/with-terms [relP kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'unary_predicate kindU)
+               (list 'unbounded_arity_predicate relP)
+               (list 'arg relP 1 kindT) (list 'argAndRest relP 2 kindU)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [["arg1" "arg2…"] [[kindT] [kindU]]]
+           (arg-table (:body (GET "/term" (str "q=" (name relP)))))))))
+
+(tu/deftest-kb a-predicate-with-no-argument-constraint-draws-no-table
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unary_predicate relP) 'CxUniverse)
+    (v/assert kb (list 'arity relP 1) 'CxUniverse)
+    (is (nil? (arg-table (:body (GET "/term" (str "q=" (name relP)))))))))
 
 (tu/deftest-kb a-types-siblings-line-shows-twelve-and-opens-the-rest-in-place
   (let [kids (vec (repeatedly 15 #(tu/tmp-type "sib")))
@@ -4343,6 +4386,7 @@
              (list 'comment relP "A relation made up for this test.")
              (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
              (list 'argsGenl relP kindT) (list 'functionalInArg relP 2)
+             (list 'interArgEqual relP 2 7 1 kindT)
              (list 'irreflexive relP) (list 'seeAlso relP relQ)
              (list 'not_assertible relP)
              (list 'implementationNote relP "a note no block part shows")]]
@@ -4368,7 +4412,7 @@
   (tu/with-terms [relP relQ kindT]
     (exactly-once-world! kb relP relQ kindT)
     (let [[block index] (page-sections (:body (GET "/term" (str "q=" (name relP)))))]
-      (doseq [s [(list 'argsGenl relP kindT) (list 'functionalInArg relP 2)]
+      (doseq [s [(list 'interArgEqual relP 2 7 1 kindT) (list 'functionalInArg relP 2)]
               :let [h (v/handle-of kb s 'CxUniverse)]]
         (is (= [1 1] [(badges block h) (badges index h)])
             (str (pr-str s) " is in the block and in its index group"))))))
