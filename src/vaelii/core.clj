@@ -5554,6 +5554,19 @@
        (mapcat rest)
        (reduce (fn [m p] (if (contains? m p) m (assoc m p (count m)))) {})))
 
+(defn- minimal-terms
+  "The members of `ts` that the block shows, in print order: the members no other member
+  is strictly below through the `genl` edges visible from `context` (`tax/min-types`), and
+  of members that subsume each other, only the first in print order.  Strictly: a member
+  only coextensive with another is not pruned by it, so a nonempty `ts` gives a nonempty
+  answer.  A member that is not a node stays."
+  [kb ts context]
+  (let [tx (reasoning/taxonomy kb)
+        eq (fn [a b] (and (tax/genl? tx a b context) (tax/genl? tx b a context)))]
+    (reduce (fn [kept t] (if (some #(eq % t) kept) kept (conj kept t)))
+            []
+            (nm/by-print-key (tax/min-types tx ts context)))))
+
 (defn- definitional-block
   "The definitional block of the term `described` (a `describe` answer of role `:type` or
   `:predicate`), as `{:part :value}` rows, `:missing` where the KB holds nothing.  A
@@ -5568,10 +5581,13 @@
         part    (fn [k v] {:part k :value (if (or (nil? v) (and (coll? v) (empty? v))
                                                   (and (map? v) (zero? (:total v))))
                                             :missing v)})
+        ;; the parents no other parent is strictly below: the block is a summary, and a
+        ;; parent above another one says nothing the other does not
+        minimal (minimal-terms kb (tax/direct-genls tx term context) context)
         sibs    (fn []
                   (let [bt (bounded-terms
                             (disj (into #{} (mapcat #(tax/direct-specs tx % context))
-                                        (tax/direct-genls tx term context))
+                                        minimal)
                                   term)
                             limit)
                         rd (instance-reads kb context)]
@@ -5610,7 +5626,7 @@
         asserted (into #{} (filter definitional) (types-of kb term context))
         kind    (part :kind (bounded-terms (filter (shows :kind) asserted) limit))
         aclass  (part :arity-class (bounded-terms (filter classes asserted) limit))
-        parents (part :parents (:genls-direct described))
+        parents (part :parents (bounded-terms minimal limit))
         links   (part :links (by-order (links-on kb term context definitional)))
         parts   (case role
                   :type      [(part :comment (:comment described))
