@@ -1876,9 +1876,9 @@ names, read off `describe`'s `:definitional-block`. A sentence about the term is
 block when the KB classifies its predicate `definitional_predicate`. The block is a
 summary: each sentence it draws is also listed in its index group below it, and the
 index groups list each sentence naming the term exactly once. A type lists
-its comment, positive and negative examples, kind, parents, siblings and links. A predicate
-lists its comment, arity, kind, parents, argument declarations, relation properties and
-links. The lines follow `predicateDisplayOrder`, which core.txt states as the comment, the
+its comment, positive and negative examples, kind, parents, siblings and see also. A
+predicate lists its comment, arity, kind, parents, argument declarations, relation
+properties and see also. The lines follow `predicateDisplayOrder`, which core.txt states as the comment, the
 examples, the arity, the kind and then the rest. A line takes the first position any
 predicate it shows is named at, and a line none of whose predicates is named follows the
 named ones. A definitional sentence about the term that no other line shows, such as one of
@@ -1915,7 +1915,7 @@ the highest position a constraint names, an unconstrained one an empty cell; an
 `unbounded_arity_predicate` has a column for each position a constraint names and then
 one `argK…` column for the tail from `K`. A predicate no constraint types draws no table.
 Every other argument declaration, such as `interArgEqual`, shows as its sentence on the
-**arg declarations** line. The links line lists the terms the
+**arg declarations** line. The **see also** line lists the terms the
 term's `seeAlso` sentences and every `termsRelated` cluster naming it relate it to, once
 each and in printed order.
 

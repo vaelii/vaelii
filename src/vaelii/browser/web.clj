@@ -2620,7 +2620,7 @@
               (count* #(not-any? (comp #{:missing} :separation) (:rows (:siblings %))))]
              ["kind" (count* #(has? % :kind))]
              ["arity class" (count* #(has? % :arity-class))]
-             ["links" (count* #(has? % :links))]]}))
+             ["see also" (count* #(has? % :links))]]}))
 
 (defn- block-tally-job
   "Run `block-tally` over `kb`'s types as a read job and return its id.  The tally rides
@@ -3441,7 +3441,7 @@
    :arg-constraints   ["arg constraints"     nil]
    :arg-declarations  ["arg declarations"    (fn [t _] (str "(arg " t " 1 )"))]
    :props             ["relation properties" (fn [t _] (str "( " t ")"))]
-   :links             ["links"               (fn [t _] (str "(seeAlso " t " )"))]
+   :links             ["see also"            (fn [t _] (str "(seeAlso " t " )"))]
    :other             ["other"               nil]})
 
 (def ^:private sibling-cap
