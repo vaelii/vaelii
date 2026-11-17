@@ -231,7 +231,7 @@ it — `git show v0.16.0:CHANGELOG.md`.
   first in a JVM also pays the JVM's and the KB's start-up, about 70 s on CI, so
   `scripts/ci-weights.sh` judges every row but the first of each shard's timings. The
   rerun is skipped when it is predicted not to finish 2 minutes before the shard
-  job's 35-minute timeout, and the first times then stand.
+  job's 45-minute timeout, and the first times then stand.
 - **Every CI shard builds the shared test dumps first, in a namespace of its own.** A
   test JVM builds the starter dump once, about 70 s on CI, and the upper-ontology dump
   once, each inside whichever namespace loads it first. The `weights` check then read
