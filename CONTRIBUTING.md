@@ -939,8 +939,10 @@ remote shell. See [`.github/SECURITY.md`](.github/SECURITY.md).
   or more beyond it. The report is on the workflow run's **Summary** page, one table per
   leg (`memory`, `disk`), with each namespace's expected and measured seconds. When the
   slowdown is a bug, fix it. When the change is slower on purpose:
-  1. In `scripts/ci-test-weights-<leg>.tsv`, for the leg the table is under, set the
-     namespace's row to its measured seconds, and commit that with the change.
+  1. Below the table, the report prints a row for each namespace it names. Replace the
+     namespace's row in `scripts/ci-test-weights-<leg>.tsv`, for the leg the table is
+     under, with that row, and commit it with the change. The row's figure is the
+     measured time divided by the shard's speed.
   2. Say in the pull request why the namespace is slower. A reviewer who approves the
      pull request approves the new figure, which the diff shows.
 

@@ -117,8 +117,9 @@ write_weights() {
 # A namespace absent here still runs, weighted at the mean; one at 0.00 has every test
 # \`^:slow\` or \`^:multi-jvm\`.
 #
-# A pull request that makes a namespace slower on purpose sets the namespace's row here to
-# its measured seconds, and the \`weights\` check accepts it (CONTRIBUTING.md §7).
+# A pull request that makes a namespace slower on purpose replaces the namespace's row
+# here with the row the \`weights\` check's report prints, and the check accepts it
+# (CONTRIBUTING.md §7).
 #
 # Regenerate with scripts/ci-weights.sh <run-id>.
 #
@@ -196,13 +197,17 @@ check_leg() {
               print "| namespace | shard | shard speed | baseline s | expected s | measured s | ratio |\n|---|---|---|---|---|---|---|"
             printf "| %s | %s | %.2f | %.0f | %.0f | %.0f | %.1fx |\n",
                    ns[s, j], s, speed[s], w[ns[s, j]], expect, t[s, j], t[s, j] / expect
+            paste = paste sprintf("%s\t%.2f\n", ns[s, j], t[s, j] / speed[s])
           }
         }
       }
       if (list) exit 0
-      if (found) printf "\n%d namespace(s) took %sx or more of the expected time, and %d s or more beyond it.\n%s%s%s\n",
-                        found, ns_slower, ns_excess, "To accept a slower time, set the row of the namespace in scripts/ci-test-weights-",
-                        leg, ".tsv to its measured seconds (CONTRIBUTING.md §7)."
+      if (found) {
+        printf "\n%d namespace(s) took %sx or more of the expected time, and %d s or more beyond it.\n",
+               found, ns_slower, ns_excess
+        printf "\nTo accept these times, replace the row of each namespace in scripts/ci-test-weights-%s.tsv with its row below (CONTRIBUTING.md §7).\n", leg
+        printf "Each figure is the measured time divided by the speed of the shard.\n\n```\n%s```\n", paste
+      }
       slow = legspeed >= leg_slower
       printf "\nci-weights: %s check %s\n", leg, found ? "FAILED" : slow ? "found the leg slow" : "passed"
       exit (found ? 1 : (slow ? 3 : 0))

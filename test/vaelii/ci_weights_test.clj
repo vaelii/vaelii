@@ -98,8 +98,9 @@
           plain  (check "--check" secs nil)
           {:keys [exit out]} (check "--check" secs nil accept)]
       (is (= 1 (:exit plain)) "without --accept, b-test fails the check")
-      (is (str/includes? (:out plain) "set the row of the namespace in scripts/ci-test-weights-disk.tsv to its measured seconds")
+      (is (str/includes? (:out plain) "replace the row of each namespace in scripts/ci-test-weights-disk.tsv with its row below")
           (:out plain))
+      (is (str/includes? (:out plain) "```\nb-test\t120.00\n```") "the row to paste, at the shard's speed of 1")
       (is (= 0 exit) out)
       (is (str/includes? out "This change raises 1 baseline figure(s) in scripts/ci-test-weights-disk.tsv") out)
       (is (= {:exit 0 :out ""} (check "--list" secs nil accept)))
