@@ -482,7 +482,7 @@
       (is (= [(vec (sort-by str [kindT kindU])) [kindT] '[closed_expression]] cells))
       (is (not (re-find #"badge-link" (block-line body "arg constraints"))) "types, not sentences")
       (is (re-find (re-pattern (str "/sentex/" (v/handle-of kb (list 'interArgEqual relP 2 7 1 kindT)
-                                                             'CxUniverse) "\""))
+                                                            'CxUniverse) "\""))
                    (str other))
           "a declaration the table does not hold keeps its sentence"))))
 
