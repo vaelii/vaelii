@@ -1893,9 +1893,9 @@ named ones. A definitional sentence about the term that no other line shows, suc
 a predicate the KB declares `definitional_predicate` and names in no `predicateDisplayOrder`
 fact, is on an **other** line, as its handle badge.
 
-A predicate's arity line is the length `relation-length` binds, the one that binds the
-predicate's tuples, read through `genl` from a super-predicate as well: the exact length,
-`≥m` for a least length `m` (an `arityMin`), and `any` for a least length of at most one.
+A predicate's arity line is the length `relation-length` binds on its tuples, read
+through `genl` from a super-predicate as well. It shows the exact length, `≥m` for a least
+length `m` (an `arityMin`), and `any` for a least length of at most one.
 An `unbounded_arity_predicate` no length binds shows `any`, never missing, since an
 `arity` sentence about it would be ill-formed.
 
@@ -1919,19 +1919,19 @@ its `algebraic_predicate_property` sentences, show `irreflexive` as a term, and 
 per-position one such as `(functionalInArg P 2)` as its sentence. A `(Q P)` property
 another shown `(R P)` is strictly below by `genl` is left out: `(equivalence_relation P)`
 stands for the `reflexive`, `symmetric` and `transitive` sentences its rules derive. The argument declarations
-are the predicate's `wff_predicate` sentences. The ones the argument constraint chokepoint
-`res/arg-constraints` reads, and the sugar stored as one of them (`args`, `argN`), are one
-**arg constraints** line holding a table: a header row naming each column, `arg1`,
-`arg2`, …, and one row of cells, each listing the types that constrain that position,
-including a super-predicate's. A `(genlArg P n T)`, `argsGenl` or `argAndRestGenl` type
+are the predicate's `wff_predicate` sentences. The argument constraint chokepoint
+`res/arg-constraints` reads some of them, and `args` and `argN` are sugar stored as one of
+those. These are one **arg constraints** line holding a table. Its header row names each
+column, `arg1`, `arg2`, …, over one row of cells. Each cell lists the types that constrain
+that position, including a super-predicate's. A `(genlArg P n T)`, `argsGenl` or `argAndRestGenl` type
 is marked `⊆ T`, since the argument must specialize it. A `quotedArg` position has a
 column of its own headed `quoted argN`. A covering `(args P T)` or `(argAndRest P k T)`
-puts `T` in every cell it covers, and a cell drops a type another of its types of the
-same kind is strictly below, with one representative for types that subsume each other,
-as the parents line does. A predicate has a column for each position up to its arity or
-the highest position a constraint names, an unconstrained one an empty cell; an
-`unbounded_arity_predicate` has a column for each position a constraint names and then
-one `argK…` column for the tail from `K`. A predicate no constraint types draws no table.
+puts `T` in every cell it covers. A cell drops a type another of its types of the same
+kind is strictly below, with one representative for types that subsume each other, as the
+parents line does. A predicate has a column for each position up to its arity or the
+highest position a constraint names, and an unconstrained position is an empty cell. An
+`unbounded_arity_predicate` has a column for each position a constraint names. Then one
+`argK…` column holds the tail from `K`. A predicate no constraint types draws no table.
 Every other argument declaration, such as `interArgEqual`, shows as its sentence on the
 **arg declarations** line. The **see also** line lists the terms the
 term's `seeAlso` sentences and every `termsRelated` cluster naming it relate it to, once

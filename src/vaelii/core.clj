@@ -5879,11 +5879,10 @@
        (reduce (fn [m p] (if (contains? m p) m (assoc m p (count m)))) {})))
 
 (defn- minimal-terms
-  "The members of `ts` that the block shows, in print order: the members no other member
-  is strictly below through the `genl` edges visible from `context` (`tax/min-types`), and
-  of members that subsume each other, only the first in print order.  Strictly: a member
-  only coextensive with another is not pruned by it, so a nonempty `ts` gives a nonempty
-  answer.  A member that is not a node stays."
+  "The members of `ts` the block shows, in print order.  Those are the members no other
+  member is strictly below through the `genl` edges visible from `context`
+  (`tax/min-types`), one per set of members that subsume each other, so a nonempty `ts`
+  gives a nonempty answer.  A member that is not a node stays."
   [kb ts context]
   (let [tx (reasoning/taxonomy kb)
         eq (fn [a b] (and (tax/genl? tx a b context) (tax/genl? tx b a context)))]
@@ -5909,15 +5908,12 @@
   (into (set (keys res/arg-constraint-kinds)) '#{args arg1 arg2 arg3 arg4 arg5}))
 
 (defn- arg-constraint-table
-  "The argument constraint table of predicate `pred` (arity `arity`, nil where none binds),
-  as columns `{:position n :quoted? q :rest? r :cell [{:kind K :type T} …]}`, read off the
-  chokepoint `res/arg-constraints`, so a super-predicate's declarations are in it.  A cell
-  holds every entry typing its position, the `:quoted` ones in a quoted column of their own,
-  pruned kind by kind to `minimal-terms`.  An `unbounded_arity_predicate` has a column per
-  position an `:at` entry names, then a rest column per tail start (`:rest? true`) holding
-  the tails starting there or before.  Any other predicate has the columns 1 to its arity
-  or to the highest position an entry names, an untyped position an empty plain cell.  nil
-  where every cell is empty."
+  "Predicate `pred`'s argument constraint table (`arity` nil where none binds) as columns
+  `{:position n :quoted? q :rest? r :cell [{:kind K :type T} …]}`, read off
+  `res/arg-constraints`.  A cell holds the entries typing its position, `:quoted` ones in a
+  column of their own, pruned per kind to `minimal-terms`.  An `unbounded_arity_predicate`
+  has a column per `:at` position, then a `:rest?` column per tail start.  Any other has the
+  columns 1 to its arity or highest named position.  nil where every cell is empty."
   [kb pred arity context]
   (let [es        (res/arg-constraints kb pred context)
         unbounded (isa? kb pred 'unbounded_arity_predicate context)
@@ -5954,11 +5950,8 @@
   "The definitional block of the term `described` (a `describe` answer of role `:type` or
   `:predicate`), as `{:part :value}` rows, `:missing` where the KB holds nothing.  A
   sentence is in the block when the KB classifies its predicate `definitional_predicate`
-  in `context` (`block-members`).  `:kind` is every type held of the term that no other
-  part shows, pruned to `minimal-terms` and then less its arity classes, and `:other` the
-  term's other sentences of the definitional predicates no other part shows.
-  `:arity` is `relation-length`'s answer, `{:any? true}` for an unbounded-arity predicate
-  that answers nil.
+  in `context` (`block-members`).  `:kind` is the term's minimal types no other part shows,
+  less arity classes; `:arity` is `relation-length`'s answer or `{:any? true}`.
   `:arg-declarations`, `:props`, `:links` and `:other` are `{:kind :sentence :context}`
   rows.  Parts and rows follow `predicateDisplayOrder` (`display-order`), unnamed ones
   last in the role's order below.  docs/web.md describes each part."
@@ -5967,8 +5960,6 @@
         part    (fn [k v] {:part k :value (if (or (nil? v) (and (coll? v) (empty? v))
                                                   (and (map? v) (zero? (:total v))))
                                             :missing v)})
-        ;; the parents no other parent is strictly below: the block is a summary, and a
-        ;; parent above another one says nothing the other does not
         minimal (minimal-terms kb (tax/direct-genls tx term context) context)
         sibs    (fn []
                   (let [bt (bounded-terms
@@ -6009,16 +6000,12 @@
                                              (shows k)))))
         other    (into [] (remove #(= 2 (count (:sentence %))))
                        (sentences-about kb term context (shows :kind)))
-        ;; every unary predicate holding of the term, less those another part shows
         held     (into #{} (remove elsewhere) (types-of kb term context))
-        ;; the arity line says what an arity class would, so no class is a kind
         aclass? #(or (arity-classes %) (isa? kb % 'arity_type context))
         kind    (part :kind (bounded-terms (remove aclass?
                                                    (minimal-terms kb held
                                                                   context))
                                            limit))
-        ;; the length `relation-length` binds, and an unbounded predicate that binds no
-        ;; least length takes any number; an arity sentence about it would be ill-formed
         arity   {:part  :arity
                  :value (cond (:arity-length described) (:arity-length described)
                               (isa? kb term 'unbounded_arity_predicate context) {:any? true}

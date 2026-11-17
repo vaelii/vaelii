@@ -253,8 +253,6 @@
           "the siblings are the children of the minimal parents only"))))
 
 (tu/deftest-kb two-parents-that-subsume-each-other-show-as-one
-  ;; a context refuses a genl cycle it would see, so the cycle is two theories' edges, one
-  ;; each, read by a context below both
   (tu/with-terms [kin_a kin_b kin_c CxEdgeA CxEdgeB CxBoth]
     (doseq [s [(list 'genlCx CxEdgeA 'CxUniverse) (list 'genlCx CxEdgeB 'CxUniverse)
                (list 'genlCx CxBoth CxEdgeA) (list 'genlCx CxBoth CxEdgeB)
@@ -265,7 +263,7 @@
     (v/assert kb (list 'genl kin_b kin_a) CxEdgeB)
     (is (= [(first (sort-by pr-str [kin_a kin_b]))]
            (:terms (:parents (block (v/describe kb kin_c CxBoth)))))
-        "neither is strictly below the other, so one stands for both and the line is not empty")))
+        "two contexts' opposite edges: neither is strictly below the other, so one stands for both")))
 
 (tu/deftest-kb genls-block-comment-says-what-genl-means-and-its-note-how-the-engine-runs-it
   (let [b (block (v/describe kb 'genl W))]
@@ -417,8 +415,6 @@
   (tu/with-terms [relP relQ relR relS relU]
     (doseq [s [(list 'ternary_predicate relP)
                (list 'binary_predicate relQ) (list 'genl relR relQ)
-               ;; as core.txt declares contradicts: relation-length reads the floor under a
-               ;; stored variable_arity release, which unbounded_arity_predicate alone is not
                (list 'variable_arity_predicate relS) (list 'unbounded_arity_predicate relS)
                (list 'arityMin relS 2)
                (list 'unbounded_arity_predicate relU)]]
@@ -426,7 +422,8 @@
     (let [arity #(:arity (block (v/describe kb % 'CxUniverse)))]
       (is (= {:exact 3 :via relP} (arity relP)))
       (is (= {:exact 2 :via relQ} (arity relR)) "a length a super-predicate binds")
-      (is (= {:min 2 :via relS} (arity relS)) "an unbounded predicate's least length")
+      (is (= {:min 2 :via relS} (arity relS))
+          "an unbounded predicate's least length, declared as core.txt declares contradicts")
       (is (= {:any? true} (arity relU))
           "an unbounded predicate no least length binds takes any number"))))
 
