@@ -1083,6 +1083,12 @@ even a skip, so a required check naming it would block every pull request the fi
 matched for ever. A red suite is a change that does not land, at the merge button rather
 than at the reviewer's discretion.
 
+**`weights`** is required as well. It fails a namespace that took 2x or more of its
+baseline time and 60 s or more beyond it, after the runner's speed is accounted for, and
+it names the namespace. A change that is slower on purpose sets that namespace's row in
+`scripts/ci-test-weights-<leg>.tsv` to the measured seconds, and the reviewer reads the
+new figure in the diff.
+
 The DCO's text says "the open source license indicated in the file", and every `.clj`
 file under `src/`, `test/` and `bench/` indicates it — a two-line SPDX header:
 

@@ -248,6 +248,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   change's base revision raises the namespace's figure in the `weights` check and in
   the weights the run saves, where the row is higher. Rewriting both files from the
   change's own run (`scripts/ci-weights.sh <run-id>`) accepts a whole leg.
+- **`weights` is a required check on `develop`.** A check with no cached baseline reads
+  the committed `scripts/ci-test-weights-<leg>.tsv`, and the steps that write and save
+  the next run's weights do not decide the verdict.
 
 ## 0.33.0 — 2026-11-10 — "A separation undercutting a `:default` edge's reading, shipped type edges at `:monotonic`, relations classified by rigidity, a three-argument `functionCorrespondingPredicate`, daemon reads held to their ceilings, a time slice seeing the context it slices"
 

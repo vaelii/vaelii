@@ -177,7 +177,7 @@ jobs:
           fail-on-cache-miss: true
 
       # develop's newest weights, which the `weights` job judges this run against
-      # (scripts/ci-weights.sh --check).  A miss reruns nothing.
+      # (scripts/ci-weights.sh --check).  On a miss the committed weights stand in.
       - name: Restore develop's weights
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -228,14 +228,14 @@ jobs:
           # more times each in one JVM, and the smallest of a namespace's times is
           # the one the `weights` job reads (scripts/lib/ns-timings.sh, `ns_timings_rerun`).
           # The rerun runs when it is predicted to finish 2 minutes before the timeout.
-          if [ -f target/ci-baseline/memory.tsv ]; then
-            slow=$(scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --list target/ci-baseline/memory.tsv) \
-              || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
-            left=$((SHARD_TIMEOUT_MINUTES * 60 - ($(date +%s) - JOB_STARTED) - 120))
-            # shellcheck disable=SC2086
-            if ns_timings_rerun_fits target/ci-baseline/memory.tsv "$left" $slow; then
-              ns_timings_rerun "$t" $slow | tee -a "$log"
-            fi
+          base=target/ci-baseline/memory.tsv
+          [ -f "$base" ] || base=scripts/ci-test-weights-memory.tsv
+          slow=$(scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --list "$base") \
+            || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
+          left=$((SHARD_TIMEOUT_MINUTES * 60 - ($(date +%s) - JOB_STARTED) - 120))
+          # shellcheck disable=SC2086
+          if ns_timings_rerun_fits "$base" "$left" $slow; then
+            ns_timings_rerun "$t" $slow | tee -a "$log"
           fi
 
       # The log is the answer to "why did it fail", and a red run is exactly when
@@ -364,14 +364,14 @@ jobs:
           log="target/ci/test-disk-shard-${{ matrix.shard }}.log"
           # shellcheck disable=SC2086
           lein test $nss 2>&1 | ns_timings "$t" | tee "$log"
-          if [ -f target/ci-baseline/disk.tsv ]; then
-            slow=$(scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --list target/ci-baseline/disk.tsv) \
-              || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
-            left=$((SHARD_TIMEOUT_MINUTES * 60 - ($(date +%s) - JOB_STARTED) - 120))
-            # shellcheck disable=SC2086
-            if ns_timings_rerun_fits target/ci-baseline/disk.tsv "$left" $slow; then
-              ns_timings_rerun "$t" $slow | tee -a "$log"
-            fi
+          base=target/ci-baseline/disk.tsv
+          [ -f "$base" ] || base=scripts/ci-test-weights-disk.tsv
+          slow=$(scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --list "$base") \
+            || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
+          left=$((SHARD_TIMEOUT_MINUTES * 60 - ($(date +%s) - JOB_STARTED) - 120))
+          # shellcheck disable=SC2086
+          if ns_timings_rerun_fits "$base" "$left" $slow; then
+            ns_timings_rerun "$t" $slow | tee -a "$log"
           fi
 
       - name: Upload failure logs
@@ -432,8 +432,13 @@ jobs:
   # the push to develop saves the accepted figure as the next baseline.  The shards'
   # rerun reads no accepted row.
   #
-  # Not a required check: a red here names namespaces for a reviewer to read, and
-  # blocks no merge.
+  # Branch protection on `develop` requires the bare `weights` context, the job's
+  # `name:`, so a red here blocks the merge.  The weights a run writes and saves set
+  # the next run's packing, and those steps continue on error.  A check with no cached
+  # baseline reads the committed weights.  A leg whose timing set misses a shard's file
+  # fails its check, since that shard would go unjudged; re-running the shard's job
+  # re-runs this one.  When neither leg is green the job is skipped, and the legs'
+  # own required checks block the merge.
   weights:
     name: weights
     needs: [weights-plan, memory-shard, disk-shard]
@@ -480,6 +485,7 @@ jobs:
           key: ${{ needs.weights-plan.outputs.memory }}
       - name: Write the memory weights
         if: needs.memory-shard.result == 'success'
+        continue-on-error: true
         run: |
           prev=target/ci-weights/memory.tsv
           [ -f "$prev" ] || prev=scripts/ci-test-weights-memory.tsv
@@ -487,6 +493,7 @@ jobs:
           scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --prev "$prev" --out target/ci-weights/memory.tsv "$@"
       - name: Save the memory weights
         if: needs.memory-shard.result == 'success'
+        continue-on-error: true
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: target/ci-weights/memory.tsv
@@ -508,6 +515,7 @@ jobs:
           key: ${{ needs.weights-plan.outputs.disk }}
       - name: Write the disk weights
         if: needs.disk-shard.result == 'success'
+        continue-on-error: true
         run: |
           prev=target/ci-weights/disk.tsv
           [ -f "$prev" ] || prev=scripts/ci-test-weights-disk.tsv
@@ -515,6 +523,7 @@ jobs:
           scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --prev "$prev" --out target/ci-weights/disk.tsv "$@"
       - name: Save the disk weights
         if: needs.disk-shard.result == 'success'
+        continue-on-error: true
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: target/ci-weights/disk.tsv
@@ -536,25 +545,35 @@ jobs:
           restore-keys: ci-baseline-
       - name: Check the memory times against develop's
         id: check-memory
-        if: ${{ !cancelled() && needs.memory-shard.result == 'success' && hashFiles('target/ci-baseline/memory.tsv') != '' }}
+        if: ${{ !cancelled() && needs.memory-shard.result == 'success' }}
         run: |
           set -o pipefail
           rc=0
+          base=target/ci-baseline/memory.tsv
+          if [ ! -f "$base" ]; then
+            echo "::notice::no cached baseline for the memory leg, so the committed weights stand in"
+            base=scripts/ci-test-weights-memory.tsv
+          fi
           if [ -f target/ci-base/memory.tsv ]; then set -- --accept target/ci-base/memory.tsv; fi
           scripts/ci-weights.sh --from target/ci/timings-memory --leg memory \
-            --check target/ci-baseline/memory.tsv "$@" | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
+            --check "$base" "$@" | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           [ "$rc" -ne 3 ] || echo "::warning::the memory leg ran slower than its runners' speed accounts for"
           [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
       - name: Check the disk times against develop's
         id: check-disk
-        if: ${{ !cancelled() && needs.disk-shard.result == 'success' && hashFiles('target/ci-baseline/disk.tsv') != '' }}
+        if: ${{ !cancelled() && needs.disk-shard.result == 'success' }}
         run: |
           set -o pipefail
           rc=0
+          base=target/ci-baseline/disk.tsv
+          if [ ! -f "$base" ]; then
+            echo "::notice::no cached baseline for the disk leg, so the committed weights stand in"
+            base=scripts/ci-test-weights-disk.tsv
+          fi
           if [ -f target/ci-base/disk.tsv ]; then set -- --accept target/ci-base/disk.tsv; fi
           scripts/ci-weights.sh --from target/ci/timings-disk --leg disk \
-            --check target/ci-baseline/disk.tsv "$@" | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
+            --check "$base" "$@" | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           [ "$rc" -ne 3 ] || echo "::warning::the disk leg ran slower than its runners' speed accounts for"
           [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
@@ -562,6 +581,7 @@ jobs:
       - name: Record this push's weights as develop's
         id: baseline
         if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
+        continue-on-error: true
         run: |
           mkdir -p target/ci-baseline
           for leg in memory disk; do
@@ -572,6 +592,7 @@ jobs:
           [ -n "$(ls target/ci-baseline)" ]
       - name: Save develop's weights
         if: ${{ !cancelled() && steps.baseline.outcome == 'success' }}
+        continue-on-error: true
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: target/ci-baseline/
