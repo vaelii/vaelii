@@ -5954,8 +5954,9 @@
   "The definitional block of the term `described` (a `describe` answer of role `:type` or
   `:predicate`), as `{:part :value}` rows, `:missing` where the KB holds nothing.  A
   sentence is in the block when the KB classifies its predicate `definitional_predicate`
-  in `context` (`block-members`).  `:kind` is the definitional types asserted of the term
-  that no other part shows, less its arity classes, and `:other` its other such sentences.
+  in `context` (`block-members`).  `:kind` is every type held of the term that no other
+  part shows, pruned to `minimal-terms` and then less its arity classes, and `:other` the
+  term's other sentences of the definitional predicates no other part shows.
   `:arity` is `relation-length`'s answer, `{:any? true}` for an unbounded-arity predicate
   that answers nil.
   `:arg-declarations`, `:props`, `:links` and `:other` are `{:kind :sentence :context}`
@@ -5999,7 +6000,8 @@
                       :arg-declarations  (into #{} (remove table-declarations) wff)
                       :props             algebraic
                       :links             link-predicates}
-        shows        (assoc shows :kind (reduce #(reduce disj %1 %2) definitional (vals shows)))
+        elsewhere    (reduce into #{} (vals shows))
+        shows        (assoc shows :kind (reduce disj definitional elsewhere))
         rank         (fn [{k :part v :value}]
                        (reduce min unplaced
                                (keep order (if (= :other k)
@@ -6007,11 +6009,12 @@
                                              (shows k)))))
         other    (into [] (remove #(= 2 (count (:sentence %))))
                        (sentences-about kb term context (shows :kind)))
-        asserted (into #{} (filter definitional) (types-of kb term context))
+        ;; every unary predicate holding of the term, less those another part shows
+        held     (into #{} (remove elsewhere) (types-of kb term context))
         ;; the arity line says what an arity class would, so no class is a kind
         aclass? #(or (arity-classes %) (isa? kb % 'arity_type context))
         kind    (part :kind (bounded-terms (remove aclass?
-                                                   (minimal-terms kb (filter (shows :kind) asserted)
+                                                   (minimal-terms kb held
                                                                   context))
                                            limit))
         ;; the length `relation-length` binds, and an unbounded predicate that binds no

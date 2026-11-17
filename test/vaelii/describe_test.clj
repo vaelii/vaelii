@@ -457,15 +457,20 @@
              (mapv :sentence (:value (first (filter #(= :props (:part %)) parts)))))
           "and inside a part, an unlisted row follows the listed ones"))))
 
-(tu/deftest-kb a-types-kind-shows-only-definitional-memberships
+(tu/deftest-kb a-terms-kind-is-every-unary-predicate-it-holds
   (tu/with-terms [kindT]
     (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing) (list 'type kindT)
                (list 'closed_extent_predicate kindT) (list 'not_assertible kindT)]]
       (v/assert kb s 'CxUniverse))
     (let [kinds (set (:terms (:kind (block (v/describe kb kindT 'CxUniverse)))))]
-      (is (contains? kinds 'type) "an order is part of the block")
-      (is (not (contains? kinds 'closed_extent_predicate)) "a grant is not")
-      (is (not (contains? kinds 'not_assertible)) "nor is a refusal mark"))))
+      (is (contains? kinds 'type) "an order is a kind")
+      (is (contains? kinds 'closed_extent_predicate) "so is a grant")
+      (is (contains? kinds 'not_assertible) "and a refusal mark")
+      (is (not (contains? kinds 'unary_predicate)) "and an arity class is not")))
+  (let [kinds (set (:terms (:kind (block (v/describe kb 'made W)))))]
+    (is (contains? kinds 'origin_type) "a membership the KB does not classify definitional")
+    (is (contains? kinds 'time_invariant_relation))
+    (is (not-any? '#{unary_predicate binary_predicate} kinds))))
 
 (tu/deftest-kb a-kind-another-kind-is-strictly-below-is-left-out
   (tu/with-terms [kindT]
@@ -474,7 +479,9 @@
       (v/assert kb s 'CxUniverse))
     (is (= ['eternal_predicate] (:terms (:kind (block (v/describe kb kindT 'CxUniverse)))))
         "eternal_predicate is below time_invariant_relation"))
-  (is (= ['eternal_predicate] (:terms (:kind (block (v/describe kb 'algebraic_predicate_property W)))))))
+  (let [kinds (set (:terms (:kind (block (v/describe kb 'algebraic_predicate_property W)))))]
+    (is (contains? kinds 'eternal_predicate))
+    (is (not-any? '#{time_invariant_relation unary_predicate} kinds))))
 
 (tu/deftest-kb a-relation-property-another-one-is-strictly-below-is-left-out
   (tu/with-terms [relP kindT]

@@ -1899,14 +1899,15 @@ predicate's tuples, read through `genl` from a super-predicate as well: the exac
 An `unbounded_arity_predicate` no length binds shows `any`, never missing, since an
 `arity` sentence about it would be ill-formed.
 
-The kind line lists the definitional types asserted of the term. It lists no arity class
-(`unary_predicate`, `binary_predicate`, `at_least_binary`, an `arity_type`, …), since the
-arity line says the same, and the block has no arity class line. A grant or a refusal mark
-such as `closed_extent_predicate` or `not_assertible` is no kind. A membership another line
+The kind line lists every unary predicate holding of the term (`types-of`), stored or
+concluded, definitional or not: `made` lists `origin_type`, and a type marked
+`not_assertible` or `closed_extent_predicate` lists the mark. A membership another line
 shows, such as `(irreflexive P)` under the relation properties, is not also a kind. A
 kind another listed kind is strictly below is left out, as a parent is (below): a
 predicate declared `eternal_predicate` and `time_invariant_relation` lists
-`eternal_predicate`.
+`eternal_predicate`. Then the arity classes (`unary_predicate`, `binary_predicate`,
+`at_least_binary`, an `arity_type`, …) are left out, since the arity line says the same,
+and the block has no arity class line.
 
 A line of several values lists them on one line, comma-separated: the examples lines
 list each example, a string quoted or a quoted form drawn, as the kind and parents lines
