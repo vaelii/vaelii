@@ -2369,22 +2369,56 @@
       (is (= [true false false] (placeholder-merges kb terms)))
       (is (true? (v/same-class? kb k Jane CxJane))))))
 
-(tu/deftest-kb a-placeholder-elected-the-representative-keeps-its-merge
-  ;; the reified constant sorts before a tmp-named predicate, so the merge elects it and
-  ;; spells the value's own fact with it: the slot then reads no constant at all
+(defn- version-kb
+  "`steps` over a `functional` latestOf: `:mark` the mark, `:use` the placeholder
+  `(<VerFn basePred>)` filling basePred's slot and a use of it, `:value` the `:default`
+  constant namedPred there.  The names are lower case, so the placeholder's `nat/` name
+  sorts before the constant's."
+  [kb [VerFn latestOf basePred namedPred notes Tom] steps]
+  (v/assert kb (list 'reifiable_function VerFn) 'CxUniverse {:strength :monotonic})
+  (doseq [step steps]
+    (case step
+      :mark  (v/assert kb (list 'functional latestOf) 'CxUniverse {:strength :monotonic})
+      :use   (do (v/assert kb (list notes Tom (list VerFn basePred)) 'CxUniverse)
+                 (v/assert kb (list latestOf basePred (list VerFn basePred)) 'CxUniverse))
+      :value (v/assert kb (list latestOf basePred namedPred) 'CxUniverse))))
+
+(tu/deftest-kb a-placeholder-merge-elects-the-constant-and-a-rival-withdraws-it
+  ;; the merge elects namedPred over the placeholder, though the placeholder's name sorts
+  ;; first, and spells the placeholder's uses with it
   (tu/with-terms [VerFn latestOf basePred namedPred otherPred notes Tom]
-    (v/assert kb (list 'reifiable_function VerFn) 'CxUniverse {:strength :monotonic})
-    (v/assert kb (list 'functional latestOf) 'CxUniverse {:strength :monotonic})
-    (v/assert kb (list notes Tom (list VerFn basePred)) 'CxUniverse)
-    (v/assert kb (list latestOf basePred (list VerFn basePred)) 'CxUniverse)
-    (v/assert kb (list latestOf basePred namedPred) 'CxUniverse)
+    (version-kb kb [VerFn latestOf basePred namedPred notes Tom] [:mark :use :value])
     (let [k (nat-read/dedup-constant kb (list VerFn basePred))]
-      (is (= k (v/representative kb namedPred 'CxUniverse)))
-      (is (true? (v/same-class? kb k namedPred 'CxUniverse)))
-      (let [h (v/assert kb (list latestOf basePred otherPred) 'CxUniverse)]
+      (is (= namedPred k (v/representative kb namedPred 'CxUniverse)))
+      (is (v/ask? kb (list notes Tom namedPred) 'CxUniverse))
+      (let [h (v/assert kb (list latestOf basePred otherPred) 'CxUniverse)
+            k (nat-read/dedup-constant kb (list VerFn basePred))]
+        (is (nat-read/reified-object-symbol? k))
         (is (false? (v/same-class? kb k namedPred 'CxUniverse)) "a rival withdraws it")
         (v/retract! kb h)
-        (is (true? (v/same-class? kb k namedPred 'CxUniverse)))))))
+        (is (true? (v/same-class? kb k namedPred 'CxUniverse)))
+        (is (= namedPred (v/representative kb k 'CxUniverse)))))))
+
+(deftest a-constant-is-the-representative-over-a-placeholder-in-every-order
+  (tu/with-terms [VerFn latestOf basePred namedPred notes Tom]
+    (let [terms [VerFn latestOf basePred namedPred notes Tom]
+          runs  (for [order (tu/orders [:mark :use :value])]
+                  (on-core-kb (fn [kb]
+                                (version-kb kb terms order)
+                                [(v/representative kb namedPred 'CxUniverse)
+                                 (v/representative kb (nat-read/dedup-constant kb (list VerFn basePred))
+                                                   'CxUniverse)
+                                 (unnamed-content kb)])))]
+      (is (= #{[namedPred namedPred]} (set (map #(subvec % 0 2) runs))))
+      (is (= 1 (count (set runs))) "one believed set in every order"))))
+
+(tu/deftest-kb a-monotonic-equals-between-a-placeholder-and-a-constant-elects-the-constant
+  (tu/with-terms [VerFn basePred namedPred notes Tom]
+    (v/assert kb (list 'reifiable_function VerFn) 'CxUniverse {:strength :monotonic})
+    (let [k (nth (v/sentence-of (v/sentex kb (v/assert kb (list notes Tom (list VerFn basePred)) 'CxUniverse))) 2)]
+      (v/assert kb (list 'equals k namedPred) 'CxUniverse {:strength :monotonic})
+      (is (= namedPred (v/representative kb k 'CxUniverse)))
+      (is (v/ask? kb (list notes Tom namedPred) 'CxUniverse)))))
 
 (tu/deftest-kb an-indeterminate-filler-merges-on-default-evidence-once-declared
   ;; an indeterminate_term merges onto the one constant of its slot, and a membership
