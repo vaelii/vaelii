@@ -5977,7 +5977,7 @@
                               parents (sibs) kind aclass links]
                   :predicate [(part :comment (:comment described))
                               kind aclass
-                              (when-not (isa? kb term 'variable_arity context)
+                              (when-not (isa? kb term 'unbounded_arity_predicate context)
                                 (part :arity (:arity described)))
                               (part :arg-declarations (by-order (:arg-declarations described)))
                               parents
