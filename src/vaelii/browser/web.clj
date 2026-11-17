@@ -2619,7 +2619,6 @@
              ["every listed sibling decided"
               (count* #(not-any? (comp #{:missing} :separation) (:rows (:siblings %))))]
              ["kind" (count* #(has? % :kind))]
-             ["arity class" (count* #(has? % :arity-class))]
              ["see also" (count* #(has? % :links))]]}))
 
 (defn- block-tally-job
@@ -3414,29 +3413,16 @@
                        "list only what the KB was told, not what it concluded")}
    (if hide-derived? "show derived" "hide derived")])
 
-(def ^:private arity-class-names
-  "The exact-arity predicate class for each length, which a predicate's arity-class seed
-  names."
-  {1 "unary_predicate" 2 "binary_predicate" 3 "ternary_predicate"
-   4 "quaternary_predicate" 5 "quinary_predicate"})
-
 (def ^:private block-parts
   "Each part of `describe`'s `:definitional-block`: its label, and the sentence the
   assert form opens on to add it, a template over the term's text `t` and the `describe`
-  answer `d`.  A predicate's arity-class seed names the class of its arity, and a blank
-  functor where the KB binds no arity."
+  answer `d`."
   {:comment           ["comment"             (fn [t _] (str "(comment " t " \"\")"))]
    :positive-examples ["positive examples"   (fn [t _] (str "(positiveExampleComment " t " \"\")"))]
    :negative-examples ["negative examples"   (fn [t _] (str "(negativeExampleComment " t " \"\")"))]
    :parents           ["parents"             (fn [t _] (str "(genl " t " )"))]
    :siblings          ["siblings"            nil]
    :kind              ["kind"                (fn [t _] (str "( " t ")"))]
-   :arity-class       ["arity class"         (fn [t d]
-                                               (str "("
-                                                    (if (= :predicate (:role d))
-                                                      (get arity-class-names (:arity d) " ")
-                                                      "unary_predicate")
-                                                    " " t ")"))]
    :arity             ["arity"               (fn [t _] (str "(arity " t " )"))]
    :arg-constraints   ["arg constraints"     nil]
    :arg-declarations  ["arg declarations"    (fn [t _] (str "(arg " t " 1 )"))]
@@ -3535,46 +3521,34 @@
                                    (list "⊆ " (term-link env type))
                                    (term-link env type))))])]])
 
-(defn- shown-parts
-  "`describe`'s block rows as the page draws them.  The arity class leads the kind line
-  and has no line of its own, and it is left out where the arity line shows the arity."
-  [rows]
-  (let [by     (into {} (map (juxt :part :value)) rows)
-        arity? (not (contains? #{nil :missing} (by :arity)))
-        aclass (by :arity-class)
-        kind   (by :kind)
-        kind*  (cond
-                 (or arity? (not (map? aclass))) kind
-                 (map? kind) (assoc kind :terms (into (vec (:terms aclass)) (:terms kind))
-                                    :total (+ (:total aclass) (:total kind)))
-                 :else       aclass)]
-    (into [] (keep #(case (:part %)
-                      :arity-class nil
-                      :kind        (assoc % :value kind* :arity? arity?)
-                      %))
-          rows)))
+(defn- arity-text
+  "A predicate's arity line (`describe`'s block `:arity` part): the exact length, `≥m` for
+  a least length `m`, and `any` for a least length of at most one or an unbounded-arity
+  predicate no length binds."
+  [{:keys [exact min any?]}]
+  (cond exact        (str exact)
+        (or any? (and min (<= min 1))) "any"
+        min          (str "≥" min)))
 
 (defn- definitional-block
   "The term's definitional block (`describe`'s `:definitional-block`, docs/web.md) under
-  the heading Definition, one line per part in the block's order (`shown-parts`).  A
+  the heading Definition, one line per part in the block's order.  A
   missing part is tagged, beside a link that opens the assert form on the sentence that
   would supply it; so is a sibling no declaration separates."
   [env term {:keys [definitional-block] :as about}]
   (when (seq definitional-block)
     (let [text  (term-text env term)
-          seeds (fn [part arity?]
-                  (let [[_ seed] (block-parts part)
-                        [_ cls]  (block-parts :arity-class)]
-                    (cond-> (when seed [["add" (seed text about)]])
-                      (and (= :kind part) (not arity?))
-                      (conj ["arity class" (cls text about)]))))]
+          seeds (fn [part]
+                  (let [[_ seed] (block-parts part)]
+                    (when seed [["add" (seed text about)]])))]
       [:div.def-block
        [:h3 "Definition"]
        [:dl.def-parts
-        (for [{:keys [part value arity?]} (shown-parts definitional-block)
+        (for [{:keys [part value]} definitional-block
               [label content] (cond
                                 (= :missing value)
-                                [[(first (block-parts part)) (missing-mark (seeds part arity?))]]
+                                [[(first (block-parts part)) (missing-mark (seeds part))]]
+                                (= :arity part) [[(first (block-parts part)) (arity-text value)]]
                                 (= :arg-constraints part) [[(first (block-parts part))
                                                             (arg-table env value)]]
                                 :else

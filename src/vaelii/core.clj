@@ -5536,8 +5536,9 @@
       (= :overlaps sep) (assoc :witness w :via v))))
 
 (def ^:private arity-classes
-  "The memberships `:arity-class` lists: the exact-arity classes and the variable-arity
-  ones."
+  "The arity classes the engine names: the exact-arity classes and the variable-arity
+  ones.  The block's kind line lists none of them, nor any `arity_type` the KB
+  classifies, since its arity line says the same (`definitional-block`)."
   (into sx/variable-arity-classes (keys sx/exact-arity-classes)))
 
 (defn- display-order
@@ -5630,8 +5631,10 @@
   "The definitional block of the term `described` (a `describe` answer of role `:type` or
   `:predicate`), as `{:part :value}` rows, `:missing` where the KB holds nothing.  A
   sentence is in the block when the KB classifies its predicate `definitional_predicate`
-  in `context` (`block-members`).  `:kind` and `:arity-class` are the definitional types
-  asserted of the term that no other part shows, and `:other` its other such sentences.
+  in `context` (`block-members`).  `:kind` is the definitional types asserted of the term
+  that no other part shows, less its arity classes, and `:other` its other such sentences.
+  `:arity` is `relation-length`'s answer, `{:any? true}` for an unbounded-arity predicate
+  that answers nil.
   `:arg-declarations`, `:props`, `:links` and `:other` are `{:kind :sentence :context}`
   rows.  Parts and rows follow `predicateDisplayOrder` (`display-order`), unnamed ones
   last in the role's order below.  docs/web.md describes each part."
@@ -5663,13 +5666,11 @@
         ontology     (block-members kb 'ontology_predicate context)
         wff          (block-members kb 'wff_predicate context)
         algebraic    (block-members kb 'algebraic_predicate_property context)
-        classes      (into #{} (filter arity-classes) definitional)
         shows        {:comment           '#{comment}
                       :positive-examples '#{positiveExampleComment positiveExample}
                       :negative-examples '#{negativeExampleComment negativeExample}
                       :parents           '#{genl}
                       :siblings          (disj ontology 'genl)
-                      :arity-class       classes
                       :arity             '#{arity}
                       :arg-constraints   (into #{} (filter table-declarations) wff)
                       :arg-declarations  (into #{} (remove table-declarations) wff)
@@ -5684,12 +5685,18 @@
         other    (into [] (remove #(= 2 (count (:sentence %))))
                        (sentences-about kb term context (shows :kind)))
         asserted (into #{} (filter definitional) (types-of kb term context))
-        kind    (part :kind (bounded-terms (minimal-terms kb (filter (shows :kind) asserted)
-                                                      context)
-                                       limit))
-        aclass  (part :arity-class (bounded-terms (minimal-terms kb (filter classes asserted)
-                                                                 context)
-                                                  limit))
+        ;; the arity line says what an arity class would, so no class is a kind
+        aclass? #(or (arity-classes %) (isa? kb % 'arity_type context))
+        kind    (part :kind (bounded-terms (remove aclass?
+                                                   (minimal-terms kb (filter (shows :kind) asserted)
+                                                                  context))
+                                           limit))
+        ;; the length `relation-length` binds, and an unbounded predicate that binds no
+        ;; least length takes any number; an arity sentence about it would be ill-formed
+        arity   {:part  :arity
+                 :value (cond (:arity-length described) (:arity-length described)
+                              (isa? kb term 'unbounded_arity_predicate context) {:any? true}
+                              :else :missing)}
         parents (part :parents (bounded-terms minimal limit))
         table   (when (= :predicate role)
                   (arg-constraint-table kb term (:arity described) context))
@@ -5704,11 +5711,9 @@
                               (part :negative-examples
                                     (annotations-on kb '[negativeExampleComment negativeExample]
                                                     term context))
-                              parents (sibs) kind aclass links]
+                              parents (sibs) kind links]
                   :predicate [(part :comment (:comment described))
-                              kind aclass
-                              (when-not (isa? kb term 'unbounded_arity_predicate context)
-                                (part :arity (:arity described)))
+                              kind arity
                               (when table {:part :arg-constraints :value table})
                               (when-not (and table (empty? declared))
                                 (part :arg-declarations (by-order declared)))
@@ -5729,7 +5734,7 @@
 
   | `:role` | also carries |
   |---|---|
-  | `:predicate` | `:arity` (the exact length that binds it, nil where none binds or two do), `:arity-via`, `:arg-declarations`, `:props`, `:inverse`, `:extent-count`, and the grants `:closed-extent?` `:abducible?` `:modal?` `:decontextualized?` |
+  | `:predicate` | `:arity` (the exact length that binds it, nil where none binds or two do), `:arity-via`, `:arity-length` (`relation-length`'s whole answer, an exact or a least length), `:arg-declarations`, `:props`, `:inverse`, `:extent-count`, and the grants `:closed-extent?` `:abducible?` `:modal?` `:decontextualized?` |
   | `:type` | `:predicates-for-type` (whose argument declarations admit it) and `:instance-count` |
   | `:individual` | `:types` (asserted, not supertypes) and `:predicates` with a count each |
   | `:context` | `:up` / `:down` (the `genlCx` ancestor sets), `:sentex-count`, `:computed-spec-of` for a reified NAT |
@@ -5786,6 +5791,7 @@
           (assoc base
                  :arity             (:exact len)
                  :arity-via         (when (:exact len) (:via len))
+                 :arity-length      len
                  :arg-declarations  (declarations-on kb term context)
                  :props             (into (sorted-set)
                                           (filter #(has-prop? kb % term context))
