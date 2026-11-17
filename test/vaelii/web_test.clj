@@ -377,6 +377,17 @@
       (is (= '[unary_predicate type] (linked-terms (block-line body "kind"))))
       (is (nil? (block-line body "arity class"))))))
 
+(tu/deftest-kb a-types-examples-are-one-comma-separated-line
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'positiveExampleComment kindT "one made up")
+               (list 'positiveExampleComment kindT "another made up")
+               (list 'negativeExampleComment kindT "none made up")]]
+      (v/assert kb s 'CxUniverse))
+    (let [body (:body (GET "/term" (str "q=" (name kindT))))]
+      (is (= "<q>another made up</q>, <q>one made up</q>" (block-line body "positive examples")))
+      (is (= "<q>none made up</q>" (block-line body "negative examples"))))))
+
 (tu/deftest-kb a-terms-see-also-line-lists-the-terms-it-is-linked-to
   (tu/with-terms [relP relQ relR relS kindT]
     (doseq [s (concat (for [r [relP relQ relR relS]] (list 'binary_predicate r))
