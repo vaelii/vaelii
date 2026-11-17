@@ -1912,6 +1912,13 @@ shows as its sentence on the **arg declarations** line. The links line lists the
 term's `seeAlso` sentences and every `termsRelated` cluster naming it relate it to, once
 each and in printed order.
 
+The parents line lists the term's minimal direct parents: a direct parent another direct
+parent is strictly below is left out, since the block is a summary and the lower parent
+already says it. `causal` stores `(genl causal temporal)` and, through `(partition thing
+causal acausal)`, an edge to `thing`, and its parents line shows `temporal` alone. Only
+strict subsumption prunes: of two parents each below the other, as a reader below two
+contexts with opposite `genl` edges sees them, the first in printed order stands for both.
+
 A part the KB holds nothing for is tagged **missing**, beside an **add** link
 that opens the assert form on a sentence supplying it (`(comment dog "")`, `(genl dog )`),
 deliberately incomplete as the assert form's term seed is. A missing kind line where no
@@ -1920,7 +1927,7 @@ arity shows also offers an **arity class** seed. Each sibling carries what decid
 declared overlap, or `overlaps` with the shared instance or shared subtype that shows one,
 which is what the `:open-sibling-pair` pass of `kb-integrity` reads as decided. A sibling
 nothing decides is tagged missing, with one link seeding `disjoint` and one seeding
-`orthogonal`. The siblings are the types sharing a direct parent with the term, capped at
+`orthogonal`. The siblings are the types sharing a parent the parents line shows, capped at
 `describe`'s limit with the remainder counted. The line shows the first 12 siblings in
 order and folds the rest behind a **+ N more** control, a `<details>` that opens them in
 place without a request.

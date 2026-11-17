@@ -241,6 +241,34 @@
     (is (= ["an insect, which has six legs"] (:negative-examples b))))
   (is (= :orthogonal (get (separations (block (v/describe kb 'electronic_device W))) 'machine))))
 
+(tu/deftest-kb a-types-parents-are-its-minimal-direct-genls
+  (testing "a stored parent another parent is strictly below is left out"
+    (is (= ['temporal] (:terms (:parents (block (v/describe kb 'causal W)))))
+        "(genl causal thing) comes from the partition, and temporal is below thing"))
+  (tu/with-terms [kin_root kin_a kin_b]
+    (doseq [s [(list 'genl kin_root 'thing) (list 'genl kin_a kin_root)
+               (list 'genl kin_a 'thing) (list 'genl kin_b kin_root)]]
+      (v/assert kb s 'CxUniverse))
+    (let [b (block (v/describe kb kin_a 'CxUniverse))]
+      (is (= [kin_root] (:terms (:parents b))))
+      (is (= [kin_b] (mapv :term (:rows (:siblings b))))
+          "the siblings are the children of the minimal parents only"))))
+
+(tu/deftest-kb two-parents-that-subsume-each-other-show-as-one
+  ;; a context refuses a genl cycle it would see, so the cycle is two theories' edges, one
+  ;; each, read by a context below both
+  (tu/with-terms [kin_a kin_b kin_c CxEdgeA CxEdgeB CxBoth]
+    (doseq [s [(list 'genlCx CxEdgeA 'CxUniverse) (list 'genlCx CxEdgeB 'CxUniverse)
+               (list 'genlCx CxBoth CxEdgeA) (list 'genlCx CxBoth CxEdgeB)
+               (list 'genl kin_a 'thing) (list 'genl kin_b 'thing)
+               (list 'genl kin_c kin_a) (list 'genl kin_c kin_b)]]
+      (v/assert kb s 'CxUniverse))
+    (v/assert kb (list 'genl kin_a kin_b) CxEdgeA)
+    (v/assert kb (list 'genl kin_b kin_a) CxEdgeB)
+    (is (= [(first (sort-by pr-str [kin_a kin_b]))]
+           (:terms (:parents (block (v/describe kb kin_c CxBoth)))))
+        "neither is strictly below the other, so one stands for both and the line is not empty")))
+
 (tu/deftest-kb genls-block-comment-says-what-genl-means-and-its-note-how-the-engine-runs-it
   (let [b (block (v/describe kb 'genl W))]
     (is (not-any? #(re-find #"closure|chain" %) (:comment b))
