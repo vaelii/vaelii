@@ -378,14 +378,14 @@
       (is (= '[unary_predicate type] (linked-terms (block-line body "kind"))))
       (is (nil? (block-line body "arity class"))))))
 
-(tu/deftest-kb a-terms-links-line-lists-the-terms-it-is-linked-to
+(tu/deftest-kb a-terms-see-also-line-lists-the-terms-it-is-linked-to
   (tu/with-terms [relP relQ relR relS kindT]
     (doseq [s (concat (for [r [relP relQ relR relS]] (list 'binary_predicate r))
                       [(list 'unary_predicate kindT)
                        (list 'seeAlso relP relS) (list 'termsRelated relP relR relQ)
                        (list 'termsRelated relS relP)])]
       (v/assert kb s 'CxUniverse))
-    (let [line (block-line (:body (GET "/term" (str "q=" (name relP)))) "links")]
+    (let [line (block-line (:body (GET "/term" (str "q=" (name relP)))) "see also")]
       (is (= (vec (sort-by str [relQ relR relS])) (linked-terms line)))
       (is (not (re-find #"badge-link" line)) "the line draws no sentence"))))
 
