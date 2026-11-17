@@ -112,9 +112,13 @@ write_weights() {
 #
 # \`namespace<TAB>seconds\`.  scripts/ci-shard.sh --leg $leg bin-packs the namespaces
 # by these numbers so that the shards of that .github/workflows/test.yml leg finish
-# together.  The workflow reads this file only when the Actions cache holds no
-# timings from an earlier green run of the leg.  A namespace absent here still runs,
-# weighted at the mean; one at 0.00 has every test \`^:slow\` or \`^:multi-jvm\`.
+# together.  The shards read this file when the Actions cache holds no weights from an
+# earlier green run, and the \`weights\` check reads it when the cache holds no baseline.
+# A namespace absent here still runs, weighted at the mean; one at 0.00 has every test
+# \`^:slow\` or \`^:multi-jvm\`.
+#
+# A pull request that makes a namespace slower on purpose sets the namespace's row here to
+# its measured seconds, and the \`weights\` check accepts it (CONTRIBUTING.md §7).
 #
 # Regenerate with scripts/ci-weights.sh <run-id>.
 #
@@ -198,7 +202,7 @@ check_leg() {
       if (list) exit 0
       if (found) printf "\n%d namespace(s) took %sx or more of the expected time, and %d s or more beyond it.\n%s%s%s\n",
                         found, ns_slower, ns_excess, "To accept a slower time, set the row of the namespace in scripts/ci-test-weights-",
-                        leg, ".tsv to its measured seconds."
+                        leg, ".tsv to its measured seconds (CONTRIBUTING.md §7)."
       slow = legspeed >= leg_slower
       printf "\nci-weights: %s check %s\n", leg, found ? "FAILED" : slow ? "found the leg slow" : "passed"
       exit (found ? 1 : (slow ? 3 : 0))

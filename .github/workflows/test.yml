@@ -600,7 +600,7 @@ jobs:
       - name: Fail when both legs ran slow
         if: ${{ !cancelled() && steps.check-memory.outputs.rc == '3' && steps.check-disk.outputs.rc == '3' }}
         run: |
-          echo "ci-weights: both legs ran slower than their runners' speed accounts for" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "ci-weights: both legs ran slower than their runners' speed accounts for; CONTRIBUTING.md §7 says how to accept it" | tee -a "$GITHUB_STEP_SUMMARY"
           exit 1
 
   # The suite again, with an ANSWER SET SOLVER on the box. Without one, eight

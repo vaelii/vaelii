@@ -251,6 +251,8 @@ it — `git show v0.16.0:CHANGELOG.md`.
 - **`weights` is a required check on `develop`.** A check with no cached baseline reads
   the committed `scripts/ci-test-weights-<leg>.tsv`, and the steps that write and save
   the next run's weights do not decide the verdict.
+  [CONTRIBUTING.md §7](CONTRIBUTING.md#7-commits--pull-requests) says how a pull request
+  accepts a slower time.
 
 ## 0.33.0 — 2026-11-10 — "A separation undercutting a `:default` edge's reading, shipped type edges at `:monotonic`, relations classified by rigidity, a three-argument `functionCorrespondingPredicate`, daemon reads held to their ceilings, a time slice seeing the context it slices"
 
