@@ -2393,6 +2393,61 @@
       (is (nat-read/reified-object-symbol? k))
       (is (false? (v/same-class? kb k Someone 'CxUniverse))))))
 
+(defn- clashing-fillers
+  "The filler pairs of the functional nogoods `kb` holds over `pred`, each as a set,
+  read off the contradictions and the conflicts alike."
+  [kb pred]
+  (into #{} (comp (filter #(= :functional (:kind %)))
+                  (map (fn [c] (into #{} (keep #(let [s (:sentence %)]
+                                                  (when (= pred (first s)) (last s))))
+                                     (:sides c)))))
+        (concat (v/contradictions kb) (v/conflicts kb))))
+
+(defn- skolem-rivals-kb
+  "`steps` over a `functional` bestFriendOf: `:rule` the `:monotonic` existential whose
+  skolem fills Ann's slot, `:mary` and `:jane` two `:default` fillers.  Returns
+  `[skolem=Mary skolem=Jane Mary=Jane]` with the clashing filler pairs, Mary and Jane
+  spelled by name and the skolem as `:sk`."
+  [kb [bestFriendOf pal Ann Mary Jane] steps]
+  (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+  (doseq [step steps]
+    (case step
+      :rule (do (v/assert-rule kb [(list pal '?x)] (list 'exists '?y (list bestFriendOf '?x '?y))
+                               'CxUniverse {:direction :forward :strength :monotonic})
+                (v/assert kb (list pal Ann) 'CxUniverse {:strength :monotonic}))
+      :mary (v/assert kb (list bestFriendOf Ann Mary) 'CxUniverse)
+      :jane (v/assert kb (list bestFriendOf Ann Jane) 'CxUniverse)))
+  (let [sk   (some #(let [y (get % '?y)] (when (nat-read/reified-nat-symbol? y) y))
+                   (v/ask kb (list bestFriendOf Ann '?y) 'CxUniverse))
+        same #(true? (v/same-class? kb %1 %2 'CxUniverse))]
+    [[(boolean (and sk (same sk Mary))) (boolean (and sk (same sk Jane))) (same Mary Jane)]
+     (into #{} (map (fn [pair] (into #{} (map #(if (= sk %) :sk %)) pair)))
+           (clashing-fillers kb bestFriendOf))]))
+
+(deftest an-indeterminate-filler-collides-with-no-constant-in-every-order
+  ;; a :monotonic skolem beside two :default constants merges with neither.  The
+  ;; unique-name assumption is suspended for it, so it forms no nogood with either: neither
+  ;; constant loses to it, and the two clash with each other alone
+  (tu/with-terms [bestFriendOf pal Ann Mary Jane]
+    (let [terms [bestFriendOf pal Ann Mary Jane]
+          runs  (for [order (tu/orders [:rule :mary :jane])]
+                  (on-core-kb (fn [kb] [(skolem-rivals-kb kb terms order) (unnamed-content kb)])))]
+      (is (= #{[[false false false] #{#{Mary Jane}}]} (set (map first runs))))
+      (is (= 1 (count (set (map second runs)))) "one believed set in every order")
+      (is (every? #(contains? (second %) [(list bestFriendOf Ann Mary) 'CxUniverse]) runs)
+          "Mary's fact stays believed"))))
+
+(tu/deftest-kb a-late-indeterminate-membership-takes-its-term-s-nogoods-away
+  (tu/with-terms [bestFriendOf Ann Mary Jane Someone]
+    (let [terms [bestFriendOf Ann Mary Jane Someone]]
+      (someone-kb kb terms [:someone :mary :jane])
+      (is (= #{#{Someone Mary} #{Someone Jane} #{Mary Jane}} (clashing-fillers kb bestFriendOf))
+          "three determinate names on default evidence clash pairwise")
+      (let [h (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})]
+        (is (= #{#{Mary Jane}} (clashing-fillers kb bestFriendOf)) "Someone clashes with neither")
+        (v/retract! kb h)
+        (is (= #{#{Someone Mary} #{Someone Jane} #{Mary Jane}} (clashing-fillers kb bestFriendOf)))))))
+
 (deftest retracting-a-default-value-or-its-declaration-is-net-neutral
   (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
     (let [terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]]

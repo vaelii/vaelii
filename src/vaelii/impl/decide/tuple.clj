@@ -490,11 +490,15 @@
   "Keep the tuple-mark candidates in step with the fact `sx` arriving (`stored?` true) or
   leaving.  An arriving tuple reads its determinants and chains (`found-for`) while the
   taxonomy holds a tuple mark; a leaving one reads nothing.  A membership moving a term's
-  determinateness queues the term under `::determinacy-moved` while a tuple mark is held."
+  level queues the term under `::determinacy-moved` and its members under `::moved`."
   [kb w sx stored?]
   (let [cands (reasoning/nogood-candidates kb)]
     (when-let [t (and (tuple-marks? (:tax w)) (determinacy-term w sx))]
-      (swap! cands update ::determinacy-moved (fnil conj #{}) t))
+      (let [hs (reads/as-stored-with-term (:index kb) t)]
+        (swap! cands (fn [c]
+                       (let [in (filterv #(contains? (::member-of c) %) hs)]
+                         (cond-> (update c ::determinacy-moved (fnil conj #{}) t)
+                           (seq in) (noted in)))))))
     (if stored?
       (when (tuple-marks? (:tax w))
         (when-let [[q args] (fact-tuple sx)]
@@ -784,14 +788,14 @@
   chain the `anti_transitive` ones, and a converse pair the `asymmetric` ones and the
   `anti_symmetric` ones unless it merges (`merges?`,
   `special/derive-antisymmetric-equalities`), and a `negates` set the declarations over
-  its functors (`negates-routes`).  A determinant pair reads the determinant's
-  own `functional` and `functionalInArg` marks; two symbol fillers both `:monotonic` merge
-  (`special/derive-functional-equalities`) and give no route.  Two symbol fillers one class
-  at a reader form no nogood there, which the read reads (`exempt-at?`).  A determinant
-  pair's routes carry `:excluded-at`, the contexts at which `agree?`, `(fn [v1 v2
-  context])`, reads its two fillers as one value (`chain/route-placements`).  `w` is
-  `decide/unscoped-closures`'s."
-  [kb w c {:keys [members specs]} agree?]
+  its functors (`negates-routes`).  A determinant pair reads the
+  determinant's own `functional` and `functionalInArg` marks; two symbols both
+  `:monotonic` merge and give no route, nor do two one of which is `indeterminate?`, the
+  unique-name assumption suspended for it.  Two symbols one class at a reader form no
+  nogood there (`exempt-at?`).  A determinant pair's routes carry `:excluded-at`, the
+  contexts at which `agree?`, `(fn [v1 v2 context])`, reads its two fillers as one value
+  (`chain/route-placements`).  `w` is `decide/unscoped-closures`'s."
+  [kb w c {:keys [members specs]} agree? indeterminate?]
   (let [tax   (:tax w)
         tms   (reasoning/tms kb)
         recs  (:records kb)
@@ -815,7 +819,8 @@
                  :det   (let [[q k n] key
                               [v1 v2] (map #(first (get-in c [::det key %])) members)
                               sym?    (mergeable-values? v1 v2)]
-                          (when-not (and sym? (every? #(monotonic-member? tms %) members))
+                          (when-not (and sym? (or (every? #(monotonic-member? tms %) members)
+                                                  (indeterminate? v1) (indeterminate? v2)))
                             (for [mk (cond-> [[:functional-in-arg q n]] (= 2 k n) (conj [:prop :functional q]))]
                               (cond-> {:keys #{mk} :links (links q)}
                                 (not sym?) (assoc :excluded-at #(agree? v1 v2 %)))))))))
