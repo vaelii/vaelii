@@ -49,6 +49,14 @@
     vaelii.core/edit!
     vaelii.core/edit-with-consequences!
     vaelii.core/replace-facts!
+    vaelii.core/rename-terms!
+    vaelii.core/rename-term!
+    vaelii.core/merge-terms!
+    vaelii.core/merge-term!
+    vaelii.core/copy-terms
+    vaelii.core/copy-term
+    vaelii.core/remove-terms!
+    vaelii.core/remove-term!
     vaelii.core/preview
     vaelii.core/abduce
     vaelii.core/abduce-discard!

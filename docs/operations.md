@@ -439,14 +439,15 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   `:max-work` and `:max-results`, held the same way under `VAELII_INTEGRITY_MAX_WORK`
   (**10000**) and `VAELII_INTEGRITY_MAX_RESULTS` (**1000**), `0` lifting either, and filled
   with the ceiling when a request omits them or sends no option map, so a served sweep always
-  runs under all three ([integrity.md](integrity.md)). Nine writes bound their chaining:
+  runs under all three ([integrity.md](integrity.md)). Ten writes bound their chaining:
   `:assert`, `:try-assert`, `:assert-many`, `:assert-rule`, `:replace-facts` and
-  `:forward-chain` read `:max-depth`, `:max-term-depth` and `:max-derivations`, and `:edit`,
+  `:forward-chain` read `:max-depth`, `:max-term-depth` and `:max-derivations`. `:edit`,
   `:edit-with-consequences` and `:preview` read the same three keys off each batch entry's
-  opts. A request may name any of the three at any size, and the run holds the write
+  opts, and `:retract` reads `:max-derivations` for the re-chain its removal releases. A
+  request may name any of them at any size, and the run holds the write
   monitor for its whole length; when it names none, only the term-nesting bound of 8 is in
-  force. Every one of the nine but `:preview` also reads `:max-ms`. **`VAELII_MAX_WRITE_MS`
-  is the write ceiling, off (0) by default.** Once an operator sets it, the seven writes
+  force. Every one of the ten but `:preview` also reads `:max-ms`. **`VAELII_MAX_WRITE_MS`
+  is the write ceiling, off (0) by default.** Once an operator sets it, the eight writes
   `serve/write-bounds` names (all but `:forward-chain` and `:preview`) are held to it as
   a read is held to `VAELII_MAX_QUERY_MS`, and a write the clock ends is refused **400**
   `{:type :interrupted}` and rolled back ([inference.md](inference.md#stopping-a-run)).
@@ -560,6 +561,9 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   "would this assert succeed, and why not?" (docs/api.md). It stores nothing and answers
   the problems with the same `:type` keywords a refusal carries, so a remote editor
   validates a line *before* it writes rather than by writing and catching.
+  `:check-term-edit` and `:term-edit-plan` are the same for a term operation
+  ([api.md](api.md#contract-notes-term-operations)): what it refuses, and the `:edit`
+  batch it runs, under `:batch`.
 - **…and a consequence preview** (`:preview`): not whether the batch would be admitted
   but what it would *mean* — the belief it adds and takes away (docs/preview.md). Served
   because the daemon is the single writer, which is exactly what a preview needs: it
@@ -713,6 +717,7 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   | `remove-unsupported!`, `mark-inert!` | 2 | Each repairs a record a failed write left, which the open reported, on evidence the opener holds: the handles its own record of its writes marks failed. `:unsupported` reads the report |
   | `disjointness-audit` | 4 | It runs a subsumption read for every pair of the n types, n(n−1)/2 of them, with no bound a request can set. `:subsumption-status` answers one pair |
   | `ist` | — | It is `assert` with its arguments reordered: `:assert` of `(ist Ctx S)` stores the same sentex |
+  | `rename-terms!`, `rename-term!`, `merge-terms!`, `merge-term!`, `copy-terms`, `copy-term`, `remove-terms!`, `remove-term!` | — | `:term-edit-plan` answers the batch each runs, and `:edit` of its `:batch` applies the batch under the grant's checks. A token grant holds a write to the contexts its request names, and a term operation writes in every context a premise using the term is stored in |
   | `register-modal-predicate` | — | `:assert` of `(modal_predicate pred)` in the context is the same write, and answers a handle where this answers the KB |
 
   Every row stays reachable in the process that called `open-kb`, and the lifecycle rows
@@ -785,9 +790,15 @@ again after the write:
     declaration of `E`'s function places `K` under one of `E`'s arguments
     ([context-nat.md](context-nat.md#the-structural-genlcx-producer)). The reach also holds
     each context a slice `E` names slices, since the store copies every eternal predicate's
-    fact or denial `K` holds there (`serve/nat-formula-reach`). Neither reads what `K`
-    holds, so the verdict is the same whichever of the `natFormula` and a fact in `K` is
+    fact or denial `K` holds there (`serve/nat-formula-reach`). For a `cx/` constant `K` it
+    also holds each context a `contextArgSubrelation` pair orders below `K`, and `K` when a
+    pair orders it below another (`context-nat/pair-reach`). None of the three reads what
+    `K` holds, so the verdict is the same whichever of the `natFormula` and a fact in `K` is
     written first;
+  - for an equality stored in `CxUniverse` that names a context, each context of the two
+    classes it joins, since the store restates each member context's extent in the context
+    its class elects ([equality.md](equality.md#two-names-of-one-context),
+    `serve/equality-reach`);
   - for a rule, its own context and the contexts of every literal its consequent concludes.
     A negated conclusion is the literal `(not …)` and is placed as one. The engine refuses
     every `(ist Ctx S)` consequent with **400**, so no rule concludes into a context through one;
@@ -801,17 +812,21 @@ again after the write:
     descendants of the fact's context and the contexts of the edges on each route
     (`serve/firing-contexts`). A route whose edges no descendant of the fact's context sees
     places nothing. A fact is matched with its first two arguments exchanged only against an
-    antecedent its predicate reaches over an odd number of `genlInverse` edges;
+    antecedent its predicate reaches over an odd number of swap edges (`genlInverse` edges
+    and both directions of an `inverse` declaration, docs/inference.md);
   - for a `genl` or `genlInverse` edge, the contexts of each rule a stored generator writes
     for a stored fact the edge connects to the generator's antecedent, read as a rule's, in
     each context the fact's own check places it in once the edge is stored and did not place
     it in before (`serve/edge-generated-rules`), so the verdict is the same whichever of the
     fact and the edges is written last. A rule concluding an edge with a variable term may
     connect any fact, so each antecedent the edge could reach is read with nothing bound.
+    An `inverse` declaration is not read as an edge here. The store lifts it into
+    CxUniverse, and the check names CxUniverse for it (`special/lifts-to-universe?`).
 
   A grant's bound covers the rules its own writes make the engine write at the time of the
   write. A generator or rule an admin grant adds later fires on the facts already stored,
-  and its conclusions are the admin's.
+  and its conclusions are the admin's. The grant removes such a fact only while it could
+  write every conclusion the removal withdraws (`:retract` below).
 
   The check above does not predict two placements the engine makes. It leaves the
   generator's own context out of a generated rule's placement, so a generator stated in a
@@ -825,17 +840,21 @@ again after the write:
   stored, chained and settled, every sentex a justification the write added under a rule
   concludes is held to the contexts the check above reads for a literal: its own,
   `CxUniverse` or the contexts a slice slices for a fact the store also lifts there, `Sub`
-  for a `(genlCx Sub Super)` edge, the contexts a `natFormula` reaches, and an admin grant
-  for a placement declaration or a sentence changing whether a predicate is eternal. One
-  outside `:writes` refuses the sentence with 403 and takes back what it wrote, as a write
+  for a `(genlCx Sub Super)` edge, the contexts a `natFormula` reaches or an equality between
+  contexts joins, and an admin grant for a placement declaration or a sentence changing
+  whether a predicate is eternal. One outside `:writes` refuses the sentence with 403 and takes back what it wrote, as a write
   `:max-derivations` ends is taken back ([inference.md](inference.md#stopping-a-run)). So an admin's rule concluding
   a `decontextualized_predicate`'s fact refuses the granted fact that fires it, whether or
   not the conclusion is already stored, and so does a firing placed in a common descendant
   of the grant's context and another. A rule a generator writes is held the same way, in
-  the context the engine places it in. A justification under no rule, such as a
-  `contradicts` record a clash places, is not read. `:assert-many` keeps the sentences
-  stored before the refused one, as it does for any refusal, and `:edit` refuses the batch
-  whole.
+  the context the engine places it in. Every equality the engine derives
+  (`special/derive-merge`) is held the same way: a merge the collision repair derives
+  ([nat.md](nat.md#rename-and-remove--keeping-the-11-invariant)) and the equality of two
+  context NATs ordered both ways
+  ([context-nat.md](context-nat.md#two-contexts-ordered-both-ways)) among them. So a write
+  deriving an equality that merges contexts outside `:writes` is refused. A justification under no rule, such as a `contradicts`
+  record a clash places, is not read. `:assert-many` keeps the sentences stored before the
+  refused one, as it does for any refusal, and `:edit` refuses the batch whole.
 
   Only an admin grant writes a `do/` imperative, a `forced_decontextualized_predicate` or
   `decontextualized_predicate` declaration, a sentence changing whether a predicate is
@@ -844,19 +863,29 @@ again after the write:
   whether a predicate is eternal: a membership in `eternal_predicate` or a type below it, a
   `genl` edge up to one, the denial of either, and a `defeat` of a stored one of these. A
   placement declaration places every `(P …)` the KB holds, in any context, in `CxUniverse`.
-  Whether a time slice sees `P` as eternal decides whether every `(P …)` the slice holds
-  is copied into the context the slice slices. A variable functor may conclude any
+  Whether the context a time slice slices sees `P` as eternal decides whether every
+  `(P …)` the slice holds is copied into it. A variable functor may conclude any
   predicate. None of the three has a context a grant's `:writes` could bound.
 - `:edit` and `:edit-with-consequences` hold every `:add` entry to the same check and
   every `:remove` handle to the next one; one entry out of bounds refuses the batch, and
   nothing in it is applied.
 - `:replace-facts` writes only when `:writes` names its context, which it retracts from,
-  and every context each fact's storage writes, and only under an admin grant when the
-  context holds a replaceable premise whose sentence only an admin grant writes.
+  and every context each fact's storage writes, and holds each premise it retracts as
+  `:retract` holds it.
 - `:retract` removes, and `:add-provenance` annotates, a sentex only when its stored
-  context is in `:writes`. A sentex whose sentence only an admin grant writes, or a rule
-  concluding such a literal, is removed only under an admin grant
-  (`serve/removal-admin-only`), since removing it withdraws what storing it wrote.
+  context is in `:writes`. Removing a sentex withdraws what storing it wrote, so a removal
+  is held to the contexts the list above reads for storing its sentence there, read at the
+  removal (`serve/check-removal!`). A slice's fact of an eternal predicate needs the
+  context the slice slices, a `natFormula` the contexts it reaches, and a `genlCx` edge
+  its lower context. A sentence only an admin grant writes, or a rule concluding one, is
+  removed only under an admin grant. A removal is also held to what it takes out of
+  belief (`serve/check-withdrawals!`). A `preview` of it names each sentex that loses its
+  support, and each is held to the contexts and the admin-only list the check after a
+  write reads for a rule's conclusion. So a fact an admin's rule concluded an
+  `eternal_predicate` membership from is removed only under an admin grant. The preview
+  runs under the write's own bound, its `:max-ms` or the write ceiling and its
+  `:max-derivations`, so a re-chain the bound ends is refused **400** `{:type
+  :interrupted}` before the write starts.
   `:add-provenance` on a handle naming no stored sentex is refused too, since provenance
   written there first would read as the sentex's own.
 - `:export` runs only under an admin grant: it writes the whole KB to a directory on the
@@ -1492,6 +1521,7 @@ CI sets these too; nothing in a deployment does.
 | `VAELII_TEST_LOG_LEVEL` | `project.clj:130+` | `error` `warn` `info` `debug` `trace`; blank is unset | `error` | The floor the `:test` profile installs the engine's logging at, through `set-log-level` itself. |
 | `VAELII_TEST_NS_COUNTS` | `project.clj:150+` | the boolean vocabulary | `false` | Prints one `NSCOUNT <namespace> <assertions>` line per test namespace. Two runs diffed name the namespace whose count moved, which is what `test-backends.sh`'s assertion-count check cannot say on its own. |
 | `VAELII_TEST_VERDICTS` | `project.clj:150+` | the boolean vocabulary | `false` | Prints one `TESTVERDICT <ns/name> pass\|fail` line per test var. `lein test-red` sets it and fails on a `^:red` test that passes. |
+| `VAELII_TEST_NS_REPEAT` | `project.clj:150+` | a whole number from 1 to 100 | `1` | Runs each test namespace that many times in a row in the one JVM. CI's `weights` rerun sets it to 3 (`scripts/lib/ns-timings.sh`). |
 | `VAELII_SETTLE_HOUR` | `test/vaelii/settle_hour_test.clj:0+` | `1` or unset | unset (the settle test prints that it skipped) | Runs `settle-of-the-full-kb-within-an-hour`, the `^:full-kb` test that opens `VAELII_FULL_KB_DIR` without belief, settles it with `settle-record-edits!`, prints each phase's minutes and fails past 60. Opt-in beyond the selector because `full_kb_test` opens the same clone with belief and two full-size KBs do not fit one heap: `VAELII_SETTLE_HOUR=1 lein test-full-kb <store> :only vaelii.settle-hour-test`. A postgres store is refused. |
 | `VAELII_SETTLE_REMOVE` | `test/vaelii/settle_hour_test.clj:0+` | a count | `0` | How many stored premises the settle test removes through `edit-records!` before it settles, so the sweep has seeds. |
 | `VAELII_TEST_HEAP` | `project-env.clj:40+` | a JVM heap size (`4g`, `6144m`) | `4g` | The `-Xmx` the `:test` profile gives a test JVM. Unset, a `JVM_OPTS` that already names `-Xmx` keeps its own, which is how `lein test-full-kb` passes `VAELII_HEAP`. The profile also sets G1 to return freed heap (`MaxHeapFreeRatio=30`, a 15 s periodic collection) and two parallel and one concurrent collector thread per JVM. |

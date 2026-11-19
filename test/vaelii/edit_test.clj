@@ -427,11 +427,12 @@
 (defn- edit-both-ways
   "The believed records after `scenario` through `edit!` (each direction change a
   retraction and a re-assertion) and through `edit-records!` on a reopened KB without
-  belief followed by `settle-record-edits!` with `settle-opts`, on two sequential fresh
-  KBs.  `scenario` is `{:build (fn [kb]) :remove [[s ctx]] :direction [[[s ctx] bare d]]}`;
-  its `:keeps` and `:entailing?`, read by the caller, are records `edit!` must leave
-  believed and whether the row runs under the entailing argument-type reading."
-  [{:keys [build remove direction]} settle-opts]
+  belief followed by `(settle! kb seeds)`, on two sequential fresh KBs.  `scenario` is
+  `{:build (fn [kb]) :remove [[s ctx]] :direction [[[s ctx] bare d]]}`; its `:keeps`,
+  `:stops?` and `:entailing?`, read by the caller, are records `edit!` must leave believed,
+  whether the settle derives in its chain step, and whether the row runs under the
+  entailing argument-type reading."
+  [{:keys [build remove direction]} settle!]
   (let [handles (fn [kb] (mapv (fn [[s c]] (v/handle-of kb s c)) remove))]
     [(tu/with-cleared-kb [kb tu/fresh]
        (build kb)
@@ -446,8 +447,31 @@
              ds  (into {} (map (fn [[[s c] _ d]] [(v/handle-of kb s c) d])) direction)
              kb2 (tu/test-kb)
              r   (v/edit-records! kb2 {:remove hs :direction ds})]
-         (v/settle-record-edits! kb2 (assoc settle-opts :seeds (:seeds r)))
+         (settle! kb2 (:seeds r))
          (believed kb2)))]))
+
+(defn- settle-all! [kb seeds] (v/settle-record-edits! kb {:seeds seeds}))
+
+(defn- stopped-then-finished
+  "A `settle!` for `edit-both-ways`: a `settle-record-edits!` call stopped at its first
+  derivation, then one with no bound.  Writes into the volatile `seen` the stop's `:type`,
+  the stored sentex ids when the chain step began and after the stop, and whether every
+  unrooted justification is still stored."
+  [seen]
+  (fn [kb seeds]
+    (let [at-chain (volatile! nil)
+          note     (fn [m] (when (and (= :chain (:step m)) (nil? @at-chain))
+                             (vreset! at-chain (set (tu/sentex-ids kb)))))
+          stop     (try (v/settle-record-edits! kb {:seeds seeds :max-derivations 0
+                                                    :on-progress note})
+                        nil
+                        (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))
+          unrooted (:unrooted @(:unrecovered kb))]
+      (vreset! seen {:stop     stop
+                     :at-chain @at-chain
+                     :after    (set (tu/sentex-ids kb))
+                     :unrooted (every? #(p/get-justification (:records kb) %) unrooted)})
+      (settle-all! kb seeds))))
 
 (deftest edit-records-then-settle-believes-what-edit-believes
   (tu/with-terms [p q r s t u w bird flies travels blocked parentOf animal dog needs wanted relativeOf childOf kinOf knows person A B Tweety Fido Rex Fred Mary CxThe CxWorld CxDogs CxRa CxRb CxRm]
@@ -546,19 +570,30 @@
 
            "a removed genlCx edge leaves the firing a later second route licenses"
            {:build (cx-route false) :remove [[(list 'genlCx CxRb CxRa) 'CxUniverse]]
-            :keeps [[(list q A) CxRb]]}
+            :keeps [[(list q A) CxRb]] :stops? true}
 
            "a removed genlCx edge leaves the firing an earlier second route licenses"
            {:build (cx-route true) :remove [[(list 'genlCx CxRb CxRa) 'CxUniverse]]
-            :keeps [[(list q A) CxRb]]}
+            :keeps [[(list q A) CxRb]] :stops? true}
 
            "a removed genl edge leaves the firing a later second route licenses"
            {:build (genl-route false) :remove [[(list 'genl childOf relativeOf) 'CxUniverse]]
-            :keeps [[(list knows Fido Rex) CxThe]]}
+            :keeps [[(list knows Fido Rex) CxThe]] :stops? true}
 
            "a removed genl edge leaves the firing an earlier second route licenses"
            {:build (genl-route true) :remove [[(list 'genl childOf relativeOf) 'CxUniverse]]
-            :keeps [[(list knows Fido Rex) CxThe]]}
+            :keeps [[(list knows Fido Rex) CxThe]] :stops? true}
+
+           "a removed genlInverse edge leaves the firing an inverse declaration licenses"
+           {:build (fn [kb]
+                     (v/assert kb (list 'genlCx CxThe 'CxUniverse) 'CxUniverse)
+                     (v/assert-rule kb [(list parentOf '?x '?y)] (list knows '?x '?y) CxThe
+                                    {:direction :forward})
+                     (v/assert kb (list 'genlInverse childOf parentOf) 'CxUniverse {:strength :monotonic})
+                     (v/assert kb (list 'inverse childOf parentOf) 'CxUniverse)
+                     (v/assert kb (list childOf Fido Rex) CxThe))
+            :remove [[(list 'genlInverse childOf parentOf) 'CxUniverse]]
+            :keeps [[(list knows Rex Fido) CxThe]] :stops? true}
 
            "a removed premise that a firing also concludes stays, derived"
            {:build (fn [kb]
@@ -583,19 +618,29 @@
            {:build (fn [kb]
                      (v/assert-rule kb [(list p '?x)] (list t '?x) CxThe {:direction :backward})
                      (v/assert kb (list p A) CxThe))
-            :direction [[[(rule (list p '?x) (list t '?x)) CxThe] (rule (list p '?x) (list t '?x)) :forward]]}}]
+            :direction [[[(rule (list p '?x) (list t '?x)) CxThe] (rule (list p '?x) (list t '?x)) :forward]]
+            :stops? true}}]
       (doseq [[label row] rows]
         (testing label
           ;; an `:entailing?` row keeps an argument-type mint, which only the entailing
           ;; reading makes
-          (let [[via-edit via-records] (if (:entailing? row)
-                                         (tu/with-entailing (edit-both-ways row {}))
-                                         (edit-both-ways row {}))]
+          (let [both                   #(if (:entailing? row)
+                                          (tu/with-entailing (edit-both-ways row %))
+                                          (edit-both-ways row %))
+                [via-edit via-records] (both settle-all!)
+                seen                   (volatile! nil)
+                [_ via-resumed]        (both (stopped-then-finished seen))]
             (doseq [k (:keeps row)]
               (is (contains? via-edit k) (str "the row exercises " (pr-str k))))
             (is (= via-edit via-records)
                 (pr-str {:only-edit (remove via-records via-edit)
-                         :only-records (remove via-edit via-records)}))))))))
+                         :only-records (remove via-edit via-records)}))
+            (testing "stopped at its first derivation, then called again"
+              (let [{:keys [stop at-chain after unrooted]} @seen]
+                (is (= (when (:stops? row) :interrupted) stop))
+                (when stop (is (= at-chain after) "the stop removes what the chain step created"))
+                (is unrooted)
+                (is (= via-edit via-resumed))))))))))
 
 (deftest edit-records-refuses-before-writing
   (tu/with-terms [p q w A CxThe]

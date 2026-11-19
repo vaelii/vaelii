@@ -64,6 +64,7 @@
             [vaelii.impl.kb :as kb]
             [vaelii.impl.kv :as kv]
             [vaelii.impl.naming :as nm]
+            [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.predicates :as pr]
@@ -74,6 +75,7 @@
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rewrite :as rewrite]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
@@ -505,6 +507,21 @@
   (when-let [answers (provers/support-answers-reading kb bfn s)]
     (rules-taking kb answers)))
 
+(defn rewrite-reading-rules
+  "Positive rewrite consumers moved by `source`: always a full rejoin.
+  A new rival can expose a fallback whose proof does not name it. Keep these rules
+  separate from ordinary supporting-delta routing; the no-consumer presence check is in memory."
+  [kb source]
+  (when-let [census (rewrite-query/affected-consumers kb source)]
+    (not-empty (into (:antecedents census) (:watched census)))))
+
+(defn recheck-rewrite-source
+  "A support-only source change owes full rewrite-consumer rechecks. Called at the
+  existing queue drain, never from inside a network mutation."
+  [kb source]
+  (when-let [rs (rewrite-reading-rules kb source)]
+    (mark-recheck kb rs ::computed)))
+
 (defn- recheck-on-computed
   "A sentence on `bfn` arrived or left and moved what a `SupportingProver` computes: queue
   every rule `computed-reading-rules` names with the `::computed` marker, so each firing
@@ -513,8 +530,10 @@
   firing's handles name neither move (docs/inference.md, \"What a computed answer rests
   on\")."
   [kb bfn s]
-  (when-let [rs (computed-reading-rules kb bfn s)]
-    (mark-recheck kb rs ::computed)))
+  (let [ordinary (computed-reading-rules kb bfn s)
+        rewrite (rewrite-reading-rules kb bfn)
+        rs (if rewrite (into (or ordinary #{}) rewrite) ordinary)]
+    (when (seq rs) (mark-recheck kb rs ::computed))))
 
 (defn recheck-on-lengths
   "The settle pass moved the length of the relations `moved` (`arity/drain!`'s `:moved`,
@@ -728,7 +747,7 @@
   a converse reading or a membership its taxonomy holds, and re-joins a firing it no
   longer withholds.  Reads nothing on a store holding no lazy-forward rule."
   [kb s]
-  (when (and (= 3 (count s)) (= 'genl (first s)) (kb/stores-lazy-rule? kb))
+  (when (and (= 3 (count s)) (= 'genl (first s)) (kb/stores-engine-rule? kb :lazy))
     (let [[_ sub sup] s]
       (when (and (symbol? sub) (symbol? sup))
         (mark-recheck kb (lazy-guard-readers kb sub sup) :all-rejoin)))))
@@ -812,16 +831,71 @@
       (when (seq moved)
         (swap! (reasoning/respell kb) into (reifiable-moves kb moved))))))
 
+(defn one-justification-rules
+  "The handles of the stored rules whose `:engines` take `:one-justification`, as a set;
+  nil when the store holds none."
+  [kb]
+  (when (kb/stores-engine-rule? kb :one-justification)
+    (set (reads/as-stored-rules-in-global (:index kb) :one-justification))))
+
+(defn reask-entries
+  "`[rule-handle sentence]` for each justification of `jids` a rule of `rhs` informs: the
+  rule and the conclusion it is asked again for (`chain/reask!`).  The JTMS's informant
+  filters first; a justification the JTMS no longer holds is read off its record, so a
+  caller deleting the justifications reads them first."
+  [kb rhs jids]
+  (let [recs (:records kb)
+        tms  (reasoning/tms kb)]
+    (into #{}
+          (keep (fn [jid]
+                  (when (if-let [j (jtms/justification tms jid)] (contains? rhs (:informant j)) true)
+                    (when-let [j (p/get-justification recs jid)]
+                      (when (contains? rhs (:informant j))
+                        (when-let [c (p/get-sentex recs (:consequence j))]
+                          [(:informant j) (sx/sentence-of c)]))))))
+          jids)))
+
+(defn note-reasks!
+  "Queue the re-asks `entries` (`reask-entries`) on `:except-moves`' `:reask`, for the
+  settle to run (`settle/reask-seeds`)."
+  [kb entries]
+  (when (seq entries)
+    (swap! (reasoning/except-moves kb) update :reask (fnil into #{}) entries)))
+
+(defn note-removed-firings!
+  "Queue the re-ask each justification of `jids` owes its rule when that rule stores one
+  justification per conclusion, before the caller deletes the records."
+  [kb jids]
+  (when (seq jids)
+    (when-let [rhs (one-justification-rules kb)]
+      (note-reasks! kb (reask-entries kb rhs jids)))))
+
+(defn take-reasks!
+  "Empty `:except-moves`' `:reask` and answer what it held."
+  [kb]
+  (let [a (reasoning/except-moves kb)
+        r (:reask @a)]
+    (when r (swap! a dissoc :reask))
+    r))
+
 (defn recheck-defeat-target
-  "Post the re-check a `(defeat (sentexHandle H))` sentex `sx` owes H's watchers when it is
-  stored, removed or relabelled: the defeat moves H's belief at the contexts that see it
-  with no relabel of H, so H's sentence posts what its own arrival posts
-  (`recheck-on-sentence`), and a permuting mark resting on H re-spells its facts
-  (`note-mark-reach!`).  A no-op for any other sentex, and for an H no longer stored."
+  "Post what a `(defeat (sentexHandle H))` sentex `sx` owes when it is stored, removed or
+  relabelled.  The defeat moves H's belief at the contexts that see it with no relabel of
+  H, so H's sentence posts what its own arrival posts (`recheck-on-sentence`), and the
+  argument holds read H again (`argument/note-defeated!`).  A permuting mark resting on H
+  re-spells its facts (`note-mark-reach!`), and a tagged rule's firing concluding H or
+  resting on H is asked again (`note-reasks!`).  It does nothing for any other sentex, or for an H no
+  longer stored."
   [kb sx]
   (when-let [t (kb/defeat-target (:sentence sx))]
     (note-mark-reach! kb t)
+    (when-let [rhs (one-justification-rules kb)]
+      (let [tms (reasoning/tms kb)]
+        (note-reasks! kb (reask-entries kb rhs (concat (jtms/supports tms t)
+                                                       (mapcat #(jtms/dependents tms %)
+                                                               (jtms/consequence-closure tms [t])))))))
     (when-let [ts (p/get-sentex (:records kb) t)]
+      (argument/note-defeated! kb ts)
       (recheck-on-sentence kb (:sentence ts)))))
 
 (defn recheck-every-exception
@@ -873,6 +947,55 @@
          (or (rules/arrival-releasable? rsx)
              (rules/exception-arrival-releasable? (provers/rule-exceptions kb rh))))))
 
+(defn index-cycle!
+  "Index the refusal-record key `k` under each handle of `members`, the handles a refusal
+  for a cycle through negation rests on (`checks/fact-stratification-violation`), so a
+  move of one finds it (`cycle-keys!`).  The index is the record's `::cycles` entry."
+  [kb k members]
+  (swap! (reasoning/refused kb) update ::cycles
+         (fn [ix] (reduce (fn [ix h] (update ix h (fnil conj #{}) k)) ix members))))
+
+(defn- record-fact-refusal!
+  "Record under `k`, `[:mint src]` or `[:restatement id]`, the conclusion `sentence` in
+  `context` that `v`, a `:not-stratified` violation, drops: its cycle's members and the
+  derivation's `ingredients` under `:cycle` (`index-cycle!`).  Replaces an entry of `k` for
+  the same conclusion.  Logs the drop, as a firing's drop is logged."
+  [kb k sentence context v ingredients]
+  (let [members (into (:members v) (filter integer?) ingredients)
+        entry   {:conseq sentence :pctx context :cycle members :detail (:detail v)}]
+    (swap! (reasoning/refused kb)
+           update k (fn [cur] (conj (into #{} (remove #(= [sentence context] [(:conseq %) (:pctx %)])) cur)
+                                    entry)))
+    (index-cycle! kb k members)
+    (violations/log-entries kb [(-> (dissoc v :members) (assoc :sentence sentence :context context))])))
+
+(defn cycle-moved
+  "The handles of `moved` that index a refusal for a cycle through negation
+  (`index-cycle!`), in `moved`'s order.  One map read when no such refusal is recorded."
+  [kb moved]
+  (let [ix (::cycles @(reasoning/refused kb))]
+    (if (seq ix) (filterv #(contains? ix %) moved) [])))
+
+(defn cycle-keys!
+  "The refusal-record keys indexed under a handle of `moved` whose entries still name it, in
+  content order, for `chain/release-stratified!` to re-decide.  Takes each such handle out
+  of the index: a re-decision that finds the cycle closed still indexes it again.  A rule
+  whose record overflowed is queued for the re-join an overflow owes."
+  [kb moved]
+  (let [refused (reasoning/refused kb)
+        ix      (::cycles @refused)
+        hits    (when (seq ix) (into [] (keep #(when-let [ks (get ix %)] [% ks])) moved))]
+    (when (seq hits)
+      (swap! refused update ::cycles #(apply dissoc % (map first hits)))
+      (let [m    @refused
+            ks   (into #{} (for [[h ks] hits, k ks
+                                 :let [r (get m k)]
+                                 :when (or (= :overflow r) (some #(contains? (:cycle %) h) r))]
+                             k))
+            over (filterv #(= :overflow (get m %)) ks)]
+        (mark-recheck kb over :all)
+        (nm/sort-by-content-key identity (remove (set over) ks))))))
+
 (defn- refusals-reach?
   "Does rule `rh` hold a refusal `hit?` accepts, or an `:overflow` record, which holds no
   entries to test?  The two edge triggers ask it so a rule refused on every firing is
@@ -923,7 +1046,7 @@
   (when-let [j (p/get-justification (:records kb) jid)]
     (names-any? terms (:bindings j))))
 
-(defn- different-only-rule?
+(defn different-only-rule?
   "Is the rule at `rh` re-checked for a `(different …)` antecedent and for nothing else:
   no `unknown` antecedent, no aggregate, no closed-extent negative and no `exceptWhen`
   stored naming it?  A merge can only withdraw such a rule's firings, never release one."
@@ -1017,13 +1140,18 @@
   bucket.  The record holds `:engines` and `:defeasible`; no rule index keys on them.
   This is the add half of the structural arm of `integrate-sentex`."
   [kb handle rule-sentex]
-  (let [antes (:antecedent rule-sentex)]
+  (let [antes (:antecedent rule-sentex)
+        keys (rules/antecedent-keys antes)]
     (rules/index-rule (:index kb) handle
-                      (rules/antecedent-keys antes)
+                      keys
                       (rules/consequent-index-pred rule-sentex)
+                      (rules/consequent-heads rule-sentex)
                       (:context rule-sentex))
+    (rewrite-query/note-consumer! kb :antecedents handle (boolean (some #{'rewriteOf} keys)))
     (when-let [ks (rule-recheck-keys (reasoning/taxonomy kb) rule-sentex)]
       (rules/index-exception (:index kb) handle ks)
+      (when (rewrite-query/positive-query-consumer? (rules/condition-queries-of (sx/sentence-of rule-sentex)))
+        (rewrite-query/note-consumer! kb :watched handle true))
       ;; `:all`: no trigger sentence, and the rule may have fired before the drain
       (mark-recheck kb [handle] :all))))
 
@@ -1119,6 +1247,8 @@
         preds (exception-recheck-predicates (reasoning/taxonomy kb) (:sentence meta-sentex))]
     (when rh
       (rules/index-exception (:index kb) rh preds)
+      (when (rewrite-query/positive-query-consumer? (sx/exception-query-conjuncts (:sentence meta-sentex)))
+        (rewrite-query/note-consumer! kb :watched rh true))
       (mark-recheck kb [rh] :all)
       (restrength-firings! kb rh)
       (force-rule! kb rh))
@@ -1157,8 +1287,9 @@
         this-preds (exception-recheck-predicates (reasoning/taxonomy kb) (:sentence meta-sentex))]
     (when rh
       (rules/unindex-exception! (:index kb) rh this-preds)
-      (when-let [remaining (seq (rule-remaining-recheck-preds kb rh (:id meta-sentex)))]
-        (rules/index-exception (:index kb) rh remaining))
+      (let [remaining (rule-remaining-recheck-preds kb rh (:id meta-sentex))]
+        (when (seq remaining) (rules/index-exception (:index kb) rh remaining))
+        (rewrite-query/note-consumer! kb :watched rh (rewrite-query/watched-consumer? kb rh (:id meta-sentex))))
       (mark-recheck kb [rh] :all)
       (restrength-firings! kb rh (:id meta-sentex))
       (force-rule! kb rh))))
@@ -1200,6 +1331,19 @@
               :when sx]
         (recheck-defeat-target kb sx)))))
 
+(defn- note-excepted-correspondence!
+  "Queue `[:excepted-correspondence [F P context anchor]]` on `:respell` when `target` is a
+  declaration `(functionCorrespondingPredicate F P n)` of two symbols stated in `context`,
+  on a KB declaring a reifiable function: an `except` of it moved which contexts below
+  `anchor` see it (`chain/reconcile-excepted!`, docs/nat.md, The corresponding predicate)."
+  [kb target anchor]
+  (let [s (:sentence target)]
+    (when (and (seq? s) (= res/correspondence-predicate (first s)))
+      (let [[_ f pred] s]
+        (when (and (symbol? f) (symbol? pred) (nat-read/any-reifiable-functions? kb))
+          (swap! (reasoning/respell kb) conj
+                 [:excepted-correspondence [f pred (:context target) anchor]]))))))
+
 (defn recheck-except
   "An `(except (sentexHandle H))` fact arrived or left, or the `genlCx` edge `edge`, a
   `[sub super]`, moved which contexts see it: queue what the visibility change touches.
@@ -1207,9 +1351,9 @@
       under `{::except-closure c}`.
     * `:except-moves` records H with `edge`, and the drain re-joins from the closure
       (`note-except-move!`, `drain-except-moves!`).
-    * A rule H is queued `:all`; an except H re-checks its own target down the cascade.
-  Re-runs H's arrival sweep for the restatements the move reaches.  See docs/exceptions.md,
-  \"Five channels\"."
+    * A rule H is queued `:all`, an except H re-checks its own target down the cascade, and
+      a declaration H is queued for a respell (`note-excepted-correspondence!`).
+  Re-runs H's arrival sweep for the restatements the move reaches (docs/exceptions.md)."
   ([kb except-sentex] (recheck-except kb except-sentex nil))
   ([kb except-sentex edge]
    (when-let [h (sx/handle-id (second (:sentence except-sentex)))]
@@ -1225,7 +1369,12 @@
                          closure)
            target  (p/get-sentex (:records kb) h)]
        (mark-recheck kb users {::except-closure closure})
+       (when-let [rhs (one-justification-rules kb)]
+         (note-reasks! kb (reask-entries kb rhs (concat (jtms/supports tms h)
+                                                        (mapcat #(jtms/dependents tms %) closure)))))
        (when (and target (rules/rule? target)) (mark-recheck kb [h] :all))
+       (when target
+         (note-excepted-correspondence! kb target (if edge (first edge) (:context except-sentex))))
        (note-except-move! kb h (:context except-sentex) edge)
        (recheck-defeats-reached kb h closure)
        ;; the except moves H's visibility with no relabel, so this sentence posts what H's removal posts
@@ -1450,19 +1599,20 @@
      :detail    {:message (str "naming invariant: " (str/join "; " ps))}}))
 
 (defn inadmissible
-  "The violation that stops `sentence` from being stored in `context`, or nil: naming,
-  the definitional constraints, well-formedness and edge stratification.  Returns a
-  value and never throws, since its callers run after their triggering sentex is stored
-  (argument-type entailment, the computed `genlCx` edge of `context-nat`) or must refuse a
-  hypothesis without failing the query (abduction).
-  `constraint-arm` is `checks/constraint-violation` by default; a nil arm omits the
-  definitional-constraint check for a caller that already ran it.  See docs/argtypes.md."
+  "The violation that stops `sentence` from being stored in `context`, or nil: naming, the
+  definitional constraints, well-formedness, and the stratification of an edge or a grant
+  (`checks/fact-stratification-violation`).  Returns a value and never throws, since its
+  callers run after their triggering sentex is stored (argument-type entailment, the
+  computed `genlCx` edge of `context-nat`) or must refuse a hypothesis without failing the
+  query (abduction).  `constraint-arm` is `checks/constraint-violation` by default; a nil
+  arm omits the definitional-constraint check for a caller that already ran it.  See
+  docs/argtypes.md."
   ([kb sentence context] (inadmissible kb sentence context checks/constraint-violation))
   ([kb sentence context constraint-arm]
    (or (naming-violation kb sentence context)
        (when constraint-arm (constraint-arm kb sentence context))
        (wff-violation kb sentence context)
-       (checks/edge-stratification-violation kb sentence))))
+       (checks/fact-stratification-violation kb sentence))))
 
 (def ^:private empty-entailment-result
   "What an entailment step that minted nothing returns, and the seed of every reduce that
@@ -1519,8 +1669,8 @@
    (let [tms  (reasoning/tms kb)
          recs (:records kb)
          h    (:consequence just)
-         sups (jtms/supports tms h)]
-     (when (and (< 1 (count sups))
+         nsup (jtms/support-count tms h)]
+     (when (and (< 1 nsup)
                 (some #(pos? (reads/stored-count-with-functor (:index kb) %)) route-functors))
        (let [antes    (set (:antecedents just))
              core     (reduce disj antes (or route (filter #(route-edge? kb %) antes)))
@@ -1530,21 +1680,24 @@
                               extra (reduce disj a core)]
                           (and (not= jid (:id just))
                                (= (:informant just) (:informant j))
+                               (= (:reading just) (:reading j))
                                (seq extra)
                                (= (count core) (- (count a) (count extra)))
                                (every? #(and (jtms/in? tms %) (route-edge? kb %)) extra)
                                (same-pairing? kb just j extra)
                                (= (firing-bindings just)
                                   (firing-bindings (p/get-justification recs jid))))))
-             ;; a replaced support holds every member of `core`, so it is a dependent
-             ;; of the first antecedent when that is in `core`: a fact's dependents are
-             ;; its own firings and mints, where a mint named by n facts has n supports
-             lead     (first (:antecedents just))
-             deps     (when (contains? core lead) (jtms/dependents tms lead))
+             ;; a replaced support holds every member of `core`, so it is a dependent of
+             ;; each: the member with the fewest dependents is read when it has fewer than
+             ;; `h` has supports, where a conclusion named by n facts has n supports
+             lead     (when (seq core)
+                        (reduce #(if (< (jtms/dependent-count tms %2) (jtms/dependent-count tms %1)) %2 %1)
+                                (sort core)))
              gone     (filterv replaced
-                               (if (and deps (< (count deps) (count sups)))
-                                 (sort (filter #(= h (:consequence (jtms/justification tms %))) deps))
-                                 sups))]
+                               (if (and lead (< (jtms/dependent-count tms lead) nsup))
+                                 (sort (filter #(= h (:consequence (jtms/justification tms %)))
+                                               (jtms/dependents tms lead)))
+                                 (jtms/supports tms h)))]
          (reduce (fn [acc jid]
                    (let [r (jtms/drop-justification! tms jid)]
                      (p/delete-justification! recs jid)
@@ -1727,15 +1880,22 @@
     (binding [*fact-deadline* nil] (f))
     (f)))
 
+(defn- minted-type
+  "The type the mint `sentence` is a membership in: the last argument of a `genl` edge or of
+  a `declaredType` `(unary_predicate T)` (`class?`), the functor otherwise."
+  [sentence class?]
+  (if (or class? (= 'genl (nm/functor sentence))) (last sentence) (nm/functor sentence)))
+
 (defn- entail-arg-type
   "Materialize one entailment: store `(:assert ent)` in `context` and justify it by
   `[src-handle, the declaration, the genl edges it descended through]`.  Returns
   `{:new [handle] :violations [v]}`: the handle when the sentex was newly created, the
-  violation when it could not be admitted.  Depth is one past the deepest supporter and
-  the strength is `conferred-class`'s.  The informant is the inert rule of the declaring
-  kind (`kv/mint-rules`, `mint-rule-handle!`); an arity-class membership (`:class`) keeps
-  its `declaredType` informant.  A created sentex or a fresh justification that brings an
-  out node in draws its own entailments.  See docs/argtypes.md."
+  violation when it could not be admitted, a cycle through negation excepted
+  (`record-fact-refusal!`).  Depth is one past the deepest supporter and the strength is
+  `conferred-class`'s.  The informant is the inert rule of the declaring kind (`kv/mint-rules`,
+  `mint-rule-handle!`); an arity-class membership (`:class`) keeps its `declaredType`
+  informant.  A justification minting in a type `arity/mintable-type?` refuses is held void.
+  A created sentex or a fresh justification on an OUT node draws its own entailments."
   [kb ent src-handle context pre-checked?]
   (let [sentence (:assert ent)
         because  (vec (:because ent))
@@ -1773,8 +1933,11 @@
         (if-let [v (if memo
                      (caches/get-or! memo k ask)
                      (ask))]
-          {:new [] :violations [(assoc v :sentence sentence :context context
-                                       :entailed-from src-handle)]}
+          (if (= :not-stratified (:violation v))
+            (do (record-fact-refusal! kb [:mint src-handle] sentence context v (cons src-handle because))
+                empty-entailment-result)
+            {:new [] :violations [(assoc v :sentence sentence :context context
+                                         :entailed-from src-handle)]})
           (let [[h2 s2 new?] (if stored
                                [stored (p/get-sentex (:records kb) stored) false]
                                (let [[h sx] (kb/create-sentex kb sentence context nil)]
@@ -1805,6 +1968,10 @@
                     (let [jid  (p/next-id (:records kb))
                           just (jtms/->just jid inf antes h2 {} :monotonic)]
                       (p/put-justification (:records kb) just)
+                      ;; a mint in a type `arity/mintable-type?` refuses is held void before
+                      ;; it is added, so it never brings the record IN (`hold-type-mints!`)
+                      (when-not (arity/mintable-type? kb (minted-type sentence class?))
+                        (jtms/set-forced (reasoning/tms kb) :void [jid] true))
                       ;; no rule fired: a write's audit of its firings' conclusions
                       ;; (`observe/*fired-sink*`) does not take a mint
                       (binding [observe/*fired-sink* nil]
@@ -2232,88 +2399,62 @@
     (when (contains? entailing-declarations (nm/functor sentence))
       [(last sentence)])))
 
-(defn- waiting-types
-  "The types the declaration `sentence` names that `arity/mintable-type?` refuses, `thing`
-  left out: an arity statement binds each to a length other than one.  `thing` mints
-  nothing."
-  [kb sentence]
-  (into [] (remove #(or (= 'thing %) (arity/mintable-type? kb %))) (declared-types sentence)))
-
-(def declared-type-informant
-  "The informant of the justification of `(unary_predicate T)` by an argument declaration
-  naming `T` (`unary-entailments`).  No mint informant (`kb/mint-informant?`): the membership
-  enters no mint family, and only a conflicting length withdraws it
-  (`withdrawn-type-entailments`)."
-  'declaredType)
-
-(defn- declared-type-justifications
-  "The `declaredType` justifications of `(unary_predicate t)` in every context, as
-  `[jid declaration-handle]` pairs in id order: one per declaration naming `t` whose sweep
-  ran while `t` was mintable (`unary-entailments`).  Every context, since `t`'s length
-  holds at every context (`arity/relation-length`) and a declaration's entailment stands
-  in the declaration's context, so the read is global."
-  [kb t]
-  (let [tms  (reasoning/tms kb)
-        recs (:records kb)]
-    (for [h (reads/as-stored-unary-with-arg-global (:index kb) t)
-          :let [sx (p/get-sentex recs h)]
-          :when (and sx (= (list 'unary_predicate t) (:sentence sx)))
-          jid (sort (jtms/supports tms h))
-          :let [j (jtms/justification tms jid)]
-          :when (= declared-type-informant (:informant j))]
-      [jid (first (:antecedents j))])))
-
-(defn withdrawn-type-entailments
-  "The `declaredType` justifications of `(unary_predicate T)` to drop for each relation
-  `T` of `bound` (the relations whose own arity bindings moved, the keys of
-  `arity/drain!`'s `:bound`) whose length no longer admits one alone (`arity/mintable-type?`): an arity
-  statement binding `T` to another length arrived after a declaration naming `T` minted.
-  `withdrawn-type-mints` drops what it minted.  When the length admits one again,
-  `mints-on-lengths` sweeps the declaration.  Returns the justification ids, for the
-  caller to drop.  The stored entailment is read before the length, so a binding of a
-  relation no declaration names reads no length."
-  [kb bound]
-  (into []
-        (for [t     (sort-by nm/print-key (filter symbol? bound))
-              :let  [js (declared-type-justifications kb t)]
-              :when (and (seq js) (not (arity/mintable-type? kb t)))
-              [jid _] js]
-          jid)))
-
 (defn- binds-another-length?
-  "Does the moved binding `[kind value]` refuse its type a mint (`arity/unary-consistent?`):
-  an exact length other than one, an `arityMin` floor above one, or a `variable_arity`
-  release?  Only such a binding's arrival withdraws a mint, and only its departure
-  releases one."
+  "Can the moved binding `[kind value]` move whether its type is mintable
+  (`arity/mintable-type?`): an exact length other than one, an `arityMin` floor above one,
+  or a `variable_arity` release?"
   [[kind v]]
   (case kind :exact (not= 1 v) :min (< 1 (long v)) true))
 
-(defn withdrawn-type-mints
-  "The mint justifications to drop for each type `t` of `bound` (`arity/drain!`'s
-  `:bound`) with a moved binding that refuses a mint (`binds-another-length?`) and an IN
-  length that does not admit one (`arity/mintable-type?`), whether or not a length of one
-  is IN beside it: those concluding a membership `(t x)` or an edge `(genl x t)`.  A
-  record with other support stays.  Returns the justification ids, for the caller to
-  drop.  Reads nothing more while the mint family is empty, and reads `t`'s one-argument
-  tuples alone.  Every context, since `t`'s length holds at every context
-  (`arity/relation-length`)."
-  [kb bound]
-  (let [idx (:index kb)
-        ts  (when (and argument/*assertive-arg-types?* (seq bound)
-                       (pos? (reads/stored-mint-count-global idx)))
-              (into [] (comp (keep (fn [[t kvs]] (when (some binds-another-length? kvs) t)))
-                             (remove #(arity/mintable-type? kb %)))
-                    (sort-by (comp nm/print-key key) (filter (comp symbol? key) bound))))]
-    (if (empty? ts)
-      []
-      (let [tms (reasoning/tms kb)]
-        (into []
-              (for [t  ts
-                    h  (concat (sort (reads/as-stored-shape-tuples-global idx t 1))
-                               (sort (reads/as-stored-with-args idx 'genl {2 t})))
-                    jid (sort (jtms/supports tms h))
-                    :when (kb/mint-informant? kb (:informant (jtms/justification tms jid)))]
-                jid))))))
+(defn- type-mint-justifications
+  "The ids of the justifications minting in the type `t`, in every context: the mint
+  justifications of a membership `(t x)` and of an edge `(genl x t)`, read only when
+  `mints?` (a delay) holds, and the `declaredType` justifications of `(unary_predicate t)`.
+  Every context, since `t`'s length holds at every context (`arity/relation-length`)."
+  [kb t mints?]
+  (let [idx  (:index kb)
+        tms  (reasoning/tms kb)
+        recs (:records kb)
+        of   (fn [ok? hs] (for [h hs, jid (jtms/supports tms h)
+                                :when (ok? (:informant (jtms/justification tms jid)))]
+                            jid))]
+    (concat (when @mints?
+              (of #(kb/mint-informant? kb %)
+                  (concat (reads/as-stored-shape-tuples-global idx t 1)
+                          (reads/as-stored-with-args idx 'genl {2 t}))))
+            (of #{kv/declared-type-informant}
+                (filter #(= (list 'unary_predicate t) (:sentence (p/get-sentex recs %)))
+                        (reads/as-stored-unary-with-arg-global idx t))))))
+
+(defn hold-type-mints!
+  "Hold void each justification minting in a type of `ts` (`type-mint-justifications`) that
+  `arity/mintable-type?` refuses, and release each minting in a type it admits, so a record
+  only such a justification supports is stored and OUT while its type is not mintable
+  (docs/argtypes.md, \"Where it does not mint\").  `ts` is `:all`, every predicate a length
+  binding is stored for, after a `recover`, whose network holds no forced membership;
+  otherwise `arity/drain!`'s `:bound`, of which a type is read only when a moved binding can
+  move its mintability (`binds-another-length?`).  A type no justification mints in reads
+  no length.  Answers the records a release brought IN, for the settle to chain from."
+  [kb ts]
+  (if-not argument/*assertive-arg-types?*
+    []
+    (let [idx    (:index kb)
+          tms    (reasoning/tms kb)
+          mints? (delay (pos? (reads/stored-mint-count-global idx)))
+          ts     (if (= :all ts)
+                   (filter symbol? (reads/as-stored-arity-bound idx))
+                   (keep (fn [[t kvs]] (when (and (symbol? t) (some binds-another-length? kvs)) t)) ts))]
+      (into []
+            (comp (mapcat (fn [t]
+                            (let [js (seq (type-mint-justifications kb t mints?))
+                                  on?   (boolean (and js (not (arity/mintable-type? kb t))))
+                                  moved (filterv #(not= on? (jtms/forced? tms :void %)) js)]
+                              (when (seq moved) (jtms/set-forced tms :void moved on?))
+                              (when-not on? moved))))
+                  (keep #(:consequence (jtms/justification tms %)))
+                  (filter #(jtms/in? tms %))
+                  (distinct))
+            (sort-by nm/print-key ts)))))
 
 ;; ---- a mint the KB holds more specifically ---------------------------------
 ;; `checks/subsumed-mint` reads whether a believed record already says a minted type
@@ -2743,7 +2884,10 @@
   specifically withdraws it as it withdraws a mint it meets on arrival."
   [kb h]
   (when (and argument/*assertive-arg-types?* checks/*prune-subsumed-mints?*)
-    (swap! (reasoning/mint-queues kb) update :unpremised (fnil conj []) h)))
+    (swap! (reasoning/mint-queues kb) update :unpremised (fnil conj []) h))
+  (when (nat-read/named-values-reachable? kb)
+    (when-let [s (some-> (p/get-sentex (:records kb) h) sx/sentence-of)]
+      (nat-read/note-values kb [s] true))))
 
 (defn- drain-unpremised!
   "The handles `note-unpremised!` queued since the last drain, and the queue emptied."
@@ -3597,13 +3741,17 @@
               (into (mapcat #(tax/inverses-under tx %)) walked)))
         (into (inherit/licensing-functors kb ruled?)))))
 
-(defn- genl-inverse-edges
-  "The `[sub super]` pair a `(genlInverse sub super)` sentence adds to the signed closure,
-  as `tax/installed-edges` names a `genl` edge's; none for any other sentence."
+(defn- swap-edges
+  "The `[sub super]` pairs a swap edge sentence adds to the signed closure, as
+  `tax/installed-edges` names a `genl` edge's: one for `(genlInverse sub super)`, and
+  both directions for `(inverse p q)`; none for any other sentence."
   [sentence]
-  (when (and (seq? sentence) (= 'genlInverse (nm/functor sentence)) (= 3 (count sentence))
-             (symbol? (nth sentence 1)))
-    [[(nth sentence 1) (nth sentence 2)]]))
+  (when (and (seq? sentence) (= 3 (count sentence)) (symbol? (nth sentence 1)))
+    (let [[f p q] sentence]
+      (case f
+        genlInverse [[p q]]
+        inverse     (when (symbol? q) (distinct [[p q] [q p]]))
+        nil))))
 
 (defn- rule-reads-above
   "A test of a `genl` edge's upper end `super`: does a stored rule read a term at or above
@@ -3622,8 +3770,8 @@
        memo super
        #(or (tax/genls-global-meets? tax super ruled? missed)
             (tax/genls-global-meets? tax super @lf)
-            ;; above `super` across `genlInverse` edges too, read either way round
-            (when-not (tax/genl-inverse-free? tax)
+            ;; above `super` across swap edges too, read either way round
+            (when-not (tax/swap-free? tax)
               (boolean (some (fn [t] (or (ruled? t) (contains? @lf t)))
                              (rules/signed-reach tax :up super)))))))))
 
@@ -3643,9 +3791,9 @@
         n      (reads/stored-rule-key-count idx)
         nk     (delay (rules/stored-negated-keys idx))
         under? (fn [sub]
-                 ;; the bounded spec walk sees no genlInverse edge, so a KB declaring one
-                 ;; meets the negated keys
-                 (if-let [walk (when (tax/genl-inverse-free? tx) (tax/specs-global-within tx sub n))]
+                 ;; the bounded spec walk sees no swap edge, so a KB declaring one meets
+                 ;; the negated keys
+                 (if-let [walk (when (tax/swap-free? tx) (tax/specs-global-within tx sub n))]
                    (some #(ruled? [:not %]) walk)
                    (let [nk @nk]
                      (when (seq nk)
@@ -3689,7 +3837,7 @@
 (defn sentence-edges
   "The `[sub super]` pairs `sentence` adds to the signed `genl` closure."
   [sentence]
-  (concat (tax/installed-edges sentence) (genl-inverse-edges sentence)))
+  (concat (tax/installed-edges sentence) (swap-edges sentence)))
 
 (defn subsumption-seeds
   "The stored facts the `genl` edges `sentence` installs newly make matchable, as
@@ -4040,16 +4188,23 @@
       (cond (and (contains? edge-functors f) (= 3 (count sentence))) f
             (seq (tax/installed-edges sentence))                        'genl))))
 
+(defn witness-edge?
+  "Does `sentence` hold an edge a firing names as its witness: a closure edge
+  (`closure-edge-relation`) or a swap edge (`swap-edges`)?  A departing one owes a re-join,
+  since a second path can license the firings that named it."
+  [sentence]
+  (boolean (or (closure-edge-relation sentence) (seq (swap-edges sentence)))))
+
 (defn- departed-edge-rejoin
-  "The chaining seeds the edges `sentence` held in a closure owe on leaving it: the facts
-  under its `genl` edges, the contexts its `genlCx` edge showed each other unless
-  `sighted?` is false, and the rules that join over the closure it moved.
-  `closure-edge-relation` must name one."
+  "The chaining seeds the edges `sentence` held owe on leaving.  They are the facts under
+  its `genl` or swap edges, the contexts its `genlCx` edge showed each other unless
+  `sighted?` is false, and the rules that join over the closure it moved.  `witness-edge?`
+  holds of `sentence`."
   ([kb sentence] (departed-edge-rejoin kb sentence true))
   ([kb sentence sighted?]
    (cond-> (vec (subsumption-seeds kb sentence))
      sighted? (into (visibility-seeds kb sentence false))
-     true     (into (closure-reader-rules kb (closure-edge-relation sentence))))))
+     true     (into (some->> (closure-edge-relation sentence) (closure-reader-rules kb))))))
 
 (defn firing-seeds
   "The antecedents of the rule firings (`firing-informant?`) among the justification
@@ -4104,8 +4259,8 @@
 (defn resubsumption-seeds
   "The chaining seeds a teardown owes, given the `removed` sentexes its sweep collected
   and the `removed-jids` justifications: `subsumption-seeds` and `visibility-seeds` in
-  the retraction direction.  A departing `genl` edge seeds its spec subtree, read before
-  the teardown, and the rules with an antecedent on the edge's own relation
+  the retraction direction.  A departing `genl` or swap edge seeds its spec subtree, read
+  before the teardown, and the rules with an antecedent on the edge's own relation
   (`closure-reader-rules`), both only when the sweep took something besides the records
   asked for (`edge-own-mints` excluded).  A departing `genlCx` edge seeds the antecedents
   of the firings that named it (`sighting-seeds`) and its closure-reading rules.  See
@@ -4114,7 +4269,7 @@
   (let [rejoin (when (next (remove (edge-own-mints kb removed removed-jids) removed))
                  (into []
                        (comp (map :sentence)
-                             (filter closure-edge-relation)
+                             (filter witness-edge?)
                              (distinct)
                              (mapcat #(departed-edge-rejoin kb % false)))
                        removed))
@@ -4123,8 +4278,8 @@
       (into [] (distinct) (concat rejoin sighted)))))
 
 (defn departed-edge-seeds
-  "The chaining seeds a settle owes the records among `handles` that hold closure edges
-  (`closure-edge-relation`) and went IN to OUT: `resubsumption-seeds` for an edge that
+  "The chaining seeds a settle owes the records among `handles` that hold witness edges
+  (`witness-edge?`) and went IN to OUT: `resubsumption-seeds` for an edge that
   lost belief rather than its record.  Runs per edge only when a dependent is now OUT
   (docs/nmtms.md, \"Where the layer stops\")."
   [kb handles]
@@ -4140,7 +4295,7 @@
           (comp (filter lost-dependent?)
                 (keep (fn [h]
                         (let [s (:sentence (p/get-sentex (:records kb) h))]
-                          (when (closure-edge-relation s) s))))
+                          (when (witness-edge? s) s))))
                 (distinct)
                 (mapcat #(departed-edge-rejoin kb %))
                 (distinct))
@@ -4171,9 +4326,9 @@
 ;; condition to read, and the firings naming it as their witness are deleted with it, so
 ;; this fn draws them again over the route that made the mint redundant.
 (defn withdrawn-edge-seeds
-  "The chaining seeds a settle owes the closure edges among `handles`, mints it is about
-  to withdraw as redundant (`subsumed-mint-blocks`) or spellings a merge retired
-  (`settle/withdraw-retired-firings!`), that a rule firing names as its witness:
+  "The chaining seeds a settle owes the witness edges (`witness-edge?`) among `handles`,
+  mints it is about to withdraw as redundant (`subsumed-mint-blocks`) or spellings a merge
+  retired (`settle/withdraw-retired-firings!`), that a rule firing names as its witness:
   `departed-edge-rejoin`'s facts and rules for each such edge and each of its twins
   (`handle-twins`).  The condition is a dependent justification whose informant is a rule,
   read before the sweep deletes it.  See docs/argtypes.md."
@@ -4189,7 +4344,7 @@
                 (mapcat (fn [h] (cons h (map :twin (handle-twins kb h)))))
                 (keep (fn [h]
                         (let [s (:sentence (p/get-sentex (:records kb) h))]
-                          (when (closure-edge-relation s) s))))
+                          (when (witness-edge? s) s))))
                 (distinct)
                 (mapcat #(departed-edge-rejoin kb %))
                 (distinct))
@@ -4324,14 +4479,17 @@
                     (map :handle rules))))))
 
 (defn- except-contexts
-  "The contexts holding an `except` of one of the handles `ehs`, read by target
-  (`reads/as-stored-naming-by-context`).  Empty on one count read for a KB storing no
-  `except`."
+  "The contexts holding an `except` of one of the handles `ehs` or of a handle one of them
+  rests on (`exc/support`), read by target (`reads/as-stored-naming-by-context`).  Empty
+  on one count read for a KB storing no `except`."
   [kb ehs]
-  (let [idx (:index kb)]
+  (let [idx (:index kb)
+        tms (reasoning/tms kb)]
     (if-not (reads/stores-any? idx sx/except-functor)
       #{}
-      (into #{} (comp (mapcat #(reads/as-stored-naming-by-context idx sx/except-functor %))
+      (into #{} (comp (mapcat #(exc/support tms % (constantly false)))
+                      (distinct)
+                      (mapcat #(reads/as-stored-naming-by-context idx sx/except-functor %))
                       (map first))
             ehs))))
 
@@ -4381,11 +4539,11 @@
 (defn- copy-witnesses
   "The `[equality except]` witnesses of a reader's copy of `sentex` in `reader`, sorted:
   each equality among `cands` that is believed and stated where the sentex's own context
-  sees it, paired with each believed `except` of it stated in a context `reader` sees and
-  the sentex's own context does not.  Empty for the sentex's own context, and on one
-  deref for a KB storing no `except`.  An except of that `except` is not read here: it
-  withdraws the copy through the copy's third antecedent, so the copies stored do not
-  depend on whether it arrived first."
+  sees it, paired with each believed `except` of it or of a handle it rests on
+  (`exc/support`) stated in a context `reader` sees and the sentex's own context does
+  not.  Empty for the sentex's own context, and on one deref for a KB storing no `except`.
+  An except of that `except` is not read here: it withdraws the copy through the copy's
+  third antecedent (docs/equational.md, \"An except of an equation\")."
   [kb sentex reader cands]
   (let [idx  (:index kb)
         pctx (:context sentex)]
@@ -4394,29 +4552,39 @@
             tms (reasoning/tms kb)
             x?  #(and (tax/sees? tx reader %) (not (tax/sees? tx pctx %)))]
         (not-empty
-         (sort (for [eh     (distinct cands)
-                     :let   [esx (p/get-sentex (:records kb) eh)]
-                     :when  (and esx (jtms/in? tms eh) (tax/sees? tx pctx (:context esx)))
-                     [c xs] (reads/as-stored-naming-by-context idx sx/except-functor eh)
-                     :when  (x? c)
-                     xh     xs
-                     :when  (jtms/in? tms xh)]
-                 [eh xh])))))))
+         (sort (distinct
+                (for [eh     (distinct cands)
+                      :let   [esx (p/get-sentex (:records kb) eh)]
+                      :when  (and esx (jtms/in? tms eh) (tax/sees? tx pctx (:context esx)))
+                      h      (exc/support tms eh (constantly false))
+                      [c xs] (reads/as-stored-naming-by-context idx sx/except-functor h)
+                      :when  (x? c)
+                      xh     xs
+                      :when  (jtms/in? tms xh)]
+                  [eh xh]))))))))
 
 (defn- store-restatement
   "Store `form`, `sentex`'s restatement for `reader`, in `reader`, justified by `[sentex &
   w]` under `informant` for each witness `w` (`justify-twin!`), and carry the sentex's
   handle-naming metas onto it.  Returns `{:form :new}`, or `{:form :violations}` when the
   form is inadmissible on the derivation path (`checks/derivation-violation`, or
-  malformed).  An arbitrable clash is admitted: the twin is stored and its clash decided
-  at each reader like any stored clash."
+  malformed).  A form closing a cycle through negation is recorded as a refusal under
+  `[:restatement id]` instead (`record-fact-refusal!`).  An arbitrable clash is admitted:
+  the twin is stored and its clash decided at each reader like any stored clash."
   [kb sentex reader form informant witnesses]
   (let [existing (kb/find-sentex-handle kb form reader)
         v        (when-not existing
                    (or (checks/derivation-violation kb form reader)
-                       (wff-violation* kb form reader)))]
-    (if v
+                       (wff-violation* kb form reader)
+                       (checks/fact-stratification-violation kb form)))]
+    (cond
+      (= :not-stratified (:violation v))
+      (do (record-fact-refusal! kb [:restatement (:id sentex)] form reader v
+                                (cons (:id sentex) (apply concat witnesses)))
+          {:form form :new []})
+      v
       {:form form :violations [(assoc v :sentence form :context reader :rule (:id sentex))]}
+      :else
       ;; a rule's wrappers ride the record, so the bare rewritten implication is re-wrapped
       (let [twin-sentence (if (rules/rule-sentence? form) (rules/rewrap-sentex form sentex) form)
             [h s new?]    (kb/find-or-create-sentex kb twin-sentence reader)]
@@ -4485,16 +4653,8 @@
                   (and (:handle r) (= reader (:context sentex)))
                   (assoc :superseded [[(:id sentex) displaced]]))))))))))
 
-(defn migrate-sentex
-  "Restate one stored sentex under its terms' representatives, once per reader whose
-  election differs (`reader-contexts-at`; docs/equality.md, \"What a merge does\").
-  `{:new [handles] :superseded [[datum reason]] :violations [v]}`.
-
-  Each twin is re-canonicalized through find-or-create rather than substituted, justified
-  by the original and the equalities of one path per displaced term (`migrate-into`),
-  placed in the reader that elected it, and checked as a derivation
-  (`checks/derivation-violation`).  Only the fact's own context supersedes.  An
-  inadmissible twin is dropped into `:violations`, and its original stays believed."
+(defn- migrate-at-readers
+  "`migrate-sentex`'s restatement once per reader whose election differs."
   [kb sentex]
   (-> (reduce (fn [acc reader]
                 (if-let [r (migrate-into kb sentex reader (:placed acc))]
@@ -4508,17 +4668,69 @@
               (reader-contexts-at kb (:context sentex) (sx/sentence-of sentex)))
       (dissoc :placed)))
 
+(defn- migrate-home
+  "Restate `sentex` in `home`, the context its own context's extent is restated in
+  (`kb/context-home`).  The twin holds the sentence as `home` elects it.  Its
+  justification names the original, the equalities of one path from the context to `home`
+  as CxUniverse sees them, and those of one path per term the sentence displaces.  The
+  original is superseded, and a new twin takes its own readers' restatements
+  (`migrate-at-readers`)."
+  [kb sentex home]
+  (let [ctx       (:context sentex)
+        tx        (reasoning/taxonomy kb)
+        sentence  (sx/sentence-of sentex)
+        vis       (res/visible-supporter-fn kb home)
+        rewritten (sx/canon (kb/rewrite-term* kb sentence vis))
+        displaced (kb/displaced-terms* kb sentence vis)
+        rule-hs   (for [{:keys [handle] :as rule} (tax/rewrite-rules tx)
+                        :when (and (rewrite/rule-applies? rule sentence) (vis handle))]
+                    handle)
+        paths     (cons (tax/scoped-path-supporters tx ctx home (res/visible-supporter-fn kb sx/root-context))
+                        (keep (fn [[t r]] (tax/scoped-path-supporters tx t r vis)) displaced))
+        ws        (reduce (fn [acc path] (for [a acc, alt (tax/path-alternatives path)] (into a alt)))
+                          [(into (sorted-set) rule-hs)]
+                          paths)
+        r         (store-restatement kb sentex home rewritten 'rewriteOf (map vec (distinct ws)))
+        own       (when (seq (:new r))
+                    (migrate-at-readers kb (p/get-sentex (:records kb) (:handle r))))]
+    (merge-with into
+                {:new (:new r []) :violations (:violations r [])
+                 :superseded (if (:handle r) [[(:id sentex) (assoc displaced ctx home)]] [])}
+                (or own {}))))
+
+(defn migrate-sentex
+  "Restate one stored sentex under its terms' representatives: in its context's home when
+  CxUniverse's equalities retire the context (`migrate-home`), else once per reader whose
+  election differs (`migrate-into`; docs/equality.md, \"What a merge does\").  `{:new
+  [handles] :superseded [[datum reason]] :violations [v]}`.  Each twin is re-canonicalized
+  through find-or-create and checked as a derivation (`checks/derivation-violation`).  Only
+  the fact's own context supersedes.  An inadmissible twin is dropped into `:violations`,
+  and its original stays believed."
+  [kb sentex]
+  (if-let [home (kb/context-home kb (:context sentex))]
+    (migrate-home kb sentex home)
+    (migrate-at-readers kb sentex)))
+
+(defn- displaced-extent
+  "The stored sentexes in context `t` when its extent is restated elsewhere
+  (`kb/context-home`), else none."
+  [kb t]
+  (when (kb/context-home kb t)
+    (keep #(p/get-sentex (:records kb) %) (reads/as-stored-in-context (:index kb) t))))
+
 (defn- migrate-class
   "Restate every stored rewritable sentex naming a term of `terms` that some reader's
   election retires (`tax/retirable?`), the global representative included, whatever its
-  label.  Walking the whole class re-migrates when a late `rewriteOf` moves the
-  representative, and an OUT sentex takes a twin labelled OUT with it."
+  label, and every one stored in a context of `terms` whose extent is restated elsewhere
+  (`displaced-extent`).  Walking the whole class re-migrates when a late `rewriteOf` moves
+  the representative, and an OUT sentex takes a twin labelled OUT with it."
   [kb terms]
   (reduce
    (fn [acc t]
      (reduce (fn [acc sx] (merge-with into acc (migrate-sentex kb sx)))
              acc
-             (filter #(kb/rewritable-sentex? kb %) (kb/find-sentexes kb t))))
+             (filter #(kb/rewritable-sentex? kb %)
+                     (distinct (concat (kb/find-sentexes kb t) (displaced-extent kb t))))))
    {:new [] :superseded [] :violations []}
    (filter #(tax/retirable? (reasoning/taxonomy kb) %) terms)))
 
@@ -4535,16 +4747,16 @@
       (migrate-class kb class))))
 
 (defn- migrate-matching
-  "Migrate every rewritable stored sentex naming symbol `head` — the candidate set for
-  a schematic rewrite rule whose LHS is headed by `head`.  The head is present in
-  every occurrence of the redex, so the term index gives a superset in one lookup;
-  `migrate-sentex` recomputes each sentence's normal form and twins only the ones that
-  actually change.  Same shape as `migrate-class`, keyed by the rule's LHS head rather
-  than by a merged term's class, and like it whatever the sentex's label."
-  [kb head]
+  "Migrate every rewritable stored sentex naming `key`, a rule's `rewrite/rule-key`: the
+  candidate set for the rule.  The key is present in every occurrence of the redex, so
+  the term index gives a superset; `migrate-sentex` recomputes each sentence's normal form
+  and twins only the ones that actually change.  Same shape as `migrate-class`, keyed by
+  the rule's LHS rather than by a merged term's class, and like it whatever the sentex's
+  label."
+  [kb key]
   (reduce (fn [acc sx] (merge-with into acc (migrate-sentex kb sx)))
           {:new [] :superseded [] :violations []}
-          (filter #(kb/rewritable-sentex? kb %) (kb/find-sentexes kb head))))
+          (filter #(kb/rewritable-sentex? kb %) (kb/find-sentexes kb key))))
 
 (defn- confluence-violations
   "Non-confluent conflicts the just-cached rule `handle` forms with the other active
@@ -4564,20 +4776,17 @@
                        " and " (pr-str (:form-b nj)))})))
 
 (defn- integrate-rewrite-rule
-  "A schematic equation's add arm (docs/equational.md): orient `(equals a b)` into a
-  terminating rewrite, cache it belief-following in the taxonomy, migrate every stored
-  sentex it normalizes to a justified twin — exactly the shape `integrate-equality`
-  has for a symbol merge — and **surface** any non-confluent conflict with an existing
-  rule into the migration result's `:violations` (filed by `assert` through
-  `violations/report`, and logged).  Returns the migration result so the twins seed
-  chaining.  Orientability was already enforced by `wff/equality-problems`, so `orient`
-  never returns nil here."
+  "A rewrite rule's add arm (docs/equational.md).  It orients the equation into a
+  terminating rewrite (`rewrite/equation-rule`), caches it belief-following in the
+  taxonomy, and migrates every stored sentex it normalizes to a justified twin, the shape
+  `integrate-equality` has for a symbol merge.  A non-confluent conflict with an existing
+  rule goes into the migration result's `:violations`, which `assert` files.  Returns the
+  migration result so the twins seed chaining."
   [kb sentex handle]
-  (let [[_ a b]   (:sentence sentex)
-        [lhs rhs] (rewrite/orient a b)]
+  (let [[lhs rhs] (rewrite/equation-rule (:sentence sentex))]
     (tax/add-rewrite-rule (reasoning/taxonomy kb) handle lhs rhs (:context sentex))
     (recheck-equality-edge kb)
-    (update (migrate-matching kb (first lhs))
+    (update (migrate-matching kb (rewrite/rule-key lhs))
             :violations into (confluence-violations kb sentex handle lhs rhs))))
 
 (defn- equality-wff-problems
@@ -4606,13 +4815,16 @@
   Returns the migration result `{:new :superseded :violations}`, which the derivation
   path seeds chaining with and files (docs/equality.md, \"A rule concluding one of the
   three relations merges\").  A schematic `(equals L R)` goes to
-  `integrate-rewrite-rule`, and a `(rewriteOf T E)` with a compound `E` is a NAT
-  reify-to-term declaration the partition holds no part of (`equality-entry`)."
+  `integrate-rewrite-rule`, and so does a `(rewriteOf T E)` with `T` an argument of a
+  ground `E` (`rewrite/equation-rule`).  A compound `E` is a NAT reify-to-term
+  declaration the partition holds no part of (`equality-entry`)."
   [kb sentex handle]
-  (let [s (:sentence sentex) [_ _ b] s]
+  (let [s (:sentence sentex) [_ a b] s]
     (cond
       (rewrite/schematic-equation? s) (integrate-rewrite-rule kb sentex handle)
-      (sequential? b)                 nil   ; NAT rewriteOf-to-compound
+      (sequential? b)                 (when (= 'rewriteOf (first s))
+                                        (tax/mark-compound-rewrite (reasoning/taxonomy kb) a handle (:context sentex))
+                                        (when (rewrite/equation-rule s) (integrate-rewrite-rule kb sentex handle)))
       :else                           (integrate-equality kb sentex handle))))
 
 (defn- believed-restatements
@@ -4641,7 +4853,7 @@
                 (sort kb/equality-predicates))
           (comp (filter #(and (contains? ctxs (:context %))
                               (sequential? (:lhs %)) (symbol? (first (:lhs %)))))
-                (map (fn [r] {:context (:context r) :terms #{(first (:lhs r))}})))
+                (map (fn [r] {:context (:context r) :terms #{(rewrite/rule-key (:lhs r))}})))
           (tax/rewrite-rules tx))))
 
 (defn- restated-terms-in
@@ -4696,12 +4908,14 @@
   [kb visible-for d]
   (when-let [sx (p/get-sentex (:records kb) d)]
     (let [ctx       (:context sx)
-          visible?  (visible-for ctx)
+          home      (when (kb/rewritable-sentex? kb sx) (kb/context-home kb ctx))
+          at        (or home ctx)
+          visible?  (visible-for at)
           sentence  (sx/sentence-of sx)
           rewritten (sx/canon (kb/rewrite-term* kb sentence visible?))]
-      (when (and (not= rewritten (sx/canon sentence))
-                 (kb/find-sentex-handle kb rewritten ctx))
-        [d (kb/displaced-terms* kb sentence visible?)]))))
+      (when (and (or home (not= rewritten (sx/canon sentence)))
+                 (kb/find-sentex-handle kb rewritten at))
+        [d (cond-> (kb/displaced-terms* kb sentence visible?) home (assoc ctx home))]))))
 
 (defn- reader-copies
   "The reader's copies of datum `d` (`migrate-into`): the consequences of the `except`
@@ -4768,8 +4982,9 @@
   the write path\").  Entries are only dropped or restated here; a spelling starts being
   displaced when migration hands it over in `extra`.  With a `region`, the walk examines
   `extra`, the entries `region` names and the entries naming a term of a class the
-  partition moved (`tax/take-equality-moves!`); `region` nil is the full pass.  Returns
-  `[map changed]` and records `changed` for the next settle (`note-supersession-moves!`)."
+  partition moved (`tax/take-equality-moves!`) or stored in a context of one; `region` nil
+  is the full pass.  Returns `[map changed]` and records `changed` for the next settle
+  (`note-supersession-moves!`)."
   [kb extra region]
   (let [tms   (reasoning/tms kb)
         held  (jtms/superseded tms)
@@ -4782,6 +4997,11 @@
                                        (into (filter #(contains? held %)) region)
                                        (into (comp (mapcat #(kb/find-sentexes kb %))
                                                    (map :id)
+                                                   (filter #(contains? held %))
+                                                   (distinct))
+                                             moved)
+                                       (into (comp (filter #(and (nm/context? %) (not= sx/root-context %)))
+                                                   (mapcat #(reads/as-stored-in-context (:index kb) %))
                                                    (filter #(contains? held %))
                                                    (distinct))
                                              moved)))
@@ -4825,6 +5045,57 @@
   ([kb extra region]
    (jtms/supersede (reasoning/tms kb) (first (supersession-map kb extra region)))))
 
+(defn rederive-refused!
+  "Derive again what the refusal-record key `k` holds refused for a cycle through negation,
+  and answer the new handles to chain from.  `[:mint src]` draws the entailments of the
+  fact `src` (`entail-over`), and `[:restatement id]` the restatements of the sentex `id`
+  (`migrate-sentex`).  The key's entries are dropped first, and a derivation still closing
+  a cycle records its refusal again.  Reports the violations and reconciles the
+  supersessions the derivation found.  Nothing is derived once the fact or sentex is gone."
+  [kb [route h :as k]]
+  (swap! (reasoning/refused kb) dissoc k)
+  (if-let [sx (p/get-sentex (:records kb) h)]
+    (let [r (case route :mint (entail-over kb [sx]) :restatement (migrate-sentex kb sx))]
+      (when (seq (:superseded r)) (refresh-supersessions kb (:superseded r)))
+      (violations/report kb (:violations r))
+      (minted-seeds kb (:new r)))
+    []))
+
+(defn rerecord-cycle-drops!
+  "Derive again, at `recover`, each mint and restatement that is a `genl` edge or a
+  closed-extent grant (`checks/cycle-closing-fact?`), so the ones a cycle through negation
+  drops record their refusals again.  The edge mints are those of the facts a `genlArg`,
+  `argsGenl` or `argAndRestGenl` declaration covers.  The grant mints are those of the facts
+  naming a predicate a grant would close (`checks/grant-closable-predicates`).  The
+  restatements are those of the stored edges and grants naming a merged term.  Answers the new handles to chain from.
+  Reads nothing where no cycle is possible (`checks/cycle-possible?`)."
+  [kb]
+  (if-not (checks/cycle-possible? kb)
+    []
+    (let [idx      (:index kb)
+          recs     (:records kb)
+          closing? (fn [s _] (checks/cycle-closing-fact? s))
+          decl-fs  (into (sorted-set-by nm/compare-form)
+                         (comp (mapcat #(reads/as-stored-with-functor idx %))
+                               (keep #(some-> (p/get-sentex recs %) :sentence second))
+                               (filter symbol?))
+                         '[genlArg argsGenl argAndRestGenl])
+          facts    (into []
+                         (comp (mapcat #(reads/as-stored-with-functor idx %)) (distinct)
+                               (keep #(p/get-sentex recs %)))
+                         decl-fs)
+          minted   (:new (rederive-mints kb (into [] (distinct)
+                                                  (concat facts (mapcat #(facts-naming kb %)
+                                                                        (checks/grant-closable-predicates kb))))
+                                         closing?))
+          stated   (into [] (comp (mapcat #(facts-naming kb %)) (distinct)
+                                  (filter #(checks/cycle-closing-fact? (:sentence %))))
+                         (sort-by nm/print-key (tax/merged-terms (reasoning/taxonomy kb))))
+          migs     (mapv #(migrate-sentex kb %) stated)]
+      (when-let [sup (seq (mapcat :superseded migs))] (refresh-supersessions kb (vec sup)))
+      (violations/report kb (into [] (mapcat :violations) migs))
+      (minted-seeds kb (into (vec minted) (mapcat :new) migs)))))
+
 (defn restate-retired
   "Restate the derived row `sx` just stored (a mint `entail-arg-type` draws, or a
   correspondence derivation `chain/sync-values!` places) when its sentence names a term
@@ -4850,7 +5121,7 @@
   (let [held (jtms/superseded (reasoning/tms kb))
         s    (sx/sentence-of sentex)]
     (cond
-      (or (= 'genlCx (nm/functor s)) (rewrite/schematic-equation? s))
+      (or (= 'genlCx (nm/functor s)) (rewrite/equation-rule s))
       (when (seq held) (refresh-supersessions kb nil nil))
 
       (or (contains? held (:id sentex)) (kb/equality-sentence? s))
@@ -4860,7 +5131,8 @@
   "Store the equality `sentence` in `context` as a derivation from `antes` under
   `informant`, and merge with it.  Returns the migration result.  The antecedents are
   ordered by content (`kb/antecedent-order`), so the list `why` prints does not depend on
-  which fact arrived first."
+  which fact arrived first.  The equality's handle goes to a bound `observe/*fired-sink*`,
+  so a write check reads it as it reads a rule's conclusion."
   [kb sentence context informant antes]
   (let [antes      (kb/antecedent-order kb antes)
         [h s new?] (kb/find-or-create-sentex kb sentence context)
@@ -4871,8 +5143,74 @@
             just (jtms/->just jid informant antes h {} :monotonic)]
         (p/put-justification (:records kb) just)
         (jtms/add-justification (reasoning/tms kb) just)))
+    (when-let [^java.util.Set sink observe/*fired-sink*] (.add sink h))
     (when new? (derived-sentex-added kb s h))
-    (integrate-equality kb s h)))
+    (or (integrate-equality-sentex kb s h) {:new [] :superseded [] :violations []})))
+
+(defn place-merge!
+  "Store the merge `sentence` in `ctx` from `antes` under `informant` (`derive-merge`),
+  apply the supersessions it starts and file its violations, and return the handles that
+  are new content."
+  [kb sentence ctx informant antes]
+  (let [new? (nil? (kb/find-sentex-handle kb sentence ctx))
+        mig  (derive-merge kb sentence ctx informant antes)]
+    (when (seq (:superseded mig)) (refresh-supersessions kb (:superseded mig)))
+    (when (seq (:violations mig)) (violations/report kb (:violations mig)))
+    (cond-> (vec (:new mig))
+      new? (conj (kb/find-sentex-handle kb sentence ctx)))))
+
+(def ^:dynamic *producer-moves*
+  "A volatile of `{:edges #{[sub super]} :arrived #{handle} :departed #{handle} :derived
+  {functor #{handle}} :seeds #{handle}}`, or nil: the belief moves a write's settles make
+  that the structural genlCx producer reads once the write has settled
+  (`context-nat/reconcile-moves`).  A write entry point binds it to `producer-moves`.  The
+  context-move drain adds the edges it read, and a settle pass the datums it revived, those
+  it took OUT and the targets a defeat took from belief.  `derived-sentex-added` adds each
+  derivation, and the producer the restatements a merge it derived stored
+  (`take-producer-seeds!`)."
+  nil)
+
+(defn- edge-joins
+  "What the `genlCx` edge `[sub super]` can have joined into a collision, for
+  `nat/collision-merges`.  `:shown` holds the contexts a reader under `sub` sees through the
+  edge alone (`context-move`'s `:moved`).  `:terms` holds the terms a merge or rewrite rule
+  stated there puts in play, and the arguments of each equality this write derived
+  (`*producer-moves*`' `:derived`)."
+  [kb sub super]
+  (let [shown   (:moved (context-move kb sub super))
+        derived (when-let [v *producer-moves*]
+                  (into #{} (comp (mapcat #(get-in @v [:derived %]))
+                                  (keep #(p/get-sentex (:records kb) %))
+                                  (mapcat #(rest (:sentence %)))
+                                  (filter symbol?))
+                        kb/equality-predicates))]
+    {:shown shown
+     :terms (into derived (restated-terms-in (believed-restatements kb shown) shown))}))
+
+(defn place-collision-merges!
+  "Derive each merge `nat/collision-merges` finds for `sentence` under `natFormula`, from
+  the two rows it reconciles and the `genlCx` edges its context sees them over
+  (`place-merge!`).  Returns `{:merges n :new handles :eqs merge-sentences-stored-new}`."
+  [kb sentence]
+  (let [[_ sub super] sentence
+        merges (vec (nat/collision-merges kb sentence (delay (edge-joins kb sub super))))]
+    (reduce (fn [acc [eq L rows]]
+              (let [new?  (nil? (kb/find-sentex-handle kb eq L))
+                    antes (into rows (mapcat #(checks/visibility-support kb % L)) rows)]
+                (cond-> (update acc :new into (place-merge! kb eq L 'natFormula antes))
+                  new? (update :eqs conj eq))))
+            {:merges (count merges) :new [] :eqs []}
+            merges)))
+
+(defn place-collision-closure!
+  "`place-collision-merges!` for each of the merge sentences `eqs`, then for each merge
+  that stored new, to a fixpoint.  Returns the handles that are new content."
+  [kb eqs]
+  (loop [new [] eqs (vec eqs)]
+    (if-let [[eq & more] (seq eqs)]
+      (let [r (place-collision-merges! kb eq)]
+        (recur (into new (:new r)) (into (vec more) (:eqs r))))
+      new)))
 
 (defn- derive-equality
   "`derive-merge` of `(equals x y)`, the arguments ordered by content, so the sentence
@@ -5352,13 +5690,15 @@
   "The informants other than a mint's of the derivations that cite the `genl` edges they
   descended through and the `genlCx` edges they see their ingredients through, mapped to
   how each is drawn again for the fact at the head of its antecedents.  A merge's
-  restatement and a reader's copy (`migrate-into`) name the `genlCx` edges their reader
-  sees the original through."
+  restatement, a reader's copy (`migrate-into`) and a collision merge
+  (`place-collision-merges!`) name the `genlCx` edges their reader sees the original
+  through."
   '{functional     :functional
     anti_symmetric :anti-symmetric
     rewriteOf      :migration
     except         :migration
-    eternal_predicate :slice-lift})
+    eternal_predicate :slice-lift
+    natFormula     :collision})
 
 (defn- edge-descended-kind
   "How the derivation a justification with `informant` concludes is drawn again: the kind
@@ -5446,13 +5786,13 @@
 
 (defn rederive-descended
   "Draw each of `justs` (`edge-descended-justifications`) again from the taxonomy as it
-  now stands, and return the handles it created as chaining seeds.  Violations are
-  reported and displaced spellings refreshed, as the arrival path does.  An entailment is
-  asked through `retroactive-mints` narrowed to its declaration; a descended equality
-  through `derive-functional-equalities` or `derive-antisymmetric-equalities` over the
-  fact at the head of its antecedents (read off by functor); a restatement through
-  `migrate-sentex` over its original or the target a restated meta names; a slice's copy
-  through `deduce-lifts` over the literal it copies.  Each task is drawn once."
+  now stands, and return the handles it created as chaining seeds, with violations
+  reported and displaced spellings refreshed.  An entailment is asked through
+  `retroactive-mints` narrowed to its declaration; a descended equality through
+  `derive-functional-equalities` or `derive-antisymmetric-equalities` over the fact at the
+  head of its antecedents; a restatement through `migrate-sentex` over its original or the
+  target a restated meta names; a slice's copy through `deduce-lifts` over the literal it
+  copies; a collision merge through `place-collision-closure!`.  Each task is drawn once."
   [kb justs]
   (let [recs  (:records kb)
         facts (fn [antes]
@@ -5468,6 +5808,7 @@
                                       (case kind
                                         :entailment [[kind (nth antes 0) (nth antes 1)]]
                                         (:migration :slice-lift) [[kind (first antes) nil]]
+                                        :collision (let [[a b] (facts antes)] [[kind a b]])
                                         (map (fn [src] [kind src nil]) (facts antes))))))
                           (distinct))
                     justs)
@@ -5487,7 +5828,12 @@
                                                    (if (and tsx (kb/rewritable-sentex? kb tsx))
                                                      (migrate-sentex kb tsx)
                                                      {}))
-                                 :slice-lift     (deduce-lifts kb (:sentence sx) src (:context sx) false)))
+                                 :slice-lift     (deduce-lifts kb (:sentence sx) src (:context sx) false)
+                                 :collision      (if-let [d (p/get-sentex recs dh)]
+                                                   {:new (place-collision-closure!
+                                                          kb [(list 'equals (second (:sentence sx))
+                                                                    (second (:sentence d)))])}
+                                                   {})))
                    acc))
                {:new [] :superseded [] :violations []}
                tasks)]
@@ -5502,6 +5848,17 @@
 ;; (docs/contexts.md#decontextualized_predicate-a-fact-that-belongs-to-the-kb-not-to-one-theory).
 
 (def universal-context sx/root-context)
+
+(defn storage-context
+  "The context a fact whose functor is `pred` is stored in when written in `context`:
+  CxUniverse for a `forced_decontextualized_predicate`, `context` otherwise.  The mark is
+  read KB-wide: a storage context decides what the store holds, which every reader
+  shares, so no reader's view may move it.  `assert-entry/storage-context` stores with
+  it, and `unary-entailments` places a declaration's arity-class memberships with it."
+  [kb pred context]
+  (if (and pred (tax/has-prop? (reasoning/taxonomy kb) :forced-decontextualized pred))
+    universal-context
+    context))
 
 (defn- copy-merges
   "The equalities a lifted copy at `h` in `target` licenses as content new there, as `{:new
@@ -5593,9 +5950,9 @@
 
 (defn- eternal-types
   "`eternal_predicate` and every type below it, through every active `genl` edge: the
-  candidates the scoped read at a slice (`eternal-witnesses`) narrows.  Read unscoped,
-  since a membership or edge stored in one context makes a predicate eternal for a slice
-  that sees that context and an edge it does not."
+  candidates the scoped read at a sliced context (`eternal-witnesses`) narrows.  Read
+  unscoped, since a membership or edge stored in one context makes a predicate eternal for
+  a sliced context that sees that context and not for one that does not."
   [kb]
   (tax/specs-global (reasoning/taxonomy kb) 'eternal_predicate))
 
@@ -5607,17 +5964,20 @@
        (boolean (some (eternal-types kb) (reads/as-stored-unary-predicates (:index kb) pred)))))
 
 (defn- eternal-witnesses
-  "One antecedent vector per membership that makes `pred` eternal at the slice `c`, in
-  content order.  A vector holds a match of `(eternal_predicate pred)` IN and visible from
+  "One antecedent vector per membership that makes `pred` eternal at `c`, a sliced context,
+  in content order.  A vector holds a match of `(eternal_predicate pred)` IN and visible from
   `c` under the network reading (`res/matches-visible`), its route up to `eternal_predicate`
   seen from `c` (`provers/membership-route`), and the `genlCx` edges `c` sees both through
   (`tax/reach-support`).  An edge reading matches in place of the membership it rests on.
-  Empty when no membership makes `pred` eternal at `c`."
+  A membership in `decontextualized_predicate` or a type below it (read unscoped, as
+  `lifts-to-universe?` reads it) is no witness, since its CxUniverse copy holds the fact
+  for every context.  Empty when no membership makes `pred` eternal at `c`."
   [kb pred c]
   (binding [tax/*network-belief* true]
     (let [tms  (reasoning/tms kb)
           recs (:records kb)
           tx   (reasoning/taxonomy kb)
+          lifted (tax/specs-global tx 'decontextualized_predicate)
           ckey (fn [h] (let [r (p/get-sentex recs h)] [(sx/sentence-of r) (:context r)]))
           seen (fn [hs] (into [] (comp (keep #(:context (p/get-sentex recs %)))
                                        (distinct)
@@ -5629,11 +5989,12 @@
             (keep #(when-let [r (provers/membership-route kb % 'eternal_predicate c)]
                      (into r (remove (set r)) (seen r))))
             (nm/sort-by-content-key
-             ckey (into [] (comp (map first) (distinct) (filter #(jtms/in? tms %)))
+             ckey (into [] (comp (map first) (distinct) (filter #(jtms/in? tms %))
+                                 (remove #(contains? lifted (nm/functor (sx/sentence-of (p/get-sentex recs %))))))
                         (res/matches-visible kb (list 'eternal_predicate pred) c)))))))
 
 (defn- witness-reader
-  "`eternal-witnesses` of `pred` as a fn of the slice, read once per slice."
+  "`eternal-witnesses` of `pred` as a fn of the sliced context, read once per context."
   [kb pred]
   (let [memo (volatile! {})]
     (fn [c]
@@ -5673,11 +6034,11 @@
 (defn- slice-lift
   "Deduce the literal `sentence`, stored at `handle` in `context`, into each context of
   `sliced-steps`, each copy from the one below it.  A copy rests on each witness the step's
-  slice reads (`witnesses`, a fn of the slice, `eternal-witnesses` when nil) and the step's
-  `natFormula`.  Returns one `{:new :violations}`, nil when no stored membership can make the
-  predicate eternal (`eternal-candidate?`) or `context` is not a slice.  With `dropped`, a
-  volatile, each copy first drops the justifications from the step's source that name a
-  witness the slice no longer reads (`drop-unread-lifts!`)
+  sliced context reads (`witnesses`, a fn of that context, `eternal-witnesses` when nil) and
+  the step's `natFormula`.  Returns one `{:new :violations}`, nil when no stored membership
+  can make the predicate eternal (`eternal-candidate?`) or `context` is not a slice.  With
+  `dropped`, a volatile, each copy first drops the justifications from the step's source
+  that name a witness the sliced context no longer reads (`drop-unread-lifts!`)
   (docs/contexts.md#eternal_predicate-a-fact-stated-in-a-time-slice-holds-in-what-it-slices)."
   ([kb sentence handle context]
    (slice-lift kb sentence handle context nil nil))
@@ -5687,7 +6048,7 @@
        (let [ws-at (or witnesses (witness-reader kb pred))]
          (reduce (fn [acc [c m nf]]
                    (if-let [h (if (= c context) handle (kb/find-sentex-handle kb sentence c))]
-                     (let [ws (mapv #(cond-> % nf (conj nf)) (ws-at c))]
+                     (let [ws (mapv #(cond-> % nf (conj nf)) (ws-at m))]
                        (when dropped (drop-unread-lifts! kb sentence h m ws dropped))
                        (merge-with into acc (deduce-lift kb sentence h c m 'eternal_predicate ws)))
                      (reduced acc)))
@@ -5708,8 +6069,9 @@
   (keep (fn [[sub super]] (when (contains? ets super) sub)) (tax/installed-edges sentence)))
 
 (defn eternal-declaration?
-  "Does storing `sentence` make a predicate eternal for a slice that sees it: a membership
-  `(S P)` with `S` in `eternal-types`, or a sentence installing a `genl` edge up to one?"
+  "Does storing `sentence` make a predicate eternal for a sliced context that sees it: a
+  membership `(S P)` with `S` in `eternal-types`, or a sentence installing a `genl` edge up
+  to one?"
   [kb sentence]
   (let [ets (eternal-types kb)]
     (boolean (or (eternal-subject sentence ets) (seq (eternal-edge-subs sentence ets))))))
@@ -5723,12 +6085,11 @@
 
 (defn slice-lift-targets
   "The contexts `deduce-lifts` copies the literal `sentence`, stored in `context`, into
-  (`slice-lift`), in step order: each step's sliced context while its slice reads a
-  witness."
+  (`slice-lift`), in step order: each step's sliced context while it reads a witness."
   [kb sentence context]
   (let [pred (literal-predicate sentence)]
     (if (eternal-candidate? kb pred)
-      (into [] (comp (take-while (fn [[c]] (seq (eternal-witnesses kb pred c)))) (map second))
+      (into [] (comp (take-while (fn [[_ m]] (seq (eternal-witnesses kb pred m)))) (map second))
             (sliced-steps kb context))
       [])))
 
@@ -5758,26 +6119,43 @@
             empty-entailment-result
             (sort-by (comp nm/print-key key) by))))
 
+(defn- named-slices
+  "The symbols `K` of the stored `(natFormula K (CxTimeFn c T))` maps, for the context `c`:
+  the `:nat-argument` node `[CxTimeFn 1 c]`, one read whatever `c` stores.  The read spans
+  every context because it finds candidates only; `provers/slice-parts` decides which `K`
+  is a slice of `c`."
+  [kb c]
+  (let [recs (:records kb)]
+    (into [] (keep #(let [k (second (:sentence (p/get-sentex recs %)))] (when (symbol? k) k)))
+          (reads/as-stored-nat-formulas-at-global (:index kb) 'CxTimeFn 1 c))))
+
 (defn- sweep-slices-under
-  "`sweep-slice` over each slice at or below the lower end of the `genlCx` move `m`
-  (`context-move`'s `:under`) that stores a sentex, in content order.  Returns the copies
-  the contexts the move shows owe, as one `{:new :violations}`; nil when it shows none."
+  "`sweep-slice` over each slice that stores a sentex and slices a context at or below the
+  lower end of the `genlCx` move `m` (`context-move`'s `:under`), found through its
+  `natFormula` (`named-slices`), in content order.  The slice itself need not be in
+  `:under`: without `(contextArgGenlCx CxTimeFn 1)` nothing places a slice below what it
+  slices.  Returns the copies the contexts the move shows owe, as one `{:new :violations}`;
+  nil when it shows none."
   [kb m]
   (when (seq (:moved m))
-    (let [idx (:index kb)]
+    (let [idx     (:index kb)
+          under   (set @(:under m))
+          slicing (fn [k] (contains? under (first (provers/slice-parts kb k))))]
       (reduce #(merge-with into %1 (sweep-slice kb %2))
               nil
               (sort-by nm/print-key
-                       (filter #(and (pos? (reads/stored-count-in-context idx %))
-                                     (provers/slice-parts kb %))
-                               @(:under m)))))))
+                       (into #{} (comp (mapcat #(named-slices kb %))
+                                       (filter #(pos? (reads/stored-count-in-context idx %)))
+                                       (filter slicing))
+                             under))))))
 
 (defn resync-slice-lifts
   "The copies an edge reading of `(eternal_predicate P)` arriving or leaving owes `P`'s
   slice facts, for each such sentence among `readings`.  For each, `sweep-eternal` brings
-  every copy's justifications to the witnesses its slice reads now.  A reading answers for
-  the membership it rests on.  Returns `{:new :violations :removed}`, `:removed` the merged
-  `jtms/drop-justification!` results for the caller to apply; nil when no reading is one."
+  every copy's justifications to the witnesses its sliced context reads now.  A reading
+  answers for the membership it rests on.  Returns `{:new :violations :removed}`, `:removed`
+  the merged `jtms/drop-justification!` results for the caller to apply; nil when no
+  reading is one."
   [kb readings]
   (let [ps (into (sorted-set-by #(compare (nm/print-key %1) (nm/print-key %2)))
                  (keep (fn [s] (when (and (seq? s) (= 2 (count s)) (= 'eternal_predicate (first s))
@@ -5842,20 +6220,51 @@
 
 (defn- unary-entailments
   "The `unary_predicate` memberships the declaration `sentence` stored at `dh` entails of
-  the types it mints in, each justified by the declaration alone, in the declaration's
-  context: a type is a unary predicate, and a declared type no arity statement binds to
-  another length is one (`arity/mintable-type?`).  Never withheld as a subsumed mint is,
-  since a type's arity holds at every context (`arity/relation-length`); a new membership
-  lifts as every new mint does (`entail-arg-type`).  `thing` is left out."
+  the types it mints in, each justified by the declaration alone: a type is a unary
+  predicate.  A type `arity/mintable-type?` refuses holds the justification void
+  (`entail-arg-type`).  Each is stored where `assert` stores the membership stated in the
+  declaration's context (`storage-context`), CxUniverse in the shipped KB, so the
+  declarations naming a type justify one record.  Never withheld as a subsumed mint is,
+  since a type's arity holds at every context (`arity/relation-length`).  `thing` is left
+  out."
   [kb sentence dh]
-  (let [ctx (:context (p/get-sentex (:records kb) dh))]
+  (let [ctx (storage-context kb 'unary_predicate (:context (p/get-sentex (:records kb) dh)))]
     (reduce (fn [acc t]
               (merge-with into acc
                           (entail-arg-type kb {:assert (list 'unary_predicate t) :because []
-                                               :kind declared-type-informant :class true}
+                                               :kind kv/declared-type-informant :class true}
                                            dh ctx false)))
             empty-entailment-result
             (distinct (remove #{'thing} (declared-types sentence))))))
+
+(defn declared-types-rehomed
+  "The `declaredType` memberships stored where `unary-entailments` no longer places them,
+  drawn again where it does: `{:new [handle …] :violations [v …] :dropped [jid …]}`, the
+  records the draw created, and the justifications of the `(unary_predicate T)` records
+  stored outside `storage-context` that the caller drops.  The draw runs first, so the
+  record at the new home holds the declaration before the old justification goes.
+  Empty unless `pred` is `unary_predicate`: a `(forced_decontextualized_predicate
+  unary_predicate)` arriving after a declaration below CxUniverse minted there leaves
+  the KB the other order builds (`core/rehome-forced-extent!`)."
+  [kb pred]
+  (if-not (= 'unary_predicate pred)
+    (assoc empty-entailment-result :dropped [])
+    (let [tms   (reasoning/tms kb)
+          recs  (:records kb)
+          stale (for [h (sort (reads/as-stored-with-functor (:index kb) 'unary_predicate))
+                      :let [sx (p/get-sentex recs h)]
+                      :when (and sx (not= (:context sx) (storage-context kb pred (:context sx))))
+                      jid (sort (jtms/supports tms h))
+                      :let [j (jtms/justification tms jid)]
+                      :when (= kv/declared-type-informant (:informant j))]
+                  [jid (first (:antecedents j))])
+          drawn (reduce (fn [acc dh]
+                          (if-let [d (p/get-sentex recs dh)]
+                            (merge-with into acc (unary-entailments kb (:sentence d) dh))
+                            acc))
+                        empty-entailment-result
+                        (distinct (map second stale)))]
+      (assoc drawn :dropped (mapv first stale)))))
 
 (defn entail-existing
   "When an `(arg P n T)` / `(genlArg P n T)` / `(interArg P n T m U)` declaration
@@ -5864,10 +6273,10 @@
   what is stored, not believed, over `P`'s whole spec subtree (`subtree-sentexes`,
   snapshotted before the first mint); `(resultArg F n)` reads the `natFormula` facts of
   `F`'s applications (`result-arg-extent`) and an `interArgEqual` the tuples holding its
-  value at its trigger position (`trigger-extent`).  A declaration whose type is not
-  mintable (`arity/mintable-type?`) or whose every type is `thing` reads no extent;
-  `mints-on-lengths` runs it later.  An inert sentex or computed `genlCx` edge draws
-  nothing (`retroactive-mints`).  A declaration that mints entails its types'
+  value at its trigger position (`trigger-extent`).  A declaration naming a type no
+  membership can be minted in (`arity/mint-target?`), or whose every type is `thing`,
+  reads no extent.  An inert sentex or computed `genlCx` edge draws nothing
+  (`retroactive-mints`).  A declaration that mints entails its types'
   `unary_predicate` memberships (`unary-entailments`).  `triggered-mints` reaches a trigger
   arriving last.  See docs/argtypes.md."
   [kb sentence dh]
@@ -5876,7 +6285,7 @@
           ra?      (and (= 'resultArg f) (= 2 (nm/arity sentence)))
           types    (declared-types sentence)]
       (when (and (or ra? (= (entailing-declarations f) (nm/arity sentence))) (symbol? pred))
-        (if (or (seq (waiting-types kb sentence))
+        (if (or (some #(not (or (= 'thing %) (arity/mint-target? %))) types)
                 (and (seq types) (every? #{'thing} types)))
           empty-entailment-result
           (let [placements (placements-of kb dh)]
@@ -5889,75 +6298,6 @@
                                   (cond ra?                  (result-arg-extent kb pred)
                                         (= 'interArgEqual f) (trigger-extent kb pred (nth sentence 2) (nth sentence 3))
                                         :else                (subtree-sentexes kb pred)))))))))))
-
-(defn mints-on-lengths
-  "The mints the stored content naming a type of `bound` owes now that the type's own
-  length admits one (`arity/mintable-type?`), as one `{:new :violations}`.  `bound` maps
-  each relation whose arity bindings moved to those bindings' `#{[kind value]}`
-  (`arity/drain!`'s `:bound`).  Per mintable type `t`, in content order: each stored
-  entailing declaration naming `t` with no `declaredType` justification of
-  `(unary_predicate t)` (`declared-type-justifications`) runs `entail-existing`; each stored
-  fact naming `t` where an `argArg` names its type, and each `natFormula` fact naming `t`
-  under a `resultArg` function, draws through `deduce-placed`.  The `argArg` predicates are
-  read KB-wide.  An inert declaration sweeps nothing."
-  [kb bound]
-  (let [ts     (when argument/*assertive-arg-types?*
-                 (into [] (comp (keep (fn [[t kvs]] (when (some binds-another-length? kvs) t)))
-                                (filter #(arity/mintable-type? kb %)))
-                       (sort-by (comp nm/print-key key) (filter (comp symbol? key) bound))))]
-    (if (empty? ts)
-      empty-entailment-result
-      (let [idx   (:index kb)
-            recs  (:records kb)
-            tax   (reasoning/taxonomy kb)
-            kinds (sort-by nm/print-key (remove #{'argArg} (keys entailing-declarations)))
-            sx-of #(p/get-sentex recs %)
-            ;; the argument positions an `argArg` names a fact's type at, and the
-            ;; functions a `resultArg` types the results of
-            aa-at (into (sorted-set)
-                        (keep #(when-let [d (:sentence (sx-of %))]
-                                 (when (and (= 3 (nm/arity d)) (pos-int? (nth d 3))) (nth d 3))))
-                        (reads/as-stored-with-functor idx 'argArg))
-            ra-fs (into #{} (keep #(when-let [d (:sentence (sx-of %))]
-                                     (when (= 2 (nm/arity d)) (second d))))
-                        (reads/as-stored-with-functor idx 'resultArg))
-            aa?   #(seq (tax/props-over tax (tax/arg-declaration-props 'argArg) %))
-            ra?   (fn [t sx]
-                    (let [s (:sentence sx) e (nth s 2 nil)]
-                      (and (= 'natFormula (nm/functor s)) (sequential? e)
-                           (contains? ra-fs (first e)) (some #{t} (rest e)))))]
-        (reduce
-         (fn [acc t]
-           (let [swept (into #{} (map second) (declared-type-justifications kb t))
-                 decls (into []
-                             (for [f kinds
-                                   :let [n (entailing-declarations f)]
-                                   h (sort (reads/as-stored-with-args idx f {n t}))
-                                   :when (and (not (swept h)) (not (inert-handle? kb h)))
-                                   :let [d (sx-of h)]
-                                   :when (and d (= n (nm/arity (:sentence d))))]
-                               d))
-                 facts (into (sorted-set)
-                             cat
-                             [(for [m aa-at
-                                    q (sort-by nm/print-key (reads/as-stored-predicates-at-arg idx m t))
-                                    :when (aa? q)
-                                    h (reads/as-stored-with-args idx q {m t})]
-                                h)
-                              (when (seq ra-fs)
-                                (filter #(some->> (sx-of %) (ra? t)) (reads/as-stored-with-term idx t)))])]
-             (as-> acc acc
-               (reduce (fn [acc d]
-                         (merge-with into acc (or (entail-existing kb (:sentence d) (:id d))
-                                                  empty-entailment-result)))
-                       acc decls)
-               (reduce (fn [acc h]
-                         (if-let [sx (sx-of h)]
-                           (merge-with into acc (deduce-placed kb (:sentence sx) h (:context sx)))
-                           acc))
-                       acc facts))))
-         empty-entailment-result
-         ts)))))
 
 (defn- lift-existing
   "Deduce every stored `(pred ...)` and `(not (pred ...))` sentex outside CxUniverse into
@@ -6044,13 +6384,13 @@
 
 (defn- equality-arrival-sweep
   "The migration an equality sentex's arrival runs, run again over what is stored now:
-  `migrate-matching` over a schematic equation's LHS head, `migrate-class` over a ground
-  merge's class.  nil for a NAT `rewriteOf`-to-compound, which restates nothing."
+  `migrate-matching` over a rewrite rule's `rewrite/rule-key`, `migrate-class` over a
+  ground merge's class."
   [kb sentence]
   (let [[_ a b] sentence]
     (cond
-      (rewrite/schematic-equation? sentence)
-      (migrate-matching kb (first (first (rewrite/orient a b))))
+      (rewrite/equation-rule sentence)
+      (migrate-matching kb (rewrite/rule-key (first (rewrite/equation-rule sentence))))
 
       (and (symbol? a) (symbol? b))
       (let [tx (reasoning/taxonomy kb)]
@@ -6140,21 +6480,25 @@
     (update r :new #(minted-seeds kb %))))
 
 (defn except-move-sweeps
-  "Run, for each handle in `handles` whose visibility an `except` moved, the sweep its
-  arrival runs over the facts already stored: the equality migration for an equality
-  sentex (`equality-arrival-sweep`) and `revived-declaration-sweeps`' for a merge or lift
-  mark (docs/equational.md, \"An except of an equation\").  Returns one `{:new :superseded
-  :violations :removed}`, or nil when `handles` is empty.  With `sweep?`, the
-  argument-type derivations resting on a record an `except` now hides are dropped
-  (`drop-hidden-mints!`, `:removed` for the caller to apply) and the records it stopped
-  hiding draw again (docs/argtypes.md, \"An except of an ingredient\"): for a handle in
-  `whole`, every context and the record's own arrival sweep (`revealed-entailments`); for
-  one only in `scoped`, `{handle #{[sub super]}}`, the contexts under each `sub`
-  (`entail-under-context-edge`)."
+  "Run, for each handle in `handles` whose visibility an `except` moved and each equality
+  in their consequence closure, the sweep its arrival runs over the facts already stored:
+  the equality migration for an equality sentex (`equality-arrival-sweep`) and
+  `revived-declaration-sweeps`' for a merge or lift mark (docs/equational.md, \"An except
+  of an equation\").  Returns one `{:new :superseded :violations :removed}`, or nil when
+  `handles` is empty.  With `sweep?`, the argument-type derivations resting on a record an
+  `except` now hides are dropped (`drop-hidden-mints!`, `:removed` for the caller to
+  apply) and the records it stopped hiding draw again (docs/argtypes.md, \"An except of an
+  ingredient\"): for a handle in `whole`, every context and the record's own arrival sweep
+  (`revealed-entailments`); for one only in `scoped`, `{handle #{[sub super]}}`, the
+  contexts under each `sub` (`entail-under-context-edge`)."
   [kb handles sweep? whole scoped]
   (when (seq handles)
-    (let [sxs   (sort-by (juxt (comp nm/print-key :sentence) (comp nm/print-key :context))
-                         (keep #(p/get-sentex (:records kb) %) handles))
+    (let [by-content #(sort-by (juxt (comp nm/print-key :sentence) (comp nm/print-key :context)) %)
+          sxs   (by-content (keep #(p/get-sentex (:records kb) %) handles))
+          eqs   (by-content (filter #(kb/equality-sentence? (:sentence %))
+                                    (keep #(p/get-sentex (:records kb) %)
+                                          (remove (set handles)
+                                                  (jtms/consequence-closure (reasoning/tms kb) handles)))))
           on?   (and argument/*assertive-arg-types?* (any-declaring? kb))
           mints (when on? (except-moved-records kb (filter #(contains? whole (:id %)) sxs)))
           edges (when on?
@@ -6186,7 +6530,7 @@
                               :else
                               (revived-declaration-sweeps kb [id]))))
               (assoc drawn :superseded [] :removed gone)
-              sxs))))
+              (concat sxs eqs)))))
 
 (defn- except-move-terms
   "The terms whose occurrences an `except` of one of `targets` can re-spell: for every
@@ -6213,7 +6557,7 @@
                 (mapcat (fn [[_ a b :as s]]
                           (cond
                             (not (kb/equality-sentence? s))    nil
-                            (rewrite/schematic-equation? s) [(first (first (rewrite/orient a b)))]
+                            (rewrite/equation-rule s)       [(rewrite/rule-key (first (rewrite/equation-rule s)))]
                             (and (symbol? a) (symbol? b))   (into (set (tax/equiv-class tx a))
                                                                   (tax/equiv-class tx b))))))
           seen)))
@@ -6243,17 +6587,18 @@
   (keys (:pending @(reasoning/except-moves kb))))
 
 (defn take-except-moves!
-  "Empty `:except-moves`, all but its `:gained` note, and return what the settle owes it:
-  `{:extra [[datum reason]] :region #{datum} :full? bool :moved #{h}}` — the
-  supersessions `except-move-sweeps` found, the superseded data an `except` that moved
-  can change (`except-move-region`), whether a move is still pending undrained, which
-  leaves the supersession reconcile nothing narrower than a full pass, and the handles
-  the drained moves hid or showed.  nil when nothing moved."
+  "Empty `:except-moves` but its `:gained` note and its `:reask` queue, and return what the
+  settle owes it, `{:extra [[datum reason]] :region #{datum} :full? bool :moved #{h}}`.
+  `:extra` holds the supersessions `except-move-sweeps` found, `:region` the superseded
+  data a moved `except` can change (`except-move-region`), and `:moved` the handles the
+  drained moves hid or showed.  `:full?` says a move is still pending undrained, which
+  leaves the supersession reconcile nothing narrower than a full pass.  It answers nil
+  when nothing moved."
   [kb]
   (let [a (reasoning/except-moves kb)
         m @a]
     (when (or (seq (:pending m)) (seq (:extra m)) (seq (:region m)) (seq (:moved m)))
-      (reset! a (select-keys m [:gained]))
+      (reset! a (select-keys m [:gained :reask]))
       {:extra (:extra m) :region (:region m) :moved (:moved m)
        :full? (boolean (seq (:pending m)))})))
 
@@ -6499,14 +6844,6 @@
   `genlCx` move moves and seeds no chaining from it (`drain-context-moves!`)."
   true)
 
-(def ^:dynamic *producer-moves*
-  "A volatile of `{:edges #{[sub super]} :arrived #{handle} :derived {functor #{handle}}}`,
-  or nil: the belief moves a write's settles make that the structural genlCx producer
-  reads once the write has settled (`context-nat/reconcile-moves`).  A write entry point
-  binds it to `producer-moves`.  The context-move drain adds the edges it read, a settle
-  pass the datums it revived, and `derived-sentex-added` each derivation."
-  nil)
-
 (defn producer-moves
   "A fresh value for a write entry point to bind `*producer-moves*` to."
   []
@@ -6526,6 +6863,15 @@
       (vreset! v {})
       m)))
 
+(defn take-producer-seeds!
+  "The handles under `:seeds` of `*producer-moves*`, removed from it, for the caller to
+  re-chain before it settles."
+  []
+  (when-let [v *producer-moves*]
+    (let [s (:seeds @v)]
+      (vswap! v dissoc :seeds)
+      s)))
+
 (defn- note-derived-move!
   "Add a derived sentex's `handle` under its functor `f` in `*producer-moves*`' `:derived`,
   which `context-nat/reconcile-moves` reads by the functors it reconciles."
@@ -6537,10 +6883,10 @@
   "Queue the minted constants whose values the `genlCx` move `m` can place differently
   (`chain/sync-values!`): the constants each sentence stored in `:gained-below` names
   (`nat-read/note-values`), and for each declaration stored there `[:valued-facts f]`.
-  Linear in what `:gained-below` stores, behind `nat-read/values-reachable?` or
-  `nat-read/rewrites-reachable?`."
+  Linear in what `:gained-below` stores, behind the minted/named value-presence checks."
   [kb m]
-  (when (or (nat-read/values-reachable? kb) (nat-read/rewrites-reachable? kb))
+  (when (or (nat-read/values-reachable? kb) (nat-read/rewrites-reachable? kb)
+            (nat-read/named-values-reachable? kb))
     (let [idx   (:index kb)
           recs  (:records kb)
           sxs   (into [] (comp (mapcat #(reads/as-stored-in-context idx %))
@@ -6549,6 +6895,7 @@
                       (sort-by nm/name-key @(:gained-below m)))
           decl? #(and (seq? %) (= res/correspondence-predicate (first %)))]
       (nat-read/note-values kb (remove decl? sxs) true)
+      (nat-read/note-values kb (filter decl? sxs) true)
       (when-let [fs (seq (into #{} (comp (filter decl?) (map second) (filter symbol?)) sxs))]
         (swap! (reasoning/respell kb) into (map #(vector :valued-facts %)) fs)))))
 
@@ -6573,6 +6920,90 @@
                        (fns (reads/as-stored-with-args idx res/correspondence-predicate {}))))]
       (when (seq fs)
         (swap! (reasoning/respell kb) into (map #(vector :corresponded %)) fs)))))
+
+(defn- note-correspondence-move!
+  "Queue `[:correspondence F P]` on `:respell` when `sentex` is a declaration
+  `(functionCorrespondingPredicate F P n)` of two symbols on a KB declaring a reifiable
+  function.  The integration choke points and the removal one call it, so a declaration
+  asserted, derived or removed re-spells the rules applying `F` and the rules a
+  correspondence of `F` respelled (`chain/reconcile-reified!`, docs/nat.md, The
+  corresponding predicate).  Every other sentex costs a field read and a compare."
+  [kb sentex]
+  (let [s (:sentence sentex)]
+    (when (and (seq? s) (= res/correspondence-predicate (first s)))
+      (let [[_ f pred] s]
+        (when (and (symbol? f) (symbol? pred) (nat-read/any-reifiable-functions? kb))
+          (swap! (reasoning/respell kb) conj [:correspondence f pred]))))))
+
+(defn note-relabelled-correspondences!
+  "Queue `[:correspondence F P]` on `:respell` for each stored declaration among the
+  settle's touched set `region` whose label moved: in `jtms/touched-in` and not believed
+  now, or the converse.  A declaration a firing concludes moves with no store when the
+  firing turns valid or void, and re-spells the rules applying `F` as a stored or removed
+  one does (`note-correspondence-move!`, which also covers a node the settle created).
+  `region` is a delay; reads one record per older handle whose label moved, and no index."
+  [kb region]
+  (when (nat-read/any-reifiable-functions? kb)
+    (let [tms   (reasoning/tms kb)
+          new   (jtms/touched-new tms)
+          tin   (jtms/touched-in tms)
+          moved (filterv #(and (not (contains? new %)) (not= (contains? tin %) (jtms/in? tms %)))
+                         @region)]
+      (doseq [h moved]
+        (some->> (p/get-sentex (:records kb) h) (note-correspondence-move! kb))))))
+
+(def inverse-inclusions
+  "Per meet order, the predicates whose stored `(P b a)` places `a` below `b` under it:
+  `includesInstant` places an instant below the time that includes it, as time.txt's
+  `subtimeOf` rule concludes for a time, and a meet's arguments are times."
+  '{subtimeOf #{includesInstant}})
+
+(defn- inclusion-fact?
+  "Is `sentence` a binary fact placing one argument below the other under a meet order:
+  a `(P x y)` with `P` the order or below it in the `genl` closure, or one of
+  `inverse-inclusions`?  The closure is read unscoped, as `res/meet-order` reads it."
+  [tx orders [p x y :as sentence]]
+  (and (seq? sentence) (= 3 (count sentence)) (symbol? p) (some? x) (some? y)
+       (boolean (some #(or (contains? (get inverse-inclusions %) p) (contains? (tax/specs-global tx %) p))
+                      orders))))
+
+(defn- meet-applications
+  "The ground applications of a function `meets` (`tax/meet-functions`) declares a meet,
+  at any depth of `form`."
+  [meets form]
+  (filter #(and (seq? %) (contains? meets (first %)) (sx/ground-term? %))
+          (tree-seq sequential? seq form)))
+
+(defn- note-meets!
+  "Queue `[:meet E]` on `:respell` for each meet application `E` a literal `sentex`
+  storing or leaving names.  An inclusion fact `(P x y)` (`inclusion-fact?`) queues each
+  stored meet application with `x` and `y` among its arguments, and a `(meetFunctionOf F
+  R)` each stored application of `F`.  `chain/sync-meets!` drains them
+  (docs/canonicalization.md, A meet a stated inclusion absorbs).  A KB declaring no meet
+  costs one map read."
+  [kb sentex]
+  (let [tx    (reasoning/taxonomy kb)
+        meets (tax/meet-functions tx)]
+    (when (and (seq meets) (nil? (:antecedent sentex)))
+      (let [s      (:sentence sentex)
+            [p x y] s
+            es     (cond
+                     (not (seq? s)) nil
+                     (kb/equality-sentence? s) nil
+                     (= 'meetFunctionOf p)
+                     (when (symbol? x)
+                       (mapcat #(meet-applications {x #{}} (:sentence %))
+                               (remove :antecedent (kb/find-sentexes kb x))))
+                     :else
+                     (concat (meet-applications meets s)
+                             (when (inclusion-fact? tx (sort (into #{} cat (vals meets))) s)
+                               (for [sx (kb/find-sentexes-all kb [x y])
+                                     :when (nil? (:antecedent sx))
+                                     e  (meet-applications meets (:sentence sx))
+                                     :when (and (some #{x} (rest e)) (some #{y} (rest e)))]
+                                 e))))]
+        (when (seq es)
+          (swap! (reasoning/respell kb) into (map #(vector :meet %)) (distinct es)))))))
 
 (def ^:private move-families
   "Every family a `genlCx` move re-checks, read by `drain-context-moves!` with the move's
@@ -6870,9 +7301,10 @@
   "One entry-shape for all three equality relations; whether a preferred term is named
   is read off the sentence by `kb/preferred-term` inside the arms.  Two compound shapes
   are not a symbol merge: `(rewriteOf T E)` with a compound `E` is a NAT reify-to-term
-  declaration (docs/nat.md), skipped by every arm; `(equals L R)` with a variable-bearing
-  compound side is a schematic equational rule, cached in the taxonomy's rewrite-rule set
-  (docs/equality.md).  `wff/equality-problems` waves both through.  The add arm is
+  declaration (docs/nat.md), maintained as a supported presence guard, and as the ground
+  rule `E → T` when `T` is an argument of `E`; `(equals L R)` with a variable-bearing compound side is a schematic
+  equational rule.  Both rules are cached in the taxonomy's rewrite-rule set
+  (docs/equational.md).  `wff/equality-problems` waves both through.  The add arm is
   `integrate-equality-sentex`, which the derivation path calls too."
   {:integrate    integrate-equality-sentex
    ;; the merge (or rule) survives while any other sentex still asserts it; the last supporter's removal splits the class and returns the displaced spellings, which owes the re-check trigger
@@ -6882,7 +7314,12 @@
                        (rewrite/schematic-equation? s)
                        (do (tax/del-rewrite-rule! (reasoning/taxonomy kb) (:id sx))
                            (recheck-equality-edge kb))
-                       (sequential? b) nil
+                       (sequential? b) (when (= 'rewriteOf (first s))
+                                         (tax/unmark-compound-rewrite! (reasoning/taxonomy kb) a (:id sx))
+                                         (when (rewrite/equation-rule s)
+                                           (tax/del-rewrite-rule! (reasoning/taxonomy kb) (:id sx))
+                                           (recheck-equality-edge kb))
+                                         nil)
                        :else
                        (do (tax/del-equality! (reasoning/taxonomy kb) a b (:id sx))
                            ;; no class to narrow by on this side: what a released
@@ -6898,7 +7335,10 @@
                        (rewrite/schematic-equation? s)
                        (when-let [[lhs rhs] (rewrite/orient a b)]
                          (tax/add-rewrite-rule tax id lhs rhs ctx))
-                       (sequential? b) nil
+                       (sequential? b) (when (= 'rewriteOf (first s))
+                                         (tax/mark-compound-rewrite tax a id ctx)
+                                         (when-let [[lhs rhs] (rewrite/equation-rule s)]
+                                           (tax/add-rewrite-rule tax id lhs rhs ctx)))
                        :else (tax/add-equality tax a b id (kb/preferred-term s)))))
    :wff          equality-wff-problems})
 
@@ -7487,6 +7927,8 @@
   path) and `integrate-twin` (migration), so the dispatch lives in one place."
   [kb sentex handle]
   (store-declared-mint-rule! kb sentex)
+  (note-correspondence-move! kb sentex)
+  (note-meets! kb sentex)
   (if-let [e (get table (nm/functor (sx/sentence-of sentex)))]
     (when-let [g (:integrate e)] (g kb sentex handle))
     (structural-integrate kb sentex handle)))
@@ -7519,6 +7961,8 @@
   reference-counted on the departing sentex's id, so an entry survives while
   another sentex still asserts the same claim."
   [kb sentex]
+  (note-correspondence-move! kb sentex)
+  (note-meets! kb sentex)
   (let [sentence (sx/sentence-of sentex)
         f        (nm/functor sentence)]
     (cond
@@ -7537,7 +7981,10 @@
       (do (rules/unindex-rule! (:index kb) (:id sentex)
                                (rules/antecedent-keys (:antecedent sentex))
                                (rules/consequent-index-pred sentex)
+                               (rules/consequent-heads sentex)
                                (:context sentex))
+          (rewrite-query/note-consumer! kb :antecedents (:id sentex) false)
+          (rewrite-query/note-consumer! kb :watched (:id sentex) false)
           ;; Deregistration recomputes the re-check predicates from the stored sentex, so a
           ;; mismatched call cannot leave a stale posting.  An exceptWhen exception's are withdrawn
           ;; by its meta-sentex leaving.
@@ -7579,6 +8026,8 @@
   entailment and `derive-equality`.  See docs/taxonomy.md and docs/exceptions.md."
   [kb sentex handle]
   (store-declared-mint-rule! kb sentex)
+  (note-correspondence-move! kb sentex)
+  (note-meets! kb sentex)
   (let [sentence (sx/sentence-of sentex)]
     (note-derived-move! (nm/functor sentence) handle)
     (if (contains? table (nm/functor sentence))
@@ -7676,7 +8125,11 @@
             :when rebuild
             sx   (stored-declarations kb f)]
       (rebuild tax sx))
-    (tax/refresh-beliefs tax (partial jtms/in? (reasoning/tms kb)))))
+    (let [rebuilt (tax/refresh-beliefs tax (partial jtms/in? (reasoning/tms kb)))
+          census (rewrite-query/rebuild-consumers! kb)
+          consumers (into (:antecedents census) (:watched census))]
+      (when (seq consumers) (mark-recheck kb consumers :all-rejoin))
+      rebuilt)))
 
 ;; ---- derived state (docs/caches.md, "The derived-state register") ----------------
 
@@ -7686,7 +8139,7 @@
   :retired-by {:integrated :K :removed :K :settle-pass :G :recover :R :image-install :R
                :cleared :W}
   :computed :write :imaged? :state :at [[:refused]]
-  :note "`{rule #{refusal}}`"})
+  :note "`{rule #{refusal}}`, a mint's and a restatement's cycle drops under `[:mint h]` and `[:restatement h]`, and `::cycles`, their members' index"})
 
 (caches/register-derived
  {:id :Q8 :label "Mint departures" :kind :queue :keyed-by :handle :reads [:records]
@@ -7718,11 +8171,11 @@
   :note "`{kind handle}`, the index's `[:mint-rules]` family read once (`kb/mint-rule-table`); the store and removal of a rule of `kv/mint-rules`, a wipe, `reindex` and the import's record phase drop it (`kb/forget-mint-rules!`), and a fill installs only over the generation it read"})
 
 (caches/register-derived
- {:id :K14 :label "Lazy-forward rule presence" :kind :cache :keyed-by :value :reads [:index]
+ {:id :K14 :label "Rule presence per engine" :kind :cache :keyed-by :value :reads [:index]
   :holds-content? false
   :retired-by {:stored :W :removed :W :recover :W :cleared :W}
-  :computed :read :imaged? false :at [[:lazy-rules]]
-  :note "whether the rule extent's `[:lazy]` node counts a rule, read once (`kb/stores-lazy-rule?`); the store and removal of a rule taking `:lazy`, an engines join adding it, a wipe, `reindex` and the import's record phase drop it (`kb/forget-lazy-rules!`), and a fill installs only over the generation it read"})
+  :computed :read :imaged? false :at [[:engine-rules]]
+  :note "whether the rule extent's `[:lazy]` and `[:one-justification]` nodes count a rule, read once per engine (`kb/stores-engine-rule?`); the store and removal of a rule taking either, an engines join adding one, a wipe, `reindex` and the import's record phase drop them (`kb/forget-engine-rules!`), and a fill installs only over the generation it read"})
 
 (caches/register-derived
  {:id :Q1 :label "Exception re-check queue" :kind :queue :keyed-by :handle :reads [:records]
@@ -7743,7 +8196,14 @@
   :holds-content? false
   :retired-by {:relabelled :K :settle-pass :Q :settle-exit :Q :recover :W}
   :computed :write :imaged? false :at [[:except-moves]]
-  :note "the handles an except began or stopped hiding, drained in two stages (`drain-except-moves!`, `take-except-moves!`); the context-move drain reads the excepts that moved (`:whole`) for the `genlCx` edges they reach; the believed handles that gained a route (`:gained`, `route-gain-sink`), drained by `recheck-route-gains!`"})
+  :note "the handles an except began or stopped hiding, drained in two stages (`drain-except-moves!`, `take-except-moves!`); the context-move drain reads the excepts that moved (`:whole`) for the `genlCx` edges they reach; the believed handles that gained a route (`:gained`, `route-gain-sink`), drained by `recheck-route-gains!`; the re-asks owed the rules that store one justification per conclusion (`:reask`, `note-reasks!`), drained by `settle/reask-seeds`"})
+
+(caches/register-derived
+ {:id :Q11 :label "Owed drops" :kind :queue :keyed-by :handle :reads [:records :justifications :T1]
+  :holds-content? false
+  :retired-by {:settle-pass :Q :recover :R :image-install :R :cleared :W}
+  :computed :write :imaged? :state :at [[:owed-drops]]
+  :note "the conclusions whose tagged rule owes a drop of the justifications another covers (`chain/note-owed-drop!`), drained by `chain/run-owed-drops!` at each settle pass; a drop the belief check refuses is owed again, and `recover` owes one at every conclusion of a tagged rule (`chain/owe-tagged-drops!`)"})
 
 (caches/register-derived
  {:id :Q4 :label "Respell queue" :kind :queue :keyed-by :functor :reads [:index]

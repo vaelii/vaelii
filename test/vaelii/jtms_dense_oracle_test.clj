@@ -35,8 +35,11 @@
   (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing]]
             [vaelii.impl.dense-jtms :as dense]
+            [vaelii.impl.except :as exc]
             [vaelii.impl.jtms :as jtms]
-            [vaelii.impl.observe :as observe]))
+            [vaelii.impl.memory :as memory]
+            [vaelii.impl.observe :as observe]
+            [vaelii.impl.protocols :as p]))
 
 ;; ---- comparison ---------------------------------------------------------
 
@@ -66,6 +69,105 @@
   "`snapshot-diffs` over two live networks."
   [ref dns]
   (snapshot-diffs (jtms/snapshot ref) (jtms/snapshot dns)))
+
+(deftest proof-readings-remain-correlated-in-both-dedup-paths
+  (doseq [cached? [false true]]
+    (let [ref (jtms/create-tms)
+          dns (dense/create-dense-tms)
+          a {:nonplacing #{1} :label-only #{2} :reader 'CxPrivate}
+          b {:nonplacing #{2} :label-only #{1} :reader 'CxPrivate}
+          j (jtms/->just 10 'rule [1 2] 3 '{?x A} :monotonic nil a)
+          k (jtms/->just 11 'rule [1 2] 3 '{?x A} :monotonic nil b)]
+      (doseq [t [ref dns]]
+        (jtms/add-premise t 1 :monotonic)
+        (jtms/add-premise t 2 :monotonic)
+        (jtms/ensure-node t 3 1)
+        (binding [observe/*chain-fast-paths* cached?]
+          (jtms/with-dedup-cache t
+            (is (false? (jtms/has-justification? t 'rule [1 2] 3
+                                                 (jtms/justification-key 'rule [1 2] nil a))))
+            (jtms/add-justification t j)
+            (is (true? (jtms/has-justification? t 'rule [2 1] 3
+                                                (jtms/justification-key 'rule [2 1] nil a))))
+            (is (false? (jtms/has-justification? t 'rule [1 2] 3
+                                                 (jtms/justification-key 'rule [1 2] nil b))))
+            (jtms/add-justification t k)
+            (is (true? (jtms/has-justification? t 'rule [1 2] 3
+                                                (jtms/justification-key 'rule [1 2] nil b))))
+            (is (false? (jtms/has-justification? t 'rule [1 2] 3)))
+            (is (= #{a b} (set (map #(-> (jtms/justification t %) :reading)
+                                    (jtms/supports t 3)))))
+            (is (nil? (:bindings (jtms/justification t 10))))
+            (jtms/drop-justification! t 10)
+            (is (= #{11} (jtms/supports t 3)))
+            (is (= b (:reading (jtms/justification t 11))))
+            (is (false? (jtms/has-justification? t 'rule [1 2] 3
+                                                 (jtms/justification-key 'rule [1 2] nil a)))))))
+      (is (nil? (same? ref dns))))))
+
+(deftest source-labels-are-proof-local-and-never-force-an-absent-source-or-rule
+  (doseq [create [jtms/create-tms dense/create-dense-tms]]
+    (let [t (create)
+          j (jtms/->just 10 4 [1] 2 nil :monotonic nil
+                         {:label-only #{1 4 99}})
+          scope #{1 2 3 4}]
+      (jtms/add-premise t 1 :monotonic)
+      (jtms/add-premise t 4 :monotonic)
+      (jtms/ensure-node t 2 1)
+      (jtms/ensure-node t 3 1)
+      (jtms/add-justification t j)
+      (jtms/add-justification t (jtms/->just 11 4 [1] 3 nil :monotonic))
+      (is (= #{1} (exc/belief-only-antecedent (jtms/justification t 10))))
+      (let [before (jtms/snapshot t)
+            read (jtms/region-in t scope scope #{} #{1} exc/belief-only-antecedent #{})]
+        (is (contains? read 2))
+        (is (not (contains? read 3)))
+        (is (= before (jtms/snapshot t)))
+        (is (not (contains? (jtms/region-in t scope scope #{} #{1 4}
+                                            exc/belief-only-antecedent #{}) 2))))
+      (jtms/suspend-premise t 1)
+      (is (not (contains? (jtms/region-in t scope scope #{} #{}
+                                          exc/belief-only-antecedent #{}) 2))))))
+
+(deftest remapping-a-proof-source-keeps-a-collapsed-strict-use-strict
+  (let [reading {:nonplacing #{1} :label-only #{1 3} :readers #{'CxPrivate}}
+        move {1 8 2 8 3 9}]
+    (is (= {:label-only #{9} :readers #{'CxPrivate}}
+           (jtms/remap-reading reading [1 2 3] move)))
+    (is (= {:nonplacing #{8} :label-only #{8 9} :readers #{'CxPrivate}}
+           (jtms/remap-reading reading [1 3] move)))
+    (is (nil? (jtms/remap-reading nil [1 2] move)))))
+
+(deftest remapping-a-rewrite-witness-does-not-remap-ordinary-numeric-terms
+  (let [read {:goal '(rewriteOf 1 ?x) :handle 1 :outputs '{?x 2}}
+        roles {:rewrite-reads #{read} :readers #{'CxPrivate}}
+        changed (jtms/remap-reading roles [1] {1 11, 2 22})]
+    (is (= {:rewrite-reads #{(assoc read :handle 11)} :readers #{'CxPrivate}} changed))))
+
+(deftest guards-use-the-owning-firings-existing-proof-key
+  (let [space (Object.)
+        recs (memory/memory-record-store {:space space})
+        a (jtms/->just 10 7 [1 2] 3 '{?x A} :monotonic nil {:label-only #{1}})
+        b (jtms/->just 11 7 [1 2] 3 '{?x A} :monotonic nil {:label-only #{2}})
+        plain (jtms/->just 12 7 [1 2] 3 '{?x A} :monotonic)
+        key-of #(jtms/justification-key (:informant %) (:antecedents %) (:subsumptions %) (:reading %))
+        ga (jtms/->just 20 exc/guard-informant [1 2 3 7 8] 4 '{?x A} :default nil
+                        {:owner-key (key-of a)})
+        gb (assoc ga :id 21 :reading {:owner-key (key-of b)})
+        legacy (dissoc (assoc ga :id 22) :reading)]
+    (try
+      (doseq [j [a b plain ga gb legacy]] (p/put-justification recs j))
+      (is (= #{10} (exc/guard-owners recs ga [a b plain])))
+      (is (= #{11} (exc/guard-owners recs gb [a b plain])))
+      (is (= #{12} (exc/guard-owners recs legacy [a b plain])))
+      (let [move {1 11 2 12 3 13 7 17 8 18}
+            imported (jtms/remap-reading (:reading ga) (:antecedents ga) move true)
+            folded (jtms/remap-reading (:reading ga) (:antecedents ga) move false)]
+        (is (= (jtms/justification-key 17 [11 12] nil {:label-only #{11}})
+               (:owner-key imported)))
+        (is (= (jtms/justification-key 7 [11 12] nil {:label-only #{11}})
+               (:owner-key folded))))
+      (finally (memory/drop-record-space! space)))))
 
 (defn- removals= [a b]
   (and (= (set (:removed-sentexes a)) (set (:removed-sentexes b)))

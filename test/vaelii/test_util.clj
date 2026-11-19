@@ -602,7 +602,7 @@
   refusal record is keyed by rule handle and retired when the rule departs, so nothing
   else drops the entries of rules this call just deleted, the mint rules' table
   (`kb/mint-rule-table`) holds none, and the store holds no lazy-forward rule
-  (`kb/stores-lazy-rule?`)."
+  (`kb/stores-engine-rule?`)."
   [kb]
   (p/clear-records! (:records kb))
   (p/clear-index!   (:index kb))
@@ -618,7 +618,7 @@
   (argpass/clear-owed! kb)
   ;; the mint rules' handles: the wipe deleted every one, as `v/clear!` records
   (kb/forget-mint-rules! kb true)
-  (kb/forget-lazy-rules! kb true))
+  (kb/forget-engine-rules! kb true))
 
 (defn- forget-reasoners!
   "Unregister every prover from `kb` but the defaults, and record no reasoner in its store."
@@ -1259,7 +1259,7 @@
   allocated.  A placed nogood's sentences name their members by handle."
   [kb form]
   (walk/postwalk #(if-let [h (v/handle-id %)]
-                    (let [s (p/get-sentex (:records kb) h)] [(:sentence s) (:context s)])
+                    (let [s (p/get-sentex (:records kb) h)] [(some-> s v/sentence-of) (:context s)])
                     %)
                  form))
 
@@ -1378,6 +1378,21 @@
               (filter symbol?))
         (p/sentex-ids (:records kb))))
 
+(defn- describe-justification
+  "A leaked justification as the teardown report prints it: its consequence, informant and
+  antecedents, each handle shown as its sentence when the KB still holds the sentex, so
+  the reader can see which inference survived the retraction."
+  [kb jid]
+  (let [sentence (fn [h] (if-some [sx (and (integer? h) (v/sentex kb h))]
+                           (v/sentence-of sx)
+                           h))
+        j        (v/justification kb jid)]
+    {:id          jid
+     :consequence (sentence (:consequence j))
+     :informant   (sentence (:informant j))
+     :antecedents (mapv sentence (:antecedents j))
+     :strength    (:strength j)}))
+
 (defn assert-neutral!
   "Retract the test's additions and assert the KB is restored to the `baseline` it was
   snapshotted at — **set equality on all three, so both directions are checked**.
@@ -1407,6 +1422,8 @@
         (str "KB not restored after teardown — leaked "
              (count leak-sx) " sentex(es), " (count leak-dd) " justification(s) "
              (pr-str (mapv #(v/sentence-of (v/sentex kb %)) (take 8 leak-sx)))
+             " "
+             (pr-str (mapv #(describe-justification kb %) (take 8 leak-dd)))
              "; lost " (count lost-sx) " sentex(es), " (count lost-dd) " justification(s) "
              ;; a lost sentex has no record left to print, so the handles are the report
              (pr-str (vec (take 8 lost-sx)))))
@@ -1630,35 +1647,42 @@
   [[sym build-fn] & body]
   `(cleared-kb* ~build-fn (fn [~sym] ~@body)))
 
+(defn recovered-copy*
+  "`(f target)`, `target` a KB on the isolated space holding `kb`'s dump imported
+  records-only (`{:belief? false}`, a store written with no belief) and recovered, so it
+  holds none of `kb`'s in-memory state.  The recover runs in place, or, with `reopen?`, as
+  the `:recover? :auto` open of a second KB over the store once the first is closed.  The
+  open rebuilds a derived index before it recovers, which `recover` alone does not do.
+  The isolated space is cleared after `f`."
+  [kb reopen? f]
+  (let [dir (temp-dir "vaelii-recovered-")]
+    (try
+      (.delete dir)
+      (v/export! kb (.getPath dir) {:compression :none})
+      (cleared-kb* (fn []
+                     (let [k (isolated-fresh)]
+                       (v/import! k (.getPath dir) {:belief? false})
+                       (if reopen?
+                         (do (v/close! k) (v/open-kb (assoc (isolated-space) :recover? :auto)))
+                         k)))
+                   (fn [target]
+                     (when-not reopen? (v/recover target))
+                     (f target)))
+      (finally (run! #(.delete ^File %) (reverse (file-seq dir)))))))
+
 (defn recovered-readings
   "`[source recovered written]`, each `{:placed :loser}`: the believed `contradicts` and
   `defeat` sentexes as `[sentence context]` with their handles resolved (`handle-free`),
-  and the belief of `[s ctx]` at `ctx`.  `source` reads `kb`; the others read a KB on the
-  isolated space holding `kb`'s dump imported records-only (`{:belief? false}`, a store
-  written with no belief) and recovered, before any write and after `(write! target)`.
-  The recover runs in place, or, with `reopen?`, as the `:recover? :auto` open of a second
-  KB over the store once the first is closed.  The open rebuilds a derived index before it
-  recovers, which `recover` alone does not do."
+  and the belief of `[s ctx]` at `ctx`.  `source` reads `kb`; the others read
+  `recovered-copy*`'s target before any write and after `(write! target)`."
   [kb reopen? [s ctx] write!]
-  (let [dir  (temp-dir "vaelii-recovered-")
-        read (fn [k] {:placed (into #{} (comp (mapcat #(v/sentexes-with-functor k %))
+  (let [read (fn [k] {:placed (into #{} (comp (mapcat #(v/sentexes-with-functor k %))
                                               (filter #(v/in? k (:id %)))
                                               (map #(handle-free k [(:sentence %) (:context %)])))
                                     '[contradicts defeat])
                       :loser  (v/believed? k (v/handle-of k s ctx) ctx)})]
-    (try
-      (.delete dir)
-      (v/export! kb (.getPath dir) {:compression :none})
-      (into [(read kb)]
-            (cleared-kb* (fn []
-                           (let [k (isolated-fresh)]
-                             (v/import! k (.getPath dir) {:belief? false})
-                             (if reopen?
-                               (do (v/close! k) (v/open-kb (assoc (isolated-space) :recover? :auto)))
-                               k)))
-                         (fn [target]
-                           (when-not reopen? (v/recover target))
-                           (let [r (read target)]
-                             (write! target)
-                             [r (read target)]))))
-      (finally (run! #(.delete ^File %) (reverse (file-seq dir)))))))
+    (into [(read kb)]
+          (recovered-copy* kb reopen? (fn [target]
+                                        (let [r (read target)]
+                                          (write! target)
+                                          [r (read target)]))))))

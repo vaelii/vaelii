@@ -511,6 +511,35 @@
             j (into [(w (list 'not (list ta j)) hi :monotonic)
                      (w (list ta j) hi :default)])))))))
 
+(defn- contraposed-climb
+  "The writes of a climb whose conviction contraposes over a `:monotonic` edge to the head
+  of a `:default` one (docs/inference.md, \"An edge's reading\"), or nil for a pool of
+  fewer than three types.  Each of the types `ta`, `tb` and `tc` comes later in the pool
+  than the next.  The writes in a context `k` are a `:default` `(genl ta tb)`, a
+  `:monotonic` `(genl tb tc)` and a `(ta I)`.  Half the draws with a type `td` related to
+  none of the three add a `:monotonic` `(disjoint tc td)` and a `(td I)`.  The others add
+  a `(not (tc I))`."
+  [rng {:keys [contexts types individuals]} facts]
+  (when (>= (count types) 3)
+    (let [[ta tb tc] (->> (shuffled (.nextLong ^Random rng) (range (count types)))
+                          (take 3) sort reverse (map #(nth types %)))
+          k     (pick rng contexts)
+          ind   (pick rng individuals)
+          edges (-> (type-edges facts) (update ta (fnil conj #{}) tb) (update tb (fnil conj #{}) tc))
+          apart (remove (fn [t] (or (contains? #{ta tb tc} t)
+                                    (contains? (up-closure edges [ta]) t)
+                                    (contains? (up-closure edges [t]) ta)))
+                        types)
+          w     (fn [s st] {:sentence s :context k :strength st})
+          core  [(w (list 'genl ta tb) :default)
+                 (w (list 'genl tb tc) :monotonic)
+                 (w (list ta ind) (strength rng))]]
+      (if (and (seq apart) (chance rng 0.5))
+        (let [td (pick rng apart)]
+          (into core [(w (list* 'disjoint (sort [tc td])) :monotonic)
+                      (w (list td ind) (strength rng))]))
+        (conj core (w (list 'not (list tc ind)) (strength rng)))))))
+
 (defn gen-world
   "A random world for `seed`, inside the v1 fragment.  The same seed gives the same
   structure; every term carries a fresh gensym tail, so two calls never share a term.
@@ -522,8 +551,8 @@
   rules come from `rule-writes`; half the worlds holding a guarded rule add the writes of
   `guarded-clash`, a quarter of the worlds the writes of `release-below`, a third the
   writes of `collision`, and a third of the worlds holding a guarded rule the writes of
-  `blocker-below`, and a quarter of the worlds the writes of `declared-below`, each less
-  any `[sentence context]` pair already drawn.  `:contexts` holds every generated context plus `CxUniverse` when an edge names it."
+  `blocker-below`, a quarter the writes of `declared-below`, and a quarter the writes of
+  `contraposed-climb`, each less any `[sentence context]` pair already drawn.  `:contexts` holds every generated context plus `CxUniverse` when an edge names it."
   [seed opts]
   (let [rng    (Random. (long seed))
         sizes  (merge default-sizes opts)
@@ -548,6 +577,7 @@
         under  (when (chance rng 0.33) (blocker-below rng pools rules))
         ;; and this after that
         decl   (when (chance rng 0.25) (declared-below rng pools facts))
+        climb  (when (chance rng 0.25) (contraposed-climb rng pools facts))
         seen   (into #{} (map (juxt :sentence :context)) facts)
         writes (-> facts
                    (into (remove #(seen [(:sentence %) (:context %)])) clash)
@@ -555,6 +585,7 @@
                    (into (remove #(seen [(:sentence %) (:context %)])) coll)
                    (into (remove #(seen [(:sentence %) (:context %)])) under)
                    (into (remove #(seen [(:sentence %) (:context %)])) decl)
+                   (into (remove #(seen [(:sentence %) (:context %)])) climb)
                    (into rules))]
     {:contexts (into (set (:contexts pools)) (world-contexts writes))
      :writes   writes}))

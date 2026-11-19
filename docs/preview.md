@@ -64,7 +64,12 @@ with its drop off), and the preview's answer reads it through the read walk, whi
 guard out of force wherever a blocker of it is OUT or excepted, as the drop does
 (`exc/verdict-reader`'s `:guard`). `preview_test`'s random stream holds the two answers
 alike over a rule with a `:default` blocker and excepts of that blocker
-(`a-preview-predicts-the-edit-over-a-random-stream`).
+(`a-preview-predicts-the-edit-over-a-random-stream`). A tagged rule's drop is off too
+(`chain/*drop-covered?*`). A firing that covers a stored justification of its rule owes
+the drop ([inference.md](inference.md)), and the covered justification and any sentex it
+alone supports stay at their handles. The drop keeps its conclusion believed, so the answer
+reports no removal for the covered justification
+(`preview_test/a-preview-whose-settle-makes-a-tagged-rule-s-drop-leaves-the-kb-byte-identical`).
 
 The **rollback** settles with the sweep back on. That settle collects a conclusion the
 preview's own removals brought into being: removing a blocker releases an exception,
@@ -82,7 +87,12 @@ sort, so the order decides which entries a caller is shown
 The removed half carries defeat, supersession and the dependency-directed sweep, and its
 `:reason` is `why-not`'s: `:defeated` (a stronger claim arrived), `:superseded` (an
 equality merge restated it), `:unsupported` (its last witness went). A batch that only
-adds can still fill it.
+adds can still fill it. A tagged rule's drop is none of the three. It deletes a
+justification, or a conclusion below a cover, only where the covering conclusion holds the
+sentence at every reader ([inference.md](inference.md)), so the context of a deleted
+conclusion still believes its sentence. Neither half reports the drop, and
+`edit-with-consequences!` reports none either
+(`preview_test/a-preview-predicts-the-edit-when-the-batch-makes-a-tagged-rule-s-drop-below-a-cover`).
 
 `:handle` is **nil** for content the batch created: after the rollback no such sentex
 exists, and the number would later name another one. Content that was already stored
@@ -164,10 +174,13 @@ draws (`preview_test/a-deferred-preview-omits-the-clash-a-released-mint-enters`)
 
 The KB is left with the same live sentexes and justifications at the same handles, and the
 same premise classes. The derived state a batch can write is restored with them: the
-violations ledger, the program, and the **refusal record**, which a firing the batch's
-own content refused would otherwise leave holding handles the rollback took away
-([exceptions.md](exceptions.md), "A refused firing is remembered as bindings"). An entry
-the batch consumed comes back through the rollback's own re-chain.
+violations ledger, the program, the owed drops, and the **refusal record**, which a firing
+the batch's own content refused would otherwise leave holding handles the rollback took
+away ([exceptions.md](exceptions.md), "A refused firing is remembered as bindings"). An
+entry the batch consumed comes back through the rollback's own re-chain. The owed drops go
+back before the rollback's settle, which makes each drop the queue owes: a drop the batch
+owed at a conclusion it found is not made there
+(`preview_test/a-preview-keeps-a-justification-an-ended-except-left-beside-its-cover`).
 
 The calculi's report markers (`observe/newly-seen?`) go back with the ledger
 (`observe/restore-seen!`). A calculus files an unsatisfiable network once per KB and
@@ -210,13 +223,14 @@ that throws after writing). The two entry points differ in **when** they roll ba
 |---|---|---|
 | rolls back | always | only when the batch throws, the caller's `:max-ms` or `:stop?` ending its adds included ([inference.md](inference.md#stopping-a-run)) |
 | an `:add` | asserted, undone through the audit | the same |
-| a `:remove` | `jtms/suspend-premise`, restored | a real teardown, never reached by a rollback |
+| a `:remove` | `jtms/suspend-premise`, restored | suspended and settled, restored by a rollback; then a real teardown, never reached by one |
 | `settle`'s sweep | off for the batch | on, as for any write |
+| a tagged rule's drop | owed for the batch | owed for the adds, made in the committed phase |
 | the change feed | off for the whole preview | off for the rollback; the batch's own event is never delivered |
 
 A swept record comes back only as new content at a new handle, so `edit!` asks every
 removal for its refusal (`teardown-refusal`, the function `retract!` throws from) before
-the first one runs, and past that point the batch is committed.
+it suspends the first one. Past the first deletion the batch is committed.
 
 A preview is a write followed by its undo, so it holds the single writer for its duration
 ([storage.md](storage.md), "The single-writer contract"). For that reason `serve/ops`

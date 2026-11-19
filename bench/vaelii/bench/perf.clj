@@ -103,6 +103,8 @@
   (:require [clojure.string :as str]
             [taoensso.nippy :as nippy]
             [vaelii.core :as v]
+            [vaelii.host.core-context :as core-context]
+            [vaelii.host.seed :as seed]
             [vaelii.impl.asp.solve-context :as sc]
             [vaelii.impl.asp.solver :as solver]
             [vaelii.impl.capabilities :as cap]
@@ -795,6 +797,31 @@
      (for [i (range n)]
        (nanos (v/assert kb (list 'pbird (symbol (str "PB" i))) 'CxPerf {}))))))
 
+(defn- tagged-rule-over-typed-terms
+  "60 terms, each stated in k subtypes of each part of a two-antecedent membership rule
+  wrapped in `set/oneJustificationRule`, so each term matches the rule over k² pairs.
+  One reading per term: the nanoseconds of its 2k memberships over 2k.  A term's
+  memberships arrive in content order, so the join at its first second-part membership
+  stores one firing and every later trigger is covered before its join
+  (`chain/trigger-covered?`).  The untagged rule stores the k² firings."
+  [k]
+  (let [kb  (fresh-kb)
+        m   {:strength :monotonic}
+        sub (fn [part i] (symbol (format "otj_%s%02d" part i)))]
+    (v/assert kb '(genl otj_a thing) 'CxPerf m)
+    (v/assert kb '(genl otj_b thing) 'CxPerf m)
+    (doseq [part ["a" "b"] i (range k)]
+      (v/assert kb (list 'genl (sub part i) (symbol (str "otj_" part))) 'CxPerf m))
+    (v/assert kb '(set/oneJustificationRule
+                   (set/forwardRule (implies (and (otj_a ?x) (otj_b ?x)) (otj_both ?x))))
+              'CxPerf m)
+    (doall
+     (for [j (range 60)
+           :let [x (symbol (str "OtjX" j))]]
+       (/ (nanos (doseq [part ["a" "b"] i (range k)]
+                   (v/assert kb (list (sub part i) x) 'CxPerf {})))
+          (* 2 k))))))
+
 (defn- replace-facts-difference
   "One `v/replace-facts!` per reading over an n-fact snapshot in `CxPrfSnap`, where 200 of
   its facts are swapped for 200 others: 200 adds and 200 removals, each firing or tearing
@@ -810,6 +837,25 @@
     (v/replace-facts! kb 'CxPrfSnap snapA)
     (doall (for [i (range 12)]
              (nanos (v/replace-facts! kb 'CxPrfSnap (if (even? i) snapB snapA)))))))
+
+(defn- term-rename-beside-premises
+  "One `v/rename-term!` per reading of a term 20 premises of `CxPrfTerm` use, beside n
+  premises of the same predicate naming other terms, under a forward rule each premise
+  fires.  The readings rename the term back and forth.  The batch reads the term's
+  postings and the belief its 20 premises carry; a batch reading the predicate's extent
+  follows n."
+  [n]
+  (let [kb  (fresh-kb)
+        rel 'prfTermRel
+        ab  ['PrfTermA 'PrfTermB]]
+    (v/assert kb (list 'set/forwardRule (list 'implies (list rel '?x '?y) (list 'prf_term_seen '?y)))
+              'CxPrfTerm)
+    (doseq [i (range n)]
+      (v/assert kb (list rel (symbol (str "PrfTermO" i)) (symbol (str "PrfTermP" i))) 'CxPrfTerm))
+    (doseq [i (range 20)]
+      (v/assert kb (list rel (ab 0) (symbol (str "PrfTermU" i))) 'CxPrfTerm))
+    (doall (for [i (range 12)]
+             (nanos (v/rename-term! kb (ab (mod i 2)) (ab (mod (inc i) 2))))))))
 
 (defn- taxonomy-depth
   "n `genl` edges arriving parent-before-child down one chain.  Every edge pays a `wff`
@@ -1616,7 +1662,7 @@
   (let [st  (dense/dense-index-store {:space [::trigger]})
         tax (reasoning/taxonomy (fresh-kb))]
     (p/clear-index! st)
-    (doseq [i (range n)] (rules/index-rule st i [(symbol (str "pTkR" i))] nil 'CxPerf))
+    (doseq [i (range n)] (rules/index-rule st i [(symbol (str "pTkR" i))] nil nil 'CxPerf))
     (doall
      (for [_ (range 100)]
        (nanos (dotimes [_ reads-per-reading]
@@ -1631,7 +1677,7 @@
   [n]
   (let [kb (binding [*backend* :memory-columnar] (fresh-kb))]
     (doseq [i (range n)]
-      (rules/index-rule (:index kb) (+ 1000000 i) [(symbol (str "pRk" i))] nil 'CxPerf))
+      (rules/index-rule (:index kb) (+ 1000000 i) [(symbol (str "pRk" i))] nil nil 'CxPerf))
     kb))
 
 (defn- rule-reads-above-beside-rule-keys
@@ -1681,7 +1727,7 @@
     (doseq [i (range n)]
       (rules/index-rule (:index kb) (+ 1000000 i)
                         [(if (even? i) (symbol (str "pRk" i)) [:not (symbol (str "pRk" i))])]
-                        nil 'CxPerf))
+                        nil nil 'CxPerf))
     (doall
      (for [_ (range 100)]
        (quot (* 64 (nanos (special/batch-subsumption-seeds kb edges))) n)))))
@@ -1713,7 +1759,7 @@
   (let [kb (rule-key-kb 0)]
     (v/assert kb '(genlCx CxRkSub CxPerf) 'CxUniverse {:strength :monotonic})
     (doseq [i (range n)]
-      (rules/index-rule (:index kb) (+ 1000000 i) [(symbol (str "pRk" i))] nil 'CxPerf))
+      (rules/index-rule (:index kb) (+ 1000000 i) [(symbol (str "pRk" i))] nil nil 'CxPerf))
     (doall
      (for [_ (range 100)]
        (nanos (dotimes [_ 50]
@@ -2604,6 +2650,30 @@
       (doall (for [_ (range 60)]
                (nanos (let [e (v/assert kb (list 'except (list 'sentexHandle t)) 'CxEfeD M)]
                         (v/retract! kb e))))))))
+
+(defn- chain-beside-an-unrelated-except
+  "One assert that chains n links, per link, beside an `except` of an unrelated fact.
+  ```
+  CxPerf  rules (cbeLink ?x ?y) ∧ (cbe_reach ?x) ⇒ (cbe_reach ?y), (cbe_start ?x) ⇒ (cbe_reach ?x)
+          (cbeLink PCbe0 PCbe1) … (cbeLink PCbe<n-1> PCbe<n>)   (except (cbe_other PCbeQ))
+          (cbe_start PCbe0), asserted and retracted
+  ```
+  A run holds whether a stored except names a handle of a support (`jtms/support-reaches?`),
+  so each firing reads its own antecedents and not the chain behind them."
+  [n]
+  (let [kb (fresh-kb)
+        M  {:strength :monotonic}
+        s  '(cbe_start PCbe0)]
+    (v/with-deferred-settle kb
+      (v/assert kb '(set/forwardRule (implies (and (cbeLink ?x ?y) (cbe_reach ?x)) (cbe_reach ?y))) 'CxPerf M)
+      (v/assert kb '(set/forwardRule (implies (cbe_start ?x) (cbe_reach ?x))) 'CxPerf M)
+      (dotimes [i n]
+        (v/assert kb (list 'cbeLink (symbol (str "PCbe" i)) (symbol (str "PCbe" (inc i)))) 'CxPerf M)))
+    (v/assert kb (list 'except (list 'sentexHandle (v/assert kb '(cbe_other PCbeQ) 'CxPerf M))) 'CxPerf M)
+    (doall (for [_ (range 4)]
+             (let [t (nanos (v/assert kb s 'CxPerf M))]
+               (v/retract! kb (v/handle-of kb s 'CxPerf))
+               (quot t n))))))
 
 (defn- route-gain-beside-unrelated-excepts
   "`(rga_r PRgaT)`, a route the `except` of `(rga_p PRgaT)` does not hide, asserted and
@@ -3642,6 +3712,28 @@
     (doall (for [i (range edge-writes)]
              (nanos (v/assert kb (list 'genl 'pgr_low (symbol (str "pgr_top" i))) 'CxPerf m))))))
 
+(defn- inverse-partner-fact-beside-rules
+  "Times a fact on one partner of an `(inverse P Q)` declaration arriving beside n forward
+  rules on unrelated predicates.  The KB holds `(inverse pipChildOf pipParentOf)`, the rule
+  `(pipParentOf ?p ?c) → (pip_parent ?p)` and n rules `(pipR_i ?x ?y) → (pip_out_i ?x)`.
+  Each timed `(pipChildOf PipC_j PipP_j)` triggers the rule on `pipParentOf` across the
+  swap edge (`rules/trigger-keys`), which reads the stored rule keys the swapped fan meets.
+  A trigger walking every stored rule is linear in n."
+  [n]
+  (let [kb (fresh-kb)
+        m  {:strength :monotonic}]
+    (v/assert kb '(inverse pipChildOf pipParentOf) 'CxPerf m)
+    (v/assert kb '(set/forwardRule (implies (pipParentOf ?p ?c) (pip_parent ?p))) 'CxPerf m)
+    (v/with-deferred-settle kb
+      (dotimes [i n]
+        (v/assert kb (list 'set/forwardRule
+                           (list 'implies (list (symbol (str "pipR" i)) '?x '?y)
+                                 (list (symbol (str "pip_out" i)) '?x)))
+                  'CxPerf m)))
+    (doall (for [j (range 60)]
+             (nanos (v/assert kb (list 'pipChildOf (symbol (str "PipC" j)) (symbol (str "PipP" j)))
+                              'CxPerf m))))))
+
 (defn- genl-edge-beside-arity-conflicts
   "One `genl` edge putting a fresh type under the bottom of a chain of eight types bound to
   one argument, beside n predicates under an arity conflict in a context the edge's does not
@@ -3684,7 +3776,7 @@
   chain of eight rules, rule i reading `pswlink<i>_t` and concluding `pswlink<i+1>_t`, with
   n spec types under every link.  One excepted rule elsewhere keeps the check walking.
 
-  The check is `checks/edge-stratification-violation`, which asks without writing, so
+  The check is `checks/fact-stratification-violation`, which asks without writing, so
   every sample asks the same edge.  Its walk (`wff/genl-negation-cycle`) reaches the eight
   rules, and from each reads the upward closure of its consequent and the rule index under
   each predicate in it.  A walk fanning each read predicate's spec closure reads the rule
@@ -3703,7 +3795,7 @@
               'CxPerf {})
     (let [edge (list 'genl (peek links) (first links))]
       (doall (for [_ (range edge-writes)]
-               (nanos (checks/edge-stratification-violation kb edge)))))))
+               (nanos (checks/fact-stratification-violation kb edge)))))))
 
 (defn- edge-stratification-unreached
   "One `genl` edge under `psutop_t`, on a KB holding n excepted rules the edge does not
@@ -3742,7 +3834,7 @@
   "The stratification check of one `genl` edge from `pscsub_t`, which no rule concludes, to
   `psctop_t`, beside n rules reading `psctop_t` and one excepted rule elsewhere.
 
-  The check is `checks/edge-stratification-violation`, which asks without writing, so
+  The check is `checks/fact-stratification-violation`, which asks without writing, so
   every sample asks the same edge.  Every graph edge the edge would add ends at a rule
   concluding a spec of `pscsub_t`, and there is none, so the check reads the consequent
   index under `pscsub_t` and stops.  A walk from the readers of `psctop_t` builds n rule
@@ -3758,7 +3850,7 @@
                 'CxPerf {:direction :forward}))
     (doall (for [_ (range edge-writes)]
              (nanos (dotimes [_ reads-per-reading]
-                      (checks/edge-stratification-violation kb '(genl pscsub_t psctop_t))))))))
+                      (checks/fact-stratification-violation kb '(genl pscsub_t psctop_t))))))))
 
 (defn- edge-stratification-mints-in-one-pass
   "One `(genlArg pemKind<r> 2 pem_top)` declaration over n stored facts, each naming a type
@@ -3840,7 +3932,7 @@
   stored chain through `pssmid_t` already connects, beside n excepted rules reading
   `psstop_t`.
 
-  The check is `checks/edge-stratification-violation`, which asks without writing, so
+  The check is `checks/fact-stratification-violation`, which asks without writing, so
   every sample asks the same edge.  The edge moves no closure, so it adds no edge to the
   rule dependency graph and the check stops at one reachability test.  A walk from each
   rule reading a predicate above the upper end expands the n excepted rules."
@@ -3856,7 +3948,7 @@
                 'CxPerf {}))
     (doall (for [_ (range edge-writes)]
              (nanos (dotimes [_ reads-per-reading]
-                      (checks/edge-stratification-violation kb '(genl psssub_t psstop_t))))))))
+                      (checks/fact-stratification-violation kb '(genl psssub_t psstop_t))))))))
 
 (defn- taxonomy-edge-arbitration
   "One `genl` edge (a fresh subtype under a fresh supertype, nothing above or below it, no
@@ -4528,12 +4620,12 @@
 
 (defn- mint-release-after-genl-move
   "n types in a chain, each bound to two arguments, one `arg` declaration naming each, so
-  n declarations wait on a mintable type; then a `genl` edge between two other types,
+  each declaration's mint is stored inert; then a `genl` edge between two other types,
   timed through its settle, read per hundred declarations.
 
-  The declarations naming a type are read when the type's own bindings move
-  (`special/mints-on-lengths`), and the edge moves none.  A settle reading every waiting
-  declaration per edge reads here as growth with n."
+  The inert mints naming a type are read when the type's own bindings move
+  (`special/hold-type-mints!`), and the edge moves none.  A settle reading every inert
+  mint per edge reads here as growth with n."
   [n]
   (let [kb (fresh-kb)
         ty (fn [i] (symbol (str "pmrt" i)))]
@@ -5289,6 +5381,27 @@
      (for [[i x] (map-indexed vector xs)]
        (/ (nanos (v/assert kb (list 'gdvOf x (symbol (str "GdvV" i))) 'CxGdvStory)) n)))))
 
+(defn- use-beside-named-application-uses
+  "One fact `(nauRelOf NauXi NauYi)` beside n facts naming `nauRelOf`, which the compound
+  `(rewriteOf nauRelOf (NauFn nauBaseOf))` names an application of.  The fact's write
+  syncs the named application's facts (`named-application/sync!`) for the rows it stores
+  and reads none of the n uses.  Each reading stores one fact, for a fresh pair.  Under
+  `--only` on 2026-11-17 the ratio read 1.12x and 0.96x; with every row naming the target
+  synced per write it read 11.58x (18.99 against 219.96 ms/op)."
+  [n]
+  (let [kb (fresh-kb)
+        m  {:strength :monotonic}]
+    (v/assert kb '(reifiable_function NauFn) 'CxUniverse m)
+    (v/assert kb '(result NauFn nau_kind) 'CxUniverse m)
+    (v/assert kb '(rewriteOf nauRelOf (NauFn nauBaseOf)) 'CxUniverse m)
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'nauRelOf (symbol (str "NauA" i)) (symbol (str "NauB" i))) 'CxUniverse)))
+    (doall
+     (for [i (range 60)]
+       (nanos (v/assert kb (list 'nauRelOf (symbol (str "NauX" i)) (symbol (str "NauY" i)))
+                        'CxUniverse))))))
+
 (defn- genlcx-edge-beside-distant-merges
   "One `(genlCx sub CxGdmC)` edge to a fresh `sub`, beside n `sameAs` merges, each stated
   in its own context under `CxUniverse` that the edge does not reach and displacing the
@@ -5311,6 +5424,58 @@
     (doall
      (for [i (range 60)]
        (nanos (v/assert kb (list 'genlCx (symbol (str "CxGdmS" i)) 'CxGdmC) 'CxUniverse m))))))
+
+(defn- genlcx-edge-over-formula-rows
+  "One `(genlCx CxGfrBig super)` edge, where `CxGfrBig` stores n `natFormula` rows and
+  `super` one row mapping a second constant to one of their expressions.  The collision
+  repair (`nat/collision-merges`) reads `super`'s row and the rows sharing its constant or
+  expression, and pairs only the two constants' rows.  Each reading stores a fresh
+  `super`'s row, then retracts the edge and the row, untimed.  Under `--only` the ratio
+  reads 1.43x (1.08 against 1.55 ms/op).  With the n rows read per edge it read 2.13x, and
+  4.49x in a full run; with every pair of the rows a context sees read, 14.60x."
+  [n]
+  (let [kb (fresh-kb)
+        m  {:strength :monotonic}
+        e  #(list 'GfrFn (symbol (str "GfrA" %)))]
+    (v/assert kb '(reifiable_function GfrFn) 'CxUniverse m)
+    (v/assert kb '(equals GfrX GfrY) 'CxUniverse m)
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'natFormula (symbol "nat" (str "GfrK" i)) (e i)) 'CxGfrBig m)))
+    (doall
+     (for [i (range 60)
+           :let [super (symbol (str "CxGfrSuper" i))
+                 row   (list 'natFormula (symbol "nat" (str "GfrJ" i)) (e i))
+                 edge  (list 'genlCx 'CxGfrBig super)]]
+       (do (v/assert kb row super m)
+           (let [t (nanos (v/assert kb edge 'CxUniverse m))]
+             (v/retract! kb (v/handle-of kb edge 'CxUniverse))
+             (v/retract! kb (v/handle-of kb row super))
+             t))))))
+
+(defn- genlcx-edge-over-spread-formula-rows
+  "One `(genlCx CxGfsSub super)` edge to a fresh `super`, where n contexts under
+  `CxGfsSub` each store one `natFormula` row and no two rows share an expression.  The
+  collision repair reads the n rows and tests a row against a context's view only where
+  another constant maps the row's expression, here none.  Under `--only` on 2026-11-18
+  the ratio read 4.36x (2.33 against 10.15 ms/op); with every row tested against every
+  context holding one it read 40.79x (14.10 against 574.99 ms/op)."
+  [n]
+  (let [kb (fresh-kb)
+        m  {:strength :monotonic}]
+    (v/assert kb '(reifiable_function GfsFn) 'CxUniverse m)
+    (v/assert kb '(equals GfsX GfsY) 'CxUniverse m)
+    (v/with-deferred-settle kb
+      (doseq [i (range n)
+              :let [c (symbol (str "CxGfsR" i))]]
+        (v/assert kb (list 'genlCx c 'CxGfsSub) 'CxUniverse m)
+        (v/assert kb (list 'natFormula (symbol "nat" (str "GfsK" i))
+                           (list 'GfsFn (symbol (str "GfsA" i))))
+                  c m)))
+    (doall
+     (for [i (range 60)]
+       (nanos (v/assert kb (list 'genlCx 'CxGfsSub (symbol (str "CxGfsSuper" i)))
+                        'CxUniverse m))))))
 
 (defn- genlcx-edge-beside-seen-functional-facts
   "One `(genlCx sub CxGsfTop)` edge to a fresh `sub` that stores nothing, where `CxGsfTop`
@@ -5715,9 +5880,10 @@
 
 (defn- write-after-rolled-back-preview
   "One fact asserted after a rolled-back preview of a `genl` edge, beside n `arg`
-  declarations waiting on a type bound to two arguments.  The preview moves no type's own
-  bindings, so the write's settle reads none of the n (`special/mints-on-lengths`,
-  docs/preview.md, \"What the rollback restores\").  The preview is untimed."
+  declarations whose mints are stored inert on a type bound to two arguments.  The preview
+  moves no type's own bindings, so the write's settle reads none of the n
+  (`special/hold-type-mints!`, docs/preview.md, \"What the rollback restores\").  The
+  preview is untimed."
   [n]
   (binding [argument/*assertive-arg-types?* true]
     (let [kb (fresh-kb)]
@@ -5738,7 +5904,7 @@
   "One `genl` edge asserted beside n `arg` declarations, each naming a type bound to two
   arguments and each over one stored fact, with no preview.  The edge moves no type's own
   bindings, so a settle reading only what the edge reaches costs the same at both sizes
-  (`special/mints-on-lengths`)."
+  (`special/hold-type-mints!`)."
   [n]
   (binding [argument/*assertive-arg-types?* true]
     (let [kb (fresh-kb)]
@@ -6275,6 +6441,52 @@
   with each of them fetched per link, 1.49x at a load average of 160."
   [n]
   (calendar-link-append 50 n))
+
+(def ^:private time-ontology-kb
+  "The KB `calendar-re-mention` reads: the upper ontology and the CxChange and CxRealWorld
+  theories, which hold time.txt's rules over a calendar term's declared type, loaded once
+  on a space of its own."
+  (delay
+    (let [kb (v/open-kb {:space [::time-ontology] :recover? false})]
+      (p/clear-records! (:records kb))
+      (p/clear-index! (:index kb))
+      (core-context/load-into kb)
+      (doseq [[ctx dir] '[[CxChange "middle"] [CxRealWorld "middle"]]]
+        (seed/load-context kb ctx dir))
+      (v/assert kb '(arity pmSeenAt 2) 'CxUniverse {:strength :monotonic})
+      kb)))
+
+(def ^:private re-mention-years
+  "The count `calendar-re-mention` takes a fresh year from, so each run names its own moment."
+  (atom 0))
+
+(defn- calendar-re-mention
+  "n facts naming one `InstantFn` moment in `time-ontology-kb`, each timed.  Each fact
+  re-joins the rules over the moment's declared type (`chain/result-type-seeds`) and adds
+  one justification to each conclusion they place, so the nth fact adds the nth support to
+  `(timeOf T T)`."
+  [n]
+  (let [kb (force time-ontology-kb)
+        y  (+ 2400 (swap! re-mention-years inc))
+        t  (list 'InstantFn y 1 1 0 0 0)]
+    (vec (for [i (range n)]
+           (nanos (v/assert kb (list 'pmSeenAt (symbol (str "PmW" y "n" i)) t) 'CxUniverse))))))
+
+(defn- result-arg-re-mention
+  "n facts mentioning one application of a `resultArg` function, beside a rule over the type
+  its argument names, each timed.  Each fact starts that rule's join over the application
+  (`chain/result-type-seeds`), which reads whether a declaration types an application at or
+  below the rule's type (`chain/result-type-uppers`).  That read reads one name set per
+  declared function (`reads/as-stored-application-symbols`), not the facts using it."
+  [n]
+  (let [kb (fresh-kb)
+        m  {:strength :monotonic}]
+    (v/assert kb '(resultArg PrPickFn 1) 'CxPerf m)
+    (v/assert kb '(genl pr_kind thing) 'CxPerf m)
+    (v/assert kb (rules/rule-sentence ['(pr_kind ?x) '(prRel ?x ?y)] '(prOut ?x ?y)) 'CxPerf m)
+    (vec (for [i (range n)]
+           (nanos (v/assert kb (list 'prMentions (symbol (str "PrM" i)) '(PrPickFn pr_kind))
+                            'CxPerf))))))
 
 (defn- sign-chain-rebuild
   "A `qualitativeSum` chain grown one link at a time, and after each of the last sixty
@@ -7762,12 +7974,40 @@
     :max-ratio 2.0
     :run       defeasible-load}
 
+   {:name      :calendar-re-mention
+    :group     :chaining
+    :claim     "the 4000th fact naming one calendar moment costs what the 100th does"
+    :sizes     [100 4000]
+    :max-ratio 1.3
+    :run       calendar-re-mention}
+
+   {:name      :result-arg-re-mention
+    :group     :chaining
+    :claim     "the 4000th fact mentioning one application of a resultArg function costs what the 500th does"
+    :sizes     [500 4000]
+    :max-ratio 2.0
+    :run       result-arg-re-mention}
+
+   {:name      :tagged-rule-over-typed-terms
+    :group     :chaining
+    :claim     "a membership under a rule storing one justification per conclusion costs the same with 16 routes per part as with 2"
+    :sizes     [2 16]
+    :max-ratio 2.0
+    :run       tagged-rule-over-typed-terms}
+
    {:name      :replace-facts-difference
     :group     :chaining
     :claim     "replace-facts! swapping 200 facts of a 2000-fact snapshot costs under 2x what swapping 200 of a 250-fact snapshot costs"
     :sizes     [250 2000]
     :max-ratio 2.0
     :run       replace-facts-difference}
+
+   {:name      :term-rename-beside-premises
+    :group     :chaining
+    :claim     "renaming a term 20 premises use costs under 2x beside 4000 premises of its predicate what it costs beside 250"
+    :sizes     [250 4000]
+    :max-ratio 2.0
+    :run       term-rename-beside-premises}
 
    {:name      :taxonomy-depth
     :group     :taxonomy
@@ -8578,11 +8818,11 @@
     :run       bound-type-load}
 
    ;; Both ends measured 2026-10-01.  Healthy 0.52x and 0.13x (0.267 ms against 0.512,
-   ;; 0.291 against 2.160).  With a walk up from each waiting declaration's type, the
+   ;; 0.291 against 2.160).  With a walk up from each such declaration's type, the
    ;; reading is 13.04x (5.40 ms against 70.40).  2x sits between.
    {:name      :mint-release-after-genl-move
     :group     :argtypes
-    :claim     "16x the declarations waiting over a 16x deeper hierarchy costs under 2x per hundred declarations beside the settle after a genl edge"
+    :claim     "16x the declarations with an inert mint over a 16x deeper hierarchy costs under 2x per hundred declarations beside the settle after a genl edge"
     :sizes     [200 3200]
     :max-ratio 2.0
     :run       mint-release-after-genl-move}
@@ -8958,6 +9198,20 @@
     :max-ratio 2.0
     :run       genlcx-edge-beside-distant-merges}
 
+   {:name      :genlcx-edge-over-formula-rows
+    :group     :merges
+    :claim     "a genlCx edge joining one collision over 16x the natFormula rows below it costs under 4x per edge"
+    :sizes     [64 1024]
+    :max-ratio 4.0
+    :run       genlcx-edge-over-formula-rows}
+
+   {:name      :genlcx-edge-over-spread-formula-rows
+    :group     :merges
+    :claim     "a genlCx edge over 8x the contexts below it, each holding one natFormula row and no collision, costs under 16x per edge"
+    :sizes     [64 512]
+    :max-ratio 16.0
+    :run       genlcx-edge-over-spread-formula-rows}
+
    ;; The functional facts a `genlCx` edge re-derives merges over.  Flat by construction:
    ;; the edge's `sub` stores nothing and `super` sees every fact.  Both ends under
    ;; `--only`, 2026-10-24, load 81-111: healthy 0.35x and 0.55x (1.26 against 0.45
@@ -8986,6 +9240,13 @@
     :sizes     [64 1024]
     :max-ratio 2.0
     :run       genl-edge-under-no-rule-above}
+
+   {:name      :inverse-partner-fact-beside-rules
+    :group     :chaining
+    :claim     "a fact on an inverse partner reaches the forward rules on the other partner, flat in the rules on unrelated predicates"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       inverse-partner-fact-beside-rules}
 
    {:name      :edge-stratification-walk
     :group     :taxonomy
@@ -9158,13 +9419,13 @@
    ;; Not yet run: added with the fix and never measured here.
    {:name      :write-after-rolled-back-preview
     :group     :clashes
-    :claim     "16x the declarations waiting on an unmintable type costs under 2x per fact asserted after a rolled-back preview of a genl edge"
+    :claim     "16x the declarations with an inert mint on an unmintable type costs under 2x per fact asserted after a rolled-back preview of a genl edge"
     :sizes     [64 1024]
     :max-ratio 2.0
     :run       write-after-rolled-back-preview}
 
    ;; Both ends measured 2026-10-22 under `--only` at load 21-30.  Healthy 0.69x and
-   ;; 0.84x (3.19 ms against 2.21, 3.40 against 2.85).  With every waiting declaration's
+   ;; 0.84x (3.19 ms against 2.21, 3.40 against 2.85).  With every such declaration's
    ;; refusal entry walked on each `genl` write, the reading is 2.21x and 1.73x (3.01 ms
    ;; against 6.67, 2.46 against 4.26).  1.5x sits between.  At [64 1024] the walk read
    ;; 1.96x and 1.04x against a healthy 1.29x, too close to separate.  A full run reads
@@ -9172,7 +9433,7 @@
    ;; declaring predicate per edge; `--only` read the same code at 1.10x to 1.46x.
    {:name      :genl-write-beside-waiting-declarations
     :group     :clashes
-    :claim     "16x the declarations waiting on a type bound to another length costs under 1.5x per genl edge asserted beside them"
+    :claim     "16x the declarations with an inert mint on a type bound to another length costs under 1.5x per genl edge asserted beside them"
     :sizes     [256 4096]
     :max-ratio 1.5
     :run       genl-write-beside-waiting-declarations}
@@ -9268,6 +9529,13 @@
     :sizes     [32 512]
     :max-ratio 2.0
     :run       default-value-beside-uses}
+
+   {:name      :use-beside-named-application-uses
+    :group     :merges
+    :claim     "16x the uses of a compound rewrite target costs under 2x per use written"
+    :sizes     [16 256]
+    :max-ratio 2.0
+    :run       use-beside-named-application-uses}
 
    ;; The facts a `genlCx` edge to an empty context draws again.  Flat by construction:
    ;; the edge shows the reader nothing stored at both n.  Both ends measured under
@@ -9842,6 +10110,13 @@
     :sizes     [64 1024]
     :max-ratio 2.0
     :run       except-beside-facts-under-an-edge}
+
+   {:name      :chain-beside-an-unrelated-except
+    :group     :exceptions
+    :claim     "4x the links one assert chains costs under 2x per link beside an except of an unrelated fact"
+    :sizes     [1000 4000]
+    :max-ratio 2.0
+    :run       chain-beside-an-unrelated-except}
 
    {:name      :route-gain-beside-unrelated-excepts
     :group     :exceptions

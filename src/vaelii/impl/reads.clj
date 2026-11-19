@@ -344,8 +344,10 @@
       (pos? (long (p/family-child-count index :opposed-between [f])))))
 
 (defn stores-opposed-between?
-  "Is a body of functor `f` that is `nm/between-predicates?` **stored** in both
-  polarities?  One count read, belief unread."
+  "Is a body of functor `f` filed under `[:opposed-between f]` **stored** in both
+  polarities: `nm/between-predicates?` with every minted argument read as a predicate, a
+  superset of the bodies `decide/forced-literal?` reads between predicates?  One count
+  read, belief unread."
   [index f]
   (prof/record-read :opposed)
   (pos? (long (p/family-child-count index :opposed-between [f]))))
@@ -403,6 +405,14 @@
   (prof/record-read :calendar)
   (p/family-handles index :calendar (into [f] bucket) p/every-context))
 
+(defn as-stored-application-symbols
+  "The symbols at the 1-based argument `pos`, a long, of the applications of `f` some
+  **stored** fact uses (`kv/application-argument-nodes`), as a set, belief unread: one
+  name-set read.  A symbol leaves with the last such fact."
+  [index f pos]
+  (prof/record-read :application-argument)
+  (p/family-leaf index :application-symbols [[f pos]]))
+
 (defn as-stored-nat-formulas-at
   "The handles of the **stored** `(natFormula K (f …))` maps whose formula holds `term` at
   argument `pos`, stated in a context of `contexts`, belief unread."
@@ -410,6 +420,12 @@
   (read-in! contexts)
   (prof/record-read :nat-argument)
   (p/family-handles index :nat-argument [f pos (sx/canon term)] contexts))
+
+(defn as-stored-nat-formulas-at-global
+  "`as-stored-nat-formulas-at` over every context."
+  [index f pos term]
+  (prof/record-read :nat-argument)
+  (p/family-handles index :nat-argument [f pos (sx/canon term)] p/every-context))
 
 (defn stored-count-nat-formulas-at
   "How many handles `as-stored-nat-formulas-at` answers: one leaf count per context."
@@ -681,6 +697,13 @@
   (prof/record-read :rule-index)
   (p/family-handles index :rule-antecedent [pred] p/every-context))
 
+(defn as-stored-rule-contexts-by-antecedent-global
+  "The contexts that state a **stored** rule with an antecedent on `pred`, as a set, belief
+  unread: the node's children, with no handle and no record read."
+  [index pred]
+  (prof/record-read :rule-index)
+  (p/family-children index :rule-antecedent [pred] p/every-context))
+
 (defn as-stored-rules-by-consequent-in
   "Handles of rules concluding `pred` stated in one of `contexts`, a set — every rule,
   whatever its direction, belief unread.
@@ -699,6 +722,21 @@
   [index pred]
   (prof/record-read :rule-index)
   (p/family-handles index :rule-consequent [pred] p/every-context))
+
+(defn as-stored-rules-by-consequent-head-in
+  "The rules of `as-stored-rules-by-consequent-in` whose consequent has an argument headed
+  by `head` (`rules/consequent-heads`), belief unread.  With `head`
+  `protocols/var-consequent-key` it answers the rules whose consequent no head excludes."
+  [index pred head contexts]
+  (read-in! contexts)
+  (prof/record-read :rule-index)
+  (p/family-handles index :rule-consequent-head [pred head] contexts))
+
+(defn as-stored-rules-by-consequent-head-global
+  "`as-stored-rules-by-consequent-head-in` in every context."
+  [index pred head]
+  (prof/record-read :rule-index)
+  (p/family-handles index :rule-consequent-head [pred head] p/every-context))
 
 (defn as-stored-rule-keys
   "The antecedent keys some **stored** rule takes (`rules/antecedent-key`), as a set: the
@@ -755,8 +793,8 @@
 
 (defn as-stored-rules-in
   "Handles of the **stored** rules of `kind` stated in one of `contexts`: `:rule` for
-  every rule, `:solve` for the rules a solve reads (`rules/solve-sentex?`), `:lazy` for
-  the rules whose `:engines` take `:lazy`.  The rule
+  every rule, `:solve` for the rules a solve reads (`rules/solve-sentex?`), `:lazy` and
+  `:one-justification` for the rules whose `:engines` take that member.  The rule
   extent ends in the context, so this costs min(|contexts stating one|, |contexts|) probes
   plus a leaf read per context kept."
   [index kind contexts]

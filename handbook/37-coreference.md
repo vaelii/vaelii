@@ -213,13 +213,12 @@ may be wrong with a predicate that does not merge.
 **Example.** `life.txt`:
 
 ```clojure
-(set/monotonic (functional fatherOf))
+(set/monotonic (functional birthYearOf))
 ```
 
-The `comment` on `fatherOf` reads "a second, different father is not a second fact: the
-two names merge." A pull request's status is the other case: one status at a time,
-`Draft` and `Open` two distinct things, each status stated `:default` in the slice of the
-time it held. The `comment` and the `implementationNote` on `signOf` in `measure.txt`
+A birth year has one integer value; two distinct years conflict rather than becoming
+one integer. Generic parenthood is not a uniqueness constraint: several mothers can
+remain distinct. The `comment` and the `implementationNote` on `signOf` in `measure.txt`
 record the opposite decision: a quantity has one sign, and the predicate is not declared
 functional, because a merge would make `SignPositive` and `SignNegative` one term where
 the contradiction is to be reported.

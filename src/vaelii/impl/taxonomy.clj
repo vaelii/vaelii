@@ -348,7 +348,9 @@
           :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
           :sibling-disjoint #{} :sib-exception-index {}
           :covers {} :cover-parts {} :partitions #{}
-          :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
+          :props {} :compound-targets #{}
+          :rewrite-view-consumers {:gen 0 :antecedents #{} :watched #{}}
+          :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
           :cache-dirty #{} :cache-ctxs {}
           ;; The supporter cache (`supporters-of`), over the index's supporter families
           :supporters empty-supporters
@@ -607,15 +609,16 @@
 (def ^:private flat-functors
   "The functors whose declarations the flat caches record, read off their storage in
   `vaelii.impl.predicates`: every property, mark, keyed pair other than equality, cover,
-  per-position and commuting declaration.  A disjoint metatype's members are stated under
+  per-position and commuting declaration. Compound rewrites contribute their presence
+  cache beside the atomic equality partition. A disjoint metatype's members are stated under
   the metatype, which is data, so `census-functors` adds those."
-  (into #{} (comp (filter (fn [[_ spec]]
-                            (let [[kind target] (:storage spec)]
-                              (and (contains? #{:prop :mark :keyed-pair :cover :pred-position
-                                                :pred-commuting}
-                                              kind)
-                                   (not= :equality target)))))
-                  (map first))
+  (into '#{rewriteOf} (comp (filter (fn [[_ spec]]
+                                      (let [[kind target] (:storage spec)]
+                                        (and (contains? #{:prop :mark :keyed-pair :cover :pred-position
+                                                          :pred-commuting}
+                                                        kind)
+                                             (not= :equality target)))))
+                            (map first))
         pr/entries))
 
 (defn- census-functors
@@ -750,8 +753,10 @@
 (def ^:dynamic *network-belief*
   "True while a firing's witness search reads the scoped closures (`chain`'s placement):
   a supporter is read at its network label and through the stored `except`s, and no
-  placed `defeat` is read (`:network-filter-active?`, `:network-visible?`).  The scope
-  key carries the callback it reads, so the two readings never share a memo entry."
+  placed `defeat` is read (`:network-filter-active?`, `:network-visible?`).  The mark
+  entries `res/entries-at` reads are the exception: it binds this false, so a mark's
+  placed defeats apply there.  The scope key carries the callback it reads, so the two
+  readings never share a memo entry."
   false)
 
 (def ^:dynamic *search*
@@ -1225,6 +1230,7 @@
                                                               (fnil conj #{}) [whole parts b]))
                                          t'' parts)))
                (cond-> t' (separating-kind? b) (update :partitions conj [whole parts b]))))
+    :compound-rewrite (update t :compound-targets conj a)
     :prop     (update-in t [:props a] (fnil conj #{}) b)             ; a = prop-kind, b = pred
     :inverse  (index-symmetric t :inverse a true)                  ; a = #{p q}
     :negates  (index-symmetric t :negates a true)                  ; a = #{p q}
@@ -1282,6 +1288,7 @@
                        (as-> t'' (reduce (fn [t p] (drop-in t [:cover-parts p] [whole parts b]))
                                          t'' parts)))
                (cond-> t' (separating-kind? b) (update :partitions disj [whole parts b]))))
+    :compound-rewrite (update t :compound-targets disj a)
     :prop     (update-in t [:props a] (fnil disj #{}) b)
     :inverse  (index-symmetric t :inverse a false)
     :negates  (index-symmetric t :negates a false)
@@ -2330,6 +2337,11 @@
   [tax term]
   (boolean (seq (get-in @tax [:equality :edge-idx term]))))
 
+(defn merged-terms
+  "Every symbol of an equality class of two or more, read unscoped."
+  [tax]
+  (into #{} (comp (filter next) cat) (vals (get-in @tax [:equality :members]))))
+
 (defn merged-term-pred
   "A `term -> boolean` closed over one snapshot of the partition, or nil when the closure
   is empty, so a caller filtering every symbol of an answer set drops the filter
@@ -2551,7 +2563,9 @@
          :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
          :sibling-disjoint #{} :sib-exception-index {}
          :covers {} :cover-parts {} :partitions #{}
-         :props {} :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
+         :props {} :compound-targets #{}
+         :rewrite-view-consumers {:gen 0 :antecedents #{} :watched #{}}
+         :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
          :cache-dirty #{} :cache-ctxs {}
          :supporters empty-supporters
          :cache-moves (journal/restart nil)
@@ -2652,6 +2666,11 @@
   [tax since]
   (let [j (:cache-moves @tax)]
     [(journal/position j) (when (some? since) (journal/since j since))]))
+
+(defn installed-keys
+  "The taxonomy keys the stored handle `h` installs, as a set, every family included."
+  [tax h]
+  (keys-of @tax h))
 
 (defn supported-keys
   "The flat-cache keys the handles `hs` support, as a set."
@@ -5466,6 +5485,21 @@
 
 ;; ---- predicate properties -----------------------------------------------
 
+(defn mark-compound-rewrite
+  "Record one compound rewrite binding's support; no equality class is merged."
+  [tax target handle ctx]
+  (add-supported tax [:compound-rewrite target] handle ctx))
+
+(defn unmark-compound-rewrite!
+  "Remove this binding's supporter, retaining a target with other supporters."
+  [tax target handle]
+  (del-supported! tax [:compound-rewrite target] handle))
+
+(defn compound-rewrites?
+  "Coarse global presence of active compound bindings, not reader-local authority."
+  [tax]
+  (boolean (seq (:compound-targets @tax))))
+
 (defn mark-prop
   ([tax kind pred handle] (mark-prop tax kind pred handle nil))
   ([tax kind pred handle ctx] (add-supported tax [:prop kind pred] handle ctx)))
@@ -5696,6 +5730,11 @@
   stored key of an application of `f`, which every reader shares."
   [tax f] (get (:meet @tax) f #{}))
 
+(defn meet-functions
+  "The functions some `(meetFunctionOf f order)` declares a meet, as a map of each to its
+  orders; empty on a KB declaring none."
+  [tax] (:meet @tax))
+
 (defn meet-supporters
   "The handles of the sentexes stating `(meetFunctionOf f order)`, defeated members
   included."
@@ -5820,11 +5859,11 @@
              (if (some? context) (genls tax q context) (genls-global tax q)))))))
 
 ;; ---- genlInverse: binary genl with the arguments swapped ----------------
-;; `(genlInverse P Q)` says a `(P x y)` tuple is a `(Q y x)` tuple.  The edges are a
-;; flat-cache entry held both ways (`:genl-inverse-down`, `:genl-inverse-up`) and never
-;; edges of the `genl` relation.  The signed closure reads them, keeping a parity bit that
-;; a `genlInverse` edge flips, so an odd-parity predicate is read with its arguments
-;; swapped.
+;; `(genlInverse P Q)` says a `(P x y)` tuple is a `(Q y x)` tuple, and `(inverse P Q)`
+;; is read as the two edges `P → Q` and `Q → P`.  Either kind is a swap edge.  The edges are
+;; flat-cache entries and never edges of the `genl` relation.  The signed closure reads
+;; them, keeping a parity bit that a swap edge flips, so an odd-parity predicate is read
+;; with its arguments swapped.
 
 (defn genl-inverse-key
   "The flat-cache key a `(genlInverse p q)` declaration installs."
@@ -5836,29 +5875,57 @@
   ([tax p q handle ctx] (add-supported tax (genl-inverse-key p q) handle ctx)))
 (defn del-genl-inverse! [tax p q handle] (del-supported! tax (genl-inverse-key p q) handle))
 
-(defn genl-inverse-free?
-  "True when no `genlInverse` edge is installed — one map read, and the answer for nearly
-  every KB.  The signed closure is the plain `genl` closure then."
+(defn swap-free?
+  "True when no swap edge is installed, neither a `genlInverse` edge nor an `inverse`
+  declaration: two map reads.  The signed closure is the plain `genl` closure then."
   [tax]
-  (empty? (get @tax :genl-inverse-up)))
+  (let [t @tax]
+    (and (empty? (get t :genl-inverse-up)) (empty? (get t :inverse)))))
 
-(defn- genl-inverse-hop
-  "The predicates one `genlInverse` edge away from `p` — `dir` `:down` reads the specs
-  `x` of a `(genlInverse x p)`, `:up` the generals `y` of a `(genlInverse p y)` — whose
-  edge is visible from `context` (any edge, for an unscoped one)."
+(defn- swap-hop
+  "The predicates one swap edge away from `p`, through the edges visible from `context`
+  (every edge, for an unscoped one).  `dir` `:down` reads the specs `x` of a `(genlInverse
+  x p)` and `:up` the generals `y` of a `(genlInverse p y)`.  Either reads every `inverse`
+  partner of `p` (`inverses-of`)."
   [tax dir p context]
-  (let [xs (get-in @tax [(if (= dir :down) :genl-inverse-down :genl-inverse-up) p] #{})]
-    (if (or (empty? xs) (not (scoped-context? context)))
-      xs
-      (into #{} (filter #(cache-entry-visible?
-                          tax (if (= dir :down) (genl-inverse-key % p) (genl-inverse-key p %))
-                          context))
-            xs))))
+  (let [xs (get-in @tax [(if (= dir :down) :genl-inverse-down :genl-inverse-up) p] #{})
+        xs (if (or (empty? xs) (not (scoped-context? context)))
+             xs
+             (into #{} (filter #(cache-entry-visible?
+                                 tax (if (= dir :down) (genl-inverse-key % p) (genl-inverse-key p %))
+                                 context))
+                   xs))
+        qs (inverses-of tax p context)]
+    (if (empty? qs) xs (into xs qs))))
+
+(defn- visible-flat-supporters
+  "The supporters of flat-cache key `k` a reader at `context` can use, as `[handle ctx]`
+  pairs — every stored one for an unscoped read, else those `cache-entry-visible?` would
+  admit."
+  [tax t k context]
+  (let [sup (supporters-of t k)]
+    (cond
+      (not (scoped-context? context)) (vec sup)
+      (supporter-filter-active? t)
+      (let [scope (supporter-scope tax t context)]
+        (filterv (fn [[h c]] (scope-admits-supporter? scope h c)) sup))
+      :else
+      (let [up (closure-of tax :genlCx :fwd context)]
+        (filterv (fn [[_ c]] (or (nil? c) (contains? up c))) sup)))))
+
+(defn- swap-edge-supporters
+  "The `[handle ctx]` supporters of the swap edge `p → q` a reader at `context` uses: the
+  `(genlInverse p q)` declaration's and the `inverse` declaration's between `p` and `q`
+  (`visible-flat-supporters`)."
+  [tax p q context]
+  (let [t @tax]
+    (into (visible-flat-supporters tax t (genl-inverse-key p q) context)
+          (visible-flat-supporters tax t (inverse-key p q) context))))
 
 (defn- signed-walk
   "`[straight swapped]` from `p` over `[predicate parity]` states: `close` takes a
-  predicate's `genl` closure, and `hop` the predicates one `genlInverse` edge from a
-  member of it, reached with the parity flipped."
+  predicate's `genl` closure, and `hop` the predicates one swap edge from a member of it,
+  reached with the parity flipped."
   [p close hop]
   (loop [todo [[p false]] seen #{[p false]} straight #{} swapped #{}]
     (if-let [[n odd] (peek todo)]
@@ -5877,38 +5944,42 @@
 (defn clock-held
   "`(read)`, held in the closure memo's `slot` under `k` for one stretch of the change
   clock: a new clock value drops the slot's entries of the old one.  Read afresh when the
-  taxonomy holds no memo.
+  taxonomy holds no memo.  The key carries the reading (`*network-belief*`, `*search*`),
+  and a value that read a route question still open is not held (`caches/held-if-settled`).
 
   Public so a reader above this namespace can hold a value it derives from the taxonomy
   and the store for the same stretch, under a slot of its own (`res/arg-constraints`)."
   [tax slot k read]
   (if-let [memo (:closure-memo @tax)]
     (let [clock (observe/change-clock)
+          k     [k *network-belief* *search*]
           held  (get @memo slot)]
       (if-let [e (when (= clock (:read-under held)) (find (:closures held) k))]
         (val e)
-        (let [v (read)]
-          (swap! memo update slot
-                 (fn [h] (if (= clock (:read-under h))
-                           (assoc-in h [:closures k] v)
-                           {:read-under clock :closures {k v}})))
-          v)))
+        (caches/held-if-settled
+         read
+         (fn [v]
+           (swap! memo update slot
+                  (fn [h] (if (= clock (:read-under h))
+                            (assoc-in h [:closures k] v)
+                            {:read-under clock :closures {k v}})))
+           v))))
     (read)))
 
 (defn signed-closure
   "`[straight swapped]`: the predicates `p`'s matching fan reaches through the `genl` and
-  `genlInverse` edges visible from `context`, `dir` `:down` the specs or `:up` the
-  generals.  `straight` holds those reached over an even number of `genlInverse` edges, read
-  with arguments as written; `swapped` those over an odd number, read with arguments 1 and 2
-  exchanged.  With no `genlInverse` edge installed this is `[(specs tax p context) #{}]`
-  (or `genls`).  Otherwise a walk over `[predicate parity]` states, memoized in the closure
-  memo for one stretch of the change clock."
+  swap edges visible from `context`, `dir` `:down` the specs or `:up` the generals.
+  `straight` holds those reached over an even number of swap edges, read with arguments as
+  written; `swapped` those over an odd number, read with arguments 1 and 2 exchanged.
+  With no swap edge installed (`swap-free?`) this is `[(specs tax p context) #{}]` (or
+  `genls`).  Otherwise a walk over `[predicate parity]` states, memoized in the closure
+  memo for one stretch of the change clock and one reading (`clock-held`)."
   [tax dir p context]
   (let [close (if (= dir :down) #(specs tax % context) #(genls tax % context))]
-    (if (genl-inverse-free? tax)
+    (if (swap-free? tax)
       [(close p) #{}]
       (clock-held tax ::signed [dir p context]
-                  #(signed-walk p close (fn [s] (genl-inverse-hop tax dir s context)))))))
+                  #(signed-walk p close (fn [s] (swap-hop tax dir s context)))))))
 
 (defn- monotonic-genls
   "The supertypes of `p`, incl `p`, through the `genl` edges visible from `context` whose
@@ -5926,11 +5997,46 @@
           (recur (into (pop todo) nxt) (into seen nxt)))
         seen))))
 
+(defn genls-global-reaching-fn
+  "`(fn [t])` → the types of `genls-global` of `t` that are `q` or reach it up `genl` edges
+  whose strongest supporter `supporter-class` reads `:monotonic` (`edge-class`, unscoped).
+  A caller asks it of many types over one still taxonomy and belief.  The fn holds each
+  type's answer and the answers by component (`genls-global-union`), so it builds no
+  type's closure and walks an ancestor two types share once.  A type whose parents are
+  answered reads the class of its edges to those that are `q` or reach it, and no other."
+  [tax q supporter-class]
+  (let [reach    (volatile! {q true})
+        memo     (volatile! {})
+        mono?    (fn [t n p] (= :monotonic (edge-class t :genl [n p] nil supporter-class)))
+        walk     (fn [t x]
+                   (loop [seen #{x} todo [x]]
+                     (if-let [n (peek todo)]
+                       (let [known @reach
+                             ups   (filterv #(and (not (false? (known %))) (mono? t n %))
+                                            (get-in t [:genl :fwd n]))]
+                         (when-not (some #(true? (known %)) ups)
+                           (let [nxt (remove seen ups)]
+                             (recur (into seen nxt) (into (pop todo) nxt)))))
+                       seen)))
+        reaches? (fn [x]
+                   (let [known @reach
+                         r     (get known x)]
+                     (if (some? r)
+                       r
+                       (let [t      @tax
+                             ps     (get-in t [:genl :fwd x])
+                             missed (if (every? #(contains? known %) ps)
+                                      (when-not (some #(and (known %) (mono? t x %)) ps) #{x})
+                                      (walk t x))]
+                         (vswap! reach into (if missed (map #(vector % false) missed) [[x true]]))
+                         (nil? missed)))))]
+    (fn [t] (genls-global-union tax t (filter reaches?) memo))))
+
 (defn contrapositive-closure
   "`[straight swapped]`: `signed-closure` `:up` of `p` from `context`, over only the
-  `genl` and `genlInverse` edges a reader holds at `:monotonic`: the predicates a negated
+  `genl` and swap edges a reader holds at `:monotonic`: the predicates a negated
   pattern on `p` fans over.  A `genl` edge's class is its strongest visible supporter's
-  (`edge-class`); a `genlInverse` hop needs one visible supporter that `supporter-class`
+  (`edge-class`); a swap hop needs one visible supporter that `supporter-class`
   reads `:monotonic` (`handle -> class`, nil for OUT; `res/holding-class`).  A `p` with no
   supertype answers `signed-closure`'s set.  See docs/inference.md, \"Under a negation the fan
   reverses\"."
@@ -5943,9 +6049,9 @@
                                 (fn [n] (monotonic-genls tax n context supporter-class))
                                 (fn [s]
                                   (filter (fn [y]
-                                            (some (fn [h] (= :monotonic (supporter-class h)))
-                                                  (visible-supporters tax (genl-inverse-key s y) context)))
-                                          (genl-inverse-hop tax :up s context))))))))
+                                            (some (fn [[h]] (= :monotonic (supporter-class h)))
+                                                  (swap-edge-supporters tax s y context)))
+                                          (swap-hop tax :up s context))))))))
 
 (defn inverses-over
   "The partners a denial of `p` reads: each `Q` an `(inverse P' Q)` declares for a `P'`
@@ -5969,27 +6075,12 @@
                              (inverses-of tax t))))
            (first (contrapositive-closure tax p context supporter-class))))))
 
-(defn- visible-flat-supporters
-  "The supporters of flat-cache key `k` a reader at `context` can use, as `[handle ctx]`
-  pairs — every stored one for an unscoped read, else those `cache-entry-visible?` would
-  admit."
-  [tax t k context]
-  (let [sup (supporters-of t k)]
-    (cond
-      (not (scoped-context? context)) (vec sup)
-      (supporter-filter-active? t)
-      (let [scope (supporter-scope tax t context)]
-        (filterv (fn [[h c]] (scope-admits-supporter? scope h c)) sup))
-      :else
-      (let [up (closure-of tax :genlCx :fwd context)]
-        (filterv (fn [[_ c]] (or (nil? c) (contains? up c))) sup)))))
-
-(defn- genl-inverse-witness
-  "A `[handle ctx]` supporter for the `genlInverse` edge `p → q` a reader at `context`
-  sees: the strongest class's most general, as `strongest-edge-supporter` picks for a
-  `genl` edge; nil when none is visible."
+(defn- swap-witness
+  "A `[handle ctx]` supporter for the swap edge `p → q` a reader at `context` sees: the
+  strongest class's most general, as `strongest-edge-supporter` picks for a `genl` edge;
+  nil when none is visible."
   [tax p q context supporter-class]
-  (let [cands (visible-flat-supporters tax @tax (genl-inverse-key p q) context)]
+  (let [cands (swap-edge-supporters tax p q context)]
     (when (seq cands)
       (most-general-of
        tax (if supporter-class
@@ -5999,17 +6090,17 @@
 
 (defn signed-reach-support
   "A witness for `sub` reaching `super` through the signed closure with parity `swapped?`
-  — the `[handle ctx]` supporters of one path's `genl` and `genlInverse` edges, as
+  — the `[handle ctx]` supporters of one path's `genl` and swap edges, as
   `reach-support` names a `genl` path's — or nil when `context` sees no such path.
 
   A pair the `genl` closure relates with `swapped?` false is `reach-support`'s answer
-  unchanged.  Otherwise the path is the one with the fewest `genlInverse` edges, found
+  unchanged.  Otherwise the path is the one with the fewest swap edges, found
   breadth-first over `[predicate parity]` states in name order, each `genl` stretch of it
   witnessed by `reach-support` (widest-bottleneck under `supporter-class`, as there)."
   [tax sub super swapped? context supporter-class]
   (if (and (not swapped?) (contains? (genls tax sub context) super))
     (reach-support tax :genl sub super context supporter-class)
-    (when-not (genl-inverse-free? tax)
+    (when-not (swap-free? tax)
       (let [sorted #(nm/sort-by-content-key nm/print-key compare %)
             start  [sub false]
             goal?  (fn [[n odd]] (and (= odd (boolean swapped?))
@@ -6018,11 +6109,11 @@
             (graph/bfs-tree [[start nil]]
                             (fn [[n odd :as st] _]
                               (for [x (sorted (genls tax n context))
-                                    y (sorted (genl-inverse-hop tax :up x context))]
+                                    y (sorted (swap-hop tax :up x context))]
                                 [[y (not odd)] [st x y]]))
                             goal?)
             ;; walk the parents back: each hop is [from-node x y], the `genl`
-            ;; stretch from-node →* x then the `genlInverse` edge x → y
+            ;; stretch from-node →* x then the swap edge x → y
             path   (when found
                      (loop [s found acc ()]
                        (if-let [[prev x y] (get tree s)]
@@ -6035,7 +6126,7 @@
                   (concat
                    (mapcat (fn [[from x y]]
                              [(reach-support tax :genl from x context supporter-class)
-                              (when-let [w (genl-inverse-witness tax x y context supporter-class)] [w])])
+                              (when-let [w (swap-witness tax x y context supporter-class)] [w])])
                            hops)
                    [(reach-support tax :genl last-node super context supporter-class)])))))))
 
@@ -6078,7 +6169,7 @@
 
 (def ^:private flat-keys
   [:disjoint :disjoint-index :disjoint-metatypes :metatype-members :sibling-disjoint
-   :sib-exception-index :covers :cover-parts :partitions :props :inverse :negates :genl-inverse-down :genl-inverse-up :arity
+   :sib-exception-index :covers :cover-parts :partitions :props :compound-targets :rewrite-view-consumers :inverse :negates :genl-inverse-down :genl-inverse-up :arity
    :functional-in-arg :commuting :meet :distinct :cache-dirty :cache-ctxs])
 
 (caches/register-derived
@@ -6096,10 +6187,10 @@
  {:id :T2 :label "Flat declaration caches" :kind :index :keyed-by :value
   :holds-content? false
   :reads [:records :M1]
-  :retired-by {:declared :K :edge-belief :K :recover :R :image-install :R}
+  :retired-by {:declared :K :rule-indexed :K :removed :K :edge-belief :K :recover :R :image-install :R}
   :computed :write :imaged? :taxonomy :at (mapv #(vector :taxonomy %) flat-keys)
   :value (fn [kb] (select-keys (caches/value-at kb [:taxonomy]) flat-keys))
-  :note "disjointness, covers, partitions, predicate properties, inverses, arities, functional arguments and commuting pairs, with their contexts"})
+  :note "disjointness, covers, partitions, predicate properties, compound-binding presence, inverses, arities, functional arguments and commuting pairs, with their contexts; plus the syntax-only positive rewrite-query consumer census, mirrored from rule antecedent/watch postings and rebuilt from those sparse postings at recovery"})
 
 (caches/register-cache
  {:cache    :taxonomy-supporters

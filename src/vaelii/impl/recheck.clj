@@ -415,8 +415,8 @@
                          acc
                          (cond
                            moved?      (filter #(moved? (:bindings %)) recs)
-                           (seq lits)  (let [reach? (firing-test kb lits shapes cross? norm
-                                                                 (when-not norm (genl-pair-test kb triggers)))]
+                           (seq lits)  (when-let [reach? (firing-test kb lits shapes cross? norm
+                                                                      (when-not norm (genl-pair-test kb triggers)))]
                                          (filter #(reach? (:bindings %)) recs))
                            :else       recs))))))
          {:free [] :overflow []}

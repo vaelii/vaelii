@@ -565,7 +565,7 @@ so one vocabulary reads both.
 | `:duplicate-handle` | a dump names one handle twice, and a handle-preserving import gives each record the id the dump names | [storage.md](storage.md) |
 | `:duplicate-tokens` | the durable token dictionary holds a token twice, so its ids have shifted; the index rebuilds from the records | [storage.md](storage.md) |
 | `:error` | a check reached something it could not classify, and reports the throwable's own message | [api.md](api.md) |
-| `:exact-present` | in the real world's present or a context below it, an exact start, `(instantEqual <start> T)`, or a dated present-tense fact, `(includesInstant X <start>)` for an X with an end; or a `genlCx` edge placing a context that holds one under the present. State a clock reading as `(instantNotBefore <start> <time>)` | [time.md](time.md#the-real-worlds-present) |
+| `:exact-present` | in the real world's present or a context below it, an exact start, `(instantEqual <start> T)`, a dated present-tense fact, `(includesInstant X <start>)` for an X with an end, or an upper bound, `(instantBefore <start> T)`, `(instantNotAfter <start> T)` or either reversed as `instantAfter` / `instantNotBefore`; or a `genlCx` edge placing a context that holds one under the present. State a clock reading as `(instantNotBefore <start> <time>)` | [time.md](time.md#the-real-worlds-present) |
 | `:exception-not-closed` | an `exceptWhen` reads a variable no antecedent binds, or the anonymous wildcard `_`, which binds nothing | [exceptions.md](exceptions.md) |
 | `:export-busy` | an export is already running, and one runs at a time | [catalog.md](catalog.md) |
 | `:forbidden-context` | a write op under a token-table grant places a sentence in, or removes or annotates a sentex stored in, a context the grant's `:writes` does not name; `:context` names it, and a `do/` imperative is refused to every grant but an admin one | [operations.md](operations.md#the-token-table) |
@@ -575,6 +575,7 @@ so one vocabulary reads both.
 | `:handle-ceiling` | a handle past the dense TMS's int-keyed ceiling | [density.md](density.md) |
 | `:argument-family-ceiling` | more distinct `(predicate, position)` pairs than the packed root key's 24-bit scope field holds; take `:index :memory` | [indexing.md](indexing.md) |
 | `:incomplete-defining-contexts` | a believed term assertion has a support whose defining role cannot be established; the exception names the term and handles, not a partial home set | [api.md](api.md) |
+| `:incompatible-terms` | a merge, or a copy onto a stored term, of a relation and a type, of two relations of different arities, or of two disjoint types | [api.md](api.md#contract-notes-term-operations) |
 | `:incomplete-racer` | a portfolio was handed a strategy with `:first-result?` on, which stops the search rather than steering it | [inference.md](inference.md) |
 | `:inter-arg-type` | under the constraint-only reading, an `interArg`, `interArgs` or `interArgAndRest` constraint convicted an input of a function application inside an argument because of what another input is; a convicted fact is stored and held inert | [argtypes.md](argtypes.md) |
 | `:internal-error` | the daemon caught a throwable carrying no `:type` of its own | [operations.md](operations.md) |
@@ -586,6 +587,7 @@ so one vocabulary reads both.
 | `:length-against-shape` | a length binding of an engine term admits no length its `:shape` takes, or fewer lengths than the shape takes: `(arity genl 3)`, `(arityMin partition 4)` | [taxonomy.md](taxonomy.md) |
 | `:length-against-spelling` | a length binding gives a type-spelled term a length other than 1, or a camelCase term the length 1; it follows the `:naming` policy | [naming.md](naming.md#a-length-binding-is-held-to-the-spelling) |
 | `:lock-unsupported` | the filesystem under a disk KB's directory answered the single-writer lock request with an I/O error, as one with no POSIX advisory locks does — see [The disk KB will not open](#the-disk-kb-will-not-open) | [operations.md](operations.md#the-single-writer-contract) |
+| `:lost-belief` | a rename, merge or copy would take a believed sentex out of belief with no believed image under its substitution, as a merge of two terms an `irreflexive` relation links does; `:handles` names them, and the operation changed nothing | [api.md](api.md#contract-notes-term-operations) |
 | `:malformed-entry` | an index entry stream holds something that is not a `[key value]` pair | [storage.md](storage.md) |
 | `:malformed-manifest` | a `meta.edn` / `format.edn` / `catalog.edn` / an index's `records.edn` the EDN reader cannot parse — cut mid-form, or never EDN | [storage.md](storage.md) |
 | `:malformed-record` | a tokenized record body holds a code this codec does not write; the open's walk tombstones the record | [storage.md](storage.md) |
@@ -596,6 +598,7 @@ so one vocabulary reads both.
 | `:naf-justification` | a dump names a justification with a non-empty `:out`, and a justification here has no out-list | [naf.md](naf.md) |
 | `:naf-not-closed` | an `unknown` antecedent, a computed antecedent (`lessThan`, `matchesPattern`, a value kind such as `string` …) or an aggregate census reads a variable nothing else in the rule binds | [naf.md](naf.md) |
 | `:naming` | a symbol's spelling does not match its role — see [`assert` refused it](#assert-refused-it) | [naming.md](naming.md) |
+| `:nat-map-outside-universe` | a rename, merge, copy or remove reached a `natFormula` premise stored outside CxUniverse; `:handles` names them | [api.md](api.md#contract-notes-term-operations) |
 | `:nippy-version-moved` | the nippy on the classpath is not the release the class-name check was written against; re-read its three attachment points, then move `thaw/expected-nippy-version` | [defenses.md](defenses.md) |
 | `:nippy-version-unreadable` | nippy's own Maven descriptor could not be read, so the class-name check cannot say which release it is guarding | [defenses.md](defenses.md) |
 | `:no-base` | an `:overlay` backend was opened with neither `:base` nor `:base-stores` | [overlay.md](overlay.md) |
@@ -628,9 +631,12 @@ so one vocabulary reads both.
 | `:quantifier-not-local` | a bound existential or universal variable appears outside its own quantifier | [aggregate.md](aggregate.md) |
 | `:quoted-arg-type` | a `quotedArg` constraint convicted an input of a function application inside an argument on its EDN kind as a term; a convicted fact is stored and held inert | [argtypes.md](argtypes.md) |
 | `:reasoner-mismatch` | a store or a dump records one reasoner set and the open or import names another, and two sets derive two beliefs from the same records; name the recorded set or pass `:reasoners :stored` | [storage.md](storage.md#the-reasoner-set) |
-| `:record-edit-unsupported` | an `edit-records!` batch removes an `except`, `defeat` or `exceptWhen` record, whose departure re-posts what the remaining ones name; remove it with `edit!`.  Or an `:add` entry `edit-records!` does not write at record level: a functor other than `genl`, `sense` and `comment`, another arity, a compound argument, a `genl` between predicates, a predicate the store marks symmetric, commutative or forced-decontextualized, a context the index does not name, or a sentence stored as an inert record; add it with `edit!` once belief is built | [storage.md](storage.md#editing-the-records-of-a-kb-without-belief) |
+| `:record-edit-unsupported` | an `edit-records!` batch removes an `except`, `defeat` or `exceptWhen` record, whose departure re-posts what the remaining ones name; remove it with `edit!`.  Or an `:add` entry `edit-records!` does not write at record level: a functor other than `genl`, `sense` and `comment`, another arity, a compound argument, a `genl` between predicates or minted constants, a predicate the store marks symmetric, commutative or forced-decontextualized, a context the index does not name, or a sentence stored as an inert record; add it with `edit!` once belief is built | [storage.md](storage.md#editing-the-records-of-a-kb-without-belief) |
+| `:reserved-term` | a term operation was given a non-symbol, a variable, or a namespaced symbol outside `lex/` | [api.md](api.md#contract-notes-term-operations) |
 | `:reset` | the sandbox page's row saying how much a reset discarded | [web.md](web.md) |
+| `:role-change` | a rename, merge or copy named a new term spelled for another role than the old one: a type for an individual, a context for a predicate | [api.md](api.md#contract-notes-term-operations) |
 | `:shape` | not an s-expression at all — see [`assert` refused it](#assert-refused-it) | [api.md](api.md) |
+| `:shipped-term` | a rename, merge or remove named a term the shipped upper or middle ontology names; merge another term into it instead | [api.md](api.md#contract-notes-term-operations) |
 | `:short-transfer` | a file copy stalled before the byte count it was told to move | [storage.md](storage.md) |
 | `:shutdown-abort` | the process began to shut down while this write ran, and the shutdown asked it to stop past its bound; the write stopped after a rule firing or at a settle pass and was rolled back as a refusal is | [storage.md](storage.md#a-shutdown-under-a-running-write) |
 | `:solver-failed` | the ASP backend ran and produced no usable answer | [asp.md](asp.md) |
@@ -645,6 +651,7 @@ so one vocabulary reads both.
 | `:still-writing` | an unload was asked for while a job — a chaining run, a sync of the shipped contexts — writes that KB | [catalog.md](catalog.md) |
 | `:stopping` | the daemon received an op after its server began to stop, and the op did not run | [operations.md](operations.md) |
 | `:store-unusable` | a disk store stopped: it was closed, a thread interrupt closed one of its channels, or a write or an fsync failed. `:reason` says which, and every call refuses until the directory is opened again | [storage.md](storage.md#a-store-that-stops) |
+| `:term-exists` | `rename-terms!` named a new term that is stored already; `merge-terms!` joins the two | [api.md](api.md#contract-notes-term-operations) |
 | `:too-many-kbs` | the catalog already holds its maximum of loaded KBs; `:entries` names them — unload one first | [catalog.md](catalog.md#loading) |
 | `:too-many-kept` | an `abduce` with `{:keep? true}` while the KB already holds its maximum of kept abduction contexts; `:contexts` names them — `abduce-discard!` one first | [abduction.md](abduction.md#isolation) |
 | `:too-many-subscriptions` | the daemon already holds its maximum of feed subscriptions | [feed.md](feed.md) |
@@ -666,10 +673,12 @@ so one vocabulary reads both.
 | `:unknown-owed-record` | the argument-type pass's owed record beside the store has a shape this engine does not read; `:path` names the file and `:version` its shape | [argtypes.md](argtypes.md#the-pass-over-a-stored-kb) |
 | `:unknown-source` | the catalog has no KB source by that id, the source names a kind nothing loads, or the directory `lein cli upgrade` names holds no store | [catalog.md](catalog.md) |
 | `:unknown-subscription` | the feed token names no subscription — it was dropped, timed out, or belongs to another daemon | [feed.md](feed.md) |
+| `:unknown-term` | a term operation named a term no stored sentex names | [api.md](api.md#contract-notes-term-operations) |
 | `:unknown-tactician` | a strategy names a tactician the ordering table does not hold | [inference.md](inference.md) |
 | `:unminted-nat` | `assert-inert` was handed a reifiable NAT this KB never minted; it never mints, so assert the NAT-bearing fact first | [nat.md](nat.md) |
 | `:unreadable` | a line of an edit batch, or a form of a text KB file, does not read as EDN; `:line` places it, and a text KB's refusal names the `:file` | [web.md](web.md), [kbs.md](kbs.md) |
 | `:unreadable-store` | the records in that store do not thaw as sentexes — it was written by a build whose record classes differ | [storage.md](storage.md) |
+| `:unrestatable-sentex` | a rename, merge or copy reached a premise with no text form, or an inert one; `:handles` names them, and retracting them first lets it run | [api.md](api.md#contract-notes-term-operations) |
 | `:unrecovered-kb` | the KB is open over a store whose belief was never built, so writes are refused until `recover` runs; with `:hazards [:stale-belief]`, a `:recover? :background` open is rebuilding belief behind an earlier build's image, and writes resume when the rebuild finishes; from `edit-records!` with `:repair reindex`, an `:add` on a store whose index was never built, which its deduplication reads | [storage.md](storage.md) |
 | `:unrecovered-premise` | a retract named a premise this KB never recovered, so the dedup walk that would find its twin has not run | [storage.md](storage.md) |
 | `:unreleased` | an unload's release did not finish cleanly; the entry is still listed and unloading again retries it | [catalog.md](catalog.md) |

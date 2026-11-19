@@ -705,8 +705,8 @@
   the upward closures of their consequents.  `closes?` is asked of every successor, before
   the state is deduplicated.
 
-  The chain is `[start [edge pred node] …]`: each step is the graph edge from its node to
-  the one before it, which reads `pred`."
+  The chain is `[start [edge pred node read] …]`: each step is the graph edge from its
+  node to the one before it, which reads `pred` through `read` (nil from an `::any` node)."
   [tax readers starts closes?]
   (let [seen-c (java.util.HashSet.)
         seen-g (java.util.HashSet.)
@@ -722,21 +722,21 @@
                                    pred (first (nm/sort-by-content-key
                                                 identity (or negs (:antecedent-preds r))))]
                              :when pred]
-                         [(if negs :excepts-on :depends-on) pred r]))
+                         [(if negs :excepts-on :depends-on) pred r nil]))
                      (some? c)
                      (for [g (nm/sort-by-content-key identity (tax/genls-global tax c))
                            :when (.add seen-g [g negative?])
                            r (readers g)
                            :when (not (and (:backward-only? node)
                                            (contains? (:closure-only r) g)))]
-                       [(edge-kind r g) c r]))))]
+                       [(edge-kind r g) c r g]))))]
     (or (some (fn [[node negative?]] (when (closes? node negative?) [node])) starts)
         (loop [q (reduce push clojure.lang.PersistentQueue/EMPTY
                          (map (fn [[node negative?]] [node negative? [node]]) starts))]
           (when-let [[node negative? chain] (peek q)]
-            (let [out (reduce (fn [q [edge pred r]]
+            (let [out (reduce (fn [q [edge _ r :as step]]
                                 (let [neg?  (or negative? (= :excepts-on edge))
-                                      chain (conj chain [edge pred r])]
+                                      chain (conj chain step)]
                                   (if (closes? r neg?)
                                     (reduced {:closed chain})
                                     (push q [r neg? chain]))))
@@ -746,11 +746,20 @@
 
 (defn- forward-path
   "A walk's chain written in the graph's direction: the last node's label, then each
-  edge as `\"<edge> <pred>\"` and the node it reaches, ending at the start's label."
+  edge as `\"<edge> <pred>\"` and the node it reaches, ending at the start's label.  The
+  path's metadata names what the cycle rests on: `:rules`, its nodes' ids; `:climbs`, each
+  `[pred read]` a step reads through `genl` edges; and `:negatives`, the predicates its
+  negative edges read."
   [[start & steps]]
-  (reduce (fn [path [edge pred node]] (into [(:label node) (str (name edge) " " pred)] path))
-          [(:label start)]
-          steps))
+  (with-meta
+    (reduce (fn [path [edge pred node]] (into [(:label node) (str (name edge) " " pred)] path))
+            [(:label start)]
+            steps)
+    {:rules     (into #{(:id start)} (map #(:id (nth % 2))) steps)
+     :climbs    (into #{} (keep (fn [[_ pred _ read]] (when (and read (not= pred read)) [pred read])))
+                      steps)
+     :negatives (into #{} (keep (fn [[edge pred _ read]] (when (= :excepts-on edge) (or read pred))))
+                      steps)}))
 
 (defn negation-cycle
   "Search the rule dependency graph for a cycle through negation created by adding
@@ -836,12 +845,15 @@
                        (walk stored #(and (below? %) (:backward-only? %)))))]
      (when chain
        (let [[start] chain
-             closing (if (= 1 (count chain)) start (peek (peek chain)))
-             edge    (if (some (reads start (:backward-only? closing)) (:exception-preds start))
-                       :excepts-on :depends-on)]
-         (conj (forward-path chain)
-               (str (name edge) " " (if (:concludes-any? closing) sub (:consequent-pred closing)))
-               (:label closing)))))))
+             closing (if (= 1 (count chain)) start (nth (peek chain) 2))
+             r?      (reads start (:backward-only? closing))
+             neg     (first (filter r? (:exception-preds start)))
+             read    (or neg (first (filter r? (:antecedent-preds start))))
+             c       (if (:concludes-any? closing) sub (:consequent-pred closing))]
+         (-> (forward-path chain)
+             (conj (str (name (if neg :excepts-on :depends-on)) " " c) (:label closing))
+             (vary-meta (fn [m] (cond-> (update m :climbs conj [c read])
+                                  neg (update :negatives conj neg))))))))))
 
 (defn cycle-description
   "Render a `negation-cycle` path as one line, for an error message."

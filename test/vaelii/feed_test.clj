@@ -810,15 +810,15 @@
   ;; CxJ sees CxA, CxB and CxD, so it decides the membership nogood and takes (cat Rex)
   ;; OUT, and (meows Rex), stored at CxJ, rests only on it.  Neither member's own context
   ;; sees the other, so no label moves: the published set has to carry the move.  Each write,
-  ;; and each retraction after them, is made in every order twice: once previewed first,
-  ;; once through `edit-with-consequences!` under a listener.  Each report names what the
-  ;; readings of belief at each sentence's own context before and after differ by; a
-  ;; preview also names a removed premise, and the other two leave out what a removal
-  ;; deleted.
+  ;; and each retraction after them, is made in every order three times: previewed first,
+  ;; and through `edit-with-consequences!` under a listener, unbounded and bounded.  Each
+  ;; report names what the readings of belief at each sentence's own context before and
+  ;; after differ by; a preview also names a removed premise, and the other two leave out
+  ;; what a removal deleted.
   ;;
   ;;   CxA  (cat Rex) default     CxB  (dog Rex) monotonic     CxD  (disjoint dog cat)
   ;;   CxJ sees CxA, CxB and CxD:  (cat ?x) => (meows ?x)
-  (doseq [mode  [:preview :edit]
+  (doseq [mode  [:preview :edit :bounded]
           order (gen/permutations [:disjoint :dog :cat :rule])]
     (tu/with-terms [dog cat meows Rex CxA CxB CxD CxJ]
       (doseq [[c up] [[CxA 'CxUniverse] [CxB 'CxUniverse] [CxD 'CxUniverse]
@@ -843,7 +843,8 @@
                                  msg)))
                          (let [[seen f] (recorder)
                                tok      (v/watch kb f)
-                               r        (v/edit-with-consequences! kb batch)
+                               r        (v/edit-with-consequences!
+                                         kb batch (when (= :bounded mode) {:max-ms 600000}))
                                _        (v/unwatch kb tok)
                                after    (believed-pairs kb pairs)
                                want     [(into #{} (remove before) after)

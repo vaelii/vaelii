@@ -8,6 +8,7 @@
             [vaelii.impl.datetime :as dt]
             [vaelii.impl.kb]
             [vaelii.impl.kv :as kv]
+            [vaelii.impl.naming :as nm]
             [vaelii.impl.overlay.mount :as mount]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
@@ -524,6 +525,31 @@
       (v/reindex kb)
       (agrees? "reindexed"))))
 
+(tu/deftest-kb the-consequent-head-family-agrees-with-the-consequent-family
+  ;; The family's other path is the consequent family and each rule's record: a rule filed
+  ;; under a symbol key is filed under it with each of `rules/consequent-heads`, and the
+  ;; family holds nothing else.
+  (tu/with-terms [parentOf kinOf KinFn Ann CxWorld]
+    (let [ix      (:index kb)
+          entries (fn [tag] (for [[[t kind path] hs] (p/index-entries ix)
+                                  :when (and (= tag t) (= :handles kind))
+                                  h hs]
+                              (conj (vec path) h)))
+          derived #(set (for [[k ctx h] (entries :rule-consequent)
+                              hd (rules/consequent-heads (p/get-sentex (:records kb) h))]
+                          [k hd ctx h]))
+          agrees? (fn [label] (is (= (derived) (set (entries :rule-consequent-head))) label))
+          ground  (v/assert kb (rules/rule-sentence [(list parentOf '?x '?y)]
+                                                    (list kinOf (list KinFn '?x) Ann))
+                            CxWorld)]
+      (v/assert kb (rules/rule-sentence [(list parentOf '?x '?y)] (list kinOf '?y '?x)) CxWorld)
+      (is (= #{KinFn Ann} (rules/consequent-heads (p/get-sentex (:records kb) ground))))
+      (agrees? "asserted")
+      (v/retract! kb ground)
+      (agrees? "retracted")
+      (v/reindex kb)
+      (agrees? "reindexed"))))
+
 (tu/deftest-kb the-calendar-family-agrees-with-a-scan-of-the-records
   ;; The family's other path is `datetime/month-buckets` over every stored fact, keyed by
   ;; its functor.  A range enters the month of each end, and a retraction takes a month no
@@ -555,6 +581,45 @@
       (v/reindex kb)
       (agrees? "reindexed"))))
 
+(tu/deftest-kb the-application-argument-family-agrees-with-the-term-index
+  ;; The family's other path is the term index on each function, filtered by the record to
+  ;; the facts using an application of it (`nm/used-applications`).  A `natFormula` map, a
+  ;; quoted application, a rule and a number enter no node.
+  (tu/with-terms [livesIn Ann Bob Cid CxStory PairFn KinFn]
+    (let [ix      (:index kb)
+          fs      [PairFn KinFn]
+          scan    #(apply merge-with into {}
+                          (for [f fs, h (reads/as-stored-with-term ix f)
+                                :let [r (p/get-sentex (:records kb) h)]
+                                :when (nil? (:antecedent r))
+                                a (nm/used-applications (constantly false) (:sentence r))
+                                :when (= f (first a))
+                                [i t] (map-indexed vector (rest a))
+                                :when (symbol? t)]
+                            {[f (inc i) t] #{h}}))
+          family  #(into {} (for [f fs, i [1 2 3], t (reads/as-stored-application-symbols ix f i)
+                                  :let [node [f i t]]]
+                              [node (set (p/family-handles ix :application-argument node p/every-context))]))
+          symbols #(for [f fs] (vec (for [i [1 2 3]] (set (reads/as-stored-application-symbols ix f i)))))
+          agrees? (fn [label]
+                    (is (= (scan) (family)) label)
+                    (is (= (update-vals (scan) count)
+                           (into {} (map (fn [node] [node (p/family-count ix :application-argument node p/every-context)]))
+                                 (keys (family))))
+                        label))
+          nested  (v/assert kb (list livesIn Ann (list PairFn (list KinFn Bob) Cid)) CxStory)]
+      (v/assert kb (list 'not (list livesIn Bob (list PairFn Ann 3))) 'CxUniverse)
+      (v/assert kb (list 'natFormula Cid (list PairFn Bob Bob)) 'CxUniverse)
+      (v/assert kb (list livesIn Cid (list 'Quote (list KinFn Cid))) 'CxUniverse)
+      (v/assert kb (tu/fwd [(list livesIn '?x (list KinFn Ann))] (list livesIn '?x Ann)) 'CxUniverse)
+      (is (= [[#{Ann} #{Cid} #{}] [#{Bob} #{} #{}]] (symbols)))
+      (agrees? "asserted")
+      (v/retract! kb nested)
+      (is (= [[#{Ann} #{} #{}] [#{} #{} #{}]] (symbols)))
+      (agrees? "the nested use retracted")
+      (v/reindex kb)
+      (agrees? "reindexed"))))
+
 (tu/deftest-kb the-nat-argument-family-agrees-with-the-term-index
   ;; The family's other path is the term index on each function, filtered by the record to
   ;; that function's positive `natFormula` maps.  A number, a string and a negated map enter
@@ -574,9 +639,10 @@
           family  #(into {} (for [[f i a :as node] @probes
                                   :let [n (reads/stored-count-nat-formulas-at ix f i a stated)]
                                   :when (pos? n)]
-                              [node [n (set (reads/as-stored-nat-formulas-at ix f i a stated))]]))
+                              [node [n (set (reads/as-stored-nat-formulas-at ix f i a stated))
+                                     (set (reads/as-stored-nat-formulas-at-global ix f i a))]]))
           agrees? (fn [label]
-                    (let [want (update-vals (scan) #(vector (count %) %))]
+                    (let [want (update-vals (scan) #(vector (count %) % %))]
                       (swap! probes into (keys want))
                       (is (= want (family)) label)))
           named   (v/assert kb (list 'natFormula CxNamed (list slice CxMonad '(DatetimeFn "2000"))) 'CxUniverse)]

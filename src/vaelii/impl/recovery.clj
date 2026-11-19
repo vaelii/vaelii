@@ -481,14 +481,18 @@
         ;; the narrowed re-chain had not owes a second settle.
         (step! :refusals)
         (let [{:keys [derived]} (chain/rerecord-refusals! kb)
+              cycled  (special/rerecord-cycle-drops! kb)
               ;; ...and the class memberships a metatype route derives, which a store
               ;; written with no belief holds no justification for
               classes? (chain/resync-arity-classes! kb)
               ;; ...and the spellings a held rule reads where its context meets a
               ;; correspondence declaration's, which an older store holds none of
-              held     (chain/sync-held-respellings! kb)]
+              held     (chain/sync-held-respellings! kb)
+              drops?   (chain/owe-tagged-drops! kb)]
           (when (seq held) (chain/chain kb held {}))
-          (when (or classes? (seq held) (pos? (long (or derived 0)))) (settle/settle kb))))
+          (when (seq cycled) (chain/chain kb cycled {}))
+          (when (or classes? drops? (seq held) (seq cycled) (pos? (long (or derived 0))))
+            (settle/settle kb))))
       ;; the settle above places the inherited clashes and stands aside from the other
       ;; families, and a store written with no belief holds none placed: the nogoods the
       ;; rebuilt index queued are placed where they stand (`chain/place-nogoods!`)

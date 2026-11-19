@@ -27,6 +27,20 @@
   [kb]
   (select-keys @(reasoning/nogood-candidates kb) [::tuple/det ::tuple/chains]))
 
+(deftest predicate-extents-accept-a-structural-specialization
+  (doseq [edge-first? [true false]]
+    (tu/with-neutral-kb [kb tu/fresh]
+      (tu/with-terms [relation QualifierFn A B]
+        (let [compound (list QualifierFn relation)
+              edge     (list 'genl compound relation)
+              fact     (list relation A B)]
+          (doseq [sentence (if edge-first? [edge fact] [fact edge])]
+            (v/assert kb sentence 'CxUniverse))
+          (let [w (decide/unscoped-closures (reasoning/taxonomy kb))
+                h (v/handle-of kb fact 'CxUniverse)]
+            (is (= #{relation compound} ((:specs-global w) relation)))
+            (is (= #{h} (set (#'tuple/marked-facts kb w [relation]))))))))))
+
 (defn- per-tuple-rebuild!
   "`rebuild-candidates!` reading every tuple's marks afresh."
   [kb]

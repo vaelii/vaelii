@@ -447,3 +447,68 @@
             (justify tms 77778 [4] 5)
             (is (= #{3 5} (jtms/touched-since tms (first ms))))
             (is (= #{5} (jtms/touched-since tms m2)))))))))
+
+(deftest a-held-reach-answer-agrees-with-a-fresh-walk-after-each-change-a-run-makes
+  (doseq [[label make] networks]
+    (testing label
+      (let [tms     (make)
+            targets (atom #{90})
+            asked   [0 1 2 3 4 5 6 7 90]
+            reached (fn [] (into #{} (filter #(jtms/support-reaches? tms % @targets @targets)) asked))
+            check   (fn [step]
+                      (let [held (reached)
+                            walk (binding [jtms/*reach-memo* nil] (reached))]
+                        (is (= walk held) (str step ": the held answers are the walk's"))
+                        held))]
+        (binding [jtms/*reach-memo* (jtms/run-reach-memo tms)]
+          (premise tms 0)
+          (premise tms 90)
+          (justify tms 101 [0] 1)
+          (justify tms 102 [1] 2)
+          (justify tms 103 [2] 3)
+          (justify tms 104 [3] 4)
+          (justify tms 105 [4] 3)
+          (is (= #{90} (check "a cycle reaching no target")))
+          (justify tms 106 [90] 4)
+          (is (= #{90 3 4} (check "a route gained inside the cycle")))
+          (justify tms 107 [2] 5)
+          (check "a new conclusion")
+          (justify tms 108 [3] 1)
+          (is (= #{90 1 2 3 4 5} (check "a route gained below handles answered false")))
+          (justify tms 109 [90] 6)
+          (premise tms 7)
+          (justify tms 110 [6] 7)
+          (is (= #{90 1 2 3 4 5 6} (check "a premise is not walked past")))
+          (jtms/suspend-premise tms 7)
+          (is (= #{90 1 2 3 4 5 6 7} (check "a suspended premise is")))
+          (jtms/retract! tms 90)
+          (is (= #{90} (check "a removal")))
+          (swap! targets conj 0)
+          (is (contains? (check "a target added") 0)))))))
+
+(deftest a-held-reach-answer-follows-a-watched-handle-gaining-and-losing-support
+  (doseq [[label make] networks]
+    (testing label
+      (let [tms     (make)
+            target? (fn [d] (when (= 1 d)
+                              (jtms/watch-support! tms 95)
+                              (not (jtms/unsupported? tms 95))))
+            reached (fn [] (into #{} (filter #(jtms/support-reaches? tms % target? :k)) [0 1 2]))
+            check   (fn [step]
+                      (let [held (reached)
+                            walk (binding [jtms/*reach-memo* nil] (reached))]
+                        (is (= walk held) (str step ": the held answers are the walk's"))
+                        held))]
+        (binding [jtms/*reach-memo* (jtms/run-reach-memo tms)]
+          (premise tms 0)
+          (justify tms 101 [0] 1)
+          (justify tms 102 [1] 2)
+          (premise tms 95)
+          (jtms/suspend-premise tms 95)
+          (is (= #{} (check "the naming handle has no support")))
+          (premise tms 95)
+          (is (= #{1 2} (check "it gains a premise mark")))
+          (jtms/suspend-premise tms 95)
+          (is (= #{} (check "it loses the mark")))
+          (justify tms 103 [0] 95)
+          (is (= #{1 2} (check "it gains a justification"))))))))

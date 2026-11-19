@@ -61,6 +61,7 @@
             [vaelii.host.core-context :as core-context]
             [vaelii.host.seed :as seed]
             [vaelii.host.starter :as starter]
+            [vaelii.impl.io.shipped :as shipped]
             [vaelii.impl.io.text :as text]
             [vaelii.impl.kb :as kbi]
             [vaelii.impl.naming :as nm]
@@ -72,7 +73,7 @@
   "The contexts `sync!` makes state exactly what the engine ships: CxUniverse and the
   middle layer's contexts, as discovered on the classpath."
   []
-  (into [sx/root-context] (seed/layer-contexts "middle")))
+  (into [sx/root-context] (shipped/layer-contexts "middle")))
 
 (defn- edge?
   "Is `form` (a KB-file form, under its strength wrapper or not) a `genlCx` sentence?"
@@ -172,7 +173,7 @@
       (#{:forward :forward-only} (sx/rule-direction-wrappers w))
       (list 'set/backwardRule (second form))
 
-      (#{sx/strength-wrapper sx/default-rule-wrapper sx/solve-rule-wrapper} w)
+      (or (#{sx/strength-wrapper sx/default-rule-wrapper} w) (sx/modifier-wrappers w))
       (some->> (backward-form (second form)) (list w))
 
       :else nil)))
@@ -185,7 +186,7 @@
   (let [w (when (seq? sentence) (first sentence))]
     (cond
       (sx/rule-direction-wrappers w)                             (undirected (second sentence))
-      (#{sx/default-rule-wrapper sx/solve-rule-wrapper} w)       (list w (undirected (second sentence)))
+      (or (= sx/default-rule-wrapper w) (sx/modifier-wrappers w)) (list w (undirected (second sentence)))
       :else                                                      sentence)))
 
 (defn- backward?
@@ -195,7 +196,7 @@
   (and (seq? sentence)
        (let [w (first sentence)]
          (cond (= 'set/backwardRule w)                               true
-               (#{sx/default-rule-wrapper sx/solve-rule-wrapper} w) (backward? (second sentence))
+               (or (= sx/default-rule-wrapper w) (sx/modifier-wrappers w)) (backward? (second sentence))
                :else                                                (= 'implies w)))))
 
 (defn- canonical-form
@@ -215,7 +216,7 @@
                          (not (rule? (last (second x)))))
                     (second x)
 
-                    (#{sx/default-rule-wrapper sx/solve-rule-wrapper} w) (list w (strip (second x)))
+                    (or (= sx/default-rule-wrapper w) (sx/modifier-wrappers w)) (list w (strip (second x)))
                     :else                                                x)))
         s' (strip s)]
     (cond (= s s')              form

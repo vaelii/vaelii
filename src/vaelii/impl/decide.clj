@@ -15,6 +15,7 @@
             [vaelii.impl.decide.related :as related]
             [vaelii.impl.decide.tuple :as tuple]
             [vaelii.impl.journal :as journal]
+            [vaelii.impl.jtms :as jtms]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.strength :as strength]
@@ -26,8 +27,8 @@
 
   * `:grounds`, `{kind #{functor}}`: the forced-monotonic literals the family reads as
     stored grounds rather than as members, under the declaration kind that reads them
-    (`:forced-between-predicates` for a functor read only between predicate-spelled
-    arguments).  Absent for a family that reads none.
+    (`:forced-between-predicates` for a functor read only between predicates,
+    `forced-literal?`).  Absent for a family that reads none.
   * `:note!` `(fn [kb w sx stored?])`, at the store and removal choke points; absent for
     a family the settle installs.
   * `:recovered` `(fn [kb w])`: writes the rows the family computes off the store once
@@ -49,7 +50,6 @@
   '{genlCx     "every context's ancestor set reads the stored edges"
     except     "withdrawing one un-hides its target, so the OUT set of a round would shrink"
     exceptWhen "withdrawing one unblocks the firings of the rule it names, so the OUT set of a round would shrink"
-    orthogonal "the one member of the related-types family's clash of it, which is a conflict and never a defeat"
     rewriteOf  "withdrawing one un-merges two terms, so the OUT set of a round would shrink"
     sameAs     "withdrawing one un-merges two terms, so the OUT set of a round would shrink"
     equals     "withdrawing one un-merges two terms, so the OUT set of a round would shrink"
@@ -185,29 +185,36 @@
    :context-up-global   (partial tax/context-up-global tax)
    :context-down-global (partial tax/context-down-global tax)})
 
+(defn- between-predicates?
+  "`nm/between-predicates?` of `literal`, a minted argument's role read off its length
+  bindings in `kb` (`arity/two-or-more-places?`)."
+  [kb literal]
+  (nm/between-predicates? literal #(arity/two-or-more-places? kb %)))
+
 (defn forced-literal?
-  "Is `literal` in the forced-monotonic set: its functor is `forced-monotonic?` as
+  "Is `literal` in the forced-monotonic set of `kb`: its functor is `forced-monotonic?` as
   `:forced-monotonic`, or as `:forced-between-predicates` over a literal
-  `nm/between-predicates?`.  The 2-arity reads the union over every reader; the
+  `between-predicates?`.  The 2-arity reads the union over every reader; the
   3-arity reads the forced-monotonic reading `on?` (`global-reading`, `reader-reading`)."
-  ([tax literal] (forced-literal? tax literal (partial forced-monotonic? tax)))
-  ([_tax literal on?]
+  ([kb literal] (forced-literal? kb literal (partial forced-monotonic? (reasoning/taxonomy kb))))
+  ([kb literal on?]
    (let [f (nm/functor literal)]
      (boolean (and (symbol? f)
                    (or (on? :forced-monotonic f)
                        (and (on? :forced-between-predicates f)
-                            (nm/between-predicates? literal))))))))
+                            (between-predicates? kb literal))))))))
 
 (defn literal-declarations
-  "`{handle context}` of the stored declarations that make `literal` forced-monotonic and
-  are not `global?`: empty when the baseline set holds `literal` or no declaration
-  does."
-  [tax literal]
-  (let [f (nm/functor literal)]
-    (if (or (not (symbol? f)) (forced-literal? tax literal (global-reading tax)))
+  "`{handle context}` of the stored declarations that make `literal` forced-monotonic in
+  `kb` and are not `global?`: empty when the baseline set holds `literal` or no
+  declaration does."
+  [kb literal]
+  (let [f   (nm/functor literal)
+        tax (reasoning/taxonomy kb)]
+    (if (or (not (symbol? f)) (forced-literal? kb literal (global-reading tax)))
       {}
       (cond-> (or (declarations tax :forced-monotonic f) {})
-        (nm/between-predicates? literal)
+        (between-predicates? kb literal)
         (merge (declarations tax :forced-between-predicates f))))))
 
 (defn note-candidate!
@@ -331,6 +338,22 @@
   [c]
   (not (contains? c ::genlcx)))
 
+(defn holding-class
+  "`handle → class`: the live JTMS defeat class of the handle, nil while it is OUT, and
+  `:monotonic` for a believed literal in the forced-monotonic set (`forced-literal?`)
+  whatever strength it was written at.  A separation is outside that set (docs/nmtms.md,
+  \"The forced-monotonic set\"), so the part edges a `:default` `covering` installs read
+  `:default`."
+  [kb]
+  (let [tms  (reasoning/tms kb)
+        recs (:records kb)]
+    (fn [h]
+      (when-let [c (jtms/defeat-class tms h)]
+        (if (and (not= :monotonic c)
+                 (some->> (p/get-sentex recs h) :sentence (forced-literal? kb)))
+          :monotonic
+          c)))))
+
 (defn moves
   "`[c pos moved]`: the candidate index as `synced` answers it, its journal position, and
   the handles journaled since the position `since` (`journal/since`), which hold every
@@ -369,7 +392,7 @@
   (let [tax  (reasoning/taxonomy kb)
         recs (:records kb)]
     (or (membership/exempt-at? tax recs ms up)
-        (related/exempt-at? (unscoped-closures tax) recs ms up)
+        (related/exempt-at? kb (unscoped-closures tax) (holding-class kb) ms up)
         (and (seq (tax/equality-edges tax)) (tuple/exempt-at? kb (synced kb) ms up hidden?)))))
 
 (defn verdict

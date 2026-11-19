@@ -85,6 +85,13 @@
   job from a failed one."
   ::cancelled)
 
+(defn cancellation
+  "The throw that ends a job as cancelled, with `message` as the error its card shows: for
+  work that stops at a point of its own, where `progress!`'s message would misstate what
+  stayed."
+  [message]
+  (ex-info message {:type cancelled}))
+
 (defn cancelled?
   "Was `t` thrown by a **cancellation** rather than by a failure: the `progress!` throw
   `cancel!` arms?  An interrupt is a cancellation only for a job that writes nothing and
@@ -201,8 +208,7 @@
     ;; the message is what the card shows beside the status, so it says what stopping here
     ;; means rather than repeating the status word
     (when @cancel
-      (throw (ex-info "stopped at a progress report, as asked — what had landed stays"
-                      {:type cancelled})))))
+      (throw (cancellation "stopped at a progress report, as asked — what had landed stays")))))
 
 (defn submit
   "Run `work` as a job and return its id.  `work` takes one argument, the `progress!` fn

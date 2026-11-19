@@ -122,16 +122,18 @@
 
 (defn- own-links
   "Each `[node strict? nil]` one link from `n` that the point terms give alone: a point of
-  a moment is that moment, and a thing's six points keep `timepoint/thing-order`.  A
-  calendar thing's points compare by their fields instead."
+  a moment is that moment, a bounded point of an `open-functions` application is its
+  argument, and a thing's six points keep `timepoint/thing-order`.  A calendar thing's
+  points compare by their fields instead."
   [later? n]
   (when-let [x (tp/thing-of n)]
-    (cond
-      (or (tp/point-term? x) (dt/instant-term? x)) [[x false nil]]
-      (calendar-moment n)                          nil
-      :else (let [w (tp/point-functions (first n))]
-              (for [[lo hi s] tp/thing-order :when (= w (if later? lo hi))]
-                [(tp/point (if later? hi lo) x) s nil])))))
+    (if (or (tp/point-term? x) (dt/instant-term? x))
+      [[x false nil]]
+      (concat (let [[k w] (tp/open-side n)] (when (= :bound k) [[w false nil]]))
+              (when-not (calendar-moment n)
+                (let [w (tp/point-functions (first n))]
+                  (for [[lo hi s] tp/thing-order :when (= w (if later? lo hi))]
+                    [(tp/point (if later? hi lo) x) s nil])))))))
 
 (def ^:private within-orders
   "The orders a meet of which lies within each argument: it starts at or after each
@@ -245,10 +247,18 @@
   or before `q` without a walk of its own when one node's walks reach `p` back and `q` on."
   nil)
 
+(defn- unbounded?
+  "Is `x` a point on the unbounded `side`, `:start` or `:end`, of an `open-functions`
+  application (`timepoint/open-side`)?"
+  [side x]
+  (and (= :unbounded (first (tp/open-side x)))
+       (= side (second (tp/open-functions (first (tp/thing-of x)))))))
+
 (defn- by-terms
-  "`[]` when the terms alone place `p` before `q` (`strict?`) or at or before it: two
-  calendar moments by their fields, or one node at itself.  false when two calendar
-  moments refuse it, nil when only the links decide."
+  "`[]` when the terms alone place `p` before `q` (`strict?`) or at or before it.  They
+  place two calendar moments by their fields and one node at itself.  An unbounded start
+  lies before and an unbounded end after any node, strictly against a calendar moment.
+  false when two calendar moments refuse it, nil when only the links decide."
   [strict? p q]
   (let [cp (calendar-moment p)
         cq (calendar-moment q)]
@@ -257,7 +267,9 @@
                            ((if strict? neg? (complement pos?)) (compare (second cp) (second cq))))
                     []
                     false)
-      (and (= p q) (not strict?)) [])))
+      (and (= p q) (not strict?)) []
+      (and (unbounded? :start p) (or (not strict?) cq)) []
+      (and (unbounded? :end q) (or (not strict?) cp)) [])))
 
 (defn- through?
   [strict? p q]

@@ -98,7 +98,7 @@ slot and in argument position maps twice: to a `cx/` constant `K′` from the sl
 `nat/` constant `K` from the argument when its head is a `reifiable_function`
 ([nat.md](nat.md)). Every read from expression to constant takes the namespace it wants
 (`nat-read/in-namespace?`, which splits the map by `naming/context?`): `dedup-constant`,
-`rewrite-target`, the collision grouping behind `merge-colliding-nats!`, and the
+`rewrite-target`, the collision grouping behind `collision-merges`, and the
 applications a late `result` or correspondence declaration reaches. So the two constants
 are no collision, and neither read resolves to the other's constant. A function that is no
 `reifiable_function` leaves its argument-position application structural, as an
@@ -118,8 +118,8 @@ argument. Nothing equates `K` with `K′`.
 
 The context slot is *not* on the sentence-reify walk — it is a separate argument to
 `assert` — so `maybe-reify-context` reifies it explicitly: on the write path (`assert`,
-minting) and on every read entry point (`ist-goal`, dedup-only, never minting, behind the
-declaration check above). A query scoped to `(CxTimeFn …)` therefore resolves to the same
+minting) and on every read entry point (`ist-goal` and `contradictions`, dedup-only, never
+minting, behind the declaration check above). A query scoped to `(CxTimeFn …)` therefore resolves to the same
 `cx/` constant the write minted and meets the facts stored there. A read mints no context
 for a never-seen application either. When the producer would order the application below
 contexts that exist (`context-nat/unminted-supers`), the read runs over a read copy of the
@@ -132,12 +132,13 @@ NATs hold the terms it reads (`context-nat/above-candidates`). At a position no 
 answers, it reads the contexts holding a term the position's sub-relations relate the
 slice's term to. At a position a comparator answers, it reads the contexts holding a
 calendar term containing the slice's time in each spelling (`datetime/containing-terms`), a
-`DatetimeRangeFn` range, a thing whose start or end a link fact names
+`DatetimeRangeFn` range, an `IntervalBeforeFn` or `IntervalAfterFn` time, a thing whose
+start or end a link fact names
 ([time.md](time.md#the-order-over-time-points-vaeliiimplpoint-order)), or the other end of
 a stored fact. It
 reads each term at the position off the `:nat-argument` family
-([indexing.md](indexing.md#the-natformula-arguments)), and a range off the term index on
-`DatetimeRangeFn`. `lein perf`'s
+([indexing.md](indexing.md#the-natformula-arguments)), and each of the other two kinds off
+the term index on its functor. `lein perf`'s
 `context-nat-read-unwritten-slice-after-write` and
 `context-nat-read-unwritten-slice-beside-monads` measure the read. Otherwise the application
 resolves to the `no-match` sentinel, and the read is scoped to nothing and answers empty.
@@ -147,6 +148,12 @@ stores in, the stored one or the one the expression's content names, and mints n
 (`nat/context-for-check`), so `check` reports what `assert` refuses for a compound slot as
 for a symbol.
 
+A slot write takes its constant as an argument's write does, from a stated `natFormula`
+row of the slot as written alone ([nat.md](nat.md#a-nat-resolves-under-the-readers-merges)).
+A fact written through a merged slot therefore answers in the slice it was written
+through once the merge is retracted, in every arrival order
+(`context_nat_test/a-fact-written-through-a-merged-slot-answers-at-its-own-slice-once-the-equality-goes`).
+
 ### A slice of a slice folds by declaration
 
 All three reify entry points read the slot in its `nat/context-form` spelling. Every
@@ -155,7 +162,9 @@ so a commutative or meet application in the slot is sorted and absorbed as it is
 sentence. Then each believed `(contextArgFold F p G)` folds an application of `F` whose
 argument `p` is an application of `F`: the result keeps the inner application's argument
 `p`, and each other argument becomes the `G` application of the inner and the outer
-argument there. An inner `cx/` constant is read through its `natFormula` map. The fold
+argument there. An inner `cx/` constant is read through its stated `natFormula` row,
+never a merge's twin of it, so a slice of a slice whose meet a rewrite absorbs folds to
+one spelling in either order (`nat/inner-application`). The fold
 repeats until no declared position holds an application of `F`. `time.txt` states
 `(contextArgFold CxTimeFn 1 TimeIntersectionFn)`, so `(CxTimeFn (CxTimeFn CxStory A) B)`,
 `(CxTimeFn S B)` with `S` the `cx/` constant of `(CxTimeFn CxStory A)`, and `(CxTimeFn
@@ -172,8 +181,9 @@ spelling is read off the time's extent, so it is a function of the expression al
 | the time | its spelling |
 |---|---|
 | a whole year, month or day | `YearFn`, `MonthFn`, `DayFn` |
-| a whole hour, minute or second | `DatetimeFn`, every field zero-padded |
-| an `InstantFn` moment, `(StartFn T)` or `(EndFn T)` of a term `T` with an extent | `InstantFn` |
+| a whole hour, minute, second or sub-second unit | `DatetimeFn`, every field zero-padded |
+| an `InstantFn` moment, `(StartFn T)` or `(EndFn T)` of a term `T` with an extent, on a whole second | `InstantFn` |
+| the same between two seconds | `(StartFn U)` of the coarsest unit `U` starting there |
 | any other range | `DatetimeRangeFn` from the coarsest unit starting where it starts to the coarsest unit ending where it ends |
 
 `time.txt` states `(contextArgCalendarSpelling CxTimeFn 2)`, so `(CxTimeFn CxStory
@@ -290,8 +300,9 @@ believed sentences whose functor the producer reads (`declared-heads`). An
 edge a rule concludes is therefore swept as an asserted one is, and so is a declaration or
 an evidence fact a rule concludes or a retraction revives. The settle after a `formula`
 declaration releases or holds a rule (`nat-maintenance/reconcile-formula-positions`) is read
-the same way. A computed edge that leaves belief has
-its pair asked again, since a second route can hold it. A computed edge that enters belief
+the same way. A computed edge that leaves belief has its pair asked again both ways,
+since a second route can hold it, and the edge kept a route the other way from building
+([Two contexts ordered both ways](#two-contexts-ordered-both-ways)). A computed edge that enters belief
 sweeps as an asserted one does: an edge from `k1` to `k2` orders a context whose argument
 is `k1` below the one with `k2` there. Each level of nesting takes one more round, and the
 producer reads the moves of at most eight settles per pass
@@ -317,6 +328,50 @@ the in-memory `reifiable_function` marks, then one O(1) `natFormula` functor cou
 context slot mints with no declaration. A KB that has minted nothing pays that count and
 neither the hook nor the `any-context-declarations?` index read.
 
+### Two contexts ordered both ways
+
+`genlCx` is a partial order, so the producer builds no edge from `Ka` to `Kb` when the
+stored edges already reach `Ka` from `Kb` (`tax/genlCx-stored?-global`), when the two are
+one class (`kb/context-home`), or when CxUniverse stores `(contextsOrderedBothWays Ka Kb)`.
+There it reads the routes from `Kb` to `Ka` (`reconcile-pair`):
+
+- Each route whose handles other than a declaration's are `:monotonic`, paired with each
+  such route back, justifies `(equals Ka Kb)` in CxUniverse under the
+  `contextArgSubrelation` informant, with both `natFormula` maps (`materialize-equality`,
+  through `special/derive-merge`). The producer first drops its own edges between the two
+  and its own `contextsOrderedBothWays`, and the equality joins their extents as a stated
+  one does ([equality.md](equality.md#two-names-of-one-context)). The restatements the
+  merge stores are re-chained before the producer's settle (`special/take-producer-seeds!`).
+- With no such pair, a merge would rest on `:default` evidence, which
+  [reference.md](reference.md#invariants-the-reference-states) invariant 8 refuses. Each
+  route paired with each route back justifies `(contextsOrderedBothWays Ka Kb)` in
+  CxUniverse, and the producer drops its edges between the two. Neither slice sees the
+  other, in either arrival order.
+- With no route back, the edge is built, unless the closure orders the pair the other way
+  through a third context, which derives nothing.
+
+The stored `contextsOrderedBothWays` carries the pair's state through the JTMS.
+Retracting a handle of one of its justifications removes it or takes it OUT. A placed
+defeat of one leaves it IN and not believed (`exc/believed-own?`), and the producer then
+builds the edges over the routes whose every handle is believed. A teardown that removes
+the sentence orders the pair again both ways (`reorder-pair`, from `reconcile-revivals`).
+So does a settle that takes the sentence OUT or brings it back (`:departed` and `:arrived`,
+read by `reconcile-moves`), and a defeat of a handle it rests on directly, which the
+settle notes as `:departed`. The edge the remaining direction holds is built, and a supporter
+restated or a defeat retracted brings the pair back to neither. A teardown that removes an
+equality between two context NATs of one function, and a computed edge leaving belief
+(`reconcile-edge-move`), order the pair again both ways too. A pair the closure orders the
+other way or that a `contextsOrderedBothWays` names reads `pair-routes` once more for the
+reverse direction. For each handle a settle took OUT or a defeat took from belief,
+`reconcile-moves` reads its justifications and its dependents' in memory. It fetches the
+record of the handle when the producer concluded it, and of each producer conclusion
+justified on it directly, to find a `contextsOrderedBothWays`. The merge costs one
+restatement per sentex stored in the retired context. `context_nat_test`'s
+`two-contexts-ordered-both-ways-are-one-class-at-monotonic-and-keep-the-edge-a-route-holds`
+checks both strengths, both arrival orders and the retraction of either direction, and
+`a-default-pair-ordered-both-ways-sees-neither-way-until-one-route-goes` checks the
+retraction and the defeat of an evidence fact, a declaration and a point-order link.
+
 ### The bounded R oracle — no proof inside the relabel loop
 
 The producer feeds the `genlCx` closure, which a relabel loop reads, so it may **not** start
@@ -333,7 +388,16 @@ oracle:
   as a named moment, `[t t]`; an `InstantFn` moment is `[t t]` alone. `subintervalOf` holds
   when the upper time's start lies at or before the lower's and the lower's end at or
   before the upper's. `subtimeOf` holds of a moment at or after the upper time's start and
-  before its end, since an interval is half-open. Each comparison is a `point-order/path`.
+  before its end, since an interval is half-open, and only while the upper time is believed
+  to have no gap. A time has none when it is a calendar term, or a member of
+  `time_interval`, `uninterrupted_time`, `time_point` or a type below one, stated or
+  through its function's `(result F t)` declaration (`unbroken-routes`). The membership,
+  the declaration and the `genl` edges reaching the type are read as CxUniverse believes
+  them, since the edge they support is stored there, and they support the route beside
+  the paths. A membership stated in another context, the monad included, orders nothing
+  (`temporal_capability_test/a-time-is-read-unbroken-only-by-a-typing-cxuniverse-believes`). A moment lies inside a time with gaps through a stated piece: each believed
+  `(subtimeOf p b)` gives a route placing the moment below `p`, ending in that fact's
+  handle. Each comparison is a `point-order/path`.
   The facts on the paths are the route's supporters, so retracting one withdraws the
   route. A stated `startOf` or `endOf` is a link equating the point with the moment, and
   the generated `start < end` of every thing leaves a time holding its own start whatever
@@ -368,7 +432,8 @@ interval**.
 
 `DatetimeFn` is an `unreifiable_function` taking a reduced-precision **ISO 8601** string:
 `"2000"` the year, `"2000-01"` its January, `"2000-01-15"` a day, down through hour,
-minute, second. `YearFn` / `MonthFn` / `DayFn` are the **calendar constructors** over the
+minute, second and a fractional second of one to nine digits, `"2000-01-15T13:00:00.123"`
+one millisecond. `YearFn` / `MonthFn` / `DayFn` are the **calendar constructors** over the
 same three coarsest fields, written as numbers rather than as a string — `(YearFn 2000)`,
 `(MonthFn 2000 1)`, `(DayFn 2000 1 15)`. Each takes one field per argument, coarsest
 first, so **its arity is its precision** and there is no string to parse or to mis-parse;
@@ -393,7 +458,10 @@ it inside the settle loop. **One field vector for both spellings** is the whole 
 bridge between them: the comparator never learns which constructor it was handed, so
 `(MonthFn 2000 1)` and `(DatetimeFn "2000-01")` name the same interval, and a KB told the
 year one way and the month the other still orders the two contexts. Fields are numeric, so
-`"2000-1"`, `"2000-01"` and `(MonthFn 2000 1)` are one month.
+`"2000-1"`, `"2000-01"` and `(MonthFn 2000 1)` are one month. Each digit of a fractional
+second is one more field, so `"2000-01-15T13:00:00.123"` nests inside `".12"`, `".1"` and the
+second. A fractional second takes the zero-padded spelling alone: `"2000-1-15T13:0:0.5"`
+names nothing.
 
 A `(DatetimeRangeFn FROM TO)` range and an `(InstantFn Y M D h m s)` moment are read by
 extent. `datetime/extent` gives a range the half-open span from the start of `FROM`'s
@@ -506,9 +574,15 @@ nothing until the expression is used again.
   edge this page produces and the `subintervalOf` the clock answers hold of the same pairs.
 - **A named time keeps its name.** Two named times with one extent, or a named time and a
   calendar term with the same stated bounds, are two contexts: the respelling reads the
-  expression and never a stored fact, so a canonical form does not move with belief. The
-  producer orders the two slices one way and refuses the second edge as a cycle, so the
-  arrival order decides which slice sees the other. A time with a UTC offset or a zone,
+  expression and never a stored fact, so a canonical form does not move with belief. Where
+  both orders rest on `:monotonic` evidence the two are one class
+  ([Two contexts ordered both ways](#two-contexts-ordered-both-ways)). Where one rests on a
+  `:default` fact, neither slice sees the other. A cycle the closure closes through a
+  third context, with no route between the pair's own two contexts, derives no equality
+  either. A stated equality between two names of one time merges their slices, through the
+  collision repair
+  ([nat.md](nat.md#rename-and-remove--keeping-the-11-invariant)) and the context merge
+  ([equality.md](equality.md#two-names-of-one-context)). A time with a UTC offset or a zone,
   and a `TimeIntersectionFn` application no argument of which absorbs the other, keep the
   spelling they are written in.
 - **The closure oracle reads one path, and so does the order over time points.** A second

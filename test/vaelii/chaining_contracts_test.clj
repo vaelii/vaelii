@@ -6,6 +6,7 @@
   and the accepted option keys.  docs/inference.md, \"Forward chaining\"."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.assert-entry :as entry]
             [vaelii.impl.budget :as budget]
             [vaelii.impl.caches :as caches]
             [vaelii.impl.chain :as chain]
@@ -14,6 +15,7 @@
             [vaelii.impl.nat :as nat]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.types.reasoning :as reasoning]
+            [vaelii.intersection-test :as intersection]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -420,6 +422,56 @@
                                 (interruption #(write past?))))))
             (is (= before (kb-state kb)))))))))
 
+(defn- refuse-every-write
+  "An `entry/*write-check*` that refuses the write it reads."
+  [_ _]
+  (throw (ex-info "refused" {:type ::refused})))
+
+(tu/deftest-kb a-refused-write-keeps-each-justification-a-tagged-rule-s-drop-covers
+  (doseq [kind [:below :at] o [0 1] i (range 4)]
+    (let [{:keys [facts orders]} (intersection/drop-world kb kind)
+          order  (nth orders o)
+          _      (run! #(apply v/assert kb (facts %)) (take i order))
+          before (kb-state kb)
+          at     (str kind " " order ", the facts before index " i " asserted")]
+      (testing "the fact at the index, asserted under a refusing write check"
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"refused"
+                              (binding [entry/*write-check* refuse-every-write]
+                                (apply v/assert kb (facts (nth order i)))))
+            at)
+        (is (= before (kb-state kb)) at))
+      (testing "the facts from the index on, sent to edit! with a genl cycle after them"
+        (tu/with-terms [cycle_a cycle_b]
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"creates a cycle"
+                                (v/edit! kb {:add (conj (mapv facts (drop i order))
+                                                        [(list 'genl cycle_a cycle_b) 'CxUniverse]
+                                                        [(list 'genl cycle_b cycle_a) 'CxUniverse])}))
+              at)
+          (is (= before (kb-state kb)) at))))))
+
+(tu/deftest-kb a-stopped-write-keeps-each-justification-a-tagged-rule-s-drop-covers
+  (testing "edit! of the facts that place a cover, with a removal, stopped once the removal is suspended"
+    (let [{:keys [facts]} (intersection/drop-world kb :below)
+          _      (run! #(apply v/assert kb (facts %)) [:d3 :f])
+          spare  (v/assert kb (list (tu/tmp-type "spare") 'Item) 'CxUniverse)
+          before (kb-state kb)]
+      (is (= [:stop? true]
+             (interruption #(v/edit! kb {:add (mapv facts [:d1 :d2]) :remove [spare]}
+                                     {:progress-every-ms 0 :stop? (fn [] (not (v/in? kb spare)))}))))
+      (is (= before (kb-state kb)))))
+  (testing "retract! of an except hiding a fact of the :monotonic firing, stopped once the firing is placed"
+    (let [{:keys [facts c]} (intersection/drop-world kb :at)
+          _       (run! #(apply v/assert kb (facts %)) [:wa :wb])
+          ha      (apply v/assert kb (facts :ma))
+          ex      (v/assert kb (list 'except (list 'sentexHandle ha)) 'CxUniverse)
+          hb      (apply v/assert kb (facts :mb))
+          h       (v/handle-of kb c 'CxUniverse)
+          placed? (fn [] (some #(every? (set (:antecedents %)) [ha hb])
+                               (v/supporting-justifications kb h)))
+          before  (kb-state kb)]
+      (is (= [:stop? false] (interruption #(v/retract! kb ex {:progress-every-ms 0 :stop? placed?}))))
+      (is (= before (kb-state kb))))))
+
 (tu/deftest-kb a-write-deriving-exactly-its-max-derivations-stores-its-closure
   ;; `(p Rex)` concludes `(q Rex)` and `(r Rex)`, and both go back on the agenda.  A cap
   ;; of 2 leaves nothing unmade; a cap of 1 leaves `(r Rex)` unmade.
@@ -595,6 +647,105 @@
           "both runs had placed the denial, and believed the default, when they stopped")
       (is (denied?))
       (is (not (v/in? kb hf))))))
+
+(tu/deftest-kb a-stopped-removal-leaves-the-kb-as-it-found-it
+  (tu/with-terms [SuccFn num startq other Zero]
+    (v/assert kb (list 'reifiable_function SuccFn) 'CxUniverse)
+    (v/assert kb (list 'result SuccFn num) 'CxUniverse)
+    (v/assert kb (tu/fwd [(list num '?x)] (list num (list SuccFn '?x))) 'CxUniverse)
+    (let [s      (v/assert kb (list startq Zero) 'CxUniverse)
+          hiding (v/assert kb (list 'except (list 'sentexHandle s)) 'CxUniverse)
+          _      (v/assert kb (tu/fwd [(list startq '?x)] (list num '?x)) 'CxUniverse)
+          past?  #(>= (v/count-with-functor kb num) 4)
+          base   {:progress-every-ms 0}]
+      (is (zero? (v/count-with-functor kb num)))
+      (doseq [[op remove! rolled-back?]
+              [[:retract #(v/retract! kb hiding %) false]
+               [:edit #(v/edit! kb {:add [[(list other Zero) 'CxUniverse]] :remove [hiding]} %)
+                true]]
+              [how opts clock]
+              [[:stop? (assoc base :stop? past?) identity]
+               [:max-ms (assoc base :max-ms 60000)
+                (fn jump-an-hour-when-past [now]
+                  #(if (past?) (+ (long (now)) 3600000000000) (now)))]
+               [:max-derivations (assoc base :max-derivations 3) identity]]
+              :when (not (and (= :edit op) (= :max-derivations how)))]
+        (let [before (kb-state kb)]
+          (testing (str op " " how)
+            (is (= [how rolled-back?] (with-redefs [budget/now (clock budget/now)]
+                                        (interruption #(remove! opts)))))
+            (is (= before (kb-state kb)))
+            (is (v/in? kb hiding)))))
+      (v/retract! kb hiding {})
+      (is (nil? (v/sentex kb hiding)))
+      (is (= (inc (:max-term-depth v/default-chain-opts)) (v/count-with-functor kb num))
+          "Zero and one constant per level"))))
+
+(tu/deftest-kb a-stop-asked-before-a-bounded-removal-stops-it-with-nothing-to-re-chain
+  (tu/with-terms [likes X Y]
+    (doseq [[op remove! rolled-back?] [[:retract #(v/retract! kb %1 %2) false]
+                                       [:edit #(v/edit! kb {:remove [%1]} %2) true]]]
+      (let [h (v/assert kb (list likes X Y) 'CxUniverse)]
+        (testing (name op)
+          (is (= [:stop? rolled-back?]
+                 (interruption #(remove! h {:progress-every-ms 0 :stop? (constantly true)}))))
+          (is (some? (v/sentex kb h))))
+        (v/retract! kb h)))))
+
+(defn- teardown-allocation
+  "`(remove!)`, answering how many handles its teardown allocated, from the first
+  `retract-storage!` call to the return, less the one handle the closing `next-id` read
+  allocates."
+  [kb remove!]
+  (let [at       (volatile! nil)
+        storage! @#'vaelii.core/retract-storage!]
+    (with-redefs-fn {#'vaelii.core/retract-storage!
+                     (fn [kb h]
+                       (when-not @at (vreset! at (p/next-id (:records kb))))
+                       (storage! kb h))}
+      remove!)
+    (- (p/next-id (:records kb)) @at 1)))
+
+(tu/deftest-kb a-bounded-removal-s-teardown-places-nothing-the-release-chained-before-it
+  (doseq [op [:retract :edit]]
+    (tu/with-terms [linkA reach_a startp N0 N1 N2 N3 N4 N5 CxR]
+      (v/assert kb (list 'genlCx CxR 'CxUniverse) 'CxUniverse)
+      (v/assert kb (tu/fwd [(list linkA '?x '?y) (list reach_a '?x)] (list reach_a '?y)) CxR)
+      (doseq [[a b] (partition 2 1 [N0 N1 N2 N3 N4 N5])]
+        (v/assert kb (list linkA a b) CxR))
+      (let [s      (v/assert kb (list startp N0) CxR)
+            hiding (v/assert kb (list 'except (list 'sentexHandle s)) CxR)]
+        (v/assert kb (tu/fwd [(list startp '?x)] (list reach_a '?x)) CxR)
+        (testing (name op)
+          (is (nil? (v/handle-of kb (list reach_a N5) CxR)))
+          (is (zero? (teardown-allocation kb (case op
+                                               :retract #(v/retract! kb hiding {:max-ms 600000})
+                                               :edit    #(v/edit! kb {:remove [hiding]}
+                                                                  {:max-ms 600000})))))
+          (is (v/in? kb (v/handle-of kb (list reach_a N5) CxR))))))))
+
+(tu/deftest-kb a-removal-leaves-no-aggregate-conclusion-of-the-counts-it-moved
+  (doseq [op [:retract :edit], opts [{} {:max-ms 600000}]]
+    (tu/with-terms [ancestorOf nodex ancestorCount countedx P Q R CxR]
+      (v/assert kb (list 'genlCx CxR 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'transitive ancestorOf) CxR {:strength :monotonic})
+      (doseq [n [P Q R]] (v/assert kb (list nodex n) CxR))
+      (v/assert kb (list ancestorOf P Q) CxR)
+      (let [h       (v/assert kb (list ancestorOf R P) CxR)
+            stored? #(some? (v/handle-of kb % CxR))
+            old     [(list ancestorCount P 1) (list ancestorCount Q 2)
+                     (list countedx P 1) (list countedx Q 2)]]
+        (v/assert kb (tu/fwd [(list nodex '?x) (list 'agg/count '?n '?a (list ancestorOf '?a '?x))]
+                             (list ancestorCount '?x '?n))
+                  CxR)
+        (v/assert kb (tu/fwd [(list ancestorCount '?x '?n)] (list countedx '?x '?n)) CxR)
+        (testing (str op " " opts)
+          (is (every? stored? old))
+          (case op
+            :retract (v/retract! kb h opts)
+            :edit    (v/edit! kb {:remove [h]} opts))
+          (is (not-any? stored? old))
+          (is (stored? (list countedx Q 1))))))))
 
 (tu/deftest-kb an-interrupted-rule-re-assert-leaves-the-rule-s-engines-as-they-were
   ;; Re-asserting a backward rule for the forward engine rewrites the stored rule's

@@ -63,9 +63,9 @@
               facet vocabulary does not reach yet.
     :enforced prose naming the code path that reads the term — what a KB author is told
               by `core/interpreted` when they ask whether a declaration does anything.
-              Carried by the terms core.txt comments and by no others, which is why an
-              entry without it is not a defect: the grammar terms core.txt does not
-              comment are outside the question rather than unanswered.
+              Carried by grammar terms an upper file comments, and owed by every term of
+              `vocabulary/audit`'s population; an entry without it outside the population
+              is not a defect.
     :inert    prose recording that nothing reads the term **and that this is a
               decision**.  Written by the `inert` constructor, which sets the facet with
               it, so the class is never a second opinion about the facets.
@@ -310,8 +310,8 @@
   `vocabulary/classification` answers with and `core/interpreted` hands a KB author.  The prose
   is written by hand, since no facet set can name the path.  The class is read off `:facets` by
   `classification`, so a term the engine reads cannot be called inert by different prose.
-  Nil-tolerant: grammar terms core.txt does not comment pass through, and `vocabulary/audit`
-  notices a term the ontology names and this file answers with nothing."
+  Nil-tolerant: grammar terms outside the audit's population pass through, and
+  `vocabulary/audit` notices a population term this file answers with nothing."
   [spec where]
   (cond-> spec where (assoc :enforced where)))
 
@@ -405,9 +405,10 @@
                           :notes (str "convicted rather than convicting: the related-types family"
                                       " reads the stored declaration, or a stored"
                                       " siblingDisjointException through the predicate genl edge,"
-                                      " back as a one-member nogood of itself whenever a genl"
-                                      " edge or a separation a reader sees contradicts it."))
-                (str "decide/related — a one-member nogood of the declaration over a pair a"
+                                      " back as a nogood of itself whenever a genl edge or a"
+                                      " separation a reader sees contradicts it, beside the"
+                                      " :default statements of what contradicts a :default one."))
+                (str "decide/related — a nogood of the declaration over a pair a"
                      " reader reads genl-related or separated; and core/subsumption-statuses —"
                      " a stated pair reads :orthogonal with no shared instance"))]
      ['siblingDisjointException
@@ -575,6 +576,14 @@
                                      " believed converse forces equal, and chain/place-tuples! placing a"
                                      " converse no merge reconciles; also a"
                                      " binary_predicate type"))]
+     ['functional_at_instant
+      (enforced (collection :notes (str "declared in time.txt.  Read on demand by the fluent audit,"
+                                        " not at assert: whether two fluents overlap at an instant"
+                                        " follows from the clipping closure."))
+                (str "fluent/functional-at-instant-violations and"
+                     " fluent/all-functional-at-instant-violations, through"
+                     " core/functional-at-instant-violations — the per-instant clashes of each"
+                     " declared function"))]
      ['anti_transitive (enforced (assoc
                                   (prop :anti-transitive :facets #{:reach :convicts :arbitrable}
                                         :notes (str "the one nogood whose members are three rather"
@@ -741,8 +750,8 @@
      ['eternal_predicate
       (enforced (collection :notes (str "a predicate whose tuples hold independently of time within a"
                                         " theory. A membership under it, stated or derived, through"
-                                        " eternal_predicate or a type below it, is read from the slice"
-                                        " the fact is stated in."))
+                                        " eternal_predicate or a type below it, is read from the context"
+                                        " the slice slices."))
                 "special/slice-lift — the copy of a fact stated in a time slice into the context the slice slices, retroactive over the extent")]
      ['forced_decontextualized_predicate (enforced (prop :forced-decontextualized)
                                                    "special — storage straight into CxUniverse")]
@@ -799,7 +808,7 @@
                              " forward rule derives the ternary, and the prover reads only the"
                              " ternary.")}
                 (str "the CxUniverse forward rule deriving (closedExtentForArg P 1 V), and"
-                     " checks/check-closed-extent-stratified, which refuses the spelling where"
+                     " checks/check-fact-stratified, which refuses the spelling where"
                      " the ternary would be refused"))]
      ['closedExtentForArg2
       (enforced {:shape {:args [:predicate :term]} :storage [:none] :checked false
@@ -850,6 +859,12 @@
                  :facets #{} :family nil}
                 (str "nat/context-form — a calendar time at the declared arg of a context slot takes"
                      " its one spelling (datetime/calendar-spelling) before the slot reifies"))]
+     ['contextsOrderedBothWays
+      (enforced {:shape {:args [:context :context]} :storage [:none] :checked false
+                 :facets #{} :family nil}
+                (str "context-nat producer — reconcile-pair reads the pair's routes back when"
+                     " CxUniverse stores one, and builds no genlCx edge between the two while"
+                     " it is believed"))]
      ['functionCorrespondingPredicate
       (enforced (wff-only [:function :predicate :position]
                           :facets #{:answers})
@@ -1001,10 +1016,10 @@
                                               " sentence's argument ?m: checks/arg-arg-rows"
                                               " reads each declaration as arg rows per"
                                               " sentence, so the conviction, the entailment"
-                                              " and entail-existing are arg's own.  A fact"
-                                              " whose named type is not mintable yet mints"
-                                              " once it is"
-                                              " (special/mints-on-lengths)."))
+                                              " and entail-existing are arg's own.  A mint"
+                                              " in a named type that is not mintable is"
+                                              " held void until it is"
+                                              " (special/hold-type-mints!)."))
                            (str "checks/args-problem and checks/constraint-entailments over"
                                 " checks/arg-arg-rows — arg with a per-sentence type"))]
      ['interArgEqual (enforced (assoc (prop :declares-inter-arg-equal :arg :relation
@@ -1348,8 +1363,8 @@
     ;; under the root, or declare a position over a type a second domain file declares one
     ;; over.
     ;;
-    ;; They are here because core.txt comments them and `vocabulary/audit` answers for every
-    ;; term core.txt comments, not because the engine reads any of them.  It reads none: no
+    ;; They are here so `interpreted` answers for the terms core.txt comments, not because
+    ;; the engine reads any of them.  It reads none: no
     ;; check names one, and the kinds hanging off them are the domain files'.  `inert` is the
     ;; class, and the note is what a KB author asking `interpreted` is told.
     (map (fn [[t why]] [t (inert (collection :notes why) why)])
@@ -1365,7 +1380,7 @@
            [quantitative "ontology, not grammar: what a measurement is made of or yields, the whole above measure, unit_of_measure, physical_dimension and sign_value. core.txt states it so the separation from logical and linguistic reaches measure; no engine check names it."]])
 
     ;; ---- the space/time complements, nowhere_never, and the metatype ladder ----
-    ;; core.txt comments these too, beside their genl edges, so `vocabulary/audit` answers
+    ;; core.txt comments these too, beside their genl edges, so `interpreted` answers
     ;; for them and they are classified inert like the skeleton above: ontology the engine
     ;; reads by no name.  `temporal` is `spatial`'s
     ;; time twin; `aspatial` / `atemporal` are the not-in-any-space / not-in-time collections
@@ -1387,6 +1402,11 @@
            [fixed_order_type "ontology, not grammar: a type whose members are all of one order, on the metatype-order ladder. No engine check names it."]
            [variable_order_type "ontology, not grammar: a type holding members of any order, on the metatype-order ladder. No engine check names it."]
            [type_type_by_order "ontology, not grammar: the disjoint_metatype partitioning fixed_order_type by order. No engine check names it."]
+           [ontology_predicate "ontology, not grammar: a definitional_predicate whose sentences place terms in the hierarchy, by a parent, a cover, an intersection, a separation, an orthogonality or an inverse, named directly or over a classifier's members or a parent's specializations. vocabulary/audit reads its members through the genl edge to definitional_predicate; no engine check names it."]
+           [wff_predicate "ontology, not grammar: a definitional_predicate whose sentences state part of what a well-formed sentence or application headed by a relation is. vocabulary/audit reads its members through the genl edge to definitional_predicate; no engine check names it."]
+           [wff_constraint "ontology, not grammar: one part of the partition of wff_predicate, whose sentences constrain which terms may fill a relation's argument positions. vocabulary/audit reads its members through wff_predicate's genl edge to definitional_predicate; no engine check names it."]
+           [wff_satisfaction_predicate "ontology, not grammar: the other part of the partition of wff_predicate, whose sentences state what a term satisfies, such as the value of a function's application. vocabulary/audit reads its members through wff_predicate's genl edge to definitional_predicate; no engine check names it."]
+           [algebraic_predicate_property "ontology, not grammar: a definitional_predicate naming an algebraic property of a relation, over all its positions or named ones, such as transitivity or functionalInArg. vocabulary/audit reads its members through the genl edge to definitional_predicate; no engine check names it."]
            [spatiality_type "ontology, not grammar: the at_least_metatype holding spatial and aspatial. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
            [temporality_type "ontology, not grammar: the at_least_metatype holding temporal and atemporal. The orthogonalMetatypes and partitionedByType rules read its memberships as any membership is; no engine check names it."]
            [arity_type "ontology, not grammar: the at_least_metatype of the relation-level arity types, e.g. binary and variable_arity. The typeOrthogonal rule reads its memberships as any membership is; no engine check names it."]
@@ -1398,6 +1418,9 @@
            [time_indexed_relation "ontology, not grammar: a relation one argument of which names the time a tuple holds at, below time_invariant_relation. temporalIndexArg's first argument is typed time_indexed_relation, so a fact of it makes the relation one; no engine check names it."]
            [documentation_predicate "ontology, not grammar: a predicate documenting a term, implementation or usage example, below eternal_predicate. It classifies the annotation, not the truth or temporality of a quoted example; no engine check names it."]
            [situation_predicate "ontology, not grammar: a predicate whose first argument is a situation and whose truth that situation fixes, below eternal_predicate. No engine check names it; the arg-1 constraint is checked by test, not by rule (#273)."]
+           [generic_kinship_predicate "ontology, not grammar: an unqualified kinship predicate with blood and chosen readings. The constructor and guarded hierarchy-lifting rules read this mark; no engine check names it."]
+           [blood_kinship_predicate "ontology, not grammar: a blood-qualified kinship predicate below eternal_predicate. Constructor result typing supplies the mark; no engine check names it."]
+           [chosen_kinship_predicate "ontology, not grammar: a chosen-family predicate below time_varying_relation. Constructor result typing supplies the mark; no engine check names it."]
            [stable_once_true "ontology, not grammar: a time-varying relation that, once it holds at a time, holds at every later time. No engine check names it."]
            [stable_once_false "ontology, not grammar: a time-varying relation that, once it fails at a time, fails at every later time. No engine check names it."]])
 
@@ -1423,7 +1446,7 @@
                                 " functionCorrespondingPredicate and"
                                 " functionCorrespondingBinaryPredicate name"))]
      ;; The other half of relation, and the three levels below it.  core.txt comments them
-     ;; and `vocabulary/audit` answers for every term core.txt comments; no engine check names
+     ;; and `interpreted` answers for each; no engine check names
      ;; any of the four.  The connectives are read by their own names (the `implies`, `and`,
      ;; `or` and `not` entries above), never through `logical_connective`.
      ['truth_valued_relation (inert (collection :notes "ontology, not grammar: a relation whose applications are true or false, the complement of function within relation. No engine check names it.")
@@ -1625,6 +1648,7 @@
            [set/forwardOnlyRule "sentex/peel-rule-wrapper — sets the rule's direction"]
            [set/lazyForwardRule "sentex/peel-rule-wrapper — sets the rule's direction"]
            [set/solveRule    "sentex/peel-rule-wrapper — adds :solve to the rule's engines"]
+           [set/oneJustificationRule "sentex/peel-rule-wrapper — adds :one-justification to the rule's engines"]
            [set/assumptionRule "sentex/peel-rule-wrapper — sets the rule's effect to :choose"]
            [set/hardConstraint "sentex/peel-rule-wrapper — sets the rule's effect to :forbid"]
            [set/softConstraint "sentex/peel-rule-wrapper — sets the rule's effect to :penalize"]
@@ -1638,7 +1662,15 @@
                                            " (exceptWhen Q (sentexHandle H)) naming the rule's handle.")}
                             (str "assert-entry/assert-exceptWhen-meta! — stores the exception;"
                                  " provers/rule-exceptions reads it per firing, and the recheck"
-                                 " queue re-evaluates it"))]]
+                                 " queue re-evaluates it"))]
+     ['except (enforced {:shape   {:args [:term]}
+                         :storage [:none] :checked false :family nil :facets #{}
+                         :notes   (str "asserted, unlike defeat: (except (sentexHandle H)) hides H"
+                                       " from its context and every context that sees it, and"
+                                       " retracting it restores H.")}
+                        (str "except/visible-exception-index — the excepts stated in a reader's"
+                             " ancestor contexts hide each named handle from it; on arrival or"
+                             " removal special/recheck-except sweeps the firings resting on H"))]]
 
     ;; ---- the evaluable comparisons ---------------------------------------
     [['lessThan    (enforced {:shape   {:args [:term :term] :variadic :term}
@@ -1709,10 +1741,19 @@
      ;; ---- documentation ---------------------------------------------------
      ['comment (enforced {:shape {:args [:term :term]} :storage [:none] :checked false
                           :family nil :facets #{}
-                          :notes (str "ordinary sentexes, queried like any fact — and the"
-                                      " population of vocabulary/audit is read off them.")}
+                          :notes (str "ordinary sentexes, queried like any fact — and"
+                                      " vocabulary/audit's :retired reads which terms core.txt"
+                                      " comments.")}
                          (str "gloss, core-context/comment-of, and the browser's term pages —"
                               " ordinary sentexes, queried like any fact"))]
+     ['definitional_predicate
+      (enforced (collection :notes (str "a predicate whose sentences about a term make up that term's"
+                                        " definitional block (handbook/06-definitional-block.md)."
+                                        " Its believed CxUniverse members are vocabulary/audit's"
+                                        " population, beside the syncategorematic constants."))
+                (str "vocabulary/audit — its believed CxUniverse members are the population the"
+                     " audit classifies, so a member with no :enforced or :inert answer is"
+                     " :unclassified"))]
 
      ;; ---- engine-derived meta-sentexes ---------------------------------------
      ['defeat (enforced {:shape {:args [:term]} :storage [:none] :checked false
@@ -1750,7 +1791,7 @@
      ['diachronicallyDisjoint
       (inert {:shape {:args [:term :term]} :storage [:none] :checked false
               :family nil :facets #{}
-              :notes (str "(diachronicallyDisjoint ?type1 ?type2): nothing is an instance of both"
+              :notes (str "declared in time.txt. (diachronicallyDisjoint ?type1 ?type2): nothing is an instance of both"
                           " at the same time, though one thing can be each in turn. disjoint is a"
                           " genl of it. Stated and queryable; memberships are checked without time,"
                           " so no clash check can read it yet.")}
@@ -1778,9 +1819,7 @@
                  :family nil :facets #{}
                  :notes (str "enforced by the generic chain, not by name: the core.txt"
                              " generator beside the declaration generates (implies (?classifier ?x)"
-                             " (orthogonal ?type ?x)) per fact, the type first. The generated rule"
-                             " concludes a forced-monotonic literal, so a firing is believed"
-                             " only from a forced-monotonic classifier.")}
+                             " (orthogonal ?type ?x)) per fact, the type first.")}
                 (str "generic rule generator (docs/generators.md): the core.txt generator"
                      " beside it generates one membership rule per fact, and chain inference"
                      " concludes every member of the classifier orthogonal to the type"))]
@@ -2025,6 +2064,23 @@
                              " binary, filler type derived from ?pred's slot-1 contract.")}
                 (str "vaelii.core/specified-violations with :first — audits ?pred's"
                      " first position, the argument-swapped twin"))]
+     ['predAllQuotedSpecified
+      (enforced {:shape {:args [:predicate :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "the quoted twin of predAllSpecified: an on-demand audit whose"
+                             " population is the atomic names the KB writes of an expression"
+                             " kind, not the members of a collection; the filler is audited"
+                             " as predAllSpecified audits one.")}
+                (str "vaelii.impl.predall/quoted-specified-violations, swept by"
+                     " vaelii.core/all-specified-violations — returns the written terms of"
+                     " ?qtype with no determinate filler; generates no rule"))]
+     ['predSpecifiedAllQuoted
+      (enforced {:shape {:args [:predicate :type]} :storage [:none] :checked false
+                 :family nil :facets #{}
+                 :notes (str "the argument-swapped twin of predAllQuotedSpecified, auditing"
+                             " ?pred's first position.")}
+                (str "vaelii.impl.predall/quoted-specified-violations with :first — the"
+                     " argument-swapped twin"))]
      ['typeAllSpecified
       (enforced {:shape {:args [:type :type]} :storage [:none] :checked false
                  :family nil :facets #{}

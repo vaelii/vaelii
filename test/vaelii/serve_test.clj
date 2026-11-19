@@ -30,7 +30,9 @@
             [vaelii.host.guard :as guard]
             [vaelii.host.serve :as serve]
             [vaelii.host.subscribe :as sub]
+            [vaelii.impl.call-cap :as call-cap]
             [vaelii.impl.config :as config]
+            [vaelii.impl.predall :as predall]
             [vaelii.serve :as pserve]
             [vaelii.test-util :as tu])
   (:import [java.io ByteArrayInputStream File]
@@ -530,6 +532,7 @@
                          ["a rule concluding a variable functor" (as h "tok-a" :assert (list 'implies (list parentOf '?p '?x) (list '?p '?x)) CxA)]
                          ["export" (as h "tok-a" :export "dump")]
                          ["retract" (as h "tok-a" :retract b-claim)]
+                         ["retract with an option map" (as h "tok-a" :retract b-claim {})]
                          ["an edit removing" (as h "tok-a" :edit {:remove [b-claim]})]
                          ["retracting an eternal_predicate membership in the grant's context" (as h "tok-u" :retract eternal)]
                          ["an edit removing an eternal_predicate membership in the grant's context" (as h "tok-u" :edit {:remove [eternal]})]
@@ -609,6 +612,107 @@
           (if fact-first?
             (is (v/ask? kb (list eternalRel Rex Fido) CxM))
             (is (= [403 :forbidden-context] (status-type (fact))))))))))
+
+(tu/deftest-kb a-decontextualized-fact-in-a-slice-needs-cxuniverse-and-not-the-sliced-context-in-its-grant
+  (tu/with-terms [liftedRel Rex Fido CxK CxM]
+    (v/assert kb (list 'decontextualized_predicate liftedRel) 'CxUniverse)
+    (v/assert kb (list 'natFormula CxK (list 'CxTimeFn CxM '(YearFn 2000))) 'CxUniverse)
+    (let [h (serve/app kb {:token-table {"tok-u" {:principal 'AgentU :writes #{'CxUniverse CxK}}}})]
+      (is (:ok (as h "tok-u" :assert (list liftedRel Rex Fido) CxK)))
+      (is (= #{CxK 'CxUniverse}
+             (set (map :context (v/sentexes-matching kb (list liftedRel Rex Fido) '?ctx))))))))
+
+(tu/deftest-kb a-cx-natformula-needs-each-context-its-structural-pairs-order-below-it-in-its-grant
+  (tu/with-terms [dog Rex CxM]
+    (v/assert kb '(result CxTimeFn context) 'CxUniverse)
+    (v/assert kb '(contextArgSubrelation CxTimeFn 2 subintervalOf) 'CxUniverse)
+    (let [month (:context (v/sentex kb (v/assert kb (list dog Rex) (list 'CxTimeFn CxM '(MonthFn 2000 1)))))
+          k     (symbol "cx" (name (tu/tmp-ctx "Year")))
+          nf    (list 'natFormula k (list 'CxTimeFn CxM '(YearFn 2000)))
+          h     (serve/app kb {:token-table {"tok-u" {:principal 'AgentU :writes #{'CxUniverse CxM k}}
+                                             "tok-m" {:principal 'AgentM :writes #{'CxUniverse CxM k month}}}})]
+      (testing "the month's slice, ordered below the year's, is outside the first grant"
+        (is (= [403 :forbidden-context] (status-type (as h "tok-u" :assert nf 'CxUniverse))))
+        (is (not (v/sees? kb month k))))
+      (testing "a grant naming it stores the natFormula, and the month's slice sees the constant"
+        (is (:ok (as h "tok-m" :assert nf 'CxUniverse)))
+        (is (v/sees? kb month k)))
+      (testing "removing the natFormula is held to the same contexts"
+        (is (= [403 :forbidden-context] (status-type (as h "tok-u" :retract (v/handle-of kb nf 'CxUniverse)))))
+        (is (v/sees? kb month k))))))
+
+(tu/deftest-kb a-context-equality-needs-every-context-whose-extent-it-moves-in-its-grant
+  (tu/with-terms [dog Rex Fido CxA CxB]
+    (v/assert kb '(result CxTimeFn context) 'CxUniverse)
+    (let [eq     (list 'equals CxA CxB)
+          slices (mapv #(:context (v/sentex kb (v/assert kb (list dog Fido) (list 'CxTimeFn % '(YearFn 2000)))))
+                       [CxA CxB])
+          h      (serve/app kb {:token-table {"tok-b"  {:principal 'AgentB :writes #{CxB}}
+                                              "tok-a"  {:principal 'AgentA :writes #{'CxUniverse CxA}}
+                                              "tok-ab" {:principal 'AgentAB :writes #{'CxUniverse CxA CxB}}
+                                              "tok-x"  {:principal 'AgentX :writes (into #{'CxUniverse CxA CxB} slices)}}})
+          b      (:result (as h "tok-b" :assert (list dog Rex) CxB))]
+      (testing "is refused 403 :forbidden-context"
+        (doseq [[why r] [["an equality naming a context the grant does not name" (as h "tok-a" :assert eq 'CxUniverse)]
+                         ["an equality whose collision repair merges two slices the grant does not name" (as h "tok-ab" :assert eq 'CxUniverse)]]]
+          (is (= [403 :forbidden-context] (status-type r)) why))
+        (is (v/in? kb b) "the other principal's fact stands in its own context")
+        (is (not (v/ask? kb (list dog Rex) CxA))))
+      (testing "a grant naming every context of the two classes stores it, and each name reads the other's facts"
+        (let [e (:result (as h "tok-x" :assert eq 'CxUniverse))]
+          (is (integer? e))
+          (is (v/ask? kb (list dog Rex) CxA))
+          (is (= [403 :forbidden-context] (status-type (as h "tok-a" :retract e)))
+              "and removing it is held to the same contexts"))))))
+
+(tu/deftest-kb a-fact-deriving-the-equality-of-two-context-nats-needs-both-in-its-grant
+  (doseq [tok ["tok-u" "tok-ab"]]
+    (tu/with-terms [subFooOf A B Fog Rain CxM]
+      (let [cxfn (symbol (str (tu/tmp-ctx "Both") "Fn"))
+            _    (v/assert kb (list 'result cxfn 'context) 'CxUniverse)
+            _    (v/assert kb (list 'contextArgSubrelation cxfn 2 subFooOf) 'CxUniverse)
+            ka   (:context (v/sentex kb (v/assert kb (list 'weather Fog) (list cxfn CxM A))))
+            kb'  (:context (v/sentex kb (v/assert kb (list 'weather Rain) (list cxfn CxM B))))
+            _    (v/assert kb (list subFooOf A B) 'CxUniverse {:strength :monotonic})
+            h    (serve/app kb {:token-table {"tok-u"  {:principal 'AgentU :writes #{'CxUniverse}}
+                                              "tok-ab" {:principal 'AgentAB :writes #{'CxUniverse ka kb'}}}})
+            r    (as h tok :assert (list subFooOf B A) 'CxUniverse {:strength :monotonic})]
+        (testing tok
+          (if (= "tok-u" tok)
+            (is (= [403 :forbidden-context] (status-type r)))
+            (is (:ok r)))
+          (is (= (= "tok-ab" tok) (v/ask? kb (list 'weather Fog) (list cxfn CxM B)))
+              "B's slice reads A's facts only once the equality is stored"))))))
+
+(tu/deftest-kb a-grant-removes-only-what-storing-wrote-inside-it-and-withdraws-no-conclusion-outside-it
+  (tu/with-terms [eternalRel tenseless Rex Fido CxK CxM CxA CxB CxC]
+    (let [fact (list eternalRel Rex Fido)
+          _    (v/assert kb (list 'implies (list tenseless '?p) (list 'eternal_predicate '?p)) 'CxUniverse
+                         {:direction :forward})
+          kind (v/assert kb (list tenseless eternalRel) 'CxUniverse)
+          nf   (v/assert kb (list 'natFormula CxK (list 'CxTimeFn CxM '(YearFn 2000))) 'CxUniverse)
+          held (v/assert kb fact CxK)
+          edge (v/assert kb (list 'genlCx CxB CxC) CxA)
+          h    (serve/app kb {:token-table {"tok-u" {:principal 'AgentU :writes #{'CxUniverse CxK}}
+                                            "tok-k" {:principal 'AgentK :writes #{CxK}}
+                                            "tok-a" {:principal 'AgentA :writes #{CxA}}
+                                            "tok-m" {:principal 'AgentM :writes #{'CxUniverse CxK CxM}}}})]
+      (is (v/ask? kb fact CxM))
+      (testing "is refused 403 :forbidden-context"
+        (doseq [[why r] [["retracting a slice fact the store copies into the sliced context" (as h "tok-k" :retract held)]
+                         ["an edit removing it" (as h "tok-k" :edit {:remove [held]})]
+                         ["replace-facts dropping it" (as h "tok-k" :replace-facts CxK [])]
+                         ["retracting a natFormula naming the slice" (as h "tok-u" :retract nf)]
+                         ["retracting a genlCx edge whose lower context the grant does not name" (as h "tok-a" :retract edge)]
+                         ["retracting the premise a rule concluded an eternal_predicate membership from" (as h "tok-u" :retract kind)]
+                         ["the same under a grant naming every context the copy is in" (as h "tok-m" :retract kind)]]]
+          (is (= [403 :forbidden-context] (status-type r)) why))
+        (is (v/ask? kb fact CxM) "the copy stands")
+        (is (v/sees? kb CxB CxC) "the edge stands"))
+      (testing "a grant naming the sliced context removes the slice fact and the natFormula"
+        (is (:ok (as h "tok-m" :retract held)))
+        (is (:ok (as h "tok-m" :retract nf)))
+        (is (not (v/ask? kb fact CxM)))))))
 
 (tu/deftest-kb a-grant-bounds-every-rule-its-fact-makes-the-engine-write
   (tu/with-terms [pet animal relayKind lovesOf Ann Bob CxA CxB]
@@ -1132,6 +1236,41 @@
             (is (zero? (v/count-with-functor kb cnt)))))))
     (is (zero? (config/max-write-ms)) "off by default")))
 
+(tu/deftest-kb a-served-retract-whose-release-reaches-the-write-ceiling-is-rolled-back
+  (tu/with-terms [cnt startq CxServe]
+    (let [handler  (open-app kb)
+          counting (v/assert-rule kb [(list cnt '?n) (list 'evaluate '?m (list '+ '?n 1))]
+                                  (list cnt '?m) CxServe {:direction :forward})]
+      (try
+        (let [s      (v/assert kb (list startq 0) CxServe)
+              hiding (v/assert kb (list 'except (list 'sentexHandle s)) CxServe)]
+          (v/assert-rule kb [(list startq '?x)] (list cnt '?x) CxServe {:direction :forward})
+          (with-redefs [config/max-write-ms (constantly 200)]
+            (let [r (post-op handler :retract [hiding])]
+              (is (= [false :interrupted 400] [(:ok r) (:type r) (:status r)]))))
+          (is (zero? (v/count-with-functor kb cnt)))
+          (is (v/in? kb hiding)))
+        (finally (v/retract! kb counting))))))
+
+(tu/deftest-kb a-granted-removal-whose-withdrawal-preview-reaches-the-write-bound-is-refused
+  (tu/with-terms [cnt startq CxServe]
+    (let [h        (serve/app kb {:token-table {"tok-s" {:principal 'AgentS :writes #{CxServe}}}})
+          counting (v/assert-rule kb [(list cnt '?n) (list 'evaluate '?m (list '+ '?n 1))]
+                                  (list cnt '?m) CxServe {:direction :forward})]
+      (try
+        (let [s      (v/assert kb (list startq 0) CxServe)
+              hiding (v/assert kb (list 'except (list 'sentexHandle s)) CxServe)]
+          (v/assert-rule kb [(list startq '?x)] (list cnt '?x) CxServe {:direction :forward})
+          (doseq [[why ceiling req] [["a retract under the write ceiling" 200 #(as h "tok-s" :retract hiding)]
+                                     ["an edit removing it under the write ceiling" 200 #(as h "tok-s" :edit {:remove [hiding]})]
+                                     ["a retract under its own :max-derivations" 0 #(as h "tok-s" :retract hiding {:max-derivations 50})]]]
+            (with-redefs [config/max-write-ms (constantly ceiling)]
+              (let [r (req)]
+                (is (= [false :interrupted 400] [(:ok r) (:type r) (:status r)]) why)))
+            (is (zero? (v/count-with-functor kb cnt)) why)
+            (is (v/in? kb hiding) why)))
+        (finally (v/retract! kb counting))))))
+
 (tu/deftest-kb a-write-whose-caller-stopped-listening-runs-to-the-end
   ;; docs/operations.md, "An op runs to completion whether or not its caller is still
   ;; listening".  The daemon's own `handle-op` over a monitor this test holds, so the op is
@@ -1320,6 +1459,8 @@
           (is (= 400 (:status r)) (str op " is a client error, not a 500")))))))
 (tu/deftest-kb integrity-requests-are-clamped-and-release-the-monitor-on-exhaustion
   (tu/with-terms [widget slowEnough required wrote CxServe]
+    (call-cap/allow predall/sweep kb 4
+                    "one request at three arities, then the request with both ceilings lifted")
     (let [entered (atom nil)]
       (v/add-evaluatable kb slowEnough
                          (fn [_]

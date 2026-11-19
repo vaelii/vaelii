@@ -88,9 +88,10 @@
   portable form, so a dump of them is readable only by a build that agrees on them.  An index
   written in another layout reads as empty, which is fail-safe and undiagnosable, so the layout
   is a number that is checked.  Bump it whenever a key shape changes: a new family, a renamed
-  tag, a different arity, or a different value type at an existing key.  The families are in
+  tag, a different arity, or a different value type at an existing key.  Bump it too when the
+  test that files a body under one of two families changes.  The families are in
   `index-families` and docs/indexing.md."
-  20)
+  23)
 
 (defn apply-op
   "Apply one `kv-batch` write op to map `m`, returning `[m' reply]`.  Only
@@ -151,6 +152,9 @@
                             :class-evidence {:oracle '[vaelii.index-test/the-opposed-bodies-by-functor-follow-the-opposed-bodies]
                                              :via [:opposed-bodies]}}
         calendar   (scan "context-nat/reconcile-link's calendar side, on a fact giving a point-order link")
+        applications {:class :access-path
+                      :class-evidence {:oracle '[vaelii.index-test/the-application-argument-family-agrees-with-the-term-index]
+                                       :via [:term-index]}}
         rules      (sole "chain/fire-rules-for" "resolution/concluding-rule-handles" "the solve's program")
         mints      (sole "special's mint withdrawal and its genlCx edge routes")
         supporters (sole "the taxonomy's supporter reads" "reindex")]
@@ -178,6 +182,8 @@
      :nat-argument (ctrie :sentex {:canon? true :class :access-path
                                    :class-evidence {:oracle '[vaelii.index-test/the-nat-argument-family-agrees-with-the-term-index]
                                                     :via [:term-index]}})
+     :application-argument (ctrie :sentex (assoc applications :root :application-symbols))
+     :application-symbols (name-set :sentex applications)
      :self-tuple (ctrie :sentex (scan "decide.tuple's irreflexivity candidates, on a fact"))
      :opposed (ctrie :sentex (assoc opposed :root :opposed-bodies))
      :opposed-bodies (name-set :sentex opposed)
@@ -191,6 +197,9 @@
      :rule-antecedent (ctrie :rule (assoc rules :root :rule-antecedent-keys))
      :rule-antecedent-keys (name-set :rule rules)
      :rule-consequent (ctrie :rule rules)
+     :rule-consequent-head (ctrie :rule {:class :access-path
+                                         :class-evidence {:oracle '[vaelii.index-test/the-consequent-head-family-agrees-with-the-consequent-family]
+                                                          :via [:rule-consequent]}})
      :exception-index (name-set :rule (merge {:leaf :handles}
                                              (sole "except's exceptWhen re-check on a fact or an edge")))
      :tax-support (ctrie :taxonomy supporters)
@@ -232,7 +241,7 @@
 (defn- ctx-key  [c]     [:context-root c])
 
 ;; ---- the count tries that end in the context -----------------------------
-;; Fifteen families share one shape: a count trie whose last level is the context.  A
+;; Seventeen families share one shape: a count trie whose last level is the context.  A
 ;; `node` is the path above the context, and each node is three keys under the family's
 ;; `tag` — its count (how many handles sit under it, in every context), its children (the
 ;; contexts that state one) and, per child, the leaf holding that context's handles:
@@ -241,15 +250,16 @@
 ;;   :predicate-extent  node [pred]            `pred`'s facts, either polarity
 ;;   :rule-antecedent   node [key]             the rules with an antecedent on `key`
 ;;   :rule-consequent   node [key]             the rules whose consequent files under `key`
-;;   :rule-extent       node [kind]            every rule (`:rule`), the rules a solve
-;;                                             reads (`:solve`), lazy-forward (`:lazy`)
+;;   :rule-consequent-head node [key head]     those with a consequent argument headed by `head`
+;;   :rule-extent       node [kind]            every rule (`:rule`), and the rules by
+;;                                             engine: `:solve`, `:lazy`, `:one-justification`
 ;;   :opposed           node [body]            the facts of a body stored in both
 ;;                                             polarities, either polarity
-;;   :self-tuple        node [pred]            `pred`'s ground positive binary self
-;;                                             tuples `(pred a a)`
+;;   :self-tuple        node [pred]            `pred`'s ground positive tuples `(pred a a)`
 ;;   :shape-tuple       node [f n]             `f`'s positive facts of `n` arguments
 ;;   :calendar          node [f frame y m]     `f`'s facts naming a time with a point in it
 ;;   :nat-argument      node [f pos term]      the `(natFormula K (f …))` maps, `term` at `pos`
+;;   :application-argument node [f pos t] the facts using an `f` application, symbol `t` at `pos`
 ;;   :arity-binding     node [pred kind value] the facts binding `pred`'s length
 ;;                                             (`sx/arity-binding`): kind `:exact`,
 ;;                                             `:min` or `:var`, value nil for `:var`
@@ -262,11 +272,10 @@
 ;;   :mint-in           node []                every mint
 ;;
 ;; So "what is stated under this node in the contexts a reader sees" reads the node's
-;; children, intersected with the reader's ancestor set, and the leaves it keeps.  The
-;; `:rule-antecedent` trie's root level, the keys some stored rule takes, is the one level
-;; above a node any read asks for, and it is stored under its own tag,
-;; `:rule-antecedent-keys`, because its members are keys rather than contexts.  The
-;; `:opposed` trie's root level is `opposed-bodies-key` for the same reason.
+;; children, intersected with the reader's ancestor set, and the leaves it keeps.  A trie's
+;; root level, the one above a node any read asks for, is stored under its own tag
+;; (`index-families`' `:root`, such as `:rule-antecedent-keys` for the keys some stored rule
+;; takes), because its members are keys rather than contexts.
 
 (defn- node-count-key [tag node]     [tag :count node])
 (defn- node-ctxs-key  [tag node]     [tag :children node])
@@ -275,13 +284,14 @@
 (defn- opposed-in-key [ctx] [:opposed-in ctx])
 
 (defn- opposed-functor-key
-  "The name set the opposed body `b` is filed in by its functor `f`: `[:opposed-between
-  f]` when `b` is `nm/between-predicates?`, else `[:opposed-functor f]`; nil when `f` is
-  not a symbol."
+  "The name set the opposed body `b` is filed in by its functor `f`, or nil when `f` is not
+  a symbol.  It is `[:opposed-between f]` when `b` is `nm/between-predicates?` with every
+  minted argument read as a predicate, a superset over any belief; else `[:opposed-functor
+  f]`."
   [b]
   (let [f (first b)]
     (when (symbol? f)
-      [(if (nm/between-predicates? b) :opposed-between :opposed-functor) f])))
+      [(if (nm/between-predicates? b any?) :opposed-between :opposed-functor) f])))
 
 ;; ---- the argument family's keys ------------------------------------------
 ;; The argument roots are the `:argument-root` trie, and the family adds two name sets
@@ -358,6 +368,9 @@
 (def ^:private calendar-buckets-tag (root-of :calendar))
 (defn- calendar-buckets-key [f] [calendar-buckets-tag f])
 
+(def ^:private application-symbols-tag (root-of :application-argument))
+(defn- application-symbols-key [f pos] [application-symbols-tag [f pos]])
+
 ;; The arity bindings' first two levels: `arity-bound-key` holds every predicate with a
 ;; stored length binding, which the arity family's ancestor cut probes once per type it
 ;; visits, and `[:arity-binding-kinds pred]` the `[kind value]` of each of `pred`'s
@@ -390,6 +403,25 @@
       (arg-slots {:sentence (nth s 2)})
       [])))
 
+(def ^:private no-attitude (constantly false))
+
+(defn- application-argument-nodes
+  "`#{[f pos t] ...}` - the `:application-argument` nodes a fact enters: one per symbol `t`
+  at a 1-based `pos` of each application of a symbol `f` the fact uses
+  (`nm/used-applications`).  An attitude's payload is read as a use, since the index reads
+  no modal mark."
+  [sentence]
+  (let [apps (nm/used-applications no-attitude sentence)]
+    (if (empty? apps)
+      apps
+      (persistent!
+       (reduce (fn [acc a]
+                 (loop [acc acc, i 1, ts (next a)]
+                   (if ts
+                     (recur (if (symbol? (first ts)) (conj! acc [(first a) i (first ts)]) acc) (inc i) (next ts))
+                     acc)))
+               (transient #{}) apps)))))
+
 (defn- self-tuple?
   "Is `sentex` a ground positive binary tuple `(p a a)` with a plain symbol functor?"
   [sentex]
@@ -401,18 +433,19 @@
 
 (defn- fact-nodes
   "`[[tag node] ...]` - the count-trie nodes a sentex enters.  A fact enters its predicate
-  extent and the argument-root node of each indexable top-level argument.  A ground positive
-  binary self tuple enters its `:self-tuple` node, a positive fact its `:shape-tuple` node
-  and a length binding its `:arity-binding` node.  A fact naming a time enters the
-  `:calendar` node `[f frame y m]` of each point, and a `natFormula` map its
-  `nat-argument-nodes`.  A negative fact enters its positive body's nodes.  A rule enters the
-  rule extent's `[:rule]` node, and its `[:solve]` / `[:lazy]` node when that engine is
-  among its `:engines`.  Empty for a non-fact."
+  extent, the argument-root node of each indexable top-level argument and its
+  `application-argument-nodes`.  A ground positive binary self tuple enters its `:self-tuple`
+  node, a positive fact its `:shape-tuple` node and a length binding its `:arity-binding`
+  node.  A fact naming a time enters the `:calendar` node `[f frame y m]` of each point, and a
+  `natFormula` map its `nat-argument-nodes`.  A negative fact enters its positive body's
+  nodes.  A rule enters the rule extent's `[:rule]` node, and its `[:solve]` / `[:lazy]` /
+  `[:one-justification]` node when that member is among its `:engines`.  Empty otherwise."
   [sentex]
   (if (some? (:antecedent sentex))
     (cond-> [[:rule-extent [:rule]]]
       (contains? (:engines sentex) :solve) (conj [:rule-extent [:solve]])
-      (contains? (:engines sentex) :lazy)  (conj [:rule-extent [:lazy]]))
+      (contains? (:engines sentex) :lazy)  (conj [:rule-extent [:lazy]])
+      (contains? (:engines sentex) :one-justification) (conj [:rule-extent [:one-justification]]))
     (let [b (sx/body sentex)]
       (if (and (sequential? b) (seq b) (symbol? (first b)))
         (let [ab (sx/fact-arity-binding sentex)
@@ -425,7 +458,9 @@
                sh                   (conj [:shape-tuple sh])
                ab                   (conj [:arity-binding ab]))
               (into (map (fn [[frame y m]] [:calendar [(first b) frame y m]])) (dt/month-buckets b))
-              (into (map (fn [node] [:nat-argument node])) (nat-argument-nodes sentex))))
+              (into (map (fn [node] [:nat-argument node])) (nat-argument-nodes sentex))
+              (as-> v (let [an (application-argument-nodes (:sentence sentex))]
+                        (if (empty? an) v (into v (map (fn [node] [:application-argument node])) an))))))
         []))))
 
 (defn root-keys
@@ -624,12 +659,21 @@
     (conj! ops [:add-to-set (shape-lengths-key f) n])
     ops))
 
-(defn- calendar-adds
-  "Conj onto the transient `ops` the write ops entering the month of each `:calendar` node
-  `[f frame y m]` of `fnodes` (`fact-nodes`) in `f`'s months.  No read."
+(def ^:private root-levels
+  "The count tries whose root level a write enters with no read, as `(fn [op node])` → the
+  write op `[op key member]`: `:calendar`'s `[frame y m]` under `f`, `:application-argument`'s
+  `t` under `[f pos]`."
+  {:calendar             (fn [op [f frame y m]] [op (calendar-buckets-key f) [frame y m]])
+   :application-argument (fn [op [f pos t]] [op (application-symbols-key f pos) t])})
+
+(defn- root-level-adds
+  "Conj onto the transient `ops` the write ops entering each node of `fnodes` (`fact-nodes`)
+  whose family `root-levels` names in its root level.  No read."
   [ops fnodes]
-  (reduce (fn [ops [tag [f frame y m]]]
-            (if (identical? :calendar tag) (conj! ops [:add-to-set (calendar-buckets-key f) [frame y m]]) ops))
+  (reduce (fn [ops [tag node]]
+            (if-let [entry (root-levels tag)]
+              (conj! ops (entry :add-to-set node))
+              ops))
           ops fnodes))
 
 (defn- binding-adds
@@ -653,12 +697,14 @@
       (cond-> [[:remove-from-set k [kind v]]]
         (== 1 (long (kv-count backend k))) (conj [:remove-from-set arity-bound-key p])))))
 
-(defn- calendar-retires
-  "Write ops taking the month of each `:calendar` node `[f frame y m]` `retires` (from
-  `node-retires`) says empties out of `f`'s months."
+(defn- root-level-retires
+  "Write ops taking each node `retires` (from `node-retires`) says empties, of a family
+  `root-levels` names, out of its root level."
   [retires]
-  (for [{:keys [tag dies?] [f frame y m] :node} retires :when (and dies? (identical? :calendar tag))]
-    [:remove-from-set (calendar-buckets-key f) [frame y m]]))
+  (for [{:keys [tag dies? node]} retires
+        :let  [entry (root-levels tag)]
+        :when (and dies? entry)]
+    (entry :remove-from-set node)))
 
 (defn- shape-retires
   "Write ops taking a length out of its functor's lengths with the `:shape-tuple` node
@@ -873,6 +919,21 @@
              (= mint-rule-context (:context s)))
     (get @stored-mint-rules (sx/sentence-of s))))
 
+(def declared-type-informant
+  "The informant of the justification of `(unary_predicate T)` by an argument declaration
+  naming `T` (`special/unary-entailments`).  No mint informant: the membership enters no
+  mint family."
+  'declaredType)
+
+(defn mint-justification?
+  "Is the justification `j` one an argument declaration's entailment adds: a mint, whose
+  informant is a stored rule of `mint-rules` (`mint-rule-kind`), or a `declaredType`
+  membership?  One fetch from `records` for an integer informant."
+  [records j]
+  (let [i (:informant j)]
+    (or (= declared-type-informant i)
+        (and (integer? i) (some? (some-> (p/get-sentex records i) mint-rule-kind))))))
+
 (def ^:private mint-rules-key
   "The name set of `[kind handle]`, one per stored rule of `mint-rules`."
   [:mint-rules])
@@ -947,7 +1008,7 @@
         ops     (-> ops
                     (slot-adds backend sentex fnodes)                         ; reads the pre-write postings
                     (shape-adds sentex)
-                    (calendar-adds fnodes)
+                    (root-level-adds fnodes)
                     (as-> ops (reduce conj! ops (binding-adds backend sentex)))
                     (as-> ops (reduce conj! ops (denied-adds backend trie sentex))))] ; the trie
     {:ops    ops
@@ -974,7 +1035,7 @@
         mrules  (mint-rule-retires sentex handle)
         names   (term-names-retires backend terms handle)   ; likewise
         slots   (-> (slot-retires backend sentex retires) (into (shape-retires retires))
-                    (into (calendar-retires retires))
+                    (into (root-level-retires retires))
                     (into (binding-retires backend retires))
                     (into (denied-retires backend trie sentex)))]
     {:ops    (concat (map (fn [t] [:remove-from-set (term-key t) handle]) terms)

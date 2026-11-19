@@ -96,14 +96,32 @@
   [exprs]
   (nm/min-by-content-key identity exprs))
 
+(defn- own-maps
+  "`k`'s own `natFormula` sentexes among `sentexes`: stored in CxUniverse and naming `k`."
+  [k sentexes]
+  (filter (fn [sx]
+            (let [s (:sentence sx)]
+              (and (= nat-read/universal-context (:context sx))
+                   (= 'natFormula (nm/functor s))
+                   (= k (second s)))))
+          sentexes))
+
+(defn- denoted-expression
+  "The expression the `natFormula` rows `maps` give their constant: the authoritative one
+  of the stated rows', else of every row's (`authoritative-expression`).  A merge's twin
+  of another constant's map is not stated, and the constant does not name its expression."
+  [kb maps]
+  (let [tms (reasoning/tms kb)]
+    (authoritative-expression
+     (keep #(nth (:sentence %) 2 nil) (or (seq (filter #(jtms/premise? tms (:id %)) maps)) maps)))))
+
 (defn nat-expression
-  "The NAT expression a reified constant denotes, or nil — the authoritative one where an
-  unrepaired collision maps it to more than one (`authoritative-expression`)."
+  "The NAT expression a reified constant denotes, or nil: `denoted-expression` over the
+  believed rows its map's match answers, a retired constant's being its representative's."
   [kb nat-sym]
   (when (nat-read/reified-nat-symbol? nat-sym)
-    (authoritative-expression
-     (keep #(nth (:sentence %) 2 nil)
-           (kb/sentexes-matching kb (list 'natFormula nat-sym '?e) nat-read/universal-context)))))
+    (denoted-expression kb (kb/sentexes-matching kb (list 'natFormula nat-sym '?e)
+                                                 nat-read/universal-context))))
 
 (defn- result-targets
   "The distinct arg2s of believed `(<pred> head ?t)` facts, read globally as the mint
@@ -119,6 +137,45 @@
           distinct)))
   ([kb pred head context]
    (nat-read/visible-result-targets kb pred head context)))
+
+(defn- result-declarations
+  "`{T [handle …]}` of the believed `(<pred> f T)` facts, read globally as `result-targets`
+  reads them."
+  [kb pred f]
+  (when (pos? (reads/stored-count-with-functor (:index kb) pred))
+    (reduce (fn [m sx] (update m (nth (:sentence sx) 2) (fnil conj []) (:id sx)))
+            {} (kb/sentexes-matching kb (list pred f '?t) '?ctx))))
+
+(defn- hold-on!
+  "Store `sentence` in CxUniverse under `opts` and justify it by `[map-h d]` under
+  `informant` for each handle `d` of `decls`, so it leaves when the map or the last
+  declaration does.  A row stated before keeps its premise mark; any other is stored at
+  the class the justifications confer, and the premise mark the store placed is dropped."
+  [kb sentence opts informant map-h decls]
+  (let [univ    nat-read/universal-context
+        tms     (reasoning/tms kb)
+        before  (kb/find-sentex-handle kb sentence univ)
+        stated? (and before (jtms/premise? tms before))
+        mono?   #(= :monotonic (jtms/defeat-class tms %))
+        h       (if stated?
+                  before
+                  (wiring/assert-sentence kb sentence univ
+                                          (if (and map-h (seq decls))
+                                            (assoc opts :strength (if (and (mono? map-h) (some mono? decls))
+                                                                    :monotonic
+                                                                    :default))
+                                            opts)))]
+    (when (and (integer? h) map-h (seq decls))
+      (doseq [d decls
+              :let [antes (kb/antecedent-order kb [map-h d])]
+              :when (not (jtms/has-justification? tms informant antes h))]
+        (let [just (jtms/->just (p/next-id (:records kb)) informant antes h {} :monotonic)]
+          (p/put-justification (:records kb) just)
+          (jtms/add-justification tms just)))
+      (when-not stated?
+        (p/unmark-premise! (:records kb) h)
+        (jtms/suspend-premise tms h)))
+    h))
 
 (defn- result-arg-declared
   "The positions the `(resultArg f n)` declarations stored anywhere name, behind the
@@ -164,7 +221,7 @@
                      (= 'natFormula (nm/functor (:sentence %)))
                      (jtms/in? (reasoning/tms kb) (:id %))))
        (keep (fn [{[_ k E] :sentence}]
-               (when (and (seq? E) (= f (first E)) (nat-read/in-namespace? nat-read/nat-namespace k)) [E k])))
+               (when (and (seq? E) (= f (first E)) (nat-read/reified-object-symbol? k)) [E k])))
        distinct))
 
 ;; ---- display / export ----------------------------------------------------
@@ -259,21 +316,42 @@
 
 ;; ---- rename / remove detection (docs/nat.md, Rename and remove) ----------
 
+(defn writer-spelled?
+  "Does a premise in CxUniverse, believed or not, map reified constant `k` to an expression
+  whose content name (`constant-for`) is another constant?  A term operation restates such
+  a map as written and leaves the rows naming `k` alone (docs/nat.md, Rename and remove)."
+  [kb k]
+  (let [tms (reasoning/tms kb)]
+    (boolean (some #(let [sx (p/get-sentex (:records kb) %) [f c E] (:sentence sx)]
+                      (and (= 'natFormula f) (= k c) (= nat-read/universal-context (:context sx))
+                           (jtms/premise? tms %) (not= k (constant-for (namespace k) E))))
+                   (reads/as-stored-with-args (:index kb) 'natFormula {1 k})))))
+
+(defn- collision-key
+  "A `natFormula` sentence's expression and whether its constant is a `cx/` one: two
+  constants collide only under one key, so an expression's `nat/` and `cx/` constants are
+  no collision (`in-namespace?`)."
+  [[_ k e]]
+  [(nm/context? k) e])
+
+(defn- collision-groups
+  "`[key [k …]]` per `collision-key` that more than one constant among the `natFormula`
+  sentences maps, the constants sorted."
+  [nat-formula-sentences]
+  (keep (fn [[key sents]]
+          (let [ks (sort (distinct (map second sents)))]
+            (when (next ks) [key ks])))
+        (group-by collision-key nat-formula-sentences)))
+
 (defn- group-collisions
   "`[survivor [dup …]]` per expression that more than one constant names in one reify
-  namespace, survivor lexicographically smallest so the choice is content-keyed.  An
-  expression's `nat/` and `cx/` constants are no collision (`in-namespace?`)."
+  namespace, survivor lexicographically smallest so the choice is content-keyed."
   [nat-formula-sentences]
-  (->> nat-formula-sentences
-       ;; group by expression E and the namespace of its constant
-       (group-by (juxt #(nm/context? (second %)) #(nth % 2)))
-       (keep (fn [[_ sents]]
-               (let [ks (sort (distinct (map second sents)))]
-                 (when (next ks) [(first ks) (rest ks)]))))))
+  (map (fn [[_ ks]] [(first ks) (rest ks)]) (collision-groups nat-formula-sentences)))
 
 (defn colliding-constant-groups
   "`[survivor [dup …]]` per expression more than one believed constant maps.  Reads the
-  whole map in CxUniverse; the maintenance after a write reads `merge-colliding-nats!`'s rows."
+  whole map in CxUniverse; the maintenance after a write reads `collision-merges`'s rows."
   [kb]
   (group-collisions (map :sentence (kb/sentexes-matching kb '(natFormula ?k ?e) nat-read/universal-context))))
 
@@ -292,23 +370,25 @@
                                   (jtms/in? tms (:id %)))))
           terms)))
 
-(defn- formula-rows-below
-  "The believed `natFormula` sentexes spelled as one stored outside CxUniverse in a
-  context that inherits from `sub`: the rows a `genlCx` edge out of `sub` can have
-  joined into a collision by the twins its migration wrote there."
-  [kb sub]
-  (let [tx  (reasoning/taxonomy kb)
-        tms (reasoning/tms kb)
-        ix  (:index kb)
+(defn- formula-rows-joined
+  "The believed `natFormula` sentexes a `genlCx` edge can have joined into a collision.
+  `shown` holds the contexts a reader under the edge's lower context sees through the edge
+  alone, and `terms` the merged terms the edge shows or derived.  The rows are those stored
+  in `shown`, each row sharing a constant with one of them (a twin migration restated at a
+  reader), the rows `formula-rows` reads for `terms`, and each row sharing an expression
+  with one of those.  No row below the lower context is read unless one of them names it."
+  [kb shown terms]
+  (let [tms   (reasoning/tms kb)
+        ix    (:index kb)
         fetch (fn [hs] (keep #(let [sx (p/get-sentex (:records kb) %)]
                                 (when (and sx (jtms/in? tms (:id sx))) sx))
                              hs))
-        below (disj (set (tax/context-down tx sub)) nat-read/universal-context)]
-    (when (seq below)
-      (into #{} (comp (map #(nth (:sentence %) 2))
-                      (distinct)
-                      (mapcat #(fetch (reads/as-stored-with-args ix 'natFormula {2 %}))))
-            (fetch (reads/as-stored-with-args-in ix 'natFormula {} below))))))
+        at    (fn [pos xs] (mapcat #(fetch (reads/as-stored-with-args ix 'natFormula {pos %}))
+                                   (distinct xs)))
+        rows  (when (seq shown) (fetch (reads/as-stored-with-args-in ix 'natFormula {} (set shown))))]
+    (into #{} (at 2 (map #(nth (:sentence %) 2)
+                         (concat (at 1 (map #(second (:sentence %)) rows))
+                                 (formula-rows kb terms)))))))
 
 (defn- minted-for
   "The sentences `mint-nat!` writes about the constant `k` it minted for expression `E`,
@@ -333,6 +413,11 @@
     (or (and (= 'natFormula (nm/functor s)) (= k (first (nm/args s))))
         (and (= nat-read/universal-context (:context sx)) (contains? @minted s)))))
 
+(defn- minted-delay
+  "A delay of `minted-for` over the expression `k` denotes, empty when it denotes none."
+  [kb k]
+  (delay (if-let [E (nat-expression kb k)] (minted-for kb k E) #{})))
+
 (defn- entailed-from?
   "Is `sx` a record the argument-type entailment derives from sources `own-source?`
   accepts alone: not a premise, and every justification a mint (`kb/mint-informant?`,
@@ -350,17 +435,6 @@
                              (and (symbol? i) (contains? tax/arg-declaration-props i)))
                          (own-source? (first (:antecedents %)))))
                  js))))
-
-(defn- mapped-expressions
-  "The expressions `k`'s own `natFormula` sentexes in `sentexes` map it to."
-  [k sentexes]
-  (keep (fn [sx]
-          (let [s (:sentence sx)]
-            (when (and (= nat-read/universal-context (:context sx))
-                       (= 'natFormula (nm/functor s))
-                       (= k (second s)))
-              (nth s 2 nil))))
-        sentexes))
 
 (defn- projected-from?
   "Is `sx` a projection of a constant's map: not a premise, and every justification
@@ -413,7 +487,7 @@
       (let [all  (kb/find-sentexes kb k)
             live (filterv #(jtms/in? (reasoning/tms kb) (:id %)) all)]
         (boolean
-         (when-let [E (authoritative-expression (mapped-expressions k live))]
+         (when-let [E (denoted-expression kb (own-maps k live))]
            (every? (own-sentex-test kb k E all) all)))))))
 
 (defn orphaned-constants
@@ -459,19 +533,24 @@
   before it returns, because the caller retracts what it lists and the bookkeeping test
   reads `k`'s map (docs/nat.md, Rename and remove)."
   [kb k]
-  (let [minted (delay (if-let [E (nat-expression kb k)] (minted-for kb k E) #{}))]
+  (let [minted (minted-delay kb k)]
     (into [] (comp (filter #(nat-bookkeeping-of? k minted %))
                    (map :id)
                    (distinct))
           (kb/find-sentexes kb k))))
+
+(defn bookkeeping-of?
+  "Is the sentex `sx` one of constant `k`'s bookkeeping sentexes (`bookkeeping-handles`)?"
+  [kb k sx]
+  (nat-bookkeeping-of? k (minted-delay kb k) sx))
 
 ;; ---- write-mode reify: mint + result-type materialization ----------------
 
 (defn mint-nat!
   "Mint the reified constant `K` for the ground NAT expression `E` in reify namespace `ns`
   (`cx/` for a context slot, `nat/` for an argument) and return it.  Asserts `(natFormula
-  K E)` in CxUniverse and, for a `nat/` constant, the materialized result types, all
-  `:monotonic`, then queues `K` for the correspondence derivations (`nat-read/note-values`,
+  K E)` in CxUniverse at `:monotonic` and, for a `nat/` constant, the materialized result
+  types, each justified by the map and its declaration (`hold-on!`), then queues `K` for the correspondence derivations (`nat-read/note-values`,
   the projection among them).  The result types chain as `chain?` says; the map chains
   only when a `resultArg` of `E`'s function is declared (docs/defenses.md, The mint's
   natFormula fact does not chain)."
@@ -484,14 +563,16 @@
          opts {:strength :monotonic :chain? chain?}]
      (binding [nat-read/*minting?* true]
        ;; a `resultArg` of `head` types `k` off this fact (`checks/result-arg-rows`)
-       (wiring/assert-sentence kb (list 'natFormula k E) univ
-                               (assoc opts :chain? (and chain? (not ctx?)
-                                                        (boolean (seq (result-arg-declared kb head))))))
-       (when-not ctx?
-         (doseq [t (result-types kb head)]
-           (wiring/assert-sentence kb (list t k) univ opts))
-         (doseq [t (genl-result-types kb head)]
-           (wiring/assert-sentence kb (list 'genl k t) univ opts))))
+       (let [mh (wiring/assert-sentence kb (list 'natFormula k E) univ
+                                        (assoc opts :chain? (and chain? (not ctx?)
+                                                                 (boolean (seq (result-arg-declared kb head))))))]
+         (when-not ctx?
+           (let [rs (result-declarations kb 'result head)]
+             (doseq [t (result-types kb head)]
+               (hold-on! kb (list t k) opts 'result mh (get rs t))))
+           (let [gs (result-declarations kb 'genlResult head)]
+             (doseq [t (genl-result-types kb head)]
+               (hold-on! kb (list 'genl k t) opts 'genlResult mh (get gs t)))))))
      ;; after the result types, which the projection is arg-checked against
      (when-not ctx? (nat-read/note-values kb [(list 'natFormula k E)] true))
      k)))
@@ -555,10 +636,16 @@
           (kb/sentexes-matching kb (list 'contextArgCalendarSpelling f '?p) '?ctx))))
 
 (defn- inner-application
-  "The application of `f` the term `x` names: `x` itself, or the `natFormula` expression of
-  a `cx/` constant; else nil."
+  "The application of `f` the term `x` names, or nil: `x` itself, or the expression a
+  stated `natFormula` row of a `cx/` constant gives it (`nat-read/stated-map-expression`),
+  else its `nat-expression`.  A fold spells no slice through a merge's twin of its map."
   [kb f x]
-  (let [e (if (nat-read/reified-context-symbol? x) (nat-expression kb x) x)]
+  (let [e (if (nat-read/reified-context-symbol? x)
+            (or (authoritative-expression
+                 (keep #(nat-read/stated-map-expression kb x %)
+                       (reads/as-stored-with-args (:index kb) 'natFormula {1 x})))
+                (nat-expression kb x))
+            x)]
     (when (and (seq? e) (= f (first e))) e)))
 
 (defn context-form
@@ -617,7 +704,7 @@
   write path, read in its `context-form` spelling and without the declaration a read
   needs."
   [kb form]
-  (let [k (nat-read/reify-nat-for-read kb (context-form kb form) nat-read/context-namespace nil)]
+  (let [k (nat-read/reify-nat-for-read kb (context-form kb form) nat-read/context-namespace nil true)]
     (when-not (= nat-read/no-match k) k)))
 
 (defn context-for-check
@@ -650,49 +737,67 @@
     (nat-read/reify-in kb sentence (fn [_ form] form) #(term-for-check %1 %2 context))
     sentence))
 
-(defn- merge-collisions!
-  "Restore the 1:1 constant↔expression map in each context that reads a collision among
-  the believed `natFormula` sentexes `rows`: there, each other constant is equated with the
-  lexicographically smallest one, and the migration moves their uses.  A context reads
-  the rows stored in the contexts it sees; the contexts holding `rows` are visited most
-  general first, and a pair a visible equality already merges is skipped.  A context that
-  does not see CxUniverse reads no collision among CxUniverse's rows (docs/nat.md, Rename
-  and remove)."
+(defn- collisions-among
+  "The merges that restore the 1:1 constant↔expression map in each context reading a
+  collision among the believed `natFormula` sentexes `rows`: there, each other constant
+  is equated with the lexicographically smallest one.  One `[(equals survivor dup) L
+  [row row]]` per pair of rows mapping the two to one expression.  A context reads the rows
+  stored in the contexts it sees, and a pair a visible equality already merges is skipped.
+  A context that does not see CxUniverse reads no collision among CxUniverse's rows
+  (docs/nat.md, Rename and remove).  Only a row whose `collision-key` another row's
+  constant shares is tested against a context's view."
   [kb rows]
-  (let [tx (reasoning/taxonomy kb)]
-    (doseq [L               (nm/sort-by-content-key (juxt #(count (tax/context-up tx %)) nm/print-key)
+  (let [tx     (reasoning/taxonomy kb)
+        shared (into #{} (map first) (collision-groups (map :sentence rows)))
+        cands  (filterv #(shared (collision-key (:sentence %))) rows)]
+    (for [L               (when (seq cands)
+                            (nm/sort-by-content-key (juxt #(count (tax/context-up tx %)) nm/print-key)
                                                     compare
-                                                    (into #{} (map :context) rows))
-            [survivor dups] (group-collisions (keep #(when (tax/sees? tx L (:context %)) (:sentence %))
-                                                    rows))
-            dup             dups
-            :when           (not (res/same-class-in? kb survivor dup L))]
-      (wiring/assert-sentence kb (list 'equals survivor dup) L {:strength :monotonic}))))
+                                                    (into #{} (map :context) rows)))
+          :let            [seen   (filterv #(tax/sees? tx L (:context %)) cands)
+                           groups (group-collisions (map :sentence seen))
+                           ;; `seen` by constant, each group in `seen`'s order
+                           by-k   (when (seq groups) (group-by #(second (:sentence %)) seen))]
+          [survivor dups] groups
+          dup             dups
+          :when           (not (res/same-class-in? kb survivor dup L))
+          rs              (by-k survivor)
+          rd              (by-k dup)
+          :when           (= (nth (:sentence rs) 2) (nth (:sentence rd) 2))]
+      [(list 'equals survivor dup) L [(:id rs) (:id rd)]])))
 
-(defn- merge-colliding-nats!
-  "The collision repair a just-asserted `sentence` owes: an equality reads the rows naming
-  its terms' classes, a `natFormula` the rows naming its expression's merged arguments,
-  and a `genlCx` edge the rows its migration restated below its lower context.  Reads only
-  what the sentence can have joined, so a collision an import stored stays until something
-  asks `colliding-constant-groups`."
-  [kb sentence]
+(defn collision-merges
+  "The collision repair a just-asserted `sentence` owes, as `collisions-among`'s merges.
+  An equality reads the rows naming its terms' classes, a `natFormula` the rows naming its
+  expression's merged arguments, and a `genlCx` edge `formula-rows-joined`'s rows for
+  `edge-joins`, a delay of `{:shown contexts :terms merged-terms}`.  A `natFormula` also
+  reads the rows of its expression as spelled when a merge's twin is among them
+  (docs/nat.md, Rename and remove).  Reads only what the sentence can have joined, so a
+  collision an import stored stays until something asks `colliding-constant-groups`.
+  `nat-maintenance` derives each merge from its two rows."
+  [kb sentence edge-joins]
   (let [tx (reasoning/taxonomy kb)]
     (cond
       (kb/equality-sentence? sentence)
-      (merge-collisions! kb (formula-rows kb (filter symbol? (rest sentence))))
+      (collisions-among kb (formula-rows kb (filter symbol? (rest sentence))))
 
       (and (= 'natFormula (first sentence)) (seq? (nth sentence 2 nil)))
-      (when-let [ts (seq (filter #(and (symbol? %) (tax/merged? tx %)) (rest (nth sentence 2))))]
-        (merge-collisions! kb (formula-rows kb ts)))
+      (let [[_ _ E] sentence
+            tms     (reasoning/tms kb)
+            ts      (filter #(and (symbol? %) (tax/merged? tx %)) (rest E))
+            spelled (filterv #(jtms/in? tms (:id %)) (nat-read/rows-naming kb 'natFormula E))]
+        (when (or (seq ts) (some #(not (jtms/premise? tms (:id %))) spelled))
+          (collisions-among kb (into (formula-rows kb ts) spelled))))
 
       (and (= 'genlCx (first sentence)) (symbol? (second sentence))
            (seq (tax/equality-edges tx)))
-      (merge-collisions! kb (formula-rows-below kb (second sentence))))))
+      (let [{:keys [shown terms]} @edge-joins]
+        (collisions-among kb (formula-rows-joined kb shown terms))))))
 
 (defn- reconcile-declared-result!
   "Materialize a `(result F T)` or `(genlResult F T)` that arrived *after* constants were
   minted for `F`: each one gets the `(T K)` or `(genl K T)` the mint writes when the
-  declaration comes first, at the mint's strength in CxUniverse.  A no-op for any other
+  declaration comes first, justified as the mint justifies it (`hold-on!`).  A no-op for any other
   sentence, and for a function nothing has been minted for.  A late `resultArg` reaches
   the `natFormula` facts through `special/entail-existing`."
   [kb sentence]
@@ -700,17 +805,18 @@
              (= 3 (count sentence)))
     (let [[p f t] sentence]
       (when (and (symbol? f) (symbol? t) (nat-read/reifiable-function? kb f))
-        (doseq [[_ k] (minted-applications kb f)]
-          (wiring/assert-sentence kb (if (= 'genlResult p) (list 'genl k t) (list t k))
-                                  nat-read/universal-context {:strength :monotonic}))))))
+        (let [decls (get (result-declarations kb p f) t)]
+          (doseq [[E k] (minted-applications kb f)]
+            (hold-on! kb (if (= 'genlResult p) (list 'genl k t) (list t k)) {:strength :monotonic}
+                      p (kb/find-sentex-handle kb (list 'natFormula k E) nat-read/universal-context)
+                      decls)))))))
 
 (defn reconcile-nats!
-  "The reified-constant maintenance a just-asserted `sentence` owes, in this order: the
-  collision repair (`merge-colliding-nats!`), then a result declaration reaching the
-  constants minted before it.  `nat-maintenance/reconcile-assert` calls it behind
-  `any-reified-constants?`, and queues the correspondence derivations itself."
+  "The reified-constant maintenance a just-asserted `sentence` owes beside the collision
+  repair (`collision-merges`): a result declaration reaching the constants minted before
+  it.  `nat-maintenance/reconcile-assert` calls it behind `any-reified-constants?`, and
+  queues the correspondence derivations itself."
   [kb sentence]
-  (merge-colliding-nats! kb sentence)
   (reconcile-declared-result! kb sentence))
 
 ;; ---- a reifiable mark moving: the reads `chain/reconcile-reified!` runs on --
@@ -773,8 +879,8 @@
             ks   (into [] (comp (keep maps) (remove seen) (filter #(= % (rep %))) (distinct)) sxs)
             uses (if (= t root)
                    (root-uses sxs)
-                   (let [own? (if-let [E (authoritative-expression
-                                          (mapped-expressions t (filter #(jtms/in? (reasoning/tms kb) (:id %)) sxs)))]
+                   (let [own? (if-let [E (denoted-expression
+                                          kb (own-maps t (filter #(jtms/in? (reasoning/tms kb) (:id %)) sxs)))]
                                 (own-sentex-test kb t E sxs)
                                 (constantly false))]
                      (into [] (remove #(or (quoting-row? %) (own? %))) sxs)))]
@@ -789,7 +895,7 @@
   Nil while a map of `k` is stored, since `respell-region` reaches those uses."
   [kb k E]
   (region-from kb k (fn [sxs]
-                      (when (empty? (mapped-expressions k sxs))
+                      (when (empty? (own-maps k sxs))
                         (let [own? (own-sentex-test kb k E sxs)]
                           (into [] (remove #(or (quoting-row? %) (own? %))) sxs))))))
 

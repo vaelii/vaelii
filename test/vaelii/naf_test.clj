@@ -7,6 +7,8 @@
             [vaelii.core :as v]
             [vaelii.impl.profile :as prof]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.order-independence-test :as oi]
             [vaelii.test-util :as tu]))
 
@@ -748,6 +750,141 @@
         (is (= (if (= :retract (second order)) [:stored :stored :stored] [:stored :not-stratified])
                (mapv #(refusal-type (op %)) order))
             (pr-str shape order))))))
+
+(tu/deftest-kb a-derived-closed-extent-grant-keeps-the-rule-set-stratified-in-both-arrival-orders
+  ;; A grant a forward rule concludes, in each spelling, or an argument-type mint entails,
+  ;; beside a rule reading (not (accountOn …)).  When that rule concludes accountOn,
+  ;; whichever arrives second goes: the derived grant is dropped and reported, with no
+  ;; record and no mark, or the rule is refused.  When it concludes another predicate,
+  ;; both are stored.
+  (doseq [[route spelling] [[:forward :whole] [:forward :per-argument] [:forward :binary]
+                            [:entailed :whole]]
+          cyclic? [true false]
+          order   [[:rule :derive] [:derive :rule]]]
+    (tu/with-terms [accountOn grantsOn candidate unhosted closed_listing HostA Zed CxHosts]
+      (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+      (let [grant  (fn [p] (case spelling
+                             :whole        (list 'closed_extent_predicate p)
+                             :per-argument (list 'closedExtentForArg p 2 HostA)
+                             :binary       (list 'closedExtentForArg2 p HostA)))
+            fwd    #(v/assert kb % CxHosts {:direction :forward})
+            op     {:rule   #(fwd (list 'implies (list 'and (list candidate '?u)
+                                                       (list 'not (list accountOn '?u HostA)))
+                                        (if cyclic? (list accountOn '?u HostA) (list unhosted '?u))))
+                    :derive #(case route
+                               :forward  (do (fwd (list 'implies (list closed_listing '?p) (grant '?p)))
+                                             (v/assert kb (list closed_listing accountOn) CxHosts))
+                               :entailed (do (v/assert kb (list 'arg grantsOn 1 'closed_extent_predicate)
+                                                       CxHosts)
+                                             (v/assert kb (list grantsOn accountOn Zed) CxHosts)))}
+            types  (tu/with-entailing (mapv #(refusal-type (op %)) order))
+            tx     (reasoning/taxonomy kb)
+            g      (grant accountOn)]
+        (is (= (cond (not cyclic?)           [[:stored :stored] true true []]
+                     (= :rule (first order)) [[:stored :stored] false false [:not-stratified]]
+                     :else                   [[:stored :not-stratified] true true []])
+               [types
+                (some? (v/handle-of kb g CxHosts))
+                (boolean (some #(contains? (tax/props tx %) accountOn)
+                               [:closed-extent :closed-extent-arg]))
+                (into [] (comp (filter #(= g (:sentence %))) (map :violation)) (v/violations kb))])
+            (pr-str route spelling cyclic? order))))))
+
+(defn- dropped-then-retracted
+  "Per row of `rows`, a rule-first row of the table above or an equality twin, `[row
+  dropped retracted]`: the derived grant or edge read after the derivation and after the
+  rule whose cycle it closes is retracted, each as `[stored? marked? violation kinds]`.
+  With `recover?`, the retraction runs in a copy recovered from the records
+  (`tu/recovered-copy*`).  The `:edge` row derives a `genl` edge that fans the rule's
+  (unknown (cover …)) over a spec it concludes; the `:twin` rows state the grant or edge
+  on an alias and a `rewriteOf` naming its rewrite."
+  [kb rows recover?]
+  (vec
+   (for [[route spelling :as row] rows]
+     (tu/with-terms [accountOn accountAlias grantsOn candidate closed_listing linkedTo covered
+                     coveredAlias cover HostA Zed CxHosts]
+       (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+       (let [edge?   (or (= :edge route) (= [:twin :edge] row))
+             grant   (fn [p] (case (if edge? :edge spelling)
+                               (:whole :grant) (list 'closed_extent_predicate p)
+                               :per-argument   (list 'closedExtentForArg p 2 HostA)
+                               :binary         (list 'closedExtentForArg2 p HostA)
+                               :edge           (list 'genl p cover)))
+             fwd     #(v/assert kb % CxHosts {:direction :forward})
+             g       (grant (if edge? covered accountOn))
+             rule    (if edge?
+                       (list 'implies (list 'and (list candidate '?u) (list 'unknown (list cover '?u)))
+                             (list covered '?u))
+                       (list 'implies (list 'and (list candidate '?u) (list 'not (list accountOn '?u HostA)))
+                             (list accountOn '?u HostA)))
+             read    (fn [k]
+                       (let [tx (reasoning/taxonomy k)]
+                         [(some? (v/handle-of k g CxHosts))
+                          (if edge?
+                            (tax/genl? tx covered cover CxHosts)
+                            (boolean (some (fn [p] (contains? (tax/props tx p) accountOn))
+                                           [:closed-extent :closed-extent-arg])))
+                          (into [] (comp (filter (fn [e] (= g (:sentence e)))) (map :violation))
+                                (v/violations k))]))
+             retract #(do (v/retract! % (v/handle-of % rule CxHosts)) (read %))]
+         (tu/with-entailing
+           (fwd rule)
+           (case route
+             :forward  (do (fwd (list 'implies (list closed_listing '?p) (grant '?p)))
+                           (v/assert kb (list closed_listing accountOn) CxHosts))
+             :entailed (do (v/assert kb (list 'arg grantsOn 1 'closed_extent_predicate) CxHosts)
+                           (v/assert kb (list grantsOn accountOn Zed) CxHosts))
+             :edge     (do (fwd (list 'implies (list linkedTo '?a '?b) (list 'genl '?a '?b)))
+                           (v/assert kb (list linkedTo covered cover) CxHosts))
+             :twin     (let [[rep alias] (if edge? [covered coveredAlias] [accountOn accountAlias])]
+                         (v/assert kb (grant alias) CxHosts)
+                         (v/assert kb (list 'rewriteOf rep alias) CxHosts)))
+           [row (read kb) (if recover? (tu/recovered-copy* kb false retract) (retract kb))]))))))
+
+(def ^:private drop-rows
+  [[:forward :whole] [:forward :per-argument] [:forward :binary] [:entailed :whole] [:edge nil]
+   [:twin :grant] [:twin :edge]])
+
+(tu/deftest-kb a-dropped-derived-grant-or-edge-is-stored-once-the-rule-closing-its-cycle-is-retracted
+  ;; The KB holds what a KB built from the derivation alone holds.
+  (is (= (mapv #(vector % [false false [:not-stratified]] [true true []]) drop-rows)
+         (dropped-then-retracted kb drop-rows false))))
+
+(tu/deftest-kb ^:slow a-dropped-grant-or-edge-is-stored-once-the-rule-closing-its-cycle-is-retracted-after-a-recover
+  ;; The recover starts from an empty refusal record, so it records the drops again
+  ;; from the firings, the mints and the restatements.  One row per route.
+  (let [rows [[:forward :whole] [:entailed :whole] [:edge nil] [:twin :grant] [:twin :edge]]]
+    (is (= (mapv #(vector % [false false [:not-stratified]] [true true []]) rows)
+           (dropped-then-retracted kb rows true)))))
+
+(tu/deftest-kb an-equality-twin-of-a-grant-or-edge-keeps-the-rule-set-stratified-in-every-arrival-order
+  ;; A grant on accountAlias, or an edge under coveredAlias, stated, and a `rewriteOf`
+  ;; naming accountOn or covered its rewrite: the twin at the rewrite closes a cycle with
+  ;; the rule.  Whichever of the rule and the twin comes second goes, as for a stated grant.
+  (doseq [route [:grant :edge]
+          order (oi/permutations [:rule :grant :rewrite])]
+    (tu/with-terms [accountOn accountAlias candidate covered coveredAlias cover HostA CxHosts]
+      (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)
+      (let [fwd   #(v/assert kb % CxHosts {:direction :forward})
+            [rep alias] (if (= :edge route) [covered coveredAlias] [accountOn accountAlias])
+            grant (fn [p] (if (= :edge route) (list 'genl p cover) (list 'closed_extent_predicate p)))
+            rule  (if (= :edge route)
+                    (list 'implies (list 'and (list candidate '?u) (list 'unknown (list cover '?u)))
+                          (list covered '?u))
+                    (list 'implies (list 'and (list candidate '?u) (list 'not (list accountOn '?u HostA)))
+                          (list accountOn '?u HostA)))
+            op    {:rule    #(fwd rule)
+                   :grant   #(v/assert kb (grant alias) CxHosts)
+                   :rewrite #(v/assert kb (list 'rewriteOf rep alias) CxHosts)}
+            types (mapv #(refusal-type (op %)) order)
+            twin  (grant rep)]
+        (is (= (if (= :rule (last order))
+                 [[:stored :stored :not-stratified] true []]
+                 [[:stored :stored :stored] false [:not-stratified]])
+               [types
+                (some? (v/handle-of kb twin CxHosts))
+                (into [] (comp (filter #(= twin (:sentence %))) (map :violation)) (v/violations kb))])
+            (pr-str route order))))))
 
 (tu/deftest-kb why-not-says-the-extent-is-closed
   (tu/with-terms [month_of_year Smarch CxCalendar]

@@ -204,7 +204,7 @@ such positions. Their bounds stay explicit on each predicate even where inherite
 parent's revision cannot silently change a child's declared constraint. A
 `(genlArg P n thing)` declaration says position `n` holds a type, and the constraint-only
 reading convicts an individual there. A position that holds a term taken as written
-declares an expression type with `quotedArg`, as `(quotedArg comment 1 denotational_term)`
+declares an expression type with `quotedArg`, as `(quotedArg comment 1 closed_expression)`
 does.
 
 **Both readings prove the same sentences over the shipped ontology.** A membership or
@@ -319,7 +319,12 @@ relabelled; under the constraint-only reading, the facts naming a term whose mem
 moved; under a declaration naming a type a definition stored, removed or relabelled
 reaches, the held facts and the convicted tuples; and, after a `genl`, separation or
 `genlCx` move, the facts its ends reach, held or not; a held fact the ends do not reach is
-not decided again (`lein perf --only genl-write-beside-held-facts`). The declarations
+not decided again (`lein perf --only genl-write-beside-held-facts`). A `defeat` stored,
+removed or relabelled moves its target's belief with no relabel of the target, so it queues
+what the target's own move queues and, for a separation, the types the separation
+separates (`argument/note-defeated!`). The settle runs another pass while that queue holds
+anything, so a defeat placed after the pass's refresh is read in the same write
+(`absent_type_order_test/a-conclusion-convicted-by-a-missing-edge-is-placed-once-the-edge-arrives`). The declarations
 below the moved types with more specializations than the refresh walks (512) are found in
 one pass over every declaration, with the types above each declared type walked once for
 all of those ends, and a declaration below several ends is read once (`lein perf --only
@@ -364,10 +369,10 @@ a rule derives, derives and is weighed the same way
 A clash between two derivations of one cascade — `(p1 Fred)` and the `(p2 Fred)` it
 entails — is found by the settle from the stored records in the same way.
 
-A declaration whose type an arity statement binds to another length derives nothing. With
-`t` declared binary, `(arg rel 1 t)` and `(rel Rex Mary)` store the fact and no `(t Rex)`,
-and the declaration mints once the binding leaves
-(`argtype_entail_test/a-type-bound-to-another-length-mints-nothing-and-records-nothing`,
+A declaration whose type an arity statement binds to another length stores its mints
+inert. With `t` declared binary, `(arg rel 1 t)` and `(rel Rex Mary)` store the fact and
+`(t Rex)` OUT, and `(t Rex)` comes IN once the binding leaves
+(`argtype_entail_test/a-type-bound-to-another-length-stores-its-mint-inert-and-records-nothing`,
 [taxonomy.md](taxonomy.md#arity)).
 
 **What the entry point still asks of the derivations.** `checks/entailment-check` walks the
@@ -509,7 +514,9 @@ what the mint readers key on: `kb/mint-informant?` asks whether an informant is 
 of these rules, whose handles the index holds in `[:mint-rules]`
 ([indexing.md](indexing.md#10-the-mint-family)), and `special/firing-informant?` keeps a mint out of the readers of a rule
 firing (the guard, the witness-route re-chain, the exception re-check). The
-forced-monotonic conviction holds no mint void (`checks/force-sentexes!`). An arity-class
+forced-monotonic conviction holds no mint void (`checks/force-sentexes!`); a type an
+arity statement binds to another length does
+([where it does not mint](#where-it-does-not-mint)). An arity-class
 membership keeps `declaredType` as its informant, and a justification a store holds
 under the declaring predicate's symbol counts as a mint of that kind.
 
@@ -611,39 +618,45 @@ reads the declared type's own IN arity bindings, one read with no `genl` closure
 mints when no binding gives it a length other than one, no `variable_arity` releases it
 and no `arityMin` floors it above one. A
 declaration that mints also entails `(unary_predicate T)` of each type it names, justified
-by the declaration alone (`special/entail-existing`), so the type's arity is stored beside
-its first mints. A length `T` inherits through `genl` is not read.
+by the declaration alone (`special/entail-existing`), so the type's arity is stored with
+its first mints. The membership is stored in CxUniverse whatever context the declaration
+is in, since `unary_predicate` is forced-decontextualized
+([contexts.md](contexts.md#forced_decontextualized_predicate-a-canonical-home-in-cxuniverse)):
+the declarations naming `T` in every context and a statement of `(unary_predicate T)`
+support one record. A length `T` inherits through `genl` is not read.
 
-A declared type an arity statement binds to another length mints nothing, and nothing
-records the declaration: the stored declaration is the record. When the arity family's
-refresh reports a type whose own bindings moved and whose length now admits one
-(`arity/drain!`'s `:bound`), the settle reads the stored declarations naming the type and
-runs `entail-existing` for each that has no `declaredType` justification of
-`(unary_predicate T)`, which mints over every fact stored meanwhile
-(`special/mints-on-lengths`). A `genl` or `genlCx` edge moves no type's own bindings, so it
-reads no declaration; `lein perf`'s `mint-release-after-genl-move` bounds the settle after
-a `genl` edge per waiting declaration. Until then the declaration reads none of its facts: every arm asks
-`mintable-type?` of the declaration's own type before it draws, so the extent would yield
-nothing.
+A declared type an arity statement binds to another length still mints: every mint and
+every `declaredType` `(unary_predicate T)` is stored at the write whatever `T`'s length,
+and `entail-arg-type` adds a justification minting in a type `mintable-type?` refuses
+with the justification in the TMS's `:void` set ([nmtms.md](nmtms.md)). A record only such
+justifications support is stored and OUT; a record with other support stays IN under
+`T`'s length, inert ([taxonomy.md](taxonomy.md#arity)). `why-not` reads such a record as
+`:inert`. When the arity family's refresh reports a type whose own bindings moved
+(`arity/drain!`'s `:bound`) by a binding that can move its mintability, the settle reads
+the justifications minting in the type, a membership `(T x)`, an edge `(genl x T)` and
+the `declaredType` `(unary_predicate T)`, and sets or clears each one's `:void` mark by
+`mintable-type?` (`special/hold-type-mints!`). The records a release brings IN chain from
+the settle. A `genl` or `genlCx` edge moves no type's own bindings, so it reads no mint;
+`lein perf`'s `mint-release-after-genl-move` bounds the settle after a `genl` edge per
+declaration with an inert mint. After `recover` the refresh reads every type a length
+binding is stored for, since the rebuilt network holds no `:void` mark. A declaration
+naming a term the engine's own shape gives another length (`arity/mint-target?`) reads
+none of its facts.
 
-An arity statement binding `T` to another length after the declaration has minted
-withdraws the entailed `(unary_predicate T)` (`special/withdrawn-type-entailments`, in
-the arity family's refresh) and leaves the declaration waiting on `T`, as it waits when
-the statement arrived first. The same refresh drops the mint justifications concluding a
-membership `(T x)` or an edge `(genl x T)` (`special/withdrawn-type-mints`), so a mint
-the argument entailment alone holds up leaves the store, and a record with other support
-stays under `T`'s length, inert ([taxonomy.md](taxonomy.md#arity)). Arriving first, the
-statement leaves nothing minted, so both orders store the same records
-(`absent_type_order_test/a-length-arriving-after-a-mint-removes-it-from-the-store`,
+The binding and the mint therefore store the same records in either order: arriving
+after the mint, the binding holds the stored justifications void, as the mint arriving
+after the binding adds them void. Read right after the binding's write, the mint is OUT
+in both orders
+(`absent_type_order_test/a-length-arriving-after-a-mint-keeps-it-stored-inert`,
+`absent_type_order_test/a-length-arriving-after-a-mint-holds-it-out-at-that-write`,
 `clash_oracle_test/a-length-arriving-after-a-minting-declaration-reads-as-one-arriving-before-it`).
 
-A type mints only when every IN length admits length one. With `(unary_predicate T)` and
-`(binary_predicate T)` both IN, the binary binding gives `T` a length other than one, so a
-declaration naming `T` mints nothing, and the binary binding arriving after a mint drops
-the mint justifications as above. No order of the two bindings, the declaration and the
-fact stores the mint, before or after `recover`
-(`absent_type_order_test/a-type-with-two-in-lengths-mints-in-no-order`). The two lengths
-stay one `contradicts` ([taxonomy.md](taxonomy.md#arity)).
+A mint holds only when every IN length admits length one. With `(unary_predicate T)` and
+`(binary_predicate T)` both IN, the binary binding gives `T` a length other than one, so
+every order of the two bindings, the declaration and the fact stores the mint OUT, before
+and after `recover`
+(`absent_type_order_test/a-type-with-two-in-lengths-stores-its-mint-inert-in-every-order`).
+The two lengths stay one `contradicts` ([taxonomy.md](taxonomy.md#arity)).
 
 `entail-existing` puts each stored sentex back through `constraint-entailments` in its
 *own* context, narrowed to the arriving declaration (`checks/declaration-entailments`),
@@ -981,8 +994,8 @@ declarations; the target materialized those entailments when it first became bel
 | case | what happens instead |
 |---|---|
 | an **individual** in an `genlArg` position | `genls-problem` convicts; an individual can never acquire `genl` edges |
-| the declared type is `thing` | nothing, in either reading, and no waiting entry: a membership in `thing` says nothing about a term. `kb-quality` lists the declaration under `:typed-thing` |
-| an arity statement binds the declared type to another length | nothing until the binding leaves; nothing records the declaration, and the settle reads it when the type's own bindings move |
+| the declared type is `thing` | nothing, in either reading: a membership in `thing` says nothing about a term. `kb-quality` lists the declaration under `:typed-thing` |
+| an arity statement binds the declared type to another length | the mint is stored with its justification held void, so a record with no other support is OUT; the binding leaving releases it (`special/hold-type-mints!`) |
 | a `genlArg` position filled by the declared type itself | nothing — `(genl t t)` is a reflexive edge `wff` refuses, so `arg-entailments` never draws it. A `(genlArg P n thing)` declaration over a sentence whose position `n` holds `thing` would otherwise store a violation |
 | a **function application** in the position | `args-problem` / `genls-problem` check it against the function's declared `result` / `genlResult` and refuse where the result misses ([nat.md](nat.md)) — but nothing is minted, a declared result being a claim about the *function* and not about this application, and a compound having no membership to mint |
 | a genuine negation, or a rule | not argument-checked, so not entailed from either |
@@ -1208,25 +1221,23 @@ the fact and the `argArg` declaration. The declaration itself is checked as `int
 is: both positions must be positions `P` has, and one position named twice is
 `:not-well-formed`.
 
-**A named type bound to another length mints once it is mintable.** `arg` names one
-type, so a declaration whose type is not mintable is swept again once the type is
-mintable. An `argArg` names no type of its own: each fact names one. A fact whose named
-type `mintable-type?` refuses draws no mint in it, and once the type is mintable
-`special/mints-on-lengths` reads the stored facts naming the type at a position an
-`argArg` types and draws their mints through `deduce-placed`, so the binding of `dog`
-leaving after `(kindOfPet Rex dog)` mints `(dog Rex)` as it would had it left first.
+**A named type bound to another length stores its mint inert.** An `argArg` names no
+type of its own: each fact names one. A fact whose named type `mintable-type?` refuses
+stores its mint with the justification held void, as an `arg` mint is, and the binding of
+`dog` leaving after `(kindOfPet Rex dog)` releases `(dog Rex)` (`special/hold-type-mints!`)
+as it would had it left first.
 `argtype_entail_test/every-arrival-order-of-an-arg-arg-reaches-the-same-belief` runs the
-six orders of the declaration, the fact and the edge. A fact waits only on declarations
-visible from its context or placed below it, the two reads the assert path makes.
+six orders of the declaration, the fact and the edge. A fact draws mints only from
+declarations visible from its context or placed below it, the two reads the assert path makes.
 
 **`resultArg` types a reified constant through the same arm.** `(resultArg F n)` types
 the value of an application of `F` by the type the application's argument `n` names. Over
 a `(natFormula K E)` fact, `E` an application of `F`, `checks/result-arg-rows` reads each
 declaration as an `arg` row at position 1. `(resultArg MemberFn 1)` over `(natFormula K
 (MemberFn dog))` therefore derives `(dog K)`, justified by the `natFormula` fact and the
-declaration. The mint is placed, waits on an unmintable type and is released as an
-`argArg` mint is. A type bound to another length mints nothing until the binding leaves,
-and retracting the declaration withdraws the mint. A declaration arriving after the
+declaration. The mint is placed, and is stored inert in a type bound to another length
+until the binding leaves, as an `argArg` mint is. Retracting the declaration withdraws
+the mint. A declaration arriving after the
 mints reads the stored `natFormula` facts of `F`'s applications
 (`special/entail-existing`). The membership is an entailment, so the constraint-only
 reading (`VAELII_ASSERTIVE_ARG_TYPES=0`) draws none, and a minted constant there holds its
@@ -1493,7 +1504,7 @@ either arrival order of the declaration and the fact
 (`quoted_arg_test/a-compound-is-held-only-where-one-of-its-kinds-is-separated-from-the-type`).
 A declared kind of `expression` decides a value or a symbol too, every value kind and
 `symbol` sitting in the lattice (`checks/syntactic-type?`): `(quotedArg except 1
-sentex_handle_term)` convicts `(except 212)`, and `(quotedArg comment 1 denotational_term)`
+sentex_handle_term)` convicts `(except 212)`, and `(quotedArg comment 1 closed_expression)`
 admits a symbol or a value.
 
 ## Scope

@@ -533,6 +533,12 @@ header.site {
    value and not the outer one's. */
 .badge-out, .sx-out { --lit: 55%; }
 .sx-in              { --lit: 100%; }
+/* A quoting function's arguments (`web/quotation`) are a mention, and `--quoted` scales
+   `--lit` by the factor `.sx-out` applies.  `--unquote` is the factor an `Unquote` hole
+   takes: full colour under `Quasiquote`, the quotation's own under `Quote`. */
+.quoted      { --quoted: .55; --unquote: .55; }
+.quasiquoted { --quoted: .55; --unquote: 1; }
+.unquoted    { --quoted: var(--unquote, 1); }
 
 /* A rule or a meta-sentex holding one is laid out across lines (`web/layout`).
    `pre-wrap` keeps the newlines and the counted indent, and still lets a line too long
@@ -630,10 +636,12 @@ a.t-num     { --sx-c: var(--t-num); }                    /* 1970                
 .t-str      { --sx-c: var(--t-num); }                    /* "a string"           */
 .cx-in      { --sx-c: var(--title); }                    /* (dog Fido) in CxWorld */
 .t-var      { --sx-c: var(--t-var); }                    /* ?x — not a link      */
+.nat-paren  { --sx-c: var(--t-ind); }                    /* a reified NAT's ( )  */
+.struct-paren { --sx-c: var(--title); }                  /* a structural NAT's ( ) */
 /* every sentence part above, and a depth paren (`.rb1`…), is its colour at `--lit` */
 :is(.rb1, .rb2, .rb3, .rb4, .rb5, .rb6, .rb7, .rb8, .rb9, a.t-type, a.t-ind, a.t-pred,
-    a.t-conn, a.t-context, a.t-num, .t-str, .cx-in, .t-var) {
-  color: color-mix(in srgb, var(--sx-c) var(--lit, 100%), var(--bg));
+    a.t-conn, a.t-context, a.t-num, .t-str, .cx-in, .t-var, .nat-paren, .struct-paren) {
+  color: color-mix(in srgb, var(--sx-c) calc(var(--lit, 100%) * var(--quoted, 1)), var(--bg));
 }
 /* a string's text is English, so it takes --prose between quotes that keep --mono; a
    term, formula or variable a comment's text marks up is `.sx` or `.t-var` and keeps --mono.
@@ -667,11 +675,13 @@ a.t-num     { --sx-c: var(--t-num); }                    /* 1970                
 .history-x:hover { color: var(--err-ink); background: none; }
 
 /* a reified term (docs/nat.md), shown as the expression it denotes rather than as its
-   opaque nat/ constant.  The parens are what say it is one *term* and not a compound
-   sentence — the constant and the literal expression it maps to read identically
-   otherwise — and the opening one links to the constant's own page. */
+   opaque nat/ constant.  The parens are bold and take the individual colour a function
+   name takes; they say it is one *term* and not a compound sentence, since the constant
+   and the literal expression it maps to read identically otherwise.  The opening one
+   links to the constant's own page.  A structural NAT's parens are the title ink
+   (`.struct-paren` above), outside the depth colours. */
 a.nat-paren,
-.nat-paren { font-weight: 700; color: var(--ink); text-decoration: none; }
+.nat-paren { font-weight: 700; text-decoration: none; }
 a.nat-paren:hover { color: var(--accent); text-decoration: none; }
 
 .legend   { font-size: .85em; color: var(--muted); margin: .2rem 0; }

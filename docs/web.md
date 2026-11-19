@@ -210,7 +210,7 @@ request log either, which [operations.md](operations.md) states as the trade it 
 | `/levels?q=<goal>&ctx=<context>` | the **lookup-to-query stack**: what each of the eight levels answers for a goal, which level first does, and — above them — the **query plan**: the provers bearing on the goal with their estimates and which one runs. A **vector** goal is a conjunctive query and gets the join plan instead (below). Links across to `/inference` for the same goal |
 | `/inference?q=<goal>&ctx=<context>&d=<depth>` | the **inference debugger**: the run that plan predicted, one step past `/levels`. The **search tree** the node engine builds for a goal — every node the frontier reached (not only the path that answered), each with the itemized estimate that ordered it, the rewrite that produced it, and the answers that came off it — plus the same goal under several **tacticians side by side**, tabled by the work each did and the answers each found. The identity property (every complete tactician returns the same answer set) is **verified** on the page, not asserted: a differing row is marked. Reads through `search-tree` / `compare-tacticians`, both of which bound their own work (a node budget and a wall-clock), so the page holds no session and works under `--attach`. Needs a depth — the node engine's only termination |
 | `/network?ctx=<context>&calc=<calculus>` | the **constraint network** a qualitative calculus computes over a context: the tightened matrix (a cell is what still holds of row-to-column), whether the believed facts are satisfiable at all, and one scenario out of it. With no context, the six calculi, their vocabularies and each one's stored fact count, and a line saying so when the KB states none |
-| `/demo` (GET/POST) | the **non-monotonicity walkthrough**: three stepped writes to the reader's sandbox in which `(hasCapability Pingu flying)` is believed, stops being believed, and comes back — at the same handle. GET renders where the sandbox stands, POST runs one step. Every step writes, so every step is origin-checked (below) |
+| `/demo` (GET/POST) | the **non-monotonicity walkthrough**: three stepped writes to the reader's sandbox in which `(able Pingu flying)` is believed, stops being believed, and comes back — at the same handle. GET renders where the sandbox stands, POST runs one step. Every step writes, so every step is origin-checked (below) |
 | `/reasoning` (GET/POST) | the **worked examples**: every kind of inference the shipped ontology performs, each a question with a live answer, the level that answered it, and links to the stored sentexes it reasoned from. GET renders every card at once and asks nothing; POST establishes one example's premises in the reader's sandbox (below) |
 | `/reasoning/verdict?id=&ms=` (GET) | one card's verdict, which the gallery asks for after it renders, one card at a time (`hx-sync` queued on `#main`). `ms` is the climb's deadline (`escalate`'s `:max-ms`), 10 s from the page and up to 2 min from a card's "Give it 2.0 min" button; a stopped climb says **No answer within**, which is not a verdict |
 | `/assert` (GET/POST) | the **new-sentex form**: sentences (one per line), a context, and the known-true switch. GET seeds it — `?q=<term>` from a term page, `?copy=<handle>` with a stored sentex (Copy), or `?text=`, `?ctx=` and `?strength=monotonic` whole (Copy on `/removed`); POST checks every line and applies them in one `edit!` as a job, then says what followed (below) |
@@ -220,7 +220,7 @@ request log either, which [operations.md](operations.md) states as the trade it 
 | `/retract` (GET/POST) | the **retract confirmation**: GET previews the teardown (the named handles and what the sweep would take with them) and writes nothing; POST performs it, as a job |
 | `/sentex-actions?h=<handle>` | a sentex's **Copy / Edit / Remove** controls as a fragment: the menu a right-click on a badge opens (below) |
 | `/term-op` (GET/POST) | the **term bar**'s operations — `op=rename` (a merge when the new name is a term), `copy`, `remove` on `?q=<term>`: GET is the confirmation (how many asserted sentexes, roughly how long) and writes nothing; POST runs it as a job (below) |
-| `/term-op/name` | the new-name check under a rename or copy panel, `?op=&q=<term>&to=<name>`: whether the name is a term already and, for a rename, whether the two merge cleanly; a fragment, and a read |
+| `/term-op/name` | the new-name check under a rename or copy panel, `?op=&q=<term>&to=<name>`: whether the name is a term already, and what `check-term-edit` refuses of the operation; a fragment, and a read |
 | `/removed` | the **removed list**: the last 50 sentexes the browser removed from the active KB, newest first, each with Put back and Copy (below) |
 | `/removed/restore` (POST) | **put back** one removal: assert its sentence in its context with its strength again, as a job, and drop it from the list |
 | `/chain` (POST) | run **forward chaining** as a job, up to the derivation bound the form names, and answer with the `/stats` page it changed — or, when the run outlasts 250 ms, with `/jobs` (below). POST-only: it derives and places conclusions |
@@ -516,8 +516,8 @@ holding more than the cap is brought down to it by that admission.
 `/demo` is the one page that argues rather than reports. Three clicks, in the reader's own
 sandbox:
 
-1. assert `(bird Pingu)` — `(hasCapability Pingu flying)` becomes believed, and nobody asserted it
-2. assert `(penguin Pingu)` — `(hasCapability Pingu flying)` stops being believed, and nobody retracted it
+1. assert `(bird Pingu)` — `(able Pingu flying)` becomes believed, and nobody asserted it
+2. assert `(penguin Pingu)` — `(able Pingu flying)` stops being believed, and nobody retracted it
 3. retract the penguin claim — it is believed again
 
 Nothing about the page is special-cased in the engine. Each step is an ordinary `v/edit!`
@@ -531,10 +531,10 @@ Two things it is careful to show rather than assert:
 
 - **The cascade.** All five sentences the script touches are rendered at every step. A
   stored one shows its record and its live belief pill. The `genl` hierarchy of event kinds answers
-  `(hasCapability Pingu travelling)` at retrieval and stores no record, so its row shows
+  `(able Pingu travelling)` at retrieval and stores no record, so its row shows
   what `argue` answers: answerable in step 1, unanswerable once the flight goes in step 2,
   and answerable again in step 3. An answerable row links the records the answer was read
-  from: the flight, `(genl flying travelling)` and the `transitiveInArg` declaration. `(not (hasCapability Pingu flying))` appears in step 2 —
+  from: the flight, `(genl flying travelling)` and the `transitiveInArg` declaration. `(not (able Pingu flying))` appears in step 2 —
   the KB does not merely fail to conclude flight, it concludes flightlessness, which is a
   different statement.
 - **The returning conclusion is the same record.** `exceptWhen` blocks rather than rebuts:
@@ -1442,22 +1442,23 @@ renders first.
   Each opens its confirmation in the editor panel (`GET /term-op`): what it
   does, how many **asserted** sentexes mention the term (`find-sentexes`, walked to
   `term-op-scan`, past which it says "more than"), and a run time estimated from the last
-  term operation timed on that KB (50 ms a sentex until one has been). A rename or a copy
-  takes the new name, which must be spelled for the same role. A pause in typing it asks
-  `GET /term-op/name`, which says under the field whether the name reads, keeps the role,
-  and is a term already; for a rename into an existing term, that the rename merges the
-  two and whether they are **compatible**: not disjoint, both types or both relations of
-  one arity, and the first 50 rewritten sentexes admitted by `check-edit`. A run estimated
-  past a minute also needs a box ticked that says how long it is, and a rename or a remove
-  asks once more in a browser dialog (`hx-confirm`) after its button. The POST is a job that walks
-  the handles read up front, `term-op-chunk` (500) to a settle, with progress and a
-  cancel between two settles. Rename asserts each sentence with the new name in the old
-  one's place — in the context too, for a context — and retracts the old; when the new
-  name is already a term that is a **merge**, and a sentence both held stays as the one
-  handle. Copy asserts and retracts nothing. Remove retracts and notes what went in the
-  removed list. A replacement `check-edit` refuses is dropped with the retraction it
-  pairs with, so a rename never loses a sentex; the result page lists them. Derived
-  sentexes are not touched: they follow what they rest on.
+  term operation timed on that KB (50 ms a sentex until one has been). Each runs one of
+  `vaelii.core`'s term operations ([api.md](api.md#contract-notes-term-operations)), so it
+  needs the KB in this process; a browser reading a daemon gets the panel without its
+  button. A term `check-term-edit` refuses as shipped or reserved gets the reason and no
+  button. A rename or a copy takes the new name. A pause in typing it asks
+  `GET /term-op/name`, which says under the field whether the name reads, is a term
+  already, and what `check-term-edit` refuses of the operation it would run. A rename into
+  an existing term is `merge-terms!`, and the field says whether the two are
+  **compatible**: not disjoint, and both types or both relations of one arity. A run
+  estimated past a minute also needs a box ticked that says how long it is, and a rename
+  or a remove asks once more in a browser dialog (`hx-confirm`) after its button. The POST
+  refuses what `check-term-edit` refuses, then runs the operation as a job. The job's
+  `:stop?` reads its cancel flag every `term-op-poll-ms` (200), so a cancel before the
+  first deletion rolls the whole operation back. The deletions that follow run to their
+  end.
+  A remove reads its batch first (`term-edit-plan`) and notes what it retracted in the
+  removed list. Derived sentexes follow what they rest on.
 - **What a removal took is kept, to put back.** Before a retraction or a save writes,
   the sentences it would remove are read (`removal-rows`); after the settle, the ones
   that actually went are noted in the KB's **removed list** (`vaelii.browser.removed`):
@@ -1576,6 +1577,12 @@ handler that previews (`v/preview` asserts and rolls back) is a `:write` like on
 stores. A route naming both `:post` and `:write` is refused, since both are a POST.
 
 A handler answers hiccup, which the browser sends as a fragment, or a ring response map.
+A fragment suits a route the extension's own markup loads into a target. A route a reader
+opens from the menubar, the address bar or a bookmark answers `(web/page req title body…)`
+instead. That call draws `body` inside the browser's header and menubar on a plain
+request, and answers the `#main` region alone when htmx asks, as the browser's own pages
+do. A handler mounted in front of `vaelii.web/handler` rather than registered calls it
+the same way, since it reads nothing off `req` but the htmx headers.
 `env`, the render env, is the value every page renders from — opaque but for `:kb`, the KB it reads, and
 `:sandbox`, this session's scratch context. The shim publishes the helpers an extension
 renders with, each the one the browser's own pages call:
@@ -1587,6 +1594,7 @@ renders with, each the one the browser's own pages call:
 | `render-form`, `term-link` | a sentence or term as every page draws it |
 | `consequences` | the panel the editor's lookahead renders, for any batch ([Editing sentexes](#editing-sentexes)) — from a `:write` route |
 | `stored-sentexes` | what a write stored and what followed from it ([What followed from a commit](#what-followed-from-a-commit)) |
+| `page` | a ring response drawing hiccup as a page of the browser, whole or as `#main` by the request |
 
 A malformed map is refused at registration with `:unknown-option` naming what is wrong —
 a bad name, an unknown key, a path outside the prefix, an unknown method — rather than
@@ -1966,7 +1974,9 @@ A sentence is rendered structurally, not as one opaque string:
   an asserted one; a **dimmed** one is stored and not believed. The sentence behind the
   badge dims with it (`.sx-out`), and each part keeps its role colour mixed toward the
   ground. A sentence nested in a meta-sentex dims by its own belief, so an IN sentence
-  inside an OUT one reads at full colour. Negation outranks every other case, because a
+  inside an OUT one reads at full colour. The arguments of a `Quote` or a `Quasiquote` are
+  a mention and dim by the same factor on top of the sentence's own (`quotation`), and an
+  `Unquote` hole inside a `Quasiquote` returns to the sentence's colour. Negation outranks every other case, because a
   reader who misses a `not` has the sentex backwards and no other confusion costs that. Its `title` carries
   the same reading in words and the handle, so the number and the scale are one hover
   away and lists stay scannable;
@@ -2007,16 +2017,18 @@ anybody wrote and says nothing to a reader, so **no page shows one**. Every term
 > **(** `FruitFn` `AppleTree` **)**
 
 The **bold parens are the whole of the notation**, and they are required rather than
-decorative. A reified term is a *term* that happens to have structure, and it sits in
+decorative. They take the violet of the individual role, the colour the function name
+between them takes. A reified term is a *term* that happens to have structure, and it sits in
 sentences beside ordinary compounds — on the constant's own page `(natFormula K E)`
 renders K and E identically otherwise, so the constant and the literal expression it is
-mapped to would read as the same thing said twice. Weight is what separates them. The
+mapped to would read as the same thing said twice. Weight and colour separate them. The
 **opening paren links to the constant's page**, the one place its `natFormula` map, its
 materialized result types and its uses are listed — so the reified term stays reachable
 without ever being spelled out. Nesting works the same way at every level, and each
 level's paren links to its own constant. A ground compound term left structural, headed
-by a function or a context spelling (`term-compound?`), keeps its depth-coloured parens,
-and its opening paren links to its own term page in the same way.
+by a function or a context spelling (`term-compound?`), takes plain parens in the title
+ink (`.struct-paren`) instead of a depth colour. Its opening paren links to its own term
+page in the same way.
 
 It reaches past the prose, because a leak anywhere is a reader seeing a gensym: the page
 `<title>`, the concept graph's node label and its `aria-label`, the index key each group

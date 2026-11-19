@@ -1398,7 +1398,9 @@ frames plus fixed-width 24-byte `.idx` slots keyed by integer id.
   `direction` / `assumption` / `constraint`, read through `sentex/fielded-rule-slots`),
   a justification frame a bare vector (one
   shape needs no tag) `[id informant antecedents consequence bindings strength]` with the
-  justification's subsumptions as a seventh element when it has some (a seven-element
+  justification's subsumptions as a seventh element when it has some, and optional
+  source-reading evidence as an eighth (with a nil seventh slot if needed). An
+  unannotated justification still writes the six- or seven-element frame (a seven-element
   frame an earlier build wrote ends in an always-empty `:out` set, which decodes as
   none), and provenance — an open application map — passes through as it
   comes.  Each decoder dispatches on the thawed frame's shape, so **frames written before
@@ -2330,8 +2332,9 @@ The checks are those of the write path that read no belief, each refusing before
 first write: a malformed entry (`:shape`), a free variable (`:not-ground`), the naming
 checks under the KB's `:naming` policy (`:naming`), and the well-formedness `check` reads
 off the sentence alone (`:not-well-formed`). `:record-edit-unsupported` refuses another
-functor or arity, a compound argument, a `genl` between predicates (a forced-monotonic
-edge that carries declarations down), a predicate the store marks symmetric, commutative
+functor or arity, a compound argument, a `genl` between predicates or minted constants (a
+forced-monotonic edge that carries declarations down, and a minted constant's role is
+read off belief), a predicate the store marks symmetric, commutative
 or forced-decontextualized, a context the index does not name (not the root, holding no
 record and named by no `genlCx` edge), and a sentence stored as an inert record. On a
 store whose index was never built (`:no-index`), an addition is refused `:unrecovered-kb`:
@@ -2344,9 +2347,9 @@ refused at all, so the caller screens each addition with `check` while the KB st
 belief.
 
 **`settle-record-edits!` rebuilds once and sweeps.** It runs `reindex` when the index is
-missing and `recover` when belief is, then the sweep: it deletes the justifications the
-recover left out because a record they name is gone (`:unrooted`, [above](#persistence--recovery)),
-and sweeps the consequence closure of their conclusions and of `:seeds` as a retraction
+missing and `recover` when belief is, then the sweep: it sweeps the consequence closure of
+`:seeds` and of the conclusions of the justifications the recover left out because a
+record they name is gone (`:unrooted`, [above](#persistence--recovery)) as a retraction
 does — every record there that is no premise and is OUT goes, with its justifications —
 then settles. A rule a batch put on `:forward` is among the seeds and is chained over the
 stored facts. The antecedents of each unrooted rule firing, less the deleted records, are
@@ -2359,7 +2362,7 @@ does not run: the equality migrations and merges, the nogood offers, the argumen
 migration, the lift, the argument-type mints at its placements, the companion rules and
 the arity class memberships. One chain runs from all of them and from the stored facts
 their `genl` edges make newly matchable, then the reified-term maintenance and a settle.
-Last, `record-arg-types` re-asks every fact an argument declaration reaches, which
+The sweep then deletes the unrooted justifications. Last, `record-arg-types` re-asks every fact an argument declaration reaches, which
 releases a general type mint a removed membership or `genl` edge withheld, and draws the
 ones an added edge brings a stored fact under ([argtypes.md](argtypes.md)).
 
@@ -2374,6 +2377,13 @@ from what the store records, under this engine or a later one
 as `{:phase :done :total}`: `:reindex`, `:recover` with the recover's seven steps, and
 `:sweep` with its eight, the chain's `:derived` and `:pending` beside; a throw from it
 lands at the next phase boundary.
+
+**`:max-ms`, `:stop?` and `:max-derivations` bound the chain and the re-chain.** The two
+steps and the settle after them run inside `undoing-refusal`, as `forward-chain`'s run
+does, so a stop there removes every record they created and throws `:interrupted`. The
+record edits stay applied and the unrooted justifications stay stored, so a second call
+over the same `:seeds` reads the firings off them again and runs the steps from stored
+content ([inference.md](inference.md#stopping-a-run)).
 
 The believed sentences then equal those the same batches through `edit!` leave, handle
 numbers aside: `edit_test/edit-records-then-settle-believes-what-edit-believes` runs each

@@ -19,6 +19,7 @@
             [vaelii.host.guard :as guard]
             [vaelii.host.serve :as serve]
             [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]
@@ -863,7 +864,12 @@
         (is (some #(and (not= "animal" %) (true? (v/genl? tu/*kb* (symbol %) 'animal))) ts))))
     (testing "every node is a link to that term's page — the graph is navigation"
       (is (re-find #"<a href=\"/term\?q=organism\"><g class=\"g-node" svg))
-      (is (= (drawn-terms svg) (set (map second (re-seq #"<a href=\"/term\?q=([^\"]+)\"" svg))))))
+      (let [targets (map (fn [[_ ^String encoded]]
+                           (edn/read-string (java.net.URLDecoder/decode encoded "UTF-8")))
+                         (re-seq #"<a href=\"/term\?q=([^\"]+)\"" svg))
+            names   (map #(pr-str (if (v/reified-term? %) (v/term-expression tu/*kb* %) %)) targets)]
+        (is (= (count (drawn-terms svg)) (count targets)))
+        (is (= (drawn-terms svg) (set names)))))
     (testing "and it says which claim the vertical axis is"
       (is (re-find #"class=\"g-edge g-genl\"" svg))
       (is (re-find #"arrows point at the more general type" body)))
@@ -1176,7 +1182,7 @@
   ;; where a subterm ends.  Every subterm is already coloured by its role, so the
   ;; structure was the one thing on the page with no colour at all — and vaelii.com's
   ;; stylesheet has been drawing these nine for a page the engine did not emit.
-  (let [out (str (#'web/render-form (web/render-env tu/*kb* {}) '(arg parentOf 1 (FooFn bar))))]
+  (let [out (str (#'web/render-form (web/render-env tu/*kb* {}) '(not (parentOf Ann Bob))))]
     (is (= 2 (count (re-seq #"\"rb1\"" out))) "the outer pair, both halves one colour")
     (is (= 2 (count (re-seq #"\"rb2\"" out))) "the nested pair, a colour along")
     (is (not (re-find #"\"rb3\"" out)) "and no third depth to colour"))
@@ -1188,6 +1194,22 @@
   (testing "a rule's parens count along the same scale"
     (let [body (:body (GET "/term" "q=heavierThan"))]
       (is (re-find #"sx-rule\"><span class=\"sx\"><span class=\"rb1\">\(</span>" body)))))
+
+(tu/deftest-kb a-quotation-dims-its-arguments-and-an-unquote-hole-restores-them
+  (tu/with-terms [likes Ann]
+    (let [html #(str (#'web/render-form (web/render-env kb {}) %))]
+      (doseq [f sx/quoting-functors]
+        (is (re-find #"\[:span\.(quasi)?quoted \(" (html (list likes Ann (list f '(dog Fido)))))
+            (str f)))
+      (is (str/includes? (html (list likes Ann '(Quasiquote (dog (Unquote ?x)))))
+                         "[:span.unquoted (")))
+    (testing "a reified quotation dims its arguments too"
+      (v/assert kb '(reifiable_function Quote) 'CxUniverse {:chain? false})
+      (v/assert kb (list likes Ann '(Quote (dog Fido))) 'CxUniverse {:chain? false})
+      (let [body (:body (GET "/term" (str "q=" likes)))]
+        (is (str/includes? body "nat-paren") "the quotation renders as a reified term")
+        (is (re-find #"<span class=\"quoted\"><span class=\"sx\"><span class=\"rb1\">\(</span><a [^>]*>dog</a>"
+                     body))))))
 
 (deftest a-rest-marker-renders-as-text-not-a-term-link
   (let [out (str (#'web/render-form (web/render-env tu/*kb* {}) '(argN ?t 1 (?r . ?args))))]
@@ -1963,12 +1985,12 @@
                      body))))))
 
 (tu/deftest-kb the-sentex-page-names-the-firing-a-forced-conclusion-rests-on
-  (tu/with-terms [trigger_kind made_kind species_kind]
+  (tu/with-terms [trigger_kind madeRel speciesRel]
     (v/assert kb (list 'set/forwardRule
-                       (list 'implies (list trigger_kind '?s) (list 'orthogonal '?s made_kind)))
+                       (list 'implies (list trigger_kind '?s) (list 'negates '?s madeRel)))
               'CxUniverse)
-    (v/assert kb (list trigger_kind species_kind) 'CxUniverse)
-    (let [h    (v/handle-of kb (list 'orthogonal species_kind made_kind) 'CxUniverse)
+    (v/assert kb (list trigger_kind speciesRel) 'CxUniverse)
+    (let [h    (v/handle-of kb (list 'negates speciesRel madeRel) 'CxUniverse)
           body (:body (GET (str "/sentex/" h)))]
       (is (re-find #"<b>Forced conclusion</b>" body))
       (is (re-find #"forced_monotonic_predicate" body))
@@ -2012,8 +2034,8 @@
         (is (re-find #"\"sx-in\"" (meta in)))))))
 
 (tu/deftest-kb the-sentex-page-of-a-defeated-denial-of-a-forced-monotonic-literal-names-the-literal
-  (tu/with-terms [dog_kind cat_kind]
-    (let [s    (list 'orthogonal dog_kind cat_kind)
+  (tu/with-terms [likesRel scornsRel]
+    (let [s    (list 'negates likesRel scornsRel)
           h    (v/assert kb s 'CxUniverse)
           d    (v/assert kb (list 'not s) 'CxUniverse {:strength :monotonic})
           body (:body (GET (str "/sentex/" d)))]
@@ -2028,8 +2050,11 @@
     (let [env (web/render-env kb {})
           html #(str (#'web/render-form env %))]
       (is (str/includes? (html (list likes Ann '(FruitFn Apple)))
-                         (str "[:a {:class \"rb2\", :href \"/term?q="
+                         (str "[:a {:class \"struct-paren\", :href \"/term?q="
                               (#'web/url-enc (pr-str '(FruitFn Apple))) "\"")))
+      (is (str/includes? (html (list likes Ann '(FruitFn Apple)))
+                         "[:span {:class \"struct-paren\"} \")\"]")
+          "both parens take the structural NAT's colour, not a depth colour")
       (is (not (re-find #":href \"/term\?q=%28FruitFn" (html (list likes Ann '(FruitFn ?x)))))
           "an open compound is not a term with a page")
       (is (not (re-find #"\[:a \{:class \"rb1\"" (html (list likes Ann '(FruitFn Apple)))))
@@ -2210,7 +2235,9 @@
 (tu/deftest-kb a-rule-renders-with-the-authors-variable-names
   ;; rules are stored with canonical variables (?var0, …); the page restores the
   ;; author's names from the sentex :varmap so it reads as it was written.
-  (let [[rule & more] (filter :antecedent (v/find-sentexes kb 'grandparentOf))
+  (let [[rule & more] (filter #(and (:antecedent %) (= 'CxKinship (:context %))
+                                    (= 'grandparentOf (first (:consequent %))))
+                              (v/find-sentexes kb 'grandparentOf))
         r             (GET (str "/sentex/" (:id rule)))]
     (is (nil? more) "one grandparentOf rule, so reading it is not a choice between several")
     (is (some? rule) "the starter's grandparentOf rule is stored")
@@ -4017,6 +4044,13 @@
           "a copy removes nothing, so its own button is enough")
       (is (some? (v/sentex kb h)) "the panel is a read"))))
 
+(tu/deftest-kb a-shipped-term-gets-no-rename-or-remove-button
+  (doseq [op ["rename" "remove"]]
+    (let [panel (:body (GET "/term-op" (str "op=" op "&q=genl")))]
+      (is (re-find #"named by the shipped ontology" panel))
+      (is (not (re-find #"hx-post=\"/term-op\"" panel)))))
+  (is (= 400 (:status (term-op {"op" "remove" "q" "genl"})))))
+
 (defn- name-status [op term to]
   (:body (GET "/term-op/name" (str "op=" op "&q=" term "&to=" to))))
 
@@ -4051,7 +4085,7 @@
           h2 (v/assert kb (list bP Y X) CxTermOp)
           r  (term-op {"op" "rename" "q" (str X) "to" (str z)})]
       (is (= 200 (:status r)))
-      (is (re-find #"2 of 2 asserted sentexes rewritten" (:body r)))
+      (is (re-find #"Restated 2 premises and retracted 2" (:body r)))
       (is (nil? (v/sentex kb h1)))
       (is (nil? (v/sentex kb h2)))
       (let [n1 (v/handle-of kb (list aP z) CxTermOp)]
@@ -4080,10 +4114,46 @@
     (let [h1 (v/assert kb (list aP X) CxTermOp)
           h2 (v/assert kb (list bP X X) CxTermOp)
           r  (term-op {"op" "remove" "q" (str X)})]
-      (is (re-find #"2 of 2 asserted sentexes removed" (:body r)))
+      (is (re-find #"Retracted 2 premises" (:body r)))
       (is (nil? (v/sentex kb h1)))
       (is (nil? (v/sentex kb h2)))
       (is (= :term (:via (noted-with kb X)))))))
+
+(tu/deftest-kb a-cancelled-term-operation-rolls-back-and-says-so
+  (doseq [op ["rename" "remove"]]
+    (tu/with-terms [aP X CxTermOp]
+      (let [z  (tu/tmp-ind "Renamed")
+            h  (v/assert kb (list aP X) CxTermOp)
+            go (promise)
+            id (#'web/term-op-job kb op X (when (= "rename" op) z) (fn [f] @go (f)))]
+        (is (jobs/cancel! id))
+        (deliver go true)
+        (let [j (jobs/wait id)]
+          (testing op
+            (is (= :cancelled (:status j)))
+            (is (re-find #"rolled back, nothing changed" (str (:error j))))
+            (is (some? (v/sentex kb h)))
+            (is (empty? (v/find-sentexes kb z)))))))))
+
+(tu/deftest-kb a-browser-attached-to-a-daemon-runs-no-term-operation
+  (tu/with-terms [aP X CxTermOp]
+    (let [z      (tu/tmp-ind "Renamed")
+          h      (v/assert kb (list aP X) CxTermOp)
+          server (serve/start kb {:port 0 :token nil})]
+      (try
+        (let [app   (web/app (acc/remote "localhost" (serve/port server)))
+              panel (:body (app {:request-method :get :uri "/term-op"
+                                 :query-string (str "op=rename&q=" X)}))
+              r     (app {:request-method :post :uri "/term-op" :scheme :http
+                          :headers same-origin
+                          :params {"op" "rename" "q" (str X) "to" (str z)}})]
+          (is (re-find #"this browser reads a daemon" panel))
+          (is (not (re-find #"hx-post=\"/term-op\"" panel)))
+          (is (= 400 (:status r)))
+          (is (re-find #"held by a daemon" (:body r))))
+        (finally (.stop ^org.eclipse.jetty.server.Server server)))
+      (is (some? (v/sentex kb h)))
+      (is (empty? (v/find-sentexes kb z))))))
 
 (tu/deftest-kb a-new-name-spelled-for-another-role-is-refused
   (tu/with-terms [aP X CxTermOp]

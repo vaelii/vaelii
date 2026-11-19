@@ -1037,7 +1037,7 @@
     ;; the inert rules the mints are justified under, described beside the
     ;; `Reasoning` record
     :mint-rules (atom {:gen 0})
-    :lazy-rules (atom {:gen 0})
+    :engine-rules (atom {:gen 0})
     ;; the datums whose supersession entry the write path's reconciles
     ;; moved since the last settle, each with its entry before the first
     ;; move, for the settle to publish (`special/take-supersession-moves!`)
@@ -1048,8 +1048,9 @@
     ;; `{:pending {handle #{context}} :whole #{handle} :scoped {handle #{[sub super]}} :extra [[datum
     ;; reason]] :region #{datum} :moved #{handle}}`: the handles a visibility `except` began or stopped
     ;; hiding since the last settle (`special/note-except-move!`, `special/except-move-sweeps`,
-    ;; `special/except-move-region`).  Empty at rest.
+    ;; `special/except-move-region`), and `special/note-reasks!`' `:reask`.  Empty at rest.
     :except-moves (atom {})
+    :owed-drops (atom #{})
     :qcn       (caches/tallied (atom {}) [:R3])
     ;; the join baselines, beside the network cache and never inside it (docs/qcn.md,
     ;; "The network is resident, and the clock is what makes that sound")
@@ -2289,14 +2290,19 @@
   each placed sentex met (a handle with a `nogood` or `guard` justification) to the
   handles it moves (`placed-targets`): a defeat resting on a moved handle can move in
   force, which moves its target with no relabel, and a cycle of defeats is walked once
-  (docs/nmtms.md, \"A defeat-dependency cycle\").  Answers the first handle `hit?` holds
-  of, or with `hit?` nil the set walked.  Stores nothing."
+  (docs/nmtms.md, \"A defeat-dependency cycle\").  A handle with more than one support
+  reads its sentence's targets before its supports.  Answers the first handle `hit?`
+  holds of, or with `hit?` nil the set walked.  Stores nothing."
   [kb seeds hit?]
   (let [recs    (:records kb)
         tms     (reasoning/tms kb)
         placed? (fn [d] (some #(contains? #{exc/nogood-informant exc/guard-informant}
                                           (:informant (jtms/justification tms %)))
-                              (jtms/supports tms d)))]
+                              (jtms/supports tms d)))
+        targets #(some->> (p/get-sentex recs %) :sentence (placed-targets kb))
+        moves   (fn [d] (if (< 1 (jtms/support-count tms d))
+                          (when-let [ts (seq (targets d))] (when (placed? d) ts))
+                          (when (placed? d) (targets d))))]
     (loop [seen #{}, stack (vec seeds)]
       (if-let [d (peek stack)]
         (let [stack (pop stack)]
@@ -2304,10 +2310,9 @@
                 (and hit? (hit? d)) d
                 :else
                 (recur (conj seen d)
-                       (cond-> (into stack (comp (keep #(jtms/justification tms %)) (map :consequence))
-                                     (jtms/dependents tms d))
-                         (placed? d)
-                         (into (some->> (p/get-sentex recs d) :sentence (placed-targets kb)))))))
+                       (into (into stack (comp (keep #(jtms/justification tms %)) (map :consequence))
+                                   (jtms/dependents tms d))
+                             (moves d)))))
         (when-not hit? seen)))))
 
 (defn defeat-reach
@@ -2411,34 +2416,44 @@
   [kb s]
   (when (kv/mint-rule-kind s) (forget-mint-rules! kb)))
 
-(defn stores-lazy-rule?
-  "Does `kb`'s store hold a rule whose `:engines` take `:lazy`?  The rule extent's `[:lazy]`
-  count over every context, as `chain/lazy-table` reads it, read once and held in the
-  `:lazy-rules` atom until `forget-lazy-rules!` moves its generation; a fill installs only
-  over the generation it read."
-  [kb]
-  (let [a (reasoning/lazy-rules kb)]
+(def ^:private held-engines
+  "The `:engines` members `stores-engine-rule?` answers for."
+  #{:lazy :one-justification})
+
+(defn stores-engine-rule?
+  "Does `kb`'s store hold a rule whose `:engines` take `engine`, one of `held-engines`?  The
+  rule extent's `[engine]` count over every context, read once per engine and held in the
+  `:engine-rules` atom until `forget-engine-rules!` moves its generation; a fill installs
+  only over the generation it read."
+  [kb engine]
+  (let [a (reasoning/engine-rules kb)]
     (loop []
-      (let [held @a]
-        (if (contains? held :any?)
-          (:any? held)
-          (let [any? (pos? (reads/stored-rule-count-global (:index kb) :lazy))]
-            (if (compare-and-set! a held (assoc held :any? any?)) any? (recur))))))))
+      (let [held @a
+            any? (get (:any held) engine)]
+        (if (some? any?)
+          any?
+          (let [any? (pos? (reads/stored-rule-count-global (:index kb) engine))]
+            (if (compare-and-set! a held (assoc-in held [:any engine] any?)) any? (recur))))))))
 
-(defn forget-lazy-rules!
-  "Drop `stores-lazy-rule?`'s answer and move its generation: at the store or removal of a
-  rule taking `:lazy`, at an engines join adding it, and at a write of the stores that
-  bypasses `create-sentex` (`reindex`, an import's record phase).  With `empty?`, the answer
-  is false instead, which a wipe of the stores leaves true (`core/clear!`)."
-  ([kb] (forget-lazy-rules! kb false))
+(defn forget-engine-rules!
+  "Drop `stores-engine-rule?`'s answers and move their generation.  `note-engine-rule-moved!`
+  calls it at the store or removal of a rule taking a `held-engines` member, and at an
+  engines join adding one.  `reindex` and an import's record phase call it after a write of
+  the stores that bypasses `create-sentex`.  With
+  `empty?`, every answer is false instead, which a wipe of the stores leaves true
+  (`core/clear!`)."
+  ([kb] (forget-engine-rules! kb false))
   ([kb empty?]
-   (some-> (reasoning/lazy-rules kb)
-           (swap! (fn [m] (cond-> {:gen (inc (long (:gen m 0)))} empty? (assoc :any? false)))))))
+   (some-> (reasoning/engine-rules kb)
+           (swap! (fn [m] (cond-> {:gen (inc (long (:gen m 0)))}
+                            empty? (assoc :any (zipmap held-engines (repeat false)))))))))
 
-(defn note-lazy-rule-moved!
-  "`forget-lazy-rules!` when sentex `s`, stored or leaving, is a rule taking `:lazy`."
+(defn note-engine-rule-moved!
+  "`forget-engine-rules!` when sentex `s`, stored or leaving, is a rule taking a
+  `held-engines` member."
   [kb s]
-  (when (contains? (:engines s) :lazy) (forget-lazy-rules! kb)))
+  (let [e (:engines s)]
+    (when (some #(contains? e %) held-engines) (forget-engine-rules! kb))))
 
 (defn create-sentex
   "Store `sentence` in `context` as a new sentex, index it, and return `[handle sentex]`.
@@ -2483,7 +2498,7 @@
      ;; the candidates of the nogood families the settle places
      (decide/note-candidate! kb s true)
      (note-mint-rule-moved! kb s)
-     (note-lazy-rule-moved! kb s)
+     (note-engine-rule-moved! kb s)
      [h s])))
 
 (defn canonical-sentence
@@ -2524,6 +2539,7 @@
     (refresh-index-image! kb)
     (observe/notify-add kb s' h)
     (observe/note-change)
+    (observe/note-respell)
     (exc/note-stored! kb sx false)
     (exc/note-stored! kb s' true)
     (observe/cache-handle! (handle-cache-key kb) (sx/sentence-of s') (:context s') h)
@@ -2555,8 +2571,8 @@
   an arrival-ordered vector would leak arrival into `core/why`, `why-not`, `preview` and the
   sort key of `core/supporting-justifications`.  The informant is not in the vector; belief
   reads the antecedents as a set.  Short-circuited below two.  Call it where something is
-  stored (the justification writers and the refusal ledger), never where something is only
-  decided: move a call later, never earlier."
+  stored (the justification writers and the refusal ledger) or where a walk's order must not
+  follow arrival, never where a set decides: move a call later, never earlier."
   [kb handles]
   ;; The key is structural (the antecedent's sentence, then its context), compared by
   ;; `nm/compare-form` in place: no String per handle, and no ambient `*print-length*` can collapse the
@@ -2642,15 +2658,28 @@
   ([kb goal] (rewrite-goal kb goal nil))
   ([kb goal context] (res/goal-normal-form kb goal context)))
 
+(defn context-home
+  "The context the extent of context `ctx` is restated in: the representative of `ctx`'s
+  class over the equalities CxUniverse sees, when that is another context.  Nil for an
+  unmerged `ctx`, for CxUniverse, whose extent never moves, and for a representative that
+  is no context (docs/equality.md, \"Two names of one context\")."
+  [kb ctx]
+  (let [tx (reasoning/taxonomy kb)]
+    (when (and (symbol? ctx) (not= sx/root-context ctx) (tax/merged? tx ctx))
+      (let [[_ r] (tax/scoped-class tx ctx (res/visible-supporter-fn kb sx/root-context))]
+        (when (and (not= r ctx) (nm/context? r)) r)))))
+
 (defn rewritable-sentex?
   "May this stored sentex be migrated by an equality merge?  A rule when the merge
   displaces a symbol it mentions (`displaced-terms`): a predicate, a type or an
-  individual constant (docs/equality.md, \"Merging predicates and types\").  A non-rule
-  unless it is an equality relation or the negation of one: migration never restates an
-  equation (docs/equality.md, \"Answering an equation\")."
+  individual constant (docs/equality.md, \"Merging predicates and types\"), or its
+  context (`context-home`).  A non-rule unless it is an equality relation or the negation
+  of one: migration never restates an equation (docs/equality.md, \"Answering an
+  equation\")."
   [kb sentex]
   (if (rules/rule? sentex)
-    (boolean (seq (displaced-terms kb (sx/sentence-of sentex))))
+    (boolean (or (seq (displaced-terms kb (sx/sentence-of sentex)))
+                 (context-home kb (:context sentex))))
     (let [s (:sentence sentex)]
       (and (not (equality-sentence? s))
            (not (equality-sentence? (sx/positive-body s)))))))

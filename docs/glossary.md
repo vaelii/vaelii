@@ -75,6 +75,13 @@ lazy answer stream under a budget (`:max-ms` / `:max-results` / `:max-cost` /
 short. The
 unrealized tail is the resumable continuation. See [anytime.md](anytime.md).
 
+**Application-argument index** ![backend](../.github/badges/cat-backend.svg): The IndexStore
+count trie `:application-argument` that files each stored fact under `[f pos t]` for each
+symbol `t` at argument `pos` of an application of `f` the fact uses, with the symbols at
+each position listed under `[:application-symbols [f pos]]`. A read takes one position's
+symbols.
+See [indexing.md](indexing.md#the-application-arguments).
+
 **`arg`** ![kb](../.github/badges/cat-kb.svg): An argument-type declaration.
 `(arg pred n type)` requires the *n*-th argument of every `pred` fact to have
 a type whose genl closure reaches `type`. Open-world and context-scoped. See
@@ -209,7 +216,7 @@ comparison folding. See [canonicalization.md](canonicalization.md).
 **`channel_view` / `ChannelViewFn` / `channelViewOf`** ![kb](../.github/badges/cat-kb.svg):
 `VIEW_CHANNEL` access is a happening kind below `resource_access`. `ChannelViewFn`
 names the kind over one Discord channel; `channelViewOf` relates that channel to
-the kind. A capability does not entail reading history, sending messages or
+the kind. An ability does not entail reading history, sending messages or
 connector delivery. See [contexts.md](contexts.md#the-context-topology).
 
 **Closed predication** ![kb](../.github/badges/cat-kb.svg): A **Predication** with no free variable. What a
@@ -291,6 +298,14 @@ sub-context *sees* its supers. Names start with `Cx`, then CapitalCamelCase. See
 [contexts.md](contexts.md).
 
 **`context` (ontology type)** ![kb](../.github/badges/cat-kb.svg): The collection of contexts, below `logical` and so below `nowhere_never`, and disjoint from `expression`: a context is what an expression names. The theory a sentex holds in is the knowledge-stratum sense, **Context**. See [taxonomy.md](taxonomy.md).
+
+**`contextsOrderedBothWays`** ![kb](../.github/badges/cat-kb.svg):
+`(contextsOrderedBothWays ?context1 ?context2)` says that the orders `contextArgSubrelation`
+declares place each of two contexts below the other. Symmetric, and not transitive. The
+structural `genlCx` producer stores it in CxUniverse for such a pair it does not merge,
+justified by each route one way paired with each route back. While it is believed, the
+producer builds no `genlCx` edge between the two, so neither context sees the other. See
+[context-nat.md](context-nat.md#two-contexts-ordered-both-ways).
 
 **Contradiction** ![tms](../.github/badges/cat-tms.svg): A believed `P` and
 `(not P)` visible from a common context. A defeasible tie is a *represented
@@ -493,8 +508,9 @@ choice rule and its bare twin are two sentexes; only a `:derive` rule chains. Se
 [solving.md](solving.md).
 
 **Engines** ![kb](../.github/badges/cat-kb.svg): Which engines run a rule, the
-`RuleSentex` field its direction wrapper sets: a subset of `#{:forward :backward :solve}`.
-`set/solveRule` adds `:solve`, and a choice or constraint rule holds `#{:solve}`. A
+`RuleSentex` field its direction wrapper sets: a subset of `#{:forward :backward :solve
+:one-justification}`. `set/solveRule` adds `:solve`, `set/oneJustificationRule` adds
+`:one-justification`, and a choice or constraint rule holds `#{:solve}`. A
 re-assert joins two spellings by union.
 See Direction, [canonicalization.md](canonicalization.md#rule-wrappers-become-fields).
 
@@ -522,7 +538,7 @@ and `equals` all feed. Belief-following, content-keyed representative. See
 
 **`eternal_predicate`** ![kb](../.github/badges/cat-kb.svg): The type of a predicate
 whose tuples hold independently of time within a theory. A `(P …)` or `(not (P …))` stored
-in a time slice is deduced into the context the slice slices when the slice sees `P` a
+in a time slice is deduced into the context the slice slices when that context sees `P` a
 member of `eternal_predicate` or of a type below it, so every slice of that context sees the
 copy. See
 [contexts.md](contexts.md#eternal_predicate-a-fact-stated-in-a-time-slice-holds-in-what-it-slices).
@@ -957,9 +973,10 @@ See [nmtms.md](nmtms.md).
 **`orthogonal`** ![kb](../.github/badges/cat-kb.svg): States three things together: the
 two types are not disjoint, the first is not a `genl` of the second, and the second is not
 a `genl` of the first. It does not say that anything is an instance of both, and it
-exempts the pair from no separation. Symmetric and forced monotonic. A separation of the
-pair a reader sees, a `genl` edge between the two, or the one type named twice
-contradicts it: a one-member clash of the declaration. It is also the declared witness of
+exempts the pair from no separation. Symmetric. A separation of the pair a reader sees,
+a `genl` edge between the two, or the one type named twice contradicts it. The clash is
+read by strength: two `:default` statements are a dilemma, and a `:monotonic` separation
+or edge defeats a `:default` declaration. It is also the declared witness of
 the `:orthogonal` subsumption status. `siblingDisjointException` is a `genl` of it, so a
 stored exception answers `(orthogonal a b)` and is read as one. See
 [taxonomy.md](taxonomy.md).
@@ -1193,7 +1210,9 @@ A **placeholder** is the constant minted for an application of a function with a
 corresponding predicate. A `:monotonic` value retires it by a merge, and beside a
 `:default` value its uses take **copies**, derived restatements with the value in its place. A constant is an **orphan** when every stored sentex naming it is its
 own bookkeeping or a record the argument-type entailment derives off that bookkeeping
-alone, and the orphan sweep then retracts it. See [nat.md](nat.md).
+alone, and the orphan sweep then retracts it. A constant is **writer-spelled** when a
+premise in CxUniverse maps it to an expression whose content name is another constant; a
+term operation restates its map as written. See [nat.md](nat.md).
 
 **`reindex`** ![backend](../.github/badges/cat-backend.svg): Rebuild the index store
 (the trie, secondary roots, rule index, exception re-check index, and term index)
@@ -1413,12 +1432,23 @@ with nothing said about one-to-one. Derives `(functional P)`, enforced at the wr
 the `(predAllSpecified P D)` and `(predSpecifiedAll P R)` requirements off the `arg`
 declarations, audited on demand. See [taxonomy.md](taxonomy.md).
 
+**Swap edge** ![inference](../.github/badges/cat-inference.svg): An edge of the signed
+closure that flips its parity bit: a `(genlInverse P Q)` edge, or either direction of an
+`(inverse P Q)` declaration. A predicate reached over an odd number of swap edges is read
+with arguments 1 and 2 exchanged. See [inference.md](inference.md#genlinverse-the-fan-with-the-arguments-swapped).
+
 **Symmetric arguments** ![kb](../.github/badges/cat-kb.svg): A ground fact of a
 symmetric predicate stores with its arguments sorted, so both orders dedup to one
 sentex; a pattern is never reordered, and order-insensitive lookup probes both
 orders at match time. See [canonicalization.md](canonicalization.md).
 
 ## T
+
+**Tagged rule** ![inference](../.github/badges/cat-inference.svg): A rule wrapped in
+`set/oneJustificationRule`, whose `:engines` hold `:one-justification`. A forward firing
+of a tagged rule places nothing when a stored justification of the same rule for the
+same conclusion covers it. See
+[inference.md](inference.md#a-rule-that-stores-one-justification-per-conclusion).
 
 **`tangible`** ![kb](../.github/badges/cat-kb.svg): An entity with mass — and so, necessarily, a location in space and time: below `spatiotemporal`. `tangible` and `intangible` partition `thing`. See [taxonomy.md](taxonomy.md#the-three-partitions-of-thing).
 
@@ -1433,6 +1463,13 @@ and a scoped read filters each supporter through the **Read walk**. See
 **Term** ![backend](../.github/badges/cat-backend.svg): A name in the KB's vocabulary — what
 the term index is keyed by and the term-name set holds. The logic sense is
 spelled **Denotational term**. See [indexing.md](indexing.md).
+
+**Term head** ![backend](../.github/badges/cat-backend.svg): The plain symbol heading a
+term: the term when it is one, the functor of an application of one, and none for a
+variable, a number or an application of a variable (`sentex/term-head`). Two terms whose
+heads differ unify in no argument order, so the rule index files a rule under its consequent
+arguments' heads and a goal reads only the rules its own heads do not exclude. See
+[indexing.md](indexing.md#3-the-rule-index).
 
 **Term index** ![backend](../.github/badges/cat-backend.svg): The inverted index
 `[:term-index term] -> #{handles}` over every indexable subterm of a sentex's
@@ -1466,7 +1503,7 @@ type ([naming.md](naming.md)). See [taxonomy.md](taxonomy.md).
 
 **Touched set** ![tms](../.github/badges/cat-tms.svg): The handles the JTMS relabelled,
 created or took OUT since the last `reset-touched!` (`jtms/touched`, `touched-in`,
-`touched-new`, and the `-touched-out` protocol method), which `settle` clears when it finishes. A superset of the
+`touched-new`, `touched-down`, `touched-up`, and the `-touched-out` protocol method), which `settle` clears when it finishes. A superset of the
 handles whose belief moved. See [nmtms.md](nmtms.md) and
 [defenses.md](defenses.md#the-touched-set-is-a-superset-not-the-flip-set).
 

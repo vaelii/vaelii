@@ -102,11 +102,11 @@ blocks in natural sort order by term. In a middle file, put the `genlCx` edges f
 
 ```clojure
 (comment motherOf
-         "(motherOf ?child ?mother) means that ?mother is the biological mother of ?child. The child comes first, as in fatherOf, and for the same reason. Functional, and CxKinship's genlInverse edge answers parentOf from it.")
+         "(motherOf ?child ?mother) means ?mother is a mother of ?child, by blood or by choice. The child is the first argument. One child may have more than one mother.")
 (set/monotonic (instance_relation_predicate motherOf))
-(arg motherOf 1 animal)
-(arg motherOf 2 animal)
-(set/monotonic (functional motherOf))
+(arg motherOf 1 causal)
+(arg motherOf 2 causal)
+(generic_kinship_predicate motherOf)
 ```
 
 **Why.**

@@ -97,8 +97,8 @@
 (defrecord Reasoning [tms taxonomy program violations recheck refused
                       settle-stats chain-stats preserved-clashes
                       supersessions qcn qcn-joined matches closures
-                      respell except-moves
-                      mint-queues mint-rules lazy-rules nogood-candidates arity-lengths])
+                      respell except-moves owed-drops
+                      mint-queues mint-rules engine-rules nogood-candidates arity-lengths])
 
 (defn of
   "The `Reasoning` value `kb` holds now."
@@ -184,12 +184,13 @@
   [kb]
   (:mint-rules @(:reasoning kb)))
 
-(defn lazy-rules
-  "`kb`'s `:lazy-rules` atom: `{:gen n}`, and `:any?` once `kb/stores-lazy-rule?` has read
-  whether the store holds a lazy-forward rule.  `kb/forget-lazy-rules!` drops `:any?`."
-  {:inline (fn [kb] `(:lazy-rules (deref (:reasoning ~kb))))}
+(defn engine-rules
+  "`kb`'s `:engine-rules` atom: `{:gen n}`, and under `:any` the answer per engine once
+  `kb/stores-engine-rule?` has read whether the store holds a rule taking it.
+  `kb/forget-engine-rules!` drops `:any`."
+  {:inline (fn [kb] `(:engine-rules (deref (:reasoning ~kb))))}
   [kb]
-  (:lazy-rules @(:reasoning kb)))
+  (:engine-rules @(:reasoning kb)))
 
 (defn supersessions
   "`kb`'s `:supersessions` atom."
@@ -208,6 +209,12 @@
   {:inline (fn [kb] `(:except-moves (deref (:reasoning ~kb))))}
   [kb]
   (:except-moves @(:reasoning kb)))
+
+(defn owed-drops
+  "`kb`'s `:owed-drops` atom."
+  {:inline (fn [kb] `(:owed-drops (deref (:reasoning ~kb))))}
+  [kb]
+  (:owed-drops @(:reasoning kb)))
 
 (defn qcn
   "`kb`'s `:qcn` atom."

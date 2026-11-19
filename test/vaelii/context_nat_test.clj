@@ -493,6 +493,30 @@
                  (mapv :context (v/sentexes-matching kb (list likes Tom Ann) app))))
           (is (v/ask? kb (list likes Tom Ann) app)))))))
 
+(tu/deftest-kb a-contradictions-read-at-a-context-application-reads-the-context-it-names
+  (tu/with-terms [Slot likes Tom Ann Bob]
+    (let [cxfn (fresh-cxfn "Clash")
+          app  (list cxfn Slot)]
+      (v/assert kb (list 'result cxfn 'context) 'CxUniverse)
+      (v/assert kb (list 'functional likes) 'CxUniverse)
+      (let [h (v/assert kb (list likes Tom Ann) app)
+            k (:context (v/sentex kb h))]
+        (v/assert kb (list likes Tom Bob) app)
+        (is (= [:functional] (mapv :kind (v/contradictions kb k))))
+        (is (= [:functional] (mapv :kind (v/contradictions kb app))))))))
+
+(tu/deftest-kb a-contradictions-read-at-an-unwritten-slice-names-the-grounds-of-a-clash-above-it
+  (tu/with-terms [CxSupM CxSubM likes Tom Ann Bob]
+    (let [above (list 'CxTimeFn CxSupM '(MonthFn 2000 3))]
+      (v/assert kb (list 'genlCx CxSupM 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxSubM CxSupM) 'CxUniverse)
+      (v/assert kb (list 'functional likes) (list 'CxTimeFn CxSupM '(YearFn 2000)))
+      (v/assert kb (list likes Tom Ann) above)
+      (v/assert kb (list likes Tom Bob) above)
+      (is (= [[:functional true]]
+             (mapv (juxt :kind (fn [r] (boolean (some #(= (list 'functional likes) (:sentence %)) (:grounds r)))))
+                   (v/contradictions kb (list 'CxTimeFn CxSubM '(MonthFn 2000 3)))))))))
+
 ;; ---- a declared position the function does not have ----------------------
 
 (tu/deftest-kb a-subrelation-position-past-the-arity-orders-nothing-and-throws-nothing
@@ -637,6 +661,138 @@
         (v/retract! kb (:id (tu/sentex-matching kb (list 'subFooOf mterm yterm) 'CxUniverse)))
         (is (not (v/sees? kb km ky)))))))
 
+(tu/deftest-kb two-contexts-ordered-both-ways-are-one-class-at-monotonic-and-keep-the-edge-a-route-holds
+  (doseq [strength [:monotonic :default], facts-last? [false true], gone [0 1]]
+    (tu/with-terms [subFooOf A B Fog Rain]
+      (let [cxfn   (fresh-cxfn "Both")
+            at     #(list cxfn 'CxMonad %)
+            stated #(list subFooOf %1 %2)
+            facts! #(doseq [[x y] [[A B] [B A]]]
+                      (v/assert kb (stated x y) 'CxUniverse {:strength strength}))
+            _      (v/assert kb (list 'result cxfn 'context) 'CxUniverse)
+            _      (v/assert kb (list 'contextArgSubrelation cxfn 2 subFooOf) 'CxUniverse)
+            _      (when-not facts-last? (facts!))
+            ka     (:context (v/sentex kb (v/assert kb (list 'weather Fog) (at A))))
+            kb'    (:context (v/sentex kb (v/assert kb (list 'weather Rain) (at B))))
+            _      (when facts-last? (facts!))
+            stored #(boolean (tu/sentex-matching kb % 'CxUniverse))
+            shape  #(vector (stored (list 'genlCx ka kb')) (stored (list 'genlCx kb' ka))
+                            (stored (apply list 'equals (sort [ka kb']))))
+            seen   #(for [x [A B]] (set (map '?w (v/ask kb '(weather ?w) (at x)))))]
+        (if (= :monotonic strength)
+          (testing "at :monotonic the two are one class, with no edge between them"
+            (is (= [false false true] (shape)))
+            (is (= [#{Fog Rain} #{Fog Rain}] (seen))))
+          (testing "at :default no equality, and neither sees the other"
+            (is (= [false false false] (shape)))
+            (is (= [#{Fog} #{Rain}] (seen)))))
+        (v/retract! kb (:id (tu/sentex-matching kb (apply stated (nth [[B A] [A B]] gone))
+                                                'CxUniverse)))
+        (testing "retracting one direction leaves the other's edge"
+          (is (= (nth [[true false false] [false true false]] gone) (shape)))
+          (is (= (nth [[#{Fog Rain} #{Rain}] [#{Fog} #{Fog Rain}]] gone) (seen))))))))
+
+(defn- slot-merge-reading
+  "The slices `(p)` and `(q)` answer at once `ops` run in order: `:p` writes `(p)` through
+  JanA's `CxTimeFn` slice, `:q` writes `(q)` through JanB's, `:merge` states `(equals JanA
+  JanB)` in CxUniverse and `:unmerge` retracts it.  The terms are read back by name."
+  [kb ops]
+  (tu/with-terms [p q JanA JanB CxM]
+    (let [slice #(list 'CxTimeFn CxM %)
+          eq    (list 'equals JanA JanB)]
+      (doseq [t [JanA JanB]] (v/assert kb (list 'time_interval t) 'CxUniverse))
+      (doseq [op ops]
+        (case op
+          :p       (v/assert kb (list p) (slice JanA))
+          :q       (v/assert kb (list q) (slice JanB))
+          :merge   (v/assert kb eq 'CxUniverse)
+          :unmerge (v/retract! kb (v/handle-of kb eq 'CxUniverse))))
+      (into {} (for [[s sn] [[p 'p] [q 'q]]]
+                 [sn (into #{} (keep (fn [[t tn]] (when (v/ask? kb (list s) (slice t)) tn)))
+                           [[JanA 'JanA] [JanB 'JanB]])])))))
+
+(tu/deftest-kb a-fact-written-through-a-merged-slot-answers-at-its-own-slice-once-the-equality-goes
+  (let [orders (tu/permutations [:p :q :merge])]
+    (testing "the equality standing: each slice sees both facts"
+      (is (= #{'{p #{JanA JanB} q #{JanA JanB}}}
+             (into #{} (map #(slot-merge-reading kb %)) orders))))
+    (testing "the equality retracted: the KB that never had it"
+      (is (= #{'{p #{JanA} q #{JanB}}}
+             (into #{} (map #(slot-merge-reading kb (concat % [:unmerge]))) orders)
+             #{(slot-merge-reading kb [:p :q])})))))
+
+(defn- both-ways-kind!
+  "Declare what the `kind` row of
+  `a-default-pair-ordered-both-ways-sees-neither-way-until-one-route-goes` needs.  Returns
+  the slice at a term and, per direction, the facts its routes add, the one supporter the
+  test withdraws and their strength.  Direction 0 orders the slice at `A` below the slice
+  at `B`, and the test defeats a `:default` direction's supporter as well as retracting it."
+  [kb kind A B]
+  (let [U        'CxUniverse
+        stated!  #(doseq [s %] (v/assert kb s U))]
+    (case kind
+      (:evidence :mixed)
+      (tu/with-terms [subFooOf]
+        (let [cxfn (fresh-cxfn "Ev")]
+          (stated! [(list 'result cxfn 'context) (list 'contextArgSubrelation cxfn 2 subFooOf)])
+          {:at   #(list cxfn 'CxMonad %)
+           :dirs [{:adds [(list subFooOf A B)] :goes (list subFooOf A B)
+                   :strength (if (= :mixed kind) :monotonic :default)}
+                  {:adds [(list subFooOf B A)] :goes (list subFooOf B A) :strength :default}]}))
+
+      :declaration
+      (tu/with-terms [subFooOf subBarOf]
+        (let [cxfn (fresh-cxfn "Decl")
+              decl #(list 'contextArgSubrelation cxfn 2 %)]
+          (stated! [(list 'result cxfn 'context) (list subFooOf A B) (list subBarOf B A)])
+          {:at   #(list cxfn 'CxMonad %)
+           :dirs [{:adds [(decl subFooOf)] :goes (decl subFooOf) :strength :default}
+                  {:adds [(decl subBarOf)] :goes (decl subBarOf) :strength :default}]}))
+
+      :link
+      (tu/with-terms [Sa Ea Sb Eb]
+        (let [cxfn (declare-calendar-dimension! kb)
+              le   #(list 'instantNotAfter %1 %2)]
+          (stated! (concat (for [p [Sa Ea Sb Eb]] (list 'time_point p))
+                           (for [[i st en] [[A Sa Ea] [B Sb Eb]]
+                                 s [(list 'time_interval i) (list 'startOf i st) (list 'endOf i en)]]
+                             s)))
+          {:at   #(list cxfn 'CxMonad %)
+           :dirs [{:adds [(le Sb Sa) (le Ea Eb)] :goes (le Ea Eb) :strength :default}
+                  {:adds [(le Sa Sb) (le Eb Ea)] :goes (le Eb Ea) :strength :default}]})))))
+
+(tu/deftest-kb a-default-pair-ordered-both-ways-sees-neither-way-until-one-route-goes
+  (doseq [kind [:evidence :mixed :declaration :link], first-dir [0 1]]
+    (tu/with-terms [A B Fog Rain]
+      (let [{:keys [at dirs]} (both-ways-kind! kb kind A B)
+            U       'CxUniverse
+            add!    (fn [d] (doseq [s (:adds (dirs d))]
+                              (v/assert kb s U {:strength (:strength (dirs d))})))
+            ka      (:context (v/sentex kb (v/assert kb (list 'weather Fog) (at A))))
+            kb'     (:context (v/sentex kb (v/assert kb (list 'weather Rain) (at B))))
+            _       (add! first-dir)
+            _       (add! (- 1 first-dir))
+            held    #(boolean (some->> (tu/sentex-matching kb % U) :id (v/in? kb)))
+            state   #(vector [(held (list 'genlCx ka kb')) (held (list 'genlCx kb' ka))
+                              (held (apply list 'contextsOrderedBothWays (sort [ka kb'])))]
+                             (vec (for [x [A B]] (set (map '?w (v/ask kb '(weather ?w) (at x)))))))
+            neither [[false false true] [#{Fog} #{Rain}]]
+            only    [[[false true false] [#{Fog} #{Fog Rain}]]   ; direction 0 gone
+                     [[true false false] [#{Fog Rain} #{Rain}]]] ; direction 1 gone
+            row     [kind first-dir]]
+        (is (= neither (state)) (str row " neither slice sees the other"))
+        (doseq [d [0 1]
+                :let [{:keys [goes strength]} (dirs d)]]
+          (v/retract! kb (:id (tu/sentex-matching kb goes U)))
+          (is (= (only d) (state)) (str row " retracting direction " d "'s supporter"))
+          (v/assert kb goes U {:strength strength})
+          (is (= neither (state)) (str row " restating it"))
+          (when (= :default strength)
+            (let [h (v/assert kb (list 'not goes) U {:strength :monotonic})]
+              (is (= (only d) (state)) (str row " defeating direction " d "'s supporter"))
+              (v/retract! kb h)
+              (is (= neither (state)) (str row " retracting the defeat")))))))))
+
 (tu/deftest-kb stated-bounds-arriving-after-both-contexts-order-them
   (let [cxfn (declare-calendar-dimension! kb)]
     (tu/with-terms [Spring Equinox Windy]
@@ -714,6 +870,7 @@
   (let [cxfn (declare-calendar-dimension! kb)]
     (tu/with-terms [Since Equinox Windy]
       (v/assert kb (list 'contextArgSubrelation cxfn 2 'subtimeOf) 'CxUniverse)
+      (v/assert kb (list 'time_interval Since) 'CxUniverse)
       (v/assert kb (list 'startOf Since '(InstantFn 2000 1 1 0 0 0)) 'CxUniverse)
       (v/assert kb (list 'endOf Since '(InstantFn 1999 1 1 0 0 0)) 'CxUniverse)
       (let [at #(list cxfn 'CxMonad %)
@@ -776,6 +933,8 @@
     (doseq [[a b] '[[(DatetimeRangeFn "2000-01" "2000-06") (DatetimeRangeFn "2000-01-01" "2000-06-30T23")]
                     [(DatetimeFn "2000-01-15T1") (DatetimeFn "2000-01-15T01")]
                     [(EndFn (MonthFn 2000 1)) (InstantFn 2000 2 1 0 0 0)]
+                    [(EndFn (DatetimeFn "2000-01-15T13:00:00.122")) (StartFn (DatetimeFn "2000-01-15T13:00:00.1230"))]
+                    [(StartFn (DatetimeFn "2000-01-15T13:00:00.0")) (InstantFn 2000 1 15 13 0 0)]
                     [(DatetimeRangeFn "2000-01" "2000-12") (YearFn 2000)]]]
       (tu/with-terms [Fog Rain]
         (is (= (cx a Fog) (cx b Rain)) (pr-str [a b]))))
@@ -973,6 +1132,7 @@
       (v/assert kb (list p) (at CxM (dt "2000-04")))
       (let [qh (v/assert kb (list 'subintervalOf day Q1) 'CxUniverse)
             ks (set (for [t [(dt "2000") (dt "2000-3") '(DayFn 2000 3 5) '(DatetimeRangeFn "2000-02" "2000-04")
+                             '(IntervalBeforeFn (InstantFn 2001 1 1 0 0 0)) '(IntervalAfterFn (InstantFn 1999 1 1 0 0 0))
                              Spring Q1]]
                       (:context (v/sentex kb (v/assert kb (list p) (at CxM t))))))
             ks (conj ks (:context (v/sentex kb (v/assert kb (list p) (at CxSuperM day)))))]
@@ -984,6 +1144,23 @@
         (is (true? (v/ask? kb (list q) e)) "a context minted after a read is read by the next")
         (v/retract! kb qh)
         (is (not (v/ask? kb (list r) e)) "a retraction after a read is read by the next")))))
+
+(tu/deftest-kb an-unwritten-sub-second-slice-reads-the-slices-of-the-units-containing-it
+  (tu/with-terms [p]
+    (let [cxfn (declare-calendar-dimension! kb)
+          at   #(list cxfn 'CxMonad %)
+          cx   #(:context (v/sentex kb (v/assert kb (list p) (at %))))
+          dt   #(list 'DatetimeFn %)
+          read #(with-redefs [cn/candidates (fn [& _] (throw (ex-info "read every context along the time" {})))]
+                  (set (map first (#'cn/unminted-supers kb (at %)))))]
+      (v/assert kb '(unreifiable_function DatetimeFn) 'CxUniverse)
+      (doseq [y (range 1960 1990)] (cx (dt (str y))))
+      (run! (comp cx dt) ["2000-01-15T13:00:00.124" "2000-01-15T13:00:00.1230" "2000-01-15T13:00:00.5"])
+      (let [ks (set (map (comp cx dt) ["2000-01-15T13:00:00.12" "2000-01-15T13:00:00" "2000-01-15T13"]))]
+        (is (= ks (read (dt "2000-01-15T13:00:00.123")))))
+      (v/assert kb (list 'contextArgSubrelation cxfn 2 'subtimeOf) 'CxUniverse)
+      (let [ks (set (map (comp cx dt) ["2000-01-15T13:00:00.0" "2000-01-15T13:00:00" "2000-01-15T13"]))]
+        (is (= ks (read '(InstantFn 2000 1 15 13 0 0))))))))
 
 ;; ---- the computed edge's supporters, stated below the context it is stored in ----
 ;;

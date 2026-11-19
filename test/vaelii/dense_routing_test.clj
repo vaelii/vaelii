@@ -38,14 +38,15 @@
       :trie            [:trie (nth k 1)]
       (:argument-root :predicate-extent :rule-antecedent :rule-consequent :rule-extent
                       :opposed :tax-support :mint :mint-in :self-tuple :arity-binding :shape-tuple
-                      :calendar :nat-argument)
+                      :calendar :nat-argument :rule-consequent-head :application-argument)
       [(nth k 0) (nth k 1)]
       :exception-index (if (= :rules (nth k 1)) [:exception-index :rules] [:exception-index :predicate])
       (:context-root :argument-slot :unary-slot :term-index :term-names :rule-antecedent-keys
                      :opposed-in :opposed-bodies :opposed-functor :opposed-between
                      :tax-installs :mint-terms :mint-rules :unary-multi
                      :unary-kept :unary-kept-types :unary-denied :unary-denied-types
-                     :shape-lengths :arity-binding-kinds :arity-bound :calendar-buckets)
+                     :shape-lengths :arity-binding-kinds :arity-bound :calendar-buckets
+                     :application-symbols)
       [(nth k 0)]
       [:unclassified k])))
 
@@ -57,7 +58,8 @@
     [:rule-antecedent :handles] [:rule-consequent :handles] [:rule-extent :handles]
     [:opposed :handles] [:opposed-in] [:self-tuple :handles] [:arity-binding :handles]
     [:shape-tuple :handles] [:calendar :handles] [:nat-argument :handles]
-    [:tax-support :handles] [:mint :handles] [:mint-in :handles]
+    [:rule-consequent-head :handles] [:application-argument :handles] [:tax-support :handles]
+    [:mint :handles] [:mint-in :handles]
     [:exception-index :predicate] [:exception-index :rules]})
 
 (def ^:private count-families
@@ -70,7 +72,7 @@
     [:rule-antecedent :count] [:rule-consequent :count] [:rule-extent :count]
     [:opposed :count] [:tax-support :count] [:mint :count] [:mint-in :count]
     [:self-tuple :count] [:arity-binding :count] [:shape-tuple :count] [:calendar :count]
-    [:nat-argument :count]})
+    [:nat-argument :count] [:rule-consequent-head :count] [:application-argument :count]})
 
 (def ^:private other-families
   "Families whose value is deliberately *not* a handle set, so packing them as handles
@@ -89,7 +91,8 @@
           [:unary-kept-types] [:unary-denied] [:unary-denied-types] [:shape-lengths]
           [:arity-binding :children] [:arity-binding-kinds] [:arity-bound]
           [:shape-tuple :children] [:calendar :children] [:calendar-buckets]
-          [:nat-argument :children]}
+          [:nat-argument :children] [:rule-consequent-head :children]
+          [:application-argument :children] [:application-symbols]}
         count-families))
 
 (def ^:private fallback-families
@@ -105,7 +108,8 @@
   "The node counts the columnar roots answer from the node's leaves: `kv-get` computes
   them, and no entry holds them."
   #{[:argument-root :count] [:opposed :count] [:mint :count] [:tax-support :count]
-    [:arity-binding :count] [:shape-tuple :count] [:calendar :count] [:nat-argument :count]})
+    [:arity-binding :count] [:shape-tuple :count] [:calendar :count] [:nat-argument :count]
+    [:rule-consequent-head :count] [:application-argument :count]})
 
 ;;; ── the KB, and the backends under test ───────────────────────────────
 
@@ -157,7 +161,8 @@
     ;; a length binding: the arity-binding trie
     (v/assert kb (list 'binary_predicate grandparentOf) CxRouting {:strength :monotonic})
     (v/assert kb (list 'hatchedIn Tweety '(DayFn 1970 1 15)) CxRouting)
-    (v/assert kb (list 'natFormula Cid (list PairFn Ann Bob)) CxRouting)))   ; the `:nat-argument` trie
+    (v/assert kb (list 'natFormula Cid (list PairFn Ann Bob)) CxRouting)   ; the `:nat-argument` trie
+    (v/assert kb (list relatesTo Ann (list PairFn Bob Cid)) CxRouting)))   ; the `:application-argument` trie
 
 (defn- families-present
   "The families the built index actually holds, with one representative key each."

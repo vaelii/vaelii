@@ -9,6 +9,7 @@
             [vaelii.impl.decide :as decide]
             [vaelii.impl.graph :as graph]
             [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.kv :as kv]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.protocols :as p]
@@ -225,16 +226,30 @@
                        (jtms/supports tms r)))
                (reads/as-stored-at-path (:index kb) (sx/path (sx/sentex (list q (second s)) '?c)))))))))
 
+(defn- join-belief-only
+  "Union a handle or handle set with another, retaining the scalar ordinary path."
+  [a b]
+  (cond (nil? b) a
+        (nil? a) b
+        :else (into (if (set? a) a #{a}) (if (set? b) b #{b}))))
+
+(defn- copy-belief-only
+  "The equality witness of an except-reading copy, if present."
+  [j]
+  (when (= 'except (:informant j)) (nth (:antecedents j) 1 nil)))
+
 (defn belief-only-antecedent
-  "The antecedent justification `j` rests on for belief and not for visibility, or nil.
+  "The handle or set justification `j` reads at network label, or nil.
   A reader's copy has one: `[original equality except]` under informant `except`
   (`special/migrate-sentex`) is stored in a context that reads the except, so the equality
   is hidden wherever the copy is read, and that hiding is the copy's reason rather than a
-  withdrawal of it.  The read walk adds the placed nogood's own loser
-  (`placed-belief-only`)."
+  withdrawal of it. An explicitly recorded source reading can name `:label-only`
+  antecedents for this proof alone. It cannot exempt the rule or an unrelated handle.
+  The read walk adds a placed nogood's own loser (`placed-belief-only`)."
   [j]
-  (when (= 'except (:informant j))
-    (nth (:antecedents j) 1 nil)))
+  (let [roles (get-in j [:reading :label-only])]
+    (join-belief-only (copy-belief-only j)
+                      (when (seq roles) (not-empty (into #{} (filter roles) (:antecedents j)))))))
 
 (defn- defeat-target*
   "The handle a `(defeat (sentexHandle H))` sentence names, or nil."
@@ -531,42 +546,67 @@
 
 (defn- witness-paths
   "The witness edges among `sentences` (`{handle sentence}`, one justification's
-  antecedents) joined into paths, as `{:rel :a :b :edges}`: the `genl` edges, and the edges
-  of a relation some `transitiveInArgInverse` among them preserves a claim along.  A firing
-  depends on each path's two ends, which a second route can reach.  A `genlCx` edge is on
-  no path, so a justification resting on one the reader does not see has no second route
-  (docs/contexts.md, \"An except on a `genlCx` edge\")."
+  antecedents) joined into paths, as `{:rel :a :b :edges :swaps}`.  The edges are the
+  `genl` edges and those of a relation some `transitiveInArgInverse` among them preserves a
+  claim along.  Swap edges (`genlInverse`, and `inverse` in either direction) join a `genl`
+  path, and `:swaps` counts them.  A path starts where no edge of its relation ends, and
+  beside an `inverse` edge at a stated positive literal's functor; it ends at a negated
+  one's.  A `genlCx` edge is on no path (docs/contexts.md, \"An except on a `genlCx` edge\")."
   [sentences]
   (let [binary    (fn [s] (when (and (seq? s) (= 2 (count (nm/args s))))
                             [(nm/functor s) (first (nm/args s)) (second (nm/args s))]))
         preserved (into #{} (keep (fn [s] (when (and (seq? s) (= 'transitiveInArgInverse (nm/functor s)))
                                             (last (nm/args s)))))
                         (vals sentences))
-        edges     (into [] (keep (fn [[h s]]
-                                   (when-let [[f a b] (binary s)]
-                                     (when (or (= 'genl f) (contains? preserved f))
-                                       [h f a b]))))
-                        sentences)]
+        edges     (into [] (mapcat (fn [[h s]]
+                                     (when-let [[f a b] (binary s)]
+                                       (cond (or (= 'genl f) (contains? preserved f)) [[h f a b 0]]
+                                             (= 'genlInverse f) [[h 'genl a b 1]]
+                                             (= 'inverse f) [[h 'genl a b 1] [h 'genl b a 1]]))))
+                        sentences)
+        on-edge   (into #{} (map first) edges)
+        two-way   (into #{} (keep (fn [[h s]] (when (= 'inverse (first (binary s))) h))) sentences)
+        heads     (fn [neg?] (into #{} (keep (fn [[h s]]
+                                               (let [l (if neg? (second s) s)]
+                                                 (when (and (not (on-edge h)) (seq? s) (seq? l)
+                                                            (= neg? (= 'not (nm/functor s))))
+                                                   (nm/functor l)))))
+                                   sentences))
+        walk      (fn [adj step n]
+                    (loop [n n, hs #{}, k 0]
+                      (if-let [e (first (remove #(contains? hs (first %)) (adj n)))]
+                        (recur (step e) (conj hs (first e)) (+ k (long (peek e))))
+                        [n hs k])))]
     (into []
-          (mapcat (fn [[rel es]]
-                    (let [out  (group-by #(nth % 2) es)
-                          tgts (into #{} (map #(nth % 3)) es)]
-                      (for [a (distinct (remove tgts (map #(nth % 2) es)))]
-                        (loop [n a, hs #{}]
-                          (if-let [[h _ _ b] (first (remove #(contains? hs (first %)) (out n)))]
-                            (recur b (conj hs h))
-                            {:rel rel :a a :b n :edges hs}))))))
+          (comp (mapcat (fn [[rel es]]
+                          (let [out  (group-by #(nth % 2) es)
+                                in   (group-by #(nth % 3) es)
+                                tgts (into #{} (map #(nth % 3)) es)
+                                fwd  (fn [a] (let [[b hs k] (walk out #(nth % 3) a)]
+                                               {:rel rel :a a :b b :edges hs :swaps k}))
+                                bwd  (fn [b] (let [[a hs k] (walk in #(nth % 2) b)]
+                                               {:rel rel :a a :b b :edges hs :swaps k}))]
+                            (concat (map fwd (distinct (remove tgts (map #(nth % 2) es))))
+                                    (when (some #(contains? two-way (first %)) es)
+                                      (concat (map fwd (filter out (heads false)))
+                                              (map bwd (filter in (heads true)))))))))
+                (distinct))
           (group-by second edges))))
 
 (defn- route-reaches?
   "Does `ctx` reach `b` from `a` over `rel` on the edges it believes, and with
   `with-excepts?` sees: the scoped `genl` closure, or `vaelii.impl.inherit`'s
-  fact-relation walk (`wiring/route-reach`), memoized for one read (`route-answer`)."
-  [{:keys [kb tax ctx] :as st} with-excepts? rel a b]
-  (route-answer st with-excepts? [::route ctx with-excepts? rel a b]
-                #(case rel
-                   genl   (tax/genl? tax a b ctx)
-                   (wiring/route-reach kb rel a b ctx))))
+  fact-relation walk (`wiring/route-reach`), memoized for one read (`route-answer`).  A
+  `genl` path crossing `swaps` swap edges reads the scoped signed closure, swapped at an
+  odd count (`tax/signed-closure`)."
+  [{:keys [kb tax ctx] :as st} with-excepts? rel a b swaps]
+  (route-answer st with-excepts? [::route ctx with-excepts? rel a b swaps]
+                #(cond
+                   (not= 'genl rel) (wiring/route-reach kb rel a b ctx)
+                   (zero? swaps)    (tax/genl? tax a b ctx)
+                   :else            (contains? ((if (odd? swaps) second first)
+                                                (tax/signed-closure tax :up a ctx))
+                                               b))))
 
 (defn- firing-stands?
   "Does the rule firing `j` stand at `ctx` with the handles `gone` forced OUT: no handle of
@@ -620,9 +660,9 @@
                                 paths     (witness-paths sentences)
                                 on-path   (into #{} (mapcat :edges) paths)]
                             (when (and (every? #(contains? on-path %) gone)
-                                       (every? (fn [{:keys [rel a b edges]}]
+                                       (every? (fn [{:keys [rel a b edges swaps]}]
                                                  (or (not-any? gone edges)
-                                                     (route-reaches? st with-excepts? rel a b)))
+                                                     (route-reaches? st with-excepts? rel a b swaps)))
                                                paths))
                               [(:id j) gone]))))))))
           (into [] (comp (filter #(or (= asked %) (not (jtms/premise? tms %))))
@@ -635,10 +675,7 @@
   [belief-only routes]
   (if (empty? routes)
     belief-only
-    (fn [j] (let [a (belief-only j) r (get routes (:id j))]
-              (cond (nil? r) a
-                    (nil? a) r
-                    :else    (conj r a))))))
+    (fn [j] (join-belief-only (belief-only j) (get routes (:id j))))))
 
 (defn- except-hidden-in
   "Is the handle `h`, IN in the network, hidden by the excepts alone, where `excepted?` is
@@ -656,6 +693,21 @@
                                          #{})
                          h)))))
 
+(defn- named-in-support?
+  "Does a stored `except` with a premise mark or a justification name a handle of `h`'s
+  support (`jtms/support-reaches?`)?  An except hides `h` only by naming one of those
+  handles while IN, and one with neither is OUT, so a false answer stands in for both
+  support walks below.  Within a chaining run the answers are held, keyed by the stored
+  except count, and each except read is watched (`jtms/watch-support!`)."
+  [kb h]
+  (let [idx        (:index kb)
+        tms        (reasoning/tms kb)
+        supported? (fn [e] (jtms/watch-support! tms e) (not (jtms/unsupported? tms e)))]
+    (jtms/support-reaches? tms h
+                           #(and (reads/stored-naming? idx sx/except-functor %)
+                                 (boolean (some supported? (reads/as-stored-naming idx sx/except-functor %))))
+                           [::named (reads/stored-count-with-functor idx sx/except-functor)])))
+
 (defn except-closure-hidden-fn
   "A predicate `(fn [handle])` answering whether `ctx` reads `handle`, IN in the network, as
   hidden by the excepts alone: an except in force there names it, or names a handle every
@@ -671,7 +723,8 @@
      (let [tms (reasoning/tms kb)
            st  (when read? {:kb kb :ctx ctx :tms tms :recs (:records kb) :tax (reasoning/taxonomy kb)
                             :memo (volatile! {})})]
-       (memoize (fn [h] (boolean (and (jtms/in? tms h) (except-hidden-in tms excepted? h st)))))))))
+       (memoize (fn [h] (boolean (and (jtms/in? tms h) (named-in-support? kb h)
+                                      (except-hidden-in tms excepted? h st)))))))))
 
 (defn- reaching-targets
   "The handles of `targets` that a handle `supports?` answers for rests on through any
@@ -746,7 +799,7 @@
   [kb handle]
   (let [idx (:index kb)]
     (boolean
-     (when (reads/stores-any? idx sx/except-functor)
+     (when (and (reads/stores-any? idx sx/except-functor) (named-in-support? kb handle))
        (let [tms (reasoning/tms kb)
              ctxs (into #{} (comp (mapcat #(reads/as-stored-naming-by-context idx sx/except-functor %))
                                   (map first))
@@ -825,21 +878,20 @@
     (tax/clock-held
      tax ::forced-reads :global
      #(let [idx     (:index kb)
-            recs    (:records kb)
             tms     (reasoning/tms kb)
             named?  (fn [f h] (and (reads/stores-any? idx f) (reads/as-stored-naming idx f h)))
             seen?   (fn [h] (and (jtms/in? tms h)
                                  (not (named? sx/except-functor h))
                                  (not (named? sx/defeat-functor h))))
-            unseen? (fn [ds rh]
-                      (let [up (tax/context-up-global tax (:context (p/get-sentex recs rh)))]
+            unseen? (fn [ds rc]
+                      (let [up (tax/context-up-global tax rc)]
                         (not-any? (fn [[h c]] (and (contains? up c) (seen? h))) ds)))]
         (boolean (when-let [declared (seq (decide/declared tax))]
                    (or (seq (reads/as-stored-rules-by-consequent-global idx p/var-consequent-key))
                        (some (fn [[[_ pred] ds]]
                                (or (seq (reads/as-stored-rules-by-consequent-global idx pred))
                                    (some (partial unseen? ds)
-                                         (reads/as-stored-rules-by-antecedent-global idx pred))))
+                                         (reads/as-stored-rule-contexts-by-antecedent-global idx pred))))
                              declared))))))))
 
 (defn walk-reads?
@@ -876,9 +928,9 @@
   `:void?`, whether a predicate declared where it does not see is read by a rule stated in
   `up`, or one it sees declared is concluded by one, or a rule stated in `up` concludes a
   variable functor.
-  The rules are read off the antecedent index over every context and kept by `up`: the
-  index has no by-context entry point.  `:void?` reads the rules before `seen?`, so
-  `in-force?` runs only for a predicate a rule reads or concludes."
+  The contexts stating a rule on a predicate are read off the antecedent index over every
+  context and kept by `up`, with no rule record fetched.  `:void?` reads the rules before
+  `seen?`, so `in-force?` runs only for a predicate a rule reads or concludes."
   [kb tax tms up excepted?]
   (let [declared  (decide/declared tax)
         idx       (:index kb)
@@ -902,13 +954,12 @@
         on?      (if (seq declared) (decide/reader-reading tax seen?) (decide/global-reading tax))]
     (if (empty? declared)
       {:on? on?}
-      (let [recs  (:records kb)
-            sees? (fn [[_ ds]] (boolean (some (fn [[h c]] (seen? h c)) ds)))]
+      (let [sees? (fn [[_ ds]] (boolean (some (fn [[h c]] (seen? h c)) ds)))]
         {:on?    on?
          :void?  (boolean
                   (or (some (fn [[[_ pred] :as e]]
-                              (and (some #(contains? up (:context (p/get-sentex recs %)))
-                                         (reads/as-stored-rules-by-antecedent-global idx pred))
+                              (and (some #(contains? up %)
+                                         (reads/as-stored-rule-contexts-by-antecedent-global idx pred))
                                    (not (sees? e))))
                             declared)
                       (some (fn [[[_ pred] :as e]]
@@ -1338,9 +1389,9 @@
 (defn- forced-member-fn
   "`(fn [h])`: is the handle `h` a forced-monotonic literal under the reader's
   forced-monotonic reading (`forced-state`'s `:on?`)?"
-  [{:keys [recs tax forced]}]
+  [{:keys [kb recs forced]}]
   (fn [h] (boolean (some-> (p/get-sentex recs h) :sentence
-                           (as-> s (decide/forced-literal? tax s (:on? forced)))))))
+                           (as-> s (decide/forced-literal? kb s (:on? forced)))))))
 
 (defn- member-sentence
   "`(fn [h])`: the stored sentence of the handle `h`, which `decide/verdict` reads to find
@@ -1368,20 +1419,20 @@
   set (`checks/network-void?`), so such a firing is valid there through a declaration this
   reader does not see, or because its conclusion is forced-monotonic only by a declaration
   this reader sees."
-  [{:keys [tms recs tax forced] :as st} x]
+  [{:keys [kb tms recs forced] :as st} x]
   (let [on? (:on? forced)
         js  (into [] (comp (keep #(jtms/justification tms %))
                            (filter #(and (integer? (:informant %)) (not (jtms/forced? tms :void (:id %))))))
                   (jtms/supports tms x))
         s   (when (seq js) (:sentence (p/get-sentex recs x)))]
-    (when (and s (not (sx/negation? s)) (decide/forced-literal? tax s on?))
+    (when (and s (not (sx/negation? s)) (decide/forced-literal? kb s on?))
       (into #{}
             (comp (filter (fn [j]
                             (when-let [r (p/get-sentex recs (:informant j))]
                               (when-let [antes (seq (:antecedent r))]
                                 (or (:defeasible r)
                                     (some sx/unknown? antes)
-                                    (some #(not (decide/forced-literal? tax % on?)) antes)
+                                    (some #(not (decide/forced-literal? kb % on?)) antes)
                                     (excepted-rule? st (:informant j)))))))
                   (map :id))
             js))))
@@ -1526,18 +1577,20 @@
   decides against it."
   [st by-defeat by-conflict by-other]
   (fn [j]
-    (or (belief-only-antecedent j)
-        (when-let [[k x] (own-loser st j)]
-          (case k
-            :defeat   (when (and (or (contains? by-defeat x) (contains? by-conflict x))
-                                 (not (contains? by-other x)))
-                        x)
-            :conflict (let [m (kept (:memo st) [::conflict-loser x]
-                                    #(:defeat (verdict-at st (into #{} (map sx/handle-id)
-                                                                   (rest (:sentence (p/get-sentex (:recs st) x)))))))]
-                        (when (and m (contains? by-conflict m) (not (contains? by-defeat m))
-                                   (not (contains? by-other m)))
-                          m)))))))
+    (join-belief-only
+     (belief-only-antecedent j)
+     (when-not (copy-belief-only j)
+       (when-let [[k x] (own-loser st j)]
+         (case k
+           :defeat   (when (and (or (contains? by-defeat x) (contains? by-conflict x))
+                                (not (contains? by-other x)))
+                       x)
+           :conflict (let [m (kept (:memo st) [::conflict-loser x]
+                                   #(:defeat (verdict-at st (into #{} (map sx/handle-id)
+                                                                  (rest (:sentence (p/get-sentex (:recs st) x)))))))]
+                       (when (and m (contains? by-conflict m) (not (contains? by-defeat m))
+                                  (not (contains? by-other m)))
+                         m))))))))
 
 (defn- exempt-justifications
   "The `nogood` justifications of the placed `(contradicts …)` or `defeat` at `x` whose
@@ -1572,11 +1625,16 @@
   [recs g js]
   (let [ga   (set (:antecedents g))
         gb   (:bindings (p/get-justification recs (:id g)))
+        owner-key (get-in g [:reading :owner-key])
         held (into [] (comp (filter #(every? ga (cond-> (:antecedents %)
                                                   (not= edge-reading-informant (:informant %))
                                                   (conj (:informant %)))))
                             (filter #(or (empty? gb)
                                          (= gb (:bindings (p/get-justification recs (:id %))))))
+                            (filter #(if owner-key
+                                       (= owner-key (jtms/justification-key (:informant %) (:antecedents %)
+                                                                            (:subsumptions %) (:reading %)))
+                                       (not (seq (:reading %)))))
                             (map (fn [j] [j (set (:antecedents j))])))
                    js)
         within? (fn [[j a] [k b]] (and (= (:informant j) (:informant k))
@@ -1602,7 +1660,9 @@
       (let [owners (guard-owners recs g @js)
             fired  (into #{x} (comp (filter #(contains? owners (:id %)))
                                     (mapcat #(conj (:antecedents %) (:informant %))))
-                         @js)]
+                         @js)
+            labels (belief-only-antecedent g)
+            fired (cond-> fired labels (into (if (set? labels) labels #{labels})))]
         (not-any? #(and (not (contains? fired %)) ((unseen-fn st) %)) (:antecedents g))))))
 
 (defn- guard-in-force?
@@ -1647,6 +1707,15 @@
         #(merge (when exempting? (zipmap (exempt-justifications st x) (repeat :exempt)))
                 (when (:void? forced) (zipmap (forced-void st x) (repeat :void)))
                 (zipmap (guard-covered st x) (repeat :guard)))))
+
+(defn invalid-supports-at
+  "The reader-specific invalid justification ids of supplied support handles, with
+  their existing guard/void/exemption reasons. Unlike a whole-row belief read, this
+  inspects each alternative even when another monotonic proof keeps its row IN.
+  A producer doing a counterfactual support read must not force that whole row OUT."
+  [kb handles context]
+  (when-let [st (reader-state kb context)]
+    (into {} (mapcat #(reader-invalid st %)) handles)))
 
 (defn- support-read
   "What the walk reads over `h`'s support at the reader: `:in`, the handles of the support
@@ -1706,18 +1775,19 @@
 
 (defn- verdicts-of
   "`{jid reason}` for each justification of `h`, read off `r`, `support-read`'s answer
-  for `h`: `:void` and `:blocked` where the network holds it void or blocked, the
-  reader's own reason (`reader-invalid`), `:supports` where every handle it rests on is
-  believed there, else `:antecedent-out`."
-  [tms {:keys [in reasons valid?]} h]
+  for `h`: `:inert` where the network holds a mint void (`kv/mint-justification?`, read
+  off `recs`), `:void` and `:blocked` where it holds any other justification void or
+  blocked, the reader's own reason (`reader-invalid`), `:supports` where every handle it
+  rests on is believed there, else `:antecedent-out`."
+  [tms recs {:keys [in reasons valid?]} h]
   (let [own     (get reasons h)
         blocked (jtms/blocked tms)
         valid?  (or (when-not (= ::all in) valid?)
-                    (let [v (jtms/region-valid-fn tms #{} nil #{})] #(v #{} %)))]
+                    (let [v (jtms/region-valid-fn tms #{} belief-only-antecedent #{})] #(v #{} %)))]
     (into {}
           (keep (fn [jid]
                   (when-let [j (jtms/justification tms jid)]
-                    [jid (cond (jtms/forced? tms :void jid) :void
+                    [jid (cond (jtms/forced? tms :void jid) (if (kv/mint-justification? recs j) :inert :void)
                                (contains? blocked jid)      :blocked
                                (contains? own jid)          (get own jid)
                                (valid? j)                   :supports
@@ -1733,15 +1803,15 @@
     :antecedent-out  a handle it rests on is not believed there
     :blocked         the network blocks it (`jtms/blocked`): a condition its rule
                      carries, or an `except` hiding an antecedent
+    :inert           a mint held void while its type is not mintable (docs/argtypes.md)
     :void            the network, or `ctx`'s forced-monotonic reading, holds it void
     :guard           a guard defeat in force at `ctx` covers it (docs/naf.md)
     :exempt          a `nogood` justification of a placement `ctx` exempts
 
   `h` is believed at `ctx` exactly when it is IN, no defeat or conflict in force there
-  names it (`defeats-of`), and it is a premise or a justification of it reads
-  `:supports`.  Both answers are read off one walk
-  (`support-read`), and every answer of one reader shares one reader state per context,
-  so a defeat cycle is broken alike whichever handle is asked first."
+  names it (`defeats-of`), and it is a premise or a justification of it reads `:supports`.
+  One walk (`support-read`) reads both answers.  The answers of one reader share a reader
+  state per context, so a defeat cycle is broken alike whichever handle is asked first."
   [kb]
   (let [tms (reasoning/tms kb)
         sts (volatile! {})
@@ -1752,7 +1822,7 @@
       (let [st (at ctx)
             r  (if st (support-read st h false #{}) {:in ::all})]
         {:believed? (boolean (and (jtms/in? tms h) (or (= ::all (:in r)) (contains? (:in r) h))))
-         :verdicts  (verdicts-of tms r h)}))))
+         :verdicts  (verdicts-of tms (:records kb) r h)}))))
 
 (defn justification-verdicts
   "`{jid reason}`: the verdict `ctx` reads on each justification of `h`
@@ -1823,7 +1893,7 @@
             recs (:records kb)
             sts  (volatile! {})
             at   (fn [c] (or (get @sts c)
-                             (let [st {:recs recs :tax tax :tms tms :idx (:index kb) :forced (forced-at kb c)}]
+                             (let [st {:kb kb :recs recs :tax tax :tms tms :idx (:index kb) :forced (forced-at kb c)}]
                                (vswap! sts assoc c st)
                                st)))]
         (fn [h]
@@ -1844,8 +1914,7 @@
     (verdict-at st members)
     (let [tms (reasoning/tms kb)]
       (decide/verdict #(or (jtms/defeat-class tms %) :default)
-                      (forced-member-fn {:recs (:records kb) :tax (reasoning/taxonomy kb)
-                                         :forced (forced-at kb ctx)})
+                      (forced-member-fn {:kb kb :recs (:records kb) :forced (forced-at kb ctx)})
                       (member-sentence {:recs (:records kb)})
                       members))))
 

@@ -84,7 +84,8 @@ believed?(W, S, C) = S is in believed(W, C)
    backward chaining, and a question with no answer does not block
    ([exceptions.md](exceptions.md#semantics), [naf.md](naf.md#in-a-rule-antecedent)).
    The question is asked at `C`, so a fact only `C` sees blocks the conclusion at `C`
-   (decision 4).
+   (decision 4). A blocker read through an edge reading the guarded conclusion undercuts
+   takes the content order of decision 18.
 4. **Inherited claims.** An inherited claim `(P … sub …)` is believed at `C` when a
    believed `(transitiveInArgInverse P k genl)`, a believed general claim `(P … sup …)`
    and every `genl` edge on some route from `sub` to `sup` are believed at `C`, and no
@@ -236,14 +237,17 @@ page that holds it.
     forced-monotonic antecedents (decision 17). A `genl` between types stays defeasible,
     so a type edge admits exceptions. Section:
     [taxonomy.md](taxonomy.md#predicate-metadata).
-11. **Can a definitional declaration be `:default`, denied or derived?** `orthogonal`
-    and the arity bindings are forced-monotonic (invariant 6), so each goes OUT only by
-    retraction. A tuple that breaks its arity binding is held inert in the `:out` forced
+11. **Can a definitional declaration be `:default`, denied or derived?** The arity
+    bindings are forced-monotonic (invariant 6), so each goes OUT only by retraction. A tuple that breaks its arity binding is held inert in the `:out` forced
     set at every context and forms no nogood ([taxonomy.md](taxonomy.md#arity)). A
     separation (`disjoint`, `covering`, `partition`, `sibling_disjoint`,
     `siblingDisjointException`) may be `:default`, denied or derived. It keeps its written
     strength, a stronger denial defeats it at the denial's vantage, and a membership
-    nogood resting on it is hidden where that defeat is in force. Sections:
+    nogood resting on it is hidden where that defeat is in force. An `orthogonal` may be
+    `:default`, denied or derived too. Its clash with a `genl` edge or a separation a
+    reader sees is read by strength. A `:default` one against a `:default` separation or
+    edge is a dilemma, a `:monotonic` separation or edge defeats a `:default` one, and a
+    `:monotonic` one is a hard clash. Sections:
     [taxonomy.md](taxonomy.md#disjointness) and
     [taxonomy.md](taxonomy.md#what-each-constraint-does-in-each-arrival-order).
 12. **Can an `except` be derived or defeated?** No (invariant 7). An `except` that targets
@@ -292,6 +296,16 @@ page that holds it.
     rule concluding a forced-monotonic literal as inert, since a v1 antecedent is never
     one. Sections: [nmtms.md](nmtms.md#the-forced-monotonic-set) and
     [taxonomy.md](taxonomy.md#what-a-rule-may-conclude-and-what-it-reaches).
+18. **Does a guard's blocker hold where the guarded firing's own conclusion undercuts the
+    edge reading it is read through?** It holds where the conclusion sorts first. The
+    guard defeat rests on the reading, and the undercut rests on the conclusion the guard
+    blocks, so each defeat rests on the other. The engine breaks the cycle in content
+    order (`nm/compare-form`): where the reading sorts before the conclusion, the undercut
+    is in force, and the firing is believed while the blocker is not. `derive-at` reads
+    the stratified fixpoint first, then admits each conclusion `self-undercuts` names whose
+    own derivation believes it
+    (`constraint_nogood_test/a-guard-whose-blocker-is-a-reading-its-conclusion-undercuts-is-read-in-content-order-in-every-order`).
+    Section: [nmtms.md](nmtms.md#a-defeat-dependency-cycle).
 
 ## Invariants the reference states
 
@@ -341,6 +355,8 @@ members of the forced-monotonic set and the mechanism that holds each are
    arguments are camelCase predicates is never a loser whatever strength it was
    written at, its denial loses to it, and it is derived only from forced-monotonic
    antecedents (decision 17). `vaelii.ref.world/predicate-genl?` reads the spelling. The
+   generator mints no constant, whose role the engine reads off its length bindings
+   instead ([naming.md](naming.md)). The
    engine reads such an edge forced-monotonic under `core.txt`'s
    `(forced_monotonic_between_predicates genl)`, so a merge `special/equate-under-edge`
    derives over such an edge, and a claim `discovery/preserving-moves` re-opens through

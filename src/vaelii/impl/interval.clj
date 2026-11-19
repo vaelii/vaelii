@@ -4,7 +4,8 @@
   "Allen's interval algebra as a `vaelii.impl.qcn` relation algebra and a `qcn-kb`
   calculus: thirteen base relations, seven derived predicates, the transcribed composition
   table, and the two narrowings, metric (`stp`) and point (`points-narrowing-with-support`).
-  See docs/time.md and docs/qcn.md."
+  A ground query, and the support of a pair that reading narrows, read the pair's points
+  (`order-relations`).  See docs/time.md and docs/qcn.md."
   (:require [clojure.set :as set]
             [vaelii.impl.calendar :as cal]
             [vaelii.impl.datetime :as dt]
@@ -231,6 +232,48 @@
          (for [x free y free :when (not= x y)] [x y])))
       stand-ins))))
 
+(defn- order-relations
+  "`[relations handles]`: the Allen relations the order over the points of `a` and `b`
+  leaves between them, and with `support?` the handles it rests on; nil when it narrows
+  none or the points close unsatisfiably.  Each thing's start and end and each stated
+  `startOf` or `endOf` naming a moment (`stp/stated-endpoint`) are nodes of one
+  point-network pass (`qcn-kb/possible-among`), each bound equal to its point.  The four
+  endpoint comparisons, closed over those nodes, keep the relations whose
+  `stp/endpoint-signature` fits; their support is the bounds' facts and the point network's."
+  [kb context a b support?]
+  (when (not= a b)
+    (let [ends   {a [(tp/point :start a) (tp/point :end a)]
+                  b [(tp/point :start b) (tp/point :end b)]}
+          bounds (for [t [a b], [w pred] [[:start 'startOf] [:end 'endOf]]
+                       :let [[m hs] (stp/stated-endpoint kb t context pred tp/node-term?)]
+                       :when m]
+                   [(tp/point w t) m hs])
+          nodes  (vec (distinct (concat (ends a) (ends b) (map second bounds))))
+          rel    (qkb/possible-among pt/instants kb context nodes)
+          equal  (fn [m [p q] f] (-> m (update [p q] f) (update [q p] f)))
+          net    (reduce (fn [net [p m]] (equal net [p m] #(set/intersection % #{:equal})))
+                         (into {} (for [u nodes v nodes :when (not= u v)] [[u v] (rel u v)]))
+                         bounds)
+          closed (if support?
+                   (qcn/path-consistent-with-support
+                    net
+                    (reduce (fn [s [p m hs]] (equal s [p m] #(into (or % #{}) hs)))
+                            (:support (qkb/closure-with-support pt/instants kb context nodes))
+                            bounds)
+                    nodes pt/point-algebra)
+                   {:network (qcn/path-consistent net nodes pt/point-algebra)})
+          pc     (:network closed)]
+      (when (map? pc)
+        (let [at    {:start 0 :end 1}
+              pair  (fn [[x y]] [(get-in ends [a (at x)]) (get-in ends [b (at y)])])
+              cmp   (fn [k] (let [[u v] (pair k)] (qcn/constraint pc pt/point-algebra u v)))
+              rels  (into #{} (keep (fn [[r sig]] (when (every? (fn [[k o]] (contains? (cmp k) o)) sig) r)))
+                          stp/endpoint-signature)]
+          (when-not (= rels stp/allen-relations)
+            [rels (when support?
+                    (into #{} (mapcat #(get (:support closed) (pair %)))
+                          (for [x [:start :end] y [:start :end]] [x y])))]))))))
+
 (defn- both-narrowings
   "The metric and the point readings merged (`stp/merge-narrowings`), their unsatisfiable
   sources listed metric first."
@@ -242,13 +285,14 @@
 
 (def allen
   "Allen's interval algebra as a `vaelii.impl.qcn-kb` calculus over `node?`'s terms,
-  narrowed by `both-narrowings` (`:sources` and `:contexts`: docs/stp.md) and by
-  `calendar-relations` over its nodes and a goal's.  `subintervalOf` and
-  `properSubintervalOf` are typed: the network answers them only over arguments their
-  declared types admit."
+  narrowed by `both-narrowings` (`:sources` and `:contexts`: docs/stp.md), by
+  `calendar-relations` over its nodes and a goal's, and for a ground query by
+  `order-relations`.  `subintervalOf` and `properSubintervalOf` are typed: the network
+  answers them only over arguments their declared types admit."
   (qkb/calculus :allen allen-algebra stp/interval-denotation
                 {:fn         both-narrowings
                  :over-nodes calendar-relations
+                 :pair       order-relations
                  :node?      node?
                  :bindings stp/allen-narrowing-bindings
                  :sources  (into stp/allen-narrowing-sources (keys pt/instant-denotation))

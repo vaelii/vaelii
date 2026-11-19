@@ -30,7 +30,7 @@ third column is the one to read.
 | `arg2Isa` | `arg2` | the projection at position 2, with the same bridging and the same stored-only caveat |
 | don't-care variable `??` | a head existential `(exists ?y C)` | syntactic rather than a naming convention, and skolemized to a deterministic NAT on firing → [skolem.md](skolem.md) |
 | `wff?` | `check` | returns a vector of problem maps rather than a verdict, so it says *what* is wrong |
-| rename | — | no equivalent. `sameAs` / `rewriteOf` **merge** two terms onto an elected representative and mark the displaced spelling superseded, which is a different act → [equality.md](equality.md) |
+| rename | `rename-term!` | restates every premise using the term under the new name and retracts the original, in one `edit!`; `merge-term!` does the same onto a stored term → [api.md](api.md#contract-notes-term-operations). `sameAs` / `rewriteOf` keep both terms and **merge** them onto an elected representative, which is a different act → [equality.md](equality.md) |
 
 The four spellings, because `assert` enforces them (→ [naming.md](naming.md)):
 `parentOf` is a predicate, `Fido` an individual, `physical_object` a type, `CxUniverse` a
@@ -182,7 +182,7 @@ KB rather than to the engine.
 | `ask`, no inference | `(v/ask kb goal ctx)` — the prover registry, and no member expands a rule |
 | `fi-ask` | `(v/query kb goal ctx {:max-depth n})` |
 | `wff?` | `(v/check kb sentence context opts)` |
-| rename | — |
+| rename | `(v/rename-term! kb old new)` |
 
 `prove` returns one binding map per **derivation**, so equal maps repeat; `distinct` if
 you wanted a set. Which entry point answers what, and what each costs, is
@@ -252,7 +252,6 @@ position. Nesting is not capped. → [generators.md](generators.md)
 
 ## What you lose
 
-- Rename
 - Natural-language generation
 - `notAssertible`, `assertedMoreSpecifically`
 - Strict well-formedness mode

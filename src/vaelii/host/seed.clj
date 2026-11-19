@@ -12,8 +12,8 @@
 
   **The format itself — reader and writer both — is `vaelii.impl.io.text`**, which is
   where its two non-sentence spellings live (`(set/monotonic S)` and `(set/inert S)`)
-  and what `vaelii.core/export-text!` writes.  What is here is the *classpath* side: the
-  shallow tree under `resources/kb/` and how a layer's files are discovered in it.
+  and what `vaelii.core/export-text!` writes.  Which files a layer holds is
+  `vaelii.impl.io.shipped`'s; what is here is reading and loading them.
 
   The files live under `resources/kb/`, in two layers:
 
@@ -32,59 +32,8 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [vaelii.core :as v]
+            [vaelii.impl.io.shipped :as shipped]
             [vaelii.impl.io.text :as text]))
-
-(def anchor
-  "The classpath path of the file every KB carries: resource discovery anchors on it when
-  a jar records no directory entry for the directory it lists."
-  "kb/upper/core.txt")
-
-(defn resource-files
-  "The names of the files ending `ext` directly under classpath directory `dir`, sorted,
-  or nil when it holds none.  A filesystem tree (repl / lein / test) is listed as a
-  directory, and a packaged jar by its own entries, anchored on `anchor` when the jar
-  carries no directory entry for `dir`.  Any other protocol is refused rather than answered
-  nil: nil here starts a KB with a layer silently absent, the failure `read-sentences`
-  refuses one file at a time."
-  [dir ext]
-  (let [want  (str dir "/")
-        res   (or (io/resource dir) (io/resource anchor))
-        names (when res
-                (case (.getProtocol res)
-                  "file" (when-let [d (io/resource dir)]
-                           (keep (fn [^java.io.File f]
-                                   (let [n (.getName f)]
-                                     (when (str/ends-with? n ext) n)))
-                                 (.listFiles (io/file d))))
-                  "jar"  (let [conn ^java.net.JarURLConnection (.openConnection res)]
-                           (for [^java.util.jar.JarEntry e (enumeration-seq (.entries (.getJarFile conn)))
-                                 :let [n (.getName e)]
-                                 :when (and (str/starts-with? n want)
-                                            (str/ends-with? n ext)
-                                            (not (str/includes? (subs n (count want)) "/")))]
-                             (subs n (count want))))
-                  (throw (ex-info (str dir " sits behind classpath protocol "
-                                       (.getProtocol res) ", which resource discovery cannot"
-                                       " list — it reads the file and jar protocols")
-                                  {:type :missing-resource :dir dir :url (str res)}))))]
-    (some-> (seq names) sort)))
-
-(defn layer-files
-  "The `.txt` file names in layer sub-directory `dir` (`resource-files` of `kb/<dir>`)."
-  [dir]
-  (resource-files (str "kb/" dir) ".txt"))
-
-(defn layer-contexts
-  "The context symbols whose KB files live in the layer sub-directory `dir` (\"middle\"),
-  sorted for determinism.  Discovered from the classpath, so dropping a new
-  `Cx<Name>.txt` in `kb/<dir>/` loads it with no code change — every context is loaded
-  on kb start by default, from a filesystem tree and from a packaged jar alike
-  (`layer-files`)."
-  [dir]
-  (some->> (layer-files dir)
-           (map #(symbol (subs % 0 (- (count %) 4))))
-           (sort)                                    ; filename-derived symbols — bare sort, same order
-           vec))
 
 (defn- resource-path
   "The classpath path of KB file `file` (a context or a file stem, with or without
@@ -157,4 +106,4 @@
   []
   (compose-renames
    (map #(edn/read-string (slurp (io/resource (str "renames/" %))))
-        (sort-by release-order (resource-files "renames" ".edn")))))
+        (sort-by release-order (shipped/resource-files "renames" ".edn")))))

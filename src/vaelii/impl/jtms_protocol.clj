@@ -46,6 +46,10 @@
   (-premise?         [tms datum] "Is `datum` a premise?")
   (-supports         [tms datum] "Justification ids concluding `datum`.")
   (-dependents       [tms datum] "Justification ids using `datum` as an antecedent.")
+  (-support-count    [tms datum] "How many justifications conclude `datum`, read without
+    building the id set `-supports` answers.")
+  (-dependent-count  [tms datum] "How many justifications use `datum` as an antecedent, read
+    without building the id set `-dependents` answers.")
   (-justification    [tms jid]   "The graph justification (`graph-just` — no bindings), or nil.")
   (-justifications   [tms]       "Every live graph justification.")
   (-ensure-node      [tms datum depth] "Create the node if absent; lower its depth and the
@@ -125,6 +129,10 @@
   (-touched-new      [tms]       "Datums whose node was created since the reset.")
   (-touched-out      [tms]       "Datums a forced-set change (`-set-forced`) took from IN
     to OUT since the reset.")
+  (-touched-down     [tms]       "Datums a relabel since the reset took from IN to OUT, or
+    from `:monotonic` to `:default`.")
+  (-touched-up       [tms]       "Datums a relabel since the reset took from `:default` to
+    `:monotonic` while IN.")
   (-reset-touched    [tms]       "Clear the touched sets, and outdate every mark.")
   (-touch-mark       [tms]       "A mark of this point in the touched sets, which
     `-touched-since` reads: every datum they record after this call is in it.")
@@ -148,6 +156,7 @@
   roles and say so in their own docstrings. `jtms_protocol_test` fails on a method in no
   role, a method in two, and a name here that the protocol does not define."
   '{:graph      #{-node? -datums -any-node? -depth -premise? -supports -dependents
+                  -support-count -dependent-count
                   -justification -justifications -ensure-node -add-premise
                   -suspend-premise -add-justification -retract -sweep -drop-justification
                   -relabel}
@@ -155,6 +164,6 @@
     :blocked    #{-blocked -set-blocked}
     :superseded #{-superseded -supersede}
     :output     #{-believed? -believed -any-belief? -defeat-class -snapshot}
-    :touched    #{-touched -touched-in -touched-new -touched-out -reset-touched
+    :touched    #{-touched -touched-in -touched-new -touched-out -touched-down -touched-up -reset-touched
                   -touch-mark -touched-since}
     :hold       #{-hold -release -held}})

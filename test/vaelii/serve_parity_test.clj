@@ -301,6 +301,18 @@
 
 ;; ---- a KB fn is an op, or docs/operations.md says why it is not ---------
 
+(tu/deftest-kb a-term-operation-s-plan-crosses-the-wire-and-edit-applies-its-batch
+  (tu/with-terms [likes X Y CxStory]
+    (let [z       (tu/tmp-ind "Renamed")
+          h       (v/assert kb (list likes Y X) CxStory)
+          handler (open-app kb)]
+      (is (= [] (ok-result handler :check-term-edit [:rename {X z}])))
+      (let [plan (ok-result handler :term-edit-plan [:rename {X z}])]
+        (is (= [[h]] (:restates plan)))
+        (ok-result handler :edit [(:batch plan)])
+        (is (nil? (v/sentex kb h)))
+        (is (some? (v/handle-of kb (list likes Y z) CxStory)))))))
+
 (tu/deftest-kb the-reads-the-rule-admits-cross-the-wire
   ;; Seven reads the rule in docs/operations.md admits: data in and out, the KB and not
   ;; the process, and a cost a request bounds or one that grows with the KB.

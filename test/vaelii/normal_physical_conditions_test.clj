@@ -75,7 +75,7 @@
       (doseq [t '[stone wood glass_stuff]]
         (is (not (tu/holds-genl t 'solid NPC)))
         (is (not (tu/holds-genl t 'solid 'CxUniverse)))
-        (is (tu/holds-ask (list 'declined_rule_macro (list 'genl t 'solid)) NPC)))
+        (is (tu/holds-ask (list 'declined_rule_macro (list 'Quote (list 'genl t 'solid))) NPC)))
       (doseq [x [Pebble Plank Pane]]
         (is (= :default (v/defeat-class kb (v/handle-of kb (list 'solid x) CxRoom))))))))
 
@@ -99,7 +99,7 @@
     (testing "mercury is liquid and is not concluded solid"
       (is (holds-isa Droplet 'liquid CxRoom))
       (is (not (tu/holds-genl 'mercury 'liquid NPC)) "liquid by a default rule, not a genl edge")
-      (is (tu/holds-ask '(declined_rule_macro (genl mercury liquid)) NPC))
+      (is (tu/holds-ask '(declined_rule_macro (Quote (genl mercury liquid))) NPC))
       (is (holds-isa Droplet 'metal_stuff CxRoom))
       (is (not (tu/holds-ask (list 'solid Droplet) CxRoom)))
       (is (not (holds-isa Droplet 'solid CxRoom)))

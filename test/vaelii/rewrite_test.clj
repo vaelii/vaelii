@@ -7,6 +7,21 @@
   (:require [clojure.test :refer [deftest is testing]]
             [vaelii.impl.rewrite :as rw]))
 
+(deftest normalization-support-traces-actual-recursive-and-second-steps
+  (let [rules [{:lhs '(f (f ?x)) :rhs '(g ?x) :handle 11}
+               {:lhs '(g ?x) :rhs '?x :handle 12}
+               {:lhs '(unrelated ?x) :rhs '?x :handle 99}]]
+    (is (= ['A #{11 12}] (rw/normalize-with-support rules '(f (f A)))))
+    (is (= (rw/normalize rules '(f (f A)))
+           (first (rw/normalize-with-support rules '(f (f A))))))
+    (is (= ['(pair A B) #{11 12}]
+           (rw/normalize-with-support rules '(pair (f (f A)) B))))
+    (is (= ['(p A) #{11 12}]
+           (rw/normalize-sentence-with-support rules '(p (f (f A))))))
+    (is (= ['(rewriteOf T (f (f A))) #{}]
+           (rw/normalize-sentence-with-support rules '(rewriteOf T (f (f A))))))
+    (is (= ['A #{}] (rw/normalize-with-support rules 'A)))))
+
 (deftest term-size-counts-leaves
   (is (= 1 (rw/term-size 'Tom)))
   (is (= 1 (rw/term-size '?x)))

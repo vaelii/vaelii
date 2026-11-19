@@ -175,25 +175,40 @@
 (defn- rewrite-root
   "Rewrite `term` at its root with the first applicable rule, or nil when none
   applies.  `rules` is a seq of `{:lhs :rhs}` oriented pairs."
-  [rules term]
-  (some #(reduct % term) rules))
+  [rules term step]
+  (some (fn [rule]
+          (when-let [red (reduct rule term)]
+            (when step (step rule))
+            red)) rules))
 
 (defn normalize
   "The normal form of `term` under the oriented `rules`: rewrite innermost subterms to
   a fixpoint, then the root, repeating until nothing applies.  Terminates by the
   reduction order (each root rewrite strictly decreases size); the guard is a pure
-  safety net."
+  safety net. The optional internal `step` receives each actually chosen rule,
+  including recursive and second-step rewrites; the value algorithm is shared."
+  ([rules term] (normalize rules term nil))
+  ([rules term step]
+   (loop [term term, guard 0]
+     ;; `(seq term)` as well as `sequential?`: an empty list has no functor to keep, and
+     ;; rebuilding it as `(apply list (first term) …)` would hand back `(nil)` — a term the
+     ;; caller never wrote, in a form that then keys and matches as itself.
+     (let [term' (if (and (sequential? term) (seq term))
+                   (apply list (first term) (map #(normalize rules % step) (rest term)))
+                   term)]
+       (if-let [red (and (< guard normalize-guard) (rewrite-root rules term' step))]
+         (recur red (inc guard))
+         term')))))
+
+(defn normalize-with-support
+  "`[normal-form rule-handles]`, using the same reducer as `normalize`.
+  Only actually chosen rules contribute, not rules merely applicable to the initial
+  input or unrelated reader-visible equations. An unhandled pure rule contributes
+  no stored handle."
   [rules term]
-  (loop [term term, guard 0]
-    ;; `(seq term)` as well as `sequential?`: an empty list has no functor to keep, and
-    ;; rebuilding it as `(apply list (first term) …)` would hand back `(nil)` — a term the
-    ;; caller never wrote, in a form that then keys and matches as itself.
-    (let [term' (if (and (sequential? term) (seq term))
-                  (apply list (first term) (map #(normalize rules %) (rest term)))
-                  term)]
-      (if-let [red (and (< guard normalize-guard) (rewrite-root rules term'))]
-        (recur red (inc guard))
-        term'))))
+  (let [handles (volatile! #{})
+        form (normalize rules term #(when-let [h (:handle %)] (vswap! handles conj h)))]
+    [form @handles]))
 
 (def equality-relations
   "The equality relations, whose argument positions are **mentions**: `(equals A B)`
@@ -221,6 +236,12 @@
   (and (sequential? sentence) (seq sentence)
        (not (contains? equality-relations (first sentence)))))
 
+(def ^:private payload-predicates
+  "The predicates whose last argument is the expression a reified constant was minted for:
+  a rule rewrites terms inside the expression and never the expression itself, so the row
+  keeps an application to name."
+  '#{natFormula})
+
 (defn- map-argument-terms
   "`sentence` with `f` applied to each argument term `normalize-sentence` reduces.  An
   argument holding no equality relation is one such term.  An equality relation is
@@ -232,8 +253,11 @@
             (cond
               (not (holds-equality-relation? t))      (f t)
               (contains? equality-relations (first t)) t
-              :else                                    (apply list (first t) (map arg (rest t)))))]
-    (apply list (first sentence) (map arg (rest sentence)))))
+              :else                                    (apply list (first t) (map arg (rest t)))))
+          (payload [t] (if (and (sequential? t) (seq t)) (apply list (first t) (map arg (rest t))) (arg t)))]
+    (if (contains? payload-predicates (first sentence))
+      (apply list (first sentence) (concat (map arg (butlast (rest sentence))) [(payload (last sentence))]))
+      (apply list (first sentence) (map arg (rest sentence))))))
 
 (defn- argument-terms
   "The terms `map-argument-terms` applies its function to, in the same walk."
@@ -244,7 +268,9 @@
               (contains? equality-relations (first t)) []
               :else                                    (mapcat arg (rest t))))]
     (when (sentence-argument? sentence)
-      (mapcat arg (rest sentence)))))
+      (if (and (contains? payload-predicates (first sentence)) (sequential? (last sentence)))
+        (concat (mapcat arg (butlast (rest sentence))) (mapcat arg (rest (last sentence))))
+        (mapcat arg (rest sentence))))))
 
 (defn normalize-sentence
   "Normalize a **sentence** `(pred arg…)`: rewrite each argument as a term, leaving the
@@ -257,19 +283,52 @@
     (map-argument-terms #(normalize rules %) sentence)
     sentence))
 
+(defn normalize-sentence-with-support
+  "`normalize-sentence` with the handles of the actual term-rewrite steps."
+  [rules sentence]
+  (let [handles (volatile! #{})
+        form (if (and (seq rules) (sentence-argument? sentence))
+               (map-argument-terms
+                (fn [term]
+                  (let [[value hs] (normalize-with-support rules term)]
+                    (vswap! handles into hs)
+                    value)) sentence)
+               sentence)]
+    [form @handles]))
+
 ;; ---- schematic-equation detection ----------------------------------------
 
 (defn schematic-equation?
   "Is `sentence` a schematic equational rule: an `(equals L R)` with a compound side and a
   variable?  A ground `(equals (F a) (F b))` is not one; it reifies to symbols
   (docs/nat.md).  A compound `sameAs` is refused by `wff`, and a compound `rewriteOf` is a
-  NAT declaration."
+  NAT declaration and a ground rule (`equation-rule`)."
   [sentence]
   (and (sequential? sentence)
        (= 'equals (first sentence))
        (= 3 (count sentence))
        (some sequential? (rest sentence))
        (not (sx/ground-term? sentence))))
+
+(defn equation-rule
+  "`[lhs rhs]`, the oriented rewrite the equality sentence `s` caches in the rule set, or
+  nil for a symbol merge and a NAT naming.  A schematic equation is `orient`ed.  A
+  `(rewriteOf T E)` with `E` a ground application and `T` a symbol among its arguments
+  rewrites `E` to `T` (docs/equational.md)."
+  [s]
+  (cond
+    (schematic-equation? s) (let [[_ a b] s] (orient a b))
+    (and (sequential? s) (= 'rewriteOf (first s)) (= 3 (count s)))
+    (let [[_ t e] s]
+      (when (and (symbol? t) (sequential? e) (seq e) (symbol? (first e)) (sx/ground-term? e)
+                 (some #{t} (rest e)))
+        [e t]))))
+
+(defn rule-key
+  "The term every stored occurrence of a rule's redex names: the left side `lhs` itself
+  when ground, else its head."
+  [lhs]
+  (if (sx/ground-term? lhs) lhs (first lhs)))
 
 (defn rule-applies?
   "Does the oriented rule `{:lhs …}` rewrite some argument subterm of `sentence`?  Asked

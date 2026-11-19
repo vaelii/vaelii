@@ -1074,6 +1074,67 @@
                                    [(list beast Hydra) (list immortal Hydra)] doomed Hydra))
               (pr-str [other order])))))))
 
+(deftest a-conviction-reaching-a-default-edge-s-head-over-monotonic-edges-undercuts-the-reading-there-in-every-order
+  (doseq [[kind other] [[:deny :monotonic] [:deny :default] [:separate :monotonic] [:separate :default]]
+          order (tu/permutations [:low :high :member :other :rule])]
+    (tu/with-kb [kb]
+      (tu/with-terms [beast mortal perishing immortal doomed Hydra]
+        (v/assert kb (list 'disjoint perishing immortal) 'CxUniverse {:strength :monotonic})
+        (let [convict (if (= :deny kind) (list 'not (list perishing Hydra)) (list immortal Hydra))
+              writes  {:low    #(v/assert kb (list 'genl beast mortal) 'CxUniverse)
+                       :high   #(v/assert kb (list 'genl mortal perishing) 'CxUniverse {:strength :monotonic})
+                       :member #(v/assert kb (list beast Hydra) 'CxUniverse)
+                       :other  #(v/assert kb convict 'CxUniverse {:strength other})
+                       :rule   #(v/assert-rule kb [(list mortal '?x)] (list doomed '?x)
+                                               'CxUniverse {:direction :forward})}]
+          (is (= [false [true true true false] false false 0 0]
+                 (undercut-reading kb writes order (list mortal Hydra)
+                                   [(list beast Hydra) convict (list 'not (list mortal Hydra))
+                                    (list perishing Hydra)]
+                                   doomed Hydra))
+              (pr-str [kind other order])))))))
+
+(deftest an-exception-guard-reads-an-undercut-edge-reading-as-not-holding-in-every-order
+  (doseq [two? [false true]
+          order (tu/permutations [:edges :member :convict :rule])]
+    (tu/with-kb [kb]
+      (tu/with-terms [beast mortal perishing fed doomed Hydra CxLow]
+        (v/assert kb (list 'genlCx CxLow 'CxUniverse) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list fed Hydra) 'CxUniverse)
+        (let [top    (if two? perishing mortal)
+              writes {:edges   #(do (v/assert kb (list 'genl beast mortal) CxLow)
+                                    (when two?
+                                      (v/assert kb (list 'genl mortal perishing) CxLow {:strength :monotonic})))
+                      :member  #(v/assert kb (list beast Hydra) CxLow)
+                      :convict #(v/assert kb (list 'not (list top Hydra)) CxLow)
+                      :rule    #(v/assert kb (list 'exceptWhen (list mortal '?x)
+                                                   (list 'set/forwardRule
+                                                         (list 'implies (list fed '?x) (list doomed '?x))))
+                                          'CxUniverse {:strength :monotonic})}]
+          (doseq [k order] ((writes k)))
+          (is (= [false true] [(v/ask? kb (list mortal Hydra) CxLow) (v/ask? kb (list doomed Hydra) CxLow)])
+              (pr-str [two? order])))))))
+
+(deftest a-guard-whose-blocker-is-a-reading-its-conclusion-undercuts-is-read-in-content-order-in-every-order
+  (doseq [first? [true false]
+          order  (tu/permutations [:members :edge :apart :rule])]
+    (tu/with-kb [kb]
+      (tu/with-terms [able bare wild calm doomed Rex]
+        (let [guarded (if first? bare wild)
+              writes  {:members #(do (v/assert kb (list able Rex) 'CxUniverse {:strength :monotonic})
+                                     (v/assert kb (list calm Rex) 'CxUniverse))
+                       :edge    #(v/assert kb (list 'genl calm guarded) 'CxUniverse)
+                       :apart   #(v/assert kb (list 'disjoint guarded doomed) 'CxUniverse {:strength :monotonic})
+                       :rule    #(v/assert kb (list 'set/forwardRule
+                                                    (list 'implies (list 'and (list able '?x)
+                                                                         (list 'unknown (list guarded '?x)))
+                                                          (list doomed '?x)))
+                                           'CxUniverse)}]
+          (doseq [k order] ((writes k)))
+          (is (= [(not first?) first?] [(v/ask? kb (list guarded Rex) 'CxUniverse)
+                                        (v/ask? kb (list doomed Rex) 'CxUniverse)])
+              (pr-str [first? order])))))))
+
 (deftest the-deniers-of-a-cover-undercut-a-default-edge-s-reading-of-its-whole-in-every-order
   (doseq [order (tu/permutations [:cover :edge :member :deny :rule])]
     (tu/with-kb [kb]

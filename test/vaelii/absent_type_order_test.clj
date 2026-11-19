@@ -3,12 +3,12 @@
 (ns vaelii.absent-type-order-test
   "Order independence where a derivation reads the **absence** of a type.
 
-  An argument constraint convicts a sentence when the argument's types have no path to
-  the declared one, and `mintable-type?` declines a mint whose type an arity statement
-  binds to another length.  Both read the KB as it stands, so each needs a way back for the order
-  where the missing edge or membership arrives later: a convicted rule conclusion is stored
-  and held by the argument hold (docs/argtypes.md), and an unminted declaration is read again when its type's own bindings
-  move (`special/mints-on-lengths`).  And a
+  An argument constraint convicts a sentence when an argument believes a type the
+  taxonomy separates from the declared one, and `mintable-type?` refuses a mint in a type
+  an arity statement binds to another length.  Both read the KB as it stands, so each needs
+  a way back for the order where the edge arrives or the binding leaves later: a convicted
+  rule conclusion is stored and held by the argument hold (docs/argtypes.md), and a mint
+  is stored held void until its type is mintable (`special/hold-type-mints!`).  And a
   `forced_decontextualized_predicate` declaration moves the extent stored before it.
 
   Each test runs the same sentences in both orders on a fresh KB and compares what the
@@ -19,6 +19,7 @@
             [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
             [vaelii.host.seed :as seed]
+            [vaelii.impl.io.shipped :as shipped]
             [vaelii.impl.io.text :as text]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.special :as special]
@@ -75,36 +76,42 @@
           "the fact lives in CxUniverse and not where it was written"))))
 
 (tu/deftest-kb a-conclusion-convicted-by-a-missing-edge-is-placed-once-the-edge-arrives
-  ;; `(arg ownsPet 2 animal)` is written in CxTheory, above the rule's context, so there
-  ;; it constrains without entailing.  Rex is a `poodleKind`, and until the edge
-  ;; `(genl poodleKind animal)` arrives nothing reaches `animal` from there.  Arriving
-  ;; first, the same edge lets the firing through, so a KB that holds it OUT for good
-  ;; believes less in one order than the other.
-  (tu/with-terms [animal poodleKind petOf ownsPet Rex Ann CxTheory CxWorld]
-    (let [readings (in-both-orders
-                    (fn [kb]
-                      (a-context kb CxTheory 'CxUniverse)
-                      (a-context kb CxWorld CxTheory)
-                      (a-type kb animal CxTheory)
-                      (a-type kb poodleKind CxTheory)
-                      (v/assert kb (list 'arg ownsPet 2 animal) CxTheory)
-                      (v/assert kb (list 'set/forwardRule
-                                         (list 'implies (list petOf '?x '?y) (list ownsPet '?y '?x)))
-                                CxWorld))
-                    {:edge #(v/assert % (list 'genl poodleKind animal) CxTheory)
-                     :fact #(do (v/assert % (list poodleKind Rex) CxWorld)
-                                (v/assert % (list petOf Rex Ann) CxWorld))}
-                    [:edge :fact]
-                    (fn [kb] {:owns (boolean (v/ask? kb (list ownsPet Ann Rex) CxWorld))
-                              :held (held kb)}))]
-      (is (:owns (first readings)) "the edge first: the conclusion is placed")
-      (is (apply = readings) "and the edge last reaches the same KB"))))
+  ;; `(arg ownsPet 2 animal)` is written in CxTheory, above the rule's context.  Under the
+  ;; constraint-only reading, a `:default` `disjoint` separating `poodleKind` from `animal`
+  ;; convicts the firing on the `poodleKind` Rex until the `:monotonic` edge `(genl
+  ;; poodleKind animal)` defeats it.  Arriving first, the same edge lets the firing through,
+  ;; so a KB that holds it OUT for good believes less in one order than the other.
+  (tu/without-entailing
+   (tu/with-terms [animal poodleKind petOf ownsPet Rex Ann CxTheory CxWorld]
+     (let [owns?    #(boolean (v/ask? % (list ownsPet Ann Rex) CxWorld))
+           at-fact  (volatile! [])
+           readings (doall
+                     (in-both-orders
+                      (fn [kb]
+                        (a-context kb CxTheory 'CxUniverse)
+                        (a-context kb CxWorld CxTheory)
+                        (a-type kb animal CxTheory)
+                        (a-type kb poodleKind CxTheory)
+                        (v/assert kb (list 'disjoint poodleKind animal) CxTheory)
+                        (v/assert kb (list 'arg ownsPet 2 animal) CxTheory)
+                        (v/assert kb (list 'set/forwardRule
+                                           (list 'implies (list petOf '?x '?y) (list ownsPet '?y '?x)))
+                                  CxWorld))
+                      {:edge #(v/assert % (list 'genl poodleKind animal) CxTheory {:strength :monotonic})
+                       :fact #(do (v/assert % (list poodleKind Rex) CxWorld)
+                                  (v/assert % (list petOf Rex Ann) CxWorld)
+                                  (vswap! at-fact conj (owns? %)))}
+                      [:edge :fact]
+                      (fn [kb] {:owns (owns? kb) :held (held kb)})))]
+       (is (= [true false] @at-fact) "right after the fact: placed after the edge, convicted before it")
+       (is (:owns (first readings)) "the edge first: the conclusion is placed")
+       (is (apply = readings) "and the edge last reaches the same KB")))))
 
 (tu/deftest-kb a-declaration-whose-type-loses-its-other-arity-mints-then
   ;; `mintable-type?` reads the declared type's own arity.  The declaration and the fact
-  ;; arriving while `(binary_predicate gadgetKind)` stands mint nothing and wait; the
-  ;; settle after the binding leaves re-asks them.  Forced to the entailing reading, since
-  ;; the mint is what it asks about.
+  ;; arriving while `(binary_predicate gadgetKind)` stands store the mint OUT, and the
+  ;; binding leaving releases it.  Forced to the entailing reading, since the mint is what
+  ;; it asks about.
   (tu/with-entailing
     (doseq [kind ['arg 'genlArg]]
       (testing (str kind)
@@ -126,8 +133,8 @@
             (is (apply = readings) "and the binding gone last reaches the same KB")))))))
 
 (tu/deftest-kb a-length-arriving-after-a-mint-holds-it-out-at-that-write
-  ;; The binding withdraws the `(unary_predicate t)` the declaration entailed, and that
-  ;; removal moves `t`'s length after the settle's arity refresh read it.  Read right after
+  ;; The binding holds void the `(unary_predicate t)` the declaration entailed, and that
+  ;; relabel moves `t`'s length after the settle's arity refresh read it.  Read right after
   ;; the binding's write, `(t Rex)` is believed in neither order.
   (tu/with-entailing
     (tu/with-terms [t rel Rex Mary CxWorld]
@@ -140,10 +147,10 @@
                       (fn [kb] (boolean (some->> (v/handle-of kb (list t Rex) CxWorld) (v/in? kb)))))]
         (is (= [false false] readings))))))
 
-(tu/deftest-kb a-length-arriving-after-a-mint-removes-it-from-the-store
-  ;; A mint stored before its type's conflicting length arrived is removed, so the store
-  ;; holds what the order with the binding first holds.  Each row is the declaration, the
-  ;; fact, and the mint it draws.
+(tu/deftest-kb a-length-arriving-after-a-mint-keeps-it-stored-inert
+  ;; A mint stored before its type's conflicting length arrived stays stored and OUT, as
+  ;; the order with the binding first stores it.  Each row is the declaration, the fact,
+  ;; and the mint it draws.
   (tu/with-entailing
     (tu/with-terms [t rel Rex Mary widgetKind CxWorld]
       (doseq [[decl fact minted] [[(list 'arg rel 1 t) (list rel Rex Mary) (list t Rex)]
@@ -155,15 +162,16 @@
                         {:bind #(a-binary % t)
                          :rest #(do (v/assert % decl CxWorld) (v/assert % fact CxWorld))}
                         [:rest :bind]
-                        (fn [kb] {:minted (some? (v/handle-of kb minted CxWorld)) :held (held kb)}))]
-          (is (= [false false] (mapv :minted readings)) (str decl))
+                        (fn [kb] {:minted (some->> (v/handle-of kb minted CxWorld) (v/in? kb))
+                                  :held   (held kb)}))]
+          (is (= [false false] (mapv :minted readings)) (str decl " stores the mint OUT"))
           (is (apply = readings) (str decl " stores the same in both orders")))))))
 
-(tu/deftest-kb a-type-with-two-in-lengths-mints-in-no-order
+(tu/deftest-kb a-type-with-two-in-lengths-stores-its-mint-inert-in-every-order
   ;; `(unary_predicate t)` and `(binary_predicate t)` both `:default` stay IN as one
-  ;; `contradicts`.  A type mints only when every IN length admits length one, so no
-  ;; order of the two bindings, the declaration and the fact stores the mint, before or
-  ;; after `recover`.
+  ;; `contradicts`.  A mint holds only when every IN length admits length one, so every
+  ;; order of the two bindings, the declaration and the fact stores the mint OUT, before
+  ;; and after `recover`.
   (tu/with-entailing
     (tu/with-terms [t rel Rex Mary widgetKind CxWorld]
       (doseq [[decl fact minted] [[(list 'arg rel 1 t) (list rel Rex Mary) (list t Rex)]
@@ -173,18 +181,18 @@
                         :binary #(v/assert % (list 'binary_predicate t) 'CxUniverse)
                         :decl   #(v/assert % decl CxWorld)
                         :fact   #(v/assert % fact CxWorld)}
-              stored?  #(some? (v/handle-of % minted CxWorld))
+              inert?   #(false? (some->> (v/handle-of % minted CxWorld) (v/in? %)))
               readings (for [order (oi/permutations [:unary :binary :decl :fact])]
                          (tu/with-neutral-kb [kb tu/fresh]
                            (a-context kb CxWorld 'CxUniverse)
                            (a-type kb t CxWorld)
                            (a-type kb widgetKind CxWorld)
                            (doseq [s order] ((steps s) kb))
-                           (let [written (stored? kb)]
+                           (let [written (inert? kb)]
                              (v/recover kb)
-                             [order written (stored? kb)])))]
-          (is (= [] (into [] (filter #(or (second %) (last %))) readings))
-              (str decl ": the orders storing " minted ", as [order written recovered]")))))))
+                             [order written (inert? kb)])))]
+          (is (= [] (into [] (remove #(and (second %) (last %))) readings))
+              (str decl ": the orders not storing " minted " OUT, as [order written recovered]")))))))
 
 ;; ---- the rebuild after recover ---------------------------------------------------
 
@@ -203,7 +211,7 @@
                 {:strength :monotonic})
       (is (= 6 (count (v/sentexes-matching kb (list liftedRel Alpha '?b) 'CxUniverse)))))))
 
-;; ---- the settle's re-ask ---------------------------------------------------------
+;; ---- a binding leaving releases a mint -----------------------------------------
 
 (defn- sweeps
   "How many times `special/entail-existing` sweeps a declaration of `dhs` while `f` runs."
@@ -215,30 +223,30 @@
       (f))
     @n))
 
-(tu/deftest-kb a-write-that-moves-no-waiting-type-s-length-reads-no-declaration
-  ;; four declarations name a type bound to two arguments, and the refusal record holds
-  ;; nothing for them.  A membership, a `genl` edge between two other types and a
-  ;; rolled-back preview sweep none of them; the binding leaving sweeps each once, and
-  ;; the declarations mint over the fact stored while the type was bound.
+(tu/deftest-kb a-binding-leaving-releases-the-inert-mints-with-no-sweep
+  ;; Four declarations name a type bound to two arguments, and the refusal record holds
+  ;; nothing for them.  A fact stored while the type is bound stores its mint OUT.  No
+  ;; membership, `genl` edge, rolled-back preview or binding leaving sweeps a declaration,
+  ;; and the binding leaving brings the mint IN.
   (tu/with-entailing
     (tu/with-terms [orphan toolKind partKind qKind Widget Gear Bolt CxWorld]
       (tu/with-neutral-kb [kb tu/fresh]
         (a-context kb CxWorld 'CxUniverse)
         (a-type kb toolKind CxWorld)
         (a-binary kb orphan)
-        (let [rels  (into [] (repeatedly 4 #(tu/fresh-term :predicate 'usesKind)))
-              dhs   (into #{} (map #(v/assert kb (list 'arg % 1 orphan) CxWorld)) rels)
-              _     (v/assert kb (list (first rels) Bolt Widget) CxWorld)
-              fact  (sweeps dhs #(v/assert kb (list toolKind Widget) CxWorld))
-              edge  (sweeps dhs #(v/assert kb (list 'genl partKind toolKind) CxWorld))
-              prev  (sweeps dhs #(v/preview kb {:add [[(list 'genl qKind 'thing) CxWorld]]}))
-              after (sweeps dhs #(v/assert kb (list toolKind Gear) CxWorld))]
-          (is (= [0 0 0 0] [fact edge prev after]))
+        (let [rels   (into [] (repeatedly 4 #(tu/fresh-term :predicate 'usesKind)))
+              dhs    (into #{} (map #(v/assert kb (list 'arg % 1 orphan) CxWorld)) rels)
+              _      (v/assert kb (list (first rels) Bolt Widget) CxWorld)
+              minted #(some->> (v/handle-of kb (list orphan Bolt) CxWorld) (v/in? kb))
+              fact   (sweeps dhs #(v/assert kb (list toolKind Widget) CxWorld))
+              edge   (sweeps dhs #(v/assert kb (list 'genl partKind toolKind) CxWorld))
+              prev   (sweeps dhs #(v/preview kb {:add [[(list 'genl qKind 'thing) CxWorld]]}))
+              after  (sweeps dhs #(v/assert kb (list toolKind Gear) CxWorld))
+              bound  (minted)
+              unbind (sweeps dhs #(unbind kb orphan))]
+          (is (= [0 0 0 0 0] [fact edge prev after unbind]))
           (is (every? #(nil? (get @(reasoning/refused kb) %)) dhs) "the record holds nothing")
-          (is (nil? (v/handle-of kb (list orphan Bolt) CxWorld)) "and nothing is minted")
-          (is (= 4 (sweeps dhs #(unbind kb orphan))) "the binding leaving sweeps each")
-          (is (some? (v/handle-of kb (list orphan Bolt) CxWorld))
-              "and the declarations mint over the fact"))))))
+          (is (= [false true] [bound (minted)]) "the mint is stored OUT, then the binding leaving brings it IN"))))))
 
 ;; ---- a convicted lift ---------------------------------------------------------
 
@@ -263,7 +271,7 @@
   order: the upper files into CxUniverse, then the middle contexts."
   []
   (concat (for [f (core-context/upper-files)    s (seed/read-sentences f "upper")]  [s 'CxUniverse])
-          (for [c (seed/layer-contexts "middle") s (seed/read-sentences c "middle")] [s c])))
+          (for [c (shipped/layer-contexts "middle") s (seed/read-sentences c "middle")] [s c])))
 
 (defn- load-shuffled!
   "The starter's sentences in the order `seed` shuffles them to, through the text
@@ -277,21 +285,62 @@
                           (vec l)))
     kb))
 
-(defn- held-after
-  "`(held kb)` after `load!` on a cleared KB of its own, cleared again after."
+(defn- starter-public-reading
+  "A finite public observation matrix, not physical allocation/OUT history.
+  Includes the actual reflection, retirement and classification countergoals, open
+  metadata consumers and both inherited and local kinship readings. Never drops a
+  returned opaque value: if a public query exposes it, it participates in equality."
+  [kb]
+  (let [goals {:maps '(natFormula ?target ?expression)
+               :rewrites '(rewriteOf ?target ?expression)
+               :predicates '(predicate ?p)
+               :chosen '(chosen_kinship_predicate ?p)
+               :blood '(blood_kinship_predicate ?p)
+               :chosen-same-as '(sameAs chosenKinOf ?p)
+               :chosen-equals '(equals chosenKinOf ?p)
+               :blood-same-as '(sameAs bloodRelativeOf ?p)
+               :chosen-specs '(genl ?p chosenKinOf)
+               :blood-specs '(genl ?p bloodRelativeOf)
+               :chosen-correspondence '(chosenKinPredicateOf kinOf ?p)
+               :blood-correspondence '(bloodKinPredicateOf kinOf ?p)}]
+    {:answers (into {}
+                    (for [reader ['CxUniverse 'CxKinship]
+                          [label goal] goals]
+                      [[reader label] (set (v/query kb goal reader))]))
+     :chosen-root-predicate
+     {:closed (v/ask? kb '(predicate chosenKinOf) 'CxUniverse)
+      :open (contains? (set (v/query kb '(predicate ?p) 'CxUniverse))
+                       {'?p 'chosenKinOf})
+      :denied (v/ask? kb '(not (predicate chosenKinOf)) 'CxUniverse)}}))
+
+(defn- reading-after
+  "Public observations and raw diagnostics after `load!`, clearing the KB afterward.
+  Sequential loads retain the original memory/startup cost boundary: no second live
+  whole KB and no additional starter reload to discover a union of ground probes."
   [load!]
   (let [kb (tu/isolated-fresh)]
-    (try (held (load! kb)) (finally (tu/clear-kb! kb)))))
+    (try
+      (load! kb)
+      {:held (held kb)
+       :public (starter-public-reading kb)}
+      (finally (tu/clear-kb! kb)))))
 
 (defn- starter-in-orders
   "Each shuffled order in `seeds` against the shipped one.  The shipped reading is the
   restored starter dump — `starter/load-into`'s KB, which `starter_copy_test` tests — so
   a run pays for the shuffled loads alone."
   [seeds]
-  (let [shipped (held-after tu/load-starter!)]
+  (let [shipped-reading (reading-after tu/load-starter!)
+        shipped (:held shipped-reading)]
+    (is (= {:closed true :open true :denied false}
+           (get-in shipped-reading [:public :chosen-root-predicate])))
     (doseq [s seeds]
-      (let [shuffled (held-after #(load-shuffled! % s))]
-        (is (= shipped shuffled)
+      (let [shuffled-reading (reading-after #(load-shuffled! % s))
+            shuffled (:held shuffled-reading)]
+        (is (= {:closed true :open true :denied false}
+               (get-in shuffled-reading [:public :chosen-root-predicate]))
+            (str "seed " s ": the public predicate reading, not direct-row materialization"))
+        (is (= (:public shipped-reading) (:public shuffled-reading))
             (str "seed " s ": held only by the shipped order "
                  (pr-str (take 5 (remove (set (keys shuffled)) (keys shipped))))
                  ", only by the shuffled one "

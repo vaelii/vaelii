@@ -128,13 +128,27 @@ on them, and retracting any of them withdraws the conclusion through the JTMS. A
 backward rule's conclusion is not read by a forward join. Cyc's `backchainRequired` is
 the analogue of the marking.
 
+A positive `rewriteOf` lazy head is compared after public representative normalization
+after its raw body inputs are bound. The firing also retains the actual normalization
+supports and the grounded raw head it read, without materializing an equation. Its
+proof-local reader counterguards detect a changed endpoint, including a private rival;
+the rule/body supports and ordinary lazy-rule validity checks remain required.
+An exact certified head uses those counterguards rather than a fact-only re-query,
+which cannot establish an unmaterialized lazy conclusion.
+
 A datum on a lazy rule's antecedent predicate owes a re-join to each rule whose join
 proves what the lazy rule concludes (`chain/lazy-readers`), by the route a computed
 antecedent's source takes (`chain/owe-computed-rejoins`), keeping past the lazy
-antecedent the rows that rest on an owing positive datum. A join state resting on no
-owing datum proves the lazy literal from those datums alone (`chain/delta-lazy-rows`):
-each is matched at each of the lazy rule's antecedents, and the others are joined from
-there. A lazy rule with an antecedent the matcher does not answer alone, or a datum read
+antecedent the rows that rest on an owing positive datum. A chaining run reads the record
+of each such rule once, however many of its datums owe the rule a re-join
+(`record_fetch_cost_test/a-run-reads-each-reader-of-a-lazy-conclusion-once`). A join
+state resting on no owing datum proves the lazy literal from those datums alone
+(`chain/delta-lazy-rows`): each is matched at each of the lazy rule's antecedents, and the
+others are joined from there. The re-join reads each owing datum's record once
+(`chain/delta-facts`), whatever the number of join states and lazy rules it proves the
+literal for
+(`record_fetch_cost_test/a-lazy-reader-s-batch-re-join-reads-each-owing-membership-once`).
+A lazy rule with an antecedent the matcher does not answer alone, or a datum read
 in another argument order, is joined in full instead. The re-joins are owed per
 settle: a write outside a batch runs them at the end of its own chaining run, and inside
 a `with-deferred-settle` batch they collect in `chain/*batch-rejoins*` and the closing
@@ -198,6 +212,122 @@ literal puts at the `nonempty` argument bound to each type
   departs. The `genl-edge-beside-lazy-reader-members` perf check holds the cost of an
   edge that moves no reader flat in the lazy rule's extent.
 - `edit-records!` refuses a direction onto or off `:lazy-forward`.
+
+### A rule that stores one justification per conclusion
+
+`(set/oneJustificationRule <rule>)` adds `:one-justification` to the rule's `:engines`,
+beside its direction wrapper's, and the rule-extent index files the rule under it
+(`special/one-justification-rules`). Such a rule is a **tagged rule**. A forward firing of
+a tagged rule places nothing when a stored justification of the same rule for the same
+conclusion covers it (`chain/covers?`, `chain/covering-justification`). The conclusion is
+stored at the firing's placement context, or at a `genlCx` ancestor of it where the
+conclusion is held at every reader (`res/held-everywhere?`). A covering justification
+meets three conditions:
+
+- the stored justification is valid: `jtms/justification-confers` answers its class;
+- it outranks the firing: it confers a higher class, or the same class with a content key
+  at or below the firing's;
+- each of its antecedents outside the firing's is held at every reader
+  (`res/held-everywhere?`): IN, and no placed `defeat` or `except` hides it anywhere.
+
+A firing's content key (`chain/firing-key`) is the `[sentence context]` of each
+antecedent other than the rule, greatest first under `nm/compare-form`. A firing that
+outranks a stored one replaces it: `chain/drop-outranked-firings!` drops each stored
+justification of the rule for the conclusion that the new one covers. A conclusion
+holding one justification of the rule holds the one of highest class and, within that
+class, of lowest content key. A justification stored while a defeat or an `except` held
+two readers apart stays when the split ends, so a conclusion can hold more than one. The
+belief check below also keeps more than one.
+
+Each placement of a tagged rule's firing owes the settle a drop at its conclusion
+(`chain/note-owed-drop!`, the `:owed-drops` queue). The settle makes the owed drops in the
+content order of the conclusions (`chain/run-owed-drops!`), at its start and in each pass.
+The start comes before the settle decides whether it owes a pass, so an owed drop does not
+stop a settle that owes nothing from skipping its passes. The conclusion's
+highest-ranked justification drops each justification of the rule it covers, at the
+conclusion and at the same sentence stored at a context below the conclusion's
+(`chain/lower-conclusions`). The lower drops need the conclusion held at every reader, as
+the cover does. A drop the belief check refuses stays owed, and each settle tries it
+again. A throw during the owed drops leaves the drop it interrupted and each later one
+owed. A write a throw can take back makes no drop (`chain/*drop-covered?*`): an `assert`,
+`edit!`'s adds, a bounded `retract!`'s suspend phase and a `preview`. Each drop stays owed
+for the settle that follows the last point the write can refuse at:
+`core/make-owed-drops!` after an `assert`'s settle and write check, `edit!`'s committed
+phase and `retract!`'s teardown. A rollback puts the owed set back
+([preview.md](preview.md#what-the-rollback-restores-and-what-it-does-not)) and finds each
+justification a drop covers at the handle it had.
+`recover` owes a drop at every conclusion of a tagged rule
+(`chain/owe-tagged-drops!`), and a reasoning image carries the queue.
+
+The belief check in `drop-outranked-firings!` drops nothing unless the conclusion stays
+believed on the new justification alone, which `jtms/grounded-in-region` answers with the
+conclusion's other justifications read as invalid. A new justification can rest on its
+own conclusion through another tagged rule's conclusion: two combined kinds of the same
+parts each satisfy both antecedents of the other's rule. Dropping the justifications over
+the parts would leave each conclusion resting on the other alone, and both go OUT
+(`intersection_test`'s `two-tagged-conclusions-over-each-other-stay-believed`).
+
+A drop that removes justifications tries the drop again at each conclusion a removed
+justification rested on, with that conclusion's highest-ranked stored justification
+(`chain/drop-outranked-and-retry!`). The belief check can have refused the drop there
+because the removed justification closed a cycle through the conclusion. CxUniverse holds
+such a cycle for a quoted sentence: in content order, `closed_predication` first rests on
+a justification over `closed_literal`, and a later firing over `declined_rule_macro` alone
+removes it (`intersection_test`'s
+`a-drop-refused-over-a-cycle-is-made-once-the-other-conclusion-drops-the-cycle`,
+`late_route_test`'s `the-starter-in-authored-and-content-order-holds-the-same-justifications`).
+A premise or an untagged firing that gives the other conclusion support lets the next
+settle make the drop (`intersection_test`'s
+`a-refused-drop-is-made-once-a-premise-grounds-the-other-conclusion`). When the
+highest-ranked justifications of two conclusions rest on each other, the conclusion whose
+drop comes second also keeps a justification that does not rest on the other. Which of the
+two holds more than one justification then depends on arrival order, and their belief is
+the same in every arrival order.
+
+The check runs at two points. `place-conseq` runs it per firing. `fire-rules-for` runs it
+once per trigger before the join (`chain/trigger-covered?`), when the consequent is
+ground under the trigger's bindings and no `except` is stored. The check reads the
+conclusion at the rule's context, the trigger's, and their ancestors. A justification
+there that covers a firing over the trigger alone covers every firing the trigger can
+make: that firing's class bounds theirs from above, and its content key bounds theirs
+from below. Every placement context sees
+both contexts, so the trigger check holds the conclusion there to `res/held-everywhere?`
+as well. A join's states are placed by class and then by content key
+(`chain/strongest-first`), so the first placement covers most of the rest. A firing
+placed below a covering conclusion stores no justification in any arrival order
+(`intersection_test`'s `a-firing-below-a-covering-conclusion-is-stored-in-no-arrival-order`).
+
+A withheld firing is found again when the stored justification stops covering it.
+`settle` asks the rule again for the conclusion (`chain/reask!`, the consequent bound to
+the conclusion) when the stored justification:
+
+- goes OUT or loses a class through an antecedent (`jtms/touched-down`);
+- rests on a handle a placed defeat moved at its own context, or on the target of a
+  defeat stored, removed or relabelled (`special/recheck-defeat-target`);
+- rests on a handle an `except` arrived for or left (`special/recheck-except`);
+- concludes a handle a defeat or an `except` targets, since a conclusion it hides at a
+  reader covers no firing placed below it;
+- is removed: `integrate/apply-removals!` and `core/retract-storage!` read the record
+  before deleting it;
+- is newly blocked.
+
+A datum whose class rose (`jtms/touched-up`) fires the tagged rules over it again
+(`chain/reask-raised!`), so a withheld firing it raises above the stored one replaces it.
+The re-asks queue on `:except-moves`' `:reask` and `settle/reask-seeds` drains them,
+reading each `[handle class]` move once a settle. A re-ask joins under one conclusion's
+bindings, so it can find a firing that matched no stored fact and no closure link. Such a
+firing rests on provers alone, and no trigger makes it: CxUniverse's provers answer
+`closed_expression` and `predication` for any quoted sentence. The re-ask places such a
+firing only when the rule's unbound join finds a firing of that kind under the same
+bindings (`intersection_test`'s `a-re-ask-places-no-firing-that-rests-on-provers-alone`).
+
+A reader believes what it believes under the unwrapped rule, at the same class:
+`intersection_test`'s `a-tagged-rule-reads-as-the-untagged-rule-at-every-reader`
+compares the two at three readers in sampled orders and after a retraction.
+CxUniverse's intersection generator wraps the membership rule it generates, since a
+thing stated in k subtypes of each part matches that rule over k² pairs. The
+`tagged-rule-over-typed-terms` perf check holds a membership's cost flat from 2 to 16
+subtypes per part, measured 0.93x; the unwrapped rule measured 2.48x there.
 
 ## Forward chaining
 
@@ -374,16 +504,16 @@ three points:
 A join that tests a condition is not cut: an `exceptWhen` guard and `why-not` join
 through `solve-rule`. Once reached, the bound stays reached.
 
-**A write the bound ends is rolled back.** `assert`, `try-assert`, `assert-rule` and the
-adds of `edit!` and `edit-with-consequences!` run their chaining inside
-`chain/*rollback-scope*`, where a run that reaches the bound throws `:interrupted`, with
-`:bound` naming `:max-ms`, `:stop?` or `:max-derivations`. The throw takes the path every
-refusal takes (`undoing-refusal`, `edit!`'s batch rollback, the path a shutdown-stopped
-write takes): the audited premises are retracted, their consequences torn down, and the
-ledgers and the refusal record put back, so the store and belief are as the write found
-them, the handle counter aside. A throw from `:on-progress` takes the same rollback. The
-interrupt is the caller's own cancel and not a judgement on the content, and the same write
-with a larger bound or none stores what it would have stored.
+**A write the bound ends is rolled back.** `assert`, `try-assert`, `assert-rule`, the adds
+of `edit!` and `edit-with-consequences!`, and a bounded `retract!`'s suspend phase run their
+chaining inside `chain/*rollback-scope*`, where a run that reaches the bound throws
+`:interrupted`, with `:bound` naming `:max-ms`, `:stop?` or `:max-derivations`. The throw
+takes the path every refusal takes (`undoing-refusal`, `edit!`'s batch rollback, the path
+a shutdown-stopped write takes): the audited premises are retracted, their consequences
+torn down, and the ledgers and the refusal record put back, so the store and belief are as
+the write found them, the handle counter aside. A throw from `:on-progress` takes the same
+rollback. The interrupt is the caller's own cancel and not a judgement on the content, and
+the same write with a larger bound or none stores what it would have stored.
 
 - `assert-many` takes the bound for the whole call. It reads the bound and the heap mark
   before each sentence (`chain/check-stop!`), since under `:chain? false` an assert runs no
@@ -394,8 +524,12 @@ with a larger bound or none stores what it would have stored.
 - `bulk-assert-facts!` chains nothing, so it reads the bound and the heap mark before
   each fact (`chain/check-stop!`). On a stop the facts before it stay, the closing settle
   runs, and the call throws `:interrupted` with `:stored`, as `assert-many` does.
-- `edit!` honours the bound until its first removal. Past that point the batch is
-  committed, as it is against a shutdown, and the removals and the settle run unbounded.
+- `edit!` honours the bound until its first deletion. Under a bound, after the adds and
+  the removals' refusals, it suspends the removed premises and settles, as `retract!` does
+  below, and a stop there rolls the whole batch back (`:in :remove`). The bound is read
+  once more after that settle (`chain/check-stop!`), so a stop asked while nothing chained
+  rolls the batch back too. Past that point the batch is committed, as it is against a
+  shutdown, and the deletions and the settle run unbounded.
 - `forward-chain` takes `:on-stop`. Under `:rollback`, the default, it runs inside
   `chain/*rollback-scope*` as a write does: a run that `:max-ms`, `:stop?`,
   `:max-derivations` or an `:on-progress` throw ends throws `:interrupted` (`:bound
@@ -410,8 +544,20 @@ with a larger bound or none stores what it would have stored.
   derive, and the conclusion stays believed until a complete run derives the defeater. A later `forward-chain` with no bound joins from
   every believed sentex and completes the closure. The catalog loader, the browser's chain
   job and the generator pass `:keep`.
-- `retract!` and `settle-record-edits!` take no bound: a removal is the half no rollback
-  puts back.
+- `retract!` honours the bound until its first deletion. Under a bound it first suspends
+  the premise, as `preview` does (`jtms/suspend-premise`), and settles as a write settles,
+  so the re-chain the removal releases runs before any record is deleted, and reads the
+  bound once more after that settle. A stop there restores the premise and removes every
+  record above the call's mark, and the rollback's settle re-chains what the first settle
+  swept, as a write's rollback does. The teardown
+  then deletes the records and settles, unbounded. With no bound, `retract!` deletes and
+  settles once. Belief after the call is the same either way; the handles differ for a
+  conclusion the release re-derives, which keeps its record under a bound and comes back
+  at a new handle without one.
+- `settle-record-edits!` honours the bound in its chain and re-chain steps only. A stop
+  there removes what those steps created and throws `:interrupted`. The record edits it
+  settles are already applied and stay; a second call over the same `:seeds` runs the
+  steps again ([storage.md](storage.md#editing-the-records-of-a-kb-without-belief)).
 
 A bound limits a call's new work only. A rollback, and a settle that closes a call after the
 bound ended its run, run unbounded (`chain/call-unbounded`). A rollback's settle re-chains
@@ -426,8 +572,8 @@ shutdown-stopped write does, and a logged frame holds the call without its bound
 chaining write to `VAELII_MAX_WRITE_MS` once an operator sets it
 ([operations.md](operations.md#operator)).
 
-**A run over a nearly full heap stops.** A collection that leaves the old generation
-over 92% sets `caches/heap-critical?`, through the heap mark every `open-kb` arms or through
+**A run over a nearly full heap stops.** A collection that leaves the old generation over
+92% sets `caches/heap-critical?`, through the heap mark every `open-kb` arms or through
 the memory-pressure guard ([caches.md](caches.md#the-heap-mark)). The agenda loop reads it
 before each datum, `derive-conclusion` before each firing, and `cut` before each join row
 under a bound (`chain/heap-check!`). Inside `chain/*rollback-scope*` each read throws
@@ -436,12 +582,12 @@ under a bound (`chain/heap-check!`). Inside `chain/*rollback-scope*` each read t
 nearly full heap would go on to an unbounded settle. A replay (`oplog/*replaying?*`) takes
 no heap stop, in a write, in `bulk-assert-facts!` or in a `forward-chain` frame
 (`chain/heap-stop?`), and runs each logged write to its end, as the logged write ran: the
-log holds a frame only for a write that ended without a stop. Every other run
-outside a rollback scope goes on, since stopping it would leave a removal or a recovery
-that nothing completes: a `retract!`'s settle, `edit!` past its first removal, a rollback
-and `recover`'s re-chains run to their end. This stop is the only one a run takes by
-default, and it prevents an `OutOfMemoryError` rather than judging a cost. No check reads
-the stack depth.
+log holds a frame only for a write that ended without a stop. Every other run outside a
+rollback scope goes on, since stopping it would leave a removal or a recovery that nothing
+completes. The teardown of a `retract!` or an `edit!`, a rollback and `recover`'s
+re-chains run to their end. This stop is the only one a
+run takes by default, and it prevents an `OutOfMemoryError` rather than judging a cost. No
+check reads the stack depth.
 
 ## Incremental rule matching (`vaelii.impl.rete`)
 
@@ -655,15 +801,21 @@ allocates nothing and is a large line in the W4 profile (~430k firings over ~66k
 conclusions at 1k). `jtms/*dedup-cache*`, which `chain/chain` binds for the length of a
 run and `chain/place-nogoods!` for a settle pass's placement, builds each conclusion's key
 set from `-supports` on the first ask and answers every later one in a single hash probe.
+Before that first ask, the check reads the asked justification's antecedent with the
+fewest dependents (`jtms/dependent-count`). When that antecedent has fewer dependents than
+the conclusion has supports (`jtms/support-count`), the check scans those dependents.
+`special/drop-replaced-routes!` reads the same antecedent, and `kb/defeat-walk` reads a
+conclusion's placed targets before its supports.
 
-That cache is one of three fast paths on the placement path, with the `ensure-node`
+That cache is one of four fast paths on the placement path, with the `ensure-node`
 no-op skip (a node already present at a depth no higher moves neither the network nor the
-change clock, so the scoped caches a run reads stay warm) and the single-context placement
-answer; `observe/*chain-fast-paths*` is the
-one switch over all three, and binding it **false** runs the reference paths instead.
-Each is a pure cost decision that computes exactly what its reference computes, which is
-what `chain_fast_paths_test` compares and what `vaelii.bench.pyramid`'s `-ref` modes
-measure. `handle_cache_test` is the regression test for the handle cache — its transparency, its
+change clock, so the scoped caches a run reads stay warm), the single-context placement
+answer, and the run's held answers to whether an except reaches a support
+(`jtms/*reach-memo*`, [contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree));
+`observe/*chain-fast-paths*` is the one switch over all four, and binding it **false** runs
+the reference paths instead. Each is a pure cost decision that computes exactly what its
+reference computes, which is what `chain_fast_paths_test` compares (`jtms_locality_test`
+for the reach answers) and what `vaelii.bench.pyramid`'s `-ref` modes measure. `handle_cache_test` is the regression test for the handle cache — its transparency, its
 three invalidation cases, and a join pyramid checked for exactly one justification per
 distinct witness. The two switches are independent, and the W4 fixpoint is
 content-identical under all four settings of the pair.
@@ -771,8 +923,10 @@ from `res/concluding-rule-handles`, the intersection `specs(pred) ∩
 rules-by-consequent` (iterate the small spec closure, probe the consequent index —
 bounded by the number of concluding rules, never the taxonomy), and both chainers
 (`prove` and the node engine) unify the goal against the consequent with
-`res/subsuming-unify` — `match1` with the roles swapped, binding the goal variable to
-the subtype instance. Exact-functor and inert cases still degenerate to a plain
+`res/subsuming-unifiers`: `res/subsuming-unify`, which is `match1` with the roles
+swapped and binds the goal variable to the subtype instance, over every argument order
+the consequent's permuting marks allow
+([canonicalization.md](canonicalization.md#a-rule-head-matched-in-every-order)). Exact-functor and inert cases still degenerate to a plain
 `unify`. A supertype-concluding rule does **not** answer a subtype goal (the
 one-wayness again), and the whole thing follows belief through the same closure. The
 negative mirror holds here too: a rule concluding `(not (animal ?x))` answers the goal
@@ -812,6 +966,17 @@ justification holds the membership and the path's edge supporters. A climb is a
 every supporter of every edge on every path from `s` to `q` is `:monotonic`: such a climb
 holds at every reader and owes no reading.
 
+A climb also stores a reading of each type `t` between `s` and `q` that reaches `q` over a
+path of `:monotonic` edges, where no `:monotonic` path from `s` to `t` is seen. That path
+contraposes the conviction to `t`, so the reading of `t` is the one a `:default` edge
+below it draws. With `(genl beast mortal)` at `:default` and `(genl mortal perishing)` at
+`:monotonic`, a denial of `(perishing Hydra)` stores `(mortal Hydra)` and `(perishing
+Hydra)` as readings. The membership nogood of `(mortal Hydra)` and the denial undercuts the
+first. `(mortal Hydra)` answers false and `(not (mortal Hydra))` true. With both edges
+at `:default`, only `(perishing Hydra)` is read, and `(mortal Hydra)` stands. A type with
+both a `:monotonic` and a `:default` path to `q` is read at each placement that sees the
+`:monotonic` one.
+
 The reading's convicting members undercut it (`chain/edge-reading-defeat-placements`).
 Each stored denial of `(q x)` places a guard defeat of the reading at the maximal contexts
 that see both, resting on the denial and the reading's antecedents. Each membership nogood
@@ -832,9 +997,10 @@ The fan and the chainer read the reading instead of the membership.
 reading of `(q x)` rests on the match and the reader sees no `:monotonic` path
 (`without-edge-read-matches`). A forward firing through the link is placed only where a
 `:monotonic` path is seen (`chain/edge-read-links`), so a rule on `(q ?x)` fires on the
-reading and follows its undercut. A reading leaves with its denial, its membership or its
-edge, and its membership is re-chained so that the firings through the link are placed
-again. `constraint_nogood_test` holds each claim in every arrival order at both strengths
+reading and follows its undercut. A guard defeat through the link is placed the same way
+(`chain/guard-solution-placements`), so an `exceptWhen` on `(q ?x)` holds where the reading
+holds. A reading leaves with its denial, its membership or its edge, and its membership is
+re-chained so that the firings through the link are placed again. `constraint_nogood_test` holds each claim in every arrival order at both strengths
 of the convicting member.
 
 ### `genlInverse`: the fan with the arguments swapped
@@ -855,8 +1021,18 @@ predicates reached at even parity, which are read as written, and those reached 
 parity, which are read with the two arguments exchanged. So a chain swaps exactly when it
 holds an odd number of `genlInverse` edges, and two of them in a row answer what one
 `genl` edge answers. `res/sub-predicates` and `res/super-predicates` are the even sets,
-`res/swapped-sub-predicates` and `res/swapped-super-predicates` the odd ones. A KB
-declaring no `genlInverse` reads the `genl` closure itself, one map read deciding it.
+`res/swapped-sub-predicates` and `res/swapped-super-predicates` the odd ones.
+
+The walk reads an `(inverse P Q)` declaration's flat-cache entry as the two edges `P → Q`
+and `Q → P`. A `genlInverse` edge or either of these is a **swap edge** (`tax/swap-hop`),
+and the parity counts swap edges. Under `(inverse childOf parentOf)`, a stored `(childOf
+C0 P0)` therefore satisfies a forward rule's `(parentOf ?p ?c)` antecedent in every
+arrival order, and the firing's justification names the `inverse` declaration where it
+names a `genlInverse` edge. `provers/InverseProver` still answers a goal the partner
+answers through another prover, a declared-transitive partner's closure among them. A KB
+declaring no `genlInverse` and no `inverse` reads the `genl` closure itself, two map reads
+deciding it (`tax/swap-free?`). The `inverse-partner-fact-beside-rules` perf check holds the
+cost of a partner's fact flat in the forward rules on unrelated predicates.
 
 Every reader of the fan takes the swap from those two sets:
 
@@ -866,18 +1042,32 @@ Every reader of the fan takes the swap from those two sets:
   arguments exchanged, positive against the spec set and negated against the
   contrapositive set.
   The contrapositive is the same as `genl`'s: a stored `(not (parentOf Tom Bob))` answers
-  `(not (childOf Bob Tom))`.
+  `(not (childOf Bob Tom))`. A fact the fan reaches both as written and swapped binds once
+  per reading at the trigger (`res/match1-readings`), as it does at the join.
 - `rules/trigger-keys` and `res/concluding-rule-handles` read both sets.
 - `chain/subsumption-links` records the parity a link was reached at, and
-  `tax/signed-reach-support` names one supporter per `genl` and `genlInverse` edge along
-  the path with the fewest `genlInverse` edges. The firing's justification therefore names
-  the `genlInverse` edges as it names `genl` ones. A default edge caps the conclusion at
+  `tax/signed-reach-support` names one supporter per `genl` and swap edge along the path
+  with the fewest swap edges. The firing's justification therefore names the swap edges
+  as it names `genl` ones. A match whose bindings read the fact only swapped records its
+  odd-parity link where it is made (`chain/matched-entry`). The reading therefore picks
+  the path even where the two predicates are one, under `(inverse P P)`, or are also
+  related by `genl`. A default edge caps the conclusion at
   `:default`, and an `except` on the edge hides the swapped reading from the context
   holding the except.
-- `special/subsumption-seeds` re-seeds the facts a `genlInverse` edge newly brings under
-  a rule, so a conclusion does not depend on whether the edge or the fact arrived last.
+- `special/subsumption-seeds` re-seeds the facts a swap edge newly brings under a rule,
+  so a conclusion does not depend on whether the edge or the fact arrived last. A
+  retracted swap edge re-seeds the same facts (`special/witness-edge?`), as a retracted
+  `genl` edge does, so a firing that named it is drawn again over a second route.
+- A defeated or excepted swap edge stays IN in the network, and the read walk's
+  second-route search (`except/rerouted`) keeps a firing that named it where a second
+  route licenses the reading. The search instantiates the goal of a literal read across
+  an odd number of swap edges with the claim's two arguments exchanged
+  (`inherit/firing-goals`), and its backward search starts from the predicates holding a
+  fact with either argument first (`inherit/stated-reached?`). Swap edges join the witness
+  paths of a firing with no goal, a negated literal's included, and a path crossing them
+  is reached through the scoped signed closure (`except/witness-paths`).
 
-Five readers take less than the full swap, and each is recorded here:
+Four readers take less than the full swap, and each is recorded here:
 
 - `res/matches-hierarchical` hands a binary literal with a swapped spec to the reference
   fan-out, since its argument-root reads do not exchange arguments. The answer is the
@@ -888,8 +1078,6 @@ Five readers take less than the full swap, and each is recorded here:
   link once, over the route with the fewest `genlInverse` edges, where a `genl` link
   places it once per uncovered route. The witness of such a link is not held in
   `*witnesses*`, because it reads the flat cache that the `genl` read scope does not key.
-- A predicate reached both by `genl` and by `genlInverse` from one antecedent is
-  witnessed over its `genl` path, whichever reading the match took.
 - The probe-size estimate in `inherit/extent-size` counts the even fan only.
 
 This is the predicate dimension of the hierarchical query `(p a ?x)@c`; the context
@@ -1017,7 +1205,12 @@ forward chaining agree about the rule.
   the `sibling_disjoint` mark) are antecedents, one believed supporter per declaration.
   The `genl` subsumptions the route climbs are closure links, placed and named as the
   closure arm's are. Retracting the cover declaration or an edge of the named path withdraws the
-  firing, and the re-join below re-derives it over a second path.
+  firing, and the re-join below re-derives it over a second path. A route over the stated
+  sentence that climbs no subsumption is left to the matcher. That covers the sentence read
+  mirrored while a mark licenses the read, and the matcher's firing names the mark.
+  Withdrawing that mark respells the row as stated, and the matcher fires on it directly
+  with no mark among the antecedents
+  (`withdrawing-the-symmetric-mark-respells-the-pair-and-the-firing-stays-in`).
 - **An exception or a `genl` edge blocks at the conclusion's context.** The join reads
   no `siblingDisjointException`, and a mark spares two types one of which is a `genl` of
   the other. A firing whose conclusion's context reads the pair not separated, with no
@@ -1095,6 +1288,81 @@ Tom)` forward, as `prove` answers it backward.
 
 `closure_join_test` asserts the arrival orders, the withdrawal by each ingredient, the
 `:monotonic` edge rule on both sides, the exception, and an edge between two marked types.
+
+## A type an application's function declares
+
+`ResultTypeProver` answers `(k (F a…))` from `F`'s `(result F t)` and `(resultArg F n)`
+declarations ([nat.md](nat.md)), and no stored fact holds the membership of an application
+that is never minted, such as `(YearFn 2000)`. A forward join answers the same literal
+(`chain/result-type-antecedent?`): `chain/solve-result-type` reads the stored declarations
+of the application's function and yields one solution per declaration whose type is `k` or
+below it in the global `genl` closure. The declaration is the firing's antecedent, and a
+type below `k` goes on the firing as a closure link, so placement witnesses the edges as it
+does for a matched sub-type fact. The arm answers a ground application only, and the
+planner holds a written application until its variables are bound
+(`chain/result-type-est`). A declaration or a `genl` edge arriving re-joins the rules
+with an antecedent written over the application (the table in [Full re-joins on an arriving datum](#full-re-joins-on-an-arriving-datum-chainrejoin-in-full)).
+
+An antecedent written `(k ?x)` reads the declarations too, over the applications the KB
+mentions. The arm reads the antecedent as the rule writes it (`written-antecedent`).
+Bound to an application, the literal answers from the declarations. Unbound, it yields
+each ground application of a function a declaration types at or below `k` that a believed
+stored fact mentions (`chain/mentioned-applications`), beside the stored members the
+matcher yields. The arm reads a `(k ?x)` only when a stored declaration types an
+application at or below `k`. `chain/result-type-uppers` holds those types: each `t` of a
+`(result F t)`, each symbol at a `resultArg` position of an application a stored fact uses,
+and every type above one. It reads no belief and is resident by the change clock. It reads
+the `resultArg` symbols off the application-argument index
+([indexing.md](indexing.md#the-application-arguments)), one name-set read per
+declaration, whatever the count of facts using the function's applications (`lein perf`'s
+`result-arg-re-mention`). The index counts an attitude's payload as a use, so the set can
+hold a type no answer of the arm reaches, and the arm then answers nothing. Any other `(k ?x)` is a matched
+literal, as on a KB with no result declaration, and a rule over it pages no declaration
+(`record_fetch_cost_test/a-type-antecedent-no-declared-type-reaches-pages-no-declaration-per-rule`).
+Either answer owes a mention of the application (`chain/owe-mention`), which
+`planned-join` settles on each row (`chain/settle-owed-mentions`). A row whose handles
+already hold a fact naming the application stands. Any other row takes one row per
+mentioning fact, which joins the firing's antecedents. The firing therefore goes with the
+last fact that mentions its application, and a rule whose type literal is its only binder,
+`(time ?t) → (timeOf ?t ?t)`, stores one conclusion per mentioned calendar term. The
+planner holds the literal until another antecedent binds `?x`, ranked or not
+(`:end-vars`), when one that is neither an open type literal nor computed can. A firing
+so reads the mentions of the applications its trigger reaches and no other
+(`context_nat_test/a-link-to-the-calendar-reads-no-other-fact-naming-a-time-in-the-month`).
+A mention is a use as `named_application` reads one: the payload of a `natFormula` or
+`rewriteOf` fact, a quoting function's arguments and a modal attitude's payload are
+syntax, so none of them is a mention.
+
+Three arrivals start the joins no trigger reaches (`chain/result-type-seeds`), each
+binding `?x` to an application with its mentions as the candidates the settle reads:
+
+| datum | rules joined | over |
+|---|---|---|
+| a fact mentioning an application `(F a…)` | a `(k ?x)` antecedent with `k` at or above a type `F`'s declarations give it | that application, the fact its mention |
+| a `(result F t)` or `(resultArg F n)` declaration | the same | each mentioned application of `F` |
+| a `genl` edge or cover installing `[s t]` | a `(k ?x)` antecedent with `k` at or above `t` | each mentioned application of a type at or below `s` |
+
+A mention starts only the rules over its application's declared types, and a declaration
+starts only the mentions of its function, so the work an arrival adds grows with those
+rules and mentions, not with the KB. A fact holding an application first reads three O(1)
+counts (`nat-read/any-result-declarations?`) on every KB, the `:compound` budget in
+`assert_cost_test`. An edge first reads the rules on `t`, the read its re-join takes. An
+edge whose `s` no declared type reaches reads no mention (`chain/result-type-uppers`).
+`computed_support_test` asserts each ingredient
+arriving last, the withdrawal by the declaration, by the edge and by the last mention, and
+both variable forms in every arrival order.
+
+A fact naming a fresh calendar term `T` stores three sentexes: the fact, `(timeOf T T)` and
+`(uninterrupted_time T)`, the three a stated `(time_point X)` stores. Each further fact
+naming `T` re-joins the rules over its declared types and adds one justification to each
+conclusion they place, so `(timeOf T T)` holds one support per fact naming `T`. Adding the
+nth support reads the dependents of the justification's rarest antecedent, not the n−1
+supports before it ([What a run pays per witness](#what-a-run-pays-per-witness-chainagenda-arrivals)).
+At n = 100, 1000 and 2000 the nth fact reads one support, three dependents and six
+justifications from the network. `lein perf`'s `calendar-re-mention` holds the 4000th fact naming one
+moment to the cost of the 100th
+(`computed_support_test/a-conclusion-rests-once-on-each-mention-in-every-order-and-after-a-retraction`
+holds the count of supports).
 
 ## Backward chaining
 
@@ -1192,8 +1460,8 @@ Four things about the structure of it:
 expands no rule and reads belief.
 
 Both engines find a goal's candidate rules through `res/concluding-rule-handles` —
-the consequent index over the goal functor's spec closure, plus the variable-consequent
-catch-all. A goal whose **functor is a variable**, `(?p Tom ?y)`, names no bucket and
+the consequent index over the goal functor's spec closure, narrowed by the goal's argument
+heads, plus the variable-consequent catch-all. A goal whose **functor is a variable**, `(?p Tom ?y)`, names no bucket and
 any rule may conclude it, so there the candidates are every rule, enumerated off the
 antecedent index, and `subsuming-unify` binds `?p` per rule to the consequent's
 functor ([indexing.md](indexing.md), "The rule index"). Fact matching already answers
@@ -1244,6 +1512,12 @@ answerable by transitivity, an evaluable, a calculus or an inferred argument typ
 backward search never finds less than `ask` does for the literal it stops at. There is no
 chainer that exists only to reach the registry, and neither leaf itself expands a rule.
 [why](defenses.md#the-leaf-must-never-itself-backchain)
+
+Public positive `rewriteOf` rule heads use the same representative normalization as fact reads.
+Both engines bind the raw rule body first, then compare the head's canonical endpoints
+with the caller's goal before dependent guards or conjuncts consume its outputs. This
+also covers a variable-predicate head whose body selects `rewriteOf`. The binding step
+is internal search state, not a stored fact or an extra antecedent in a proof tree.
 
 **Conjunct order is not a thing either of them can observe.** A rule's antecedents are
 put into canonical order at *storage* (`sentex/canonicalize-rule`), so the same rule
@@ -2274,10 +2548,12 @@ placed by readiness rather than by cost, the first two exactly as
   and every argument of any other prover (`provers/input-vars`).
 - **a literal the caller names by `:end-vars`** answers in full only once one end is
   bound: the forward join's `genl` / `genlCx` and `disjoint` antecedent with both ends
-  open ([above](#a-genl--genlcx-antecedent-reads-the-closure)). It runs right after the
-  first generator that binds one of its ends, or after the recursive literal when only
-  that binds one; one that no other literal can bind keeps its place among the
-  generators.
+  open ([above](#a-genl--genlcx-antecedent-reads-the-closure)). Its `(k ?x)` type
+  antecedent with `?x` open reads every mentioned application, so it is named too when a
+  generator binds `?x` that is neither such a literal nor costed at `plan/unbounded`. The
+  literal runs right after the first generator that binds one of its ends, or after the
+  recursive literal when only that binds one; one that no other literal can bind keeps
+  its place among the generators.
 - **a closed-extent negative literal** (`rules/closed-extent-antecedents`: a `(not (P
   …))` every variable of which a generator binds, over a predicate a closed extent is
   declared on) is placed as a deferred literal. Under the grant `ClosedExtentProver`
@@ -2445,6 +2721,7 @@ Each of these datums re-joins the rules it moved, in full and not at a trigger p
 | a datum on a predicate a `SupportingProver` reads | `special/computed-reading-rules` | |
 | a datum on a lazy-forward rule's antecedent predicate, or the lazy rule itself | an antecedent on the functor the lazy rule concludes, and on through the lazy rules among those | `lazy-readers` |
 | a preservation declaration or its reach | `inherit/rejoin-rules` | |
+| a `(result F t)` or `(resultArg F n)` declaration, or a `(genl s t)` edge | an antecedent `(k (F a…))` over `F` with `k` at or above `t`, over `F` at any `k`, or with `k` at or above `t` | `result-type-rejoin-rules` |
 
 `bfn` is the functor of the sentence's underlying body, so a believed `(not (causes B C))`
 reaches `transitive-rejoin-rules` too. Each arm is bounded by the rules with an antecedent
@@ -2629,6 +2906,21 @@ queues the rules over a kind a length moves for a re-check of every firing and a
 memberships beside those of the sources (`provers/stated-kind-handles`), so a membership
 stated in a context of its own classifies the form for that context's readers.
 
+**A block of open kind literals is joined once per lead.** A rule such as the unary
+intersection rule `(implies (and (closed_expression ?x) (predication ?x)) (C ?x))` has
+two kind antecedents on one variable and nothing else to bind it. A join runs one of them
+first with `?x` open, where `ExpressionKindProver` answers nothing, so that literal reads
+only its stored memberships, and a member it holds only by the form's spelling is lost
+to that join. When every literal of a block is such an open kind literal
+(`provers/open-kind-goal?`), `chain/planned-join` runs one join led by each literal
+(`chain/computed-leads`). It unions the rows on their bindings, handles, pairing and
+reading. The firings are then the same whichever literal a plan would run first. A lead
+reads its stored rows alone. Another `SupportingProver` can answer a literal of the block
+while `?x` is open, at the source contexts (`provers/open-kind-unanswered?` fails). The
+join then runs in plan order as well and unions those rows too. Under the constraint-only
+reading, `ArgTypeProver` answers `(closed_expression ?x)` from `(arg means 1
+closed_expression)`.
+
 **`NonemptyProver` reads every membership.** It answers `(nonempty C)`, C a type, when a
 membership of C, or of a type S below C, is believed in a context the asking context
 sees. The support is the content-least such membership and, for a member of S, one
@@ -2761,7 +3053,8 @@ taking the far conclusion and leaving the near one, and both arrival orders.
   rather than compared with a built `#{f}`).
 - **`concludes?`** reads the variable-consequent bucket first, then each spec's bucket until one
   holds a rule, in every context. `concluding-rule-handles` costs one probe per spec (364 for a type
-  with 364 subtypes), sized by the taxonomy and not the rule count. A ground `(different A B)` under
+  with 364 subtypes), sized by the taxonomy and not the rule count, and for a goal with argument
+  heads one more per spec and head ([indexing.md](indexing.md#3-the-rule-index)). A ground `(different A B)` under
   3,054 sub-predicates took 12 ms built as a whole set.
 - **`matches-visible` cache key.** The key holds the literal (alpha-renamed), the change clock,
   all three retrieval-strategy vars, `*belief-blind*`, `tax/*search*` and `tax/*network-belief*`.
@@ -2926,7 +3219,7 @@ Built-in provers (`default-provers`, held per-KB in an atom):
   The delegated list also drops the fact prover when every predicate in the goal's
   matching fan is symmetric at the reader: the fact read of `(pred a b)` already probed
   both orders of each, so a symmetric goal reads the store once. A sub-predicate that is
-  not symmetric there (`disjoint` under `diachronicallyDisjoint`) keeps the mirror's fact
+  not symmetric there (`parentOf` under `kinOf`) keeps the mirror's fact
   read, since its stored `(q b a)` answers `(pred b a)` and not `(pred a b)`.
   `InverseProver` does the same with a partner spelling, and the two compose.
   `*mirror-depth*` bounds the re-entry at two levels — the mirror of a mirror is the
@@ -3275,11 +3568,6 @@ reasoning. Raw introspection still sees everything.
   inputs move are retouched; the region itself is not narrowed below the closure.
 - **There is no beta network** over the alpha memories, so a repeated multi-way join is
   re-joined per firing (see "Incremental rule matching").
-- **A forward rule's antecedent does not join an `inverse` partner's facts.** With
-  `(inverse childOf parentOf)` and `(childOf C0 P0)` stored, `ask?` answers `(parentOf P0
-  C0)` through `provers/InverseProver`, and a forward rule with a `(parentOf ?p ?c)`
-  antecedent fires on no `childOf` fact. The forward join reads `inverse` only inside a
-  transitive walk (`chain/transitive-source-preds`).
 - **A forward rule on a super-predicate does not read a declaring sub-predicate's row
   through a mention probe.** `ask` of the super-predicate probes the sub-predicate's
   spellings (`res/fan-mention-probes`); the forward trigger and join probe the

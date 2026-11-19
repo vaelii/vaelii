@@ -396,7 +396,7 @@
 (deftest an-instant-term-has-one-canonical-shape-per-moment
   (testing "an instant term is one canonical shape per moment"
     (is (= '(InstantFn 2000 1 1 0 0 0) (dt/instant-term [2000 1 1 0 0 0])))
-    (is (= [2000 1 1 0 0 0] (dt/instant-fields '(InstantFn 2000 1 1 0 0 0))))
+    (is (= [2000 1 1 0 0 0 0] (dt/instant-fields '(InstantFn 2000 1 1 0 0 0))))
     (is (nil? (dt/instant-fields '(InstantFn 2000 1 1))))
     (is (nil? (dt/instant-fields '(InstantFn 2000 2 30 0 0 0))))
     (is (nil? (dt/instant-fields '(YearFn 2000))))))

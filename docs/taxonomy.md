@@ -724,8 +724,8 @@ flat caches too: `disjoint`, the disjoint metatypes and their
 members, the `sibling_disjoint` marks and their exemptions, the `covering` /
 `separating` / `partition` declarations, the predicate properties
 (`transitive`/`symmetric`/`asymmetric`/`reflexive`/`functional`), `inverse`, the
-declared `arity`, the `functionalInArg` positions and the commuting groups. Only `genlCx` is forced-decontextualized, so only it is guaranteed one
-sentex per claim; `(disjoint dog cat)` asserted in two contexts is two sentexes folding
+declared `arity`, the `functionalInArg` positions and the commuting groups. Only `genlCx`, `arity`, `arityMin` and the arity classes are forced-decontextualized, so only they
+are guaranteed one sentex per claim; `(disjoint dog cat)` asserted in two contexts is two sentexes folding
 into one cache entry with two supporters. `refresh-beliefs` reconciles each cache
 entry against belief after every
 relabel (the same call that reconciles the closures), reusing the same
@@ -1063,7 +1063,7 @@ Three mechanisms declare that types share no instance; all are closed under `gen
 - `(orthogonal X Y)` — states three things together: `X` and `Y` are not disjoint, `X` is
   not a `genl` of `Y`, and `Y` is not a `genl` of `X`. It does not say that anything is an
   instance of both, and it exempts the pair from no separation. Symmetric, so
-  `(orthogonal Y X)` is the same sentex, and forced monotonic. It derives nothing — no
+  `(orthogonal Y X)` is the same sentex. It derives nothing — no
   shared instance is minted for it — and fills no taxonomy cache. It is not inherited
   along `genl`: two overlapping types can have subtypes that share no instance, so
   `(orthogonal X Y)` says nothing of a subtype of `X` or `Y`, and a KB states each
@@ -1072,11 +1072,14 @@ Three mechanisms declare that types share no instance; all are closed under `gen
   **What contradicts it is a clash.** A separation of the pair a reader sees — a
   `disjoint`, a `partition` or `separating` declaration, a `disjoint_metatype` or a
   `sibling_disjoint` parent, over `X` and `Y` or over a supertype of each — a `genl` edge
-  between the two in either direction, or the one type named twice makes the declaration
-  a one-member nogood wherever a reader reads that
-  ([nmtms.md](nmtms.md#declarations-over-related-types)). The separation stays stored and
-  believed, and the membership nogood of an instance of both types stands wherever the
-  separation stands.
+  between the two in either direction, or the one type named twice is a clash of the
+  declaration wherever a reader reads that
+  ([nmtms.md](nmtms.md#declarations-over-related-types)). The verdict is read by strength.
+  A `:default` declaration against a `:default` separation or edge is a dilemma, and a
+  `:monotonic` separation or edge defeats a `:default` declaration. A `:monotonic`
+  declaration is a hard clash `conflicts` lists, whatever the class of what contradicts it.
+  The declaration defeats nothing: the separation stays stored and believed, and the
+  membership nogood of an instance of both types stands wherever the separation stands.
 
   **A `siblingDisjointException` states one too.** `core.txt` states
   `(genl siblingDisjointException orthogonal)`, so `ask` and `match` answer
@@ -1099,7 +1102,8 @@ Three mechanisms declare that types share no instance; all are closed under `gen
 
   **A stated `disjoint` is no mark.** A `(disjoint X Y)`, or a `disjoint` over a supertype
   of each, separates the pair whatever exception is stated, and contradicts the
-  exception through the orthogonal it entails: a one-member clash of the exception.
+  exception through the orthogonal it entails: a clash of the exception, read by strength
+  as an `orthogonal`'s is.
 
   **Pair-local, read against the separated pair.** The exemption spares `X`, `Y` alone,
   and each stays disjoint from everything else. A separation is found between a
@@ -1257,9 +1261,13 @@ closure, for the chain under a marked parent. `separation-routes`, which names t
 of a membership nogood over two separated types, reads the supertypes of each type cut to
 the separable types, and the whole closure only for the sibling arm.
 `membership/cover-routes` reads the covers above a held type through the covered wholes
-among its supertypes (`covers-over-global-fn`), not through the type's closure. A
-placement pass over the membership nogoods of many types therefore builds no held type's
-closure for these two reads (`lein perf`'s `recover-placement-braided-leaves`). Three
+among its supertypes (`covers-over-global-fn`), not through the type's closure.
+`chain/edge-readings-wanted` reads the types above a climb's held type that reach the
+climb's head over `:monotonic` edges through `genls-global-reaching-fn`. A pass holds one
+fn per head, so the climbs of the pass walk each type above their held types once (`lein
+perf`'s `recover-placement-walk`). A placement pass over the membership nogoods of many
+types therefore builds no held type's closure for these three reads (`lein perf`'s
+`recover-placement-braided-leaves`). Three
 reads still build a whole closure: `term-nogoods` builds each held type's closure when a
 denied type has more specializations than the term has types, the cover arms of
 `term-nogoods` and `cover-routes` build each cover part's closure, and the sibling arm
@@ -2007,8 +2015,9 @@ walk off the goal paths that ask `has-prop?` per goal.
   context can see where it lands (see [contexts.md](contexts.md)).
 - `(forced_decontextualized_predicate P)` — stronger: every `(P ...)` is *stored* in
   CxUniverse directly (its context forced there on assert, no justification). Declared
-  for `genlCx`, so the context topology has one canonical home (see
-  [contexts.md](contexts.md)).
+  for `genlCx`, so the context topology has one canonical home, and for `arity`,
+  `arityMin` and the arity classes, so a relation's length, floor and class have one record (see
+  [contexts.md](contexts.md#forced_decontextualized_predicate-a-canonical-home-in-cxuniverse)).
 
 Accessors: `has-prop?`, `inverse-of`, `props` (the set carrying a property). With a
 context, `has-prop?` and `inverse-of` answer from the declaring sentexes that context
@@ -2233,9 +2242,10 @@ reading.
 
 **One reading of an arity.** `arity/relation-length` answers what binds a relation's
 length, its own binding or the one exact length it inherits through `genl`, and the
-argument-position check, the inert-tuple test, `describe`, `admitsArgnum` and the
-undeclared-arity pass call it. `describe` reports the length as `:arity` and the
-predicate it is bound on as `:arity-via`. `arity/released?` reports a `variable_arity`
+argument-position check, the inert-tuple test, `describe` and `admitsArgnum` call it.
+The undeclared-arity pass reads `arity/own-length` instead: the length a relation is
+known to have of itself, with no `genl` closure read. `describe` reports the length as
+`:arity` and the predicate it is bound on as `:arity-via`. `arity/released?` reports a `variable_arity`
 membership stated in any context as the release, which `admitsArgnum` and the
 undeclared-arity pass read beside the length. An engine grammar term's length is its `:shape`
 (`vaelii.impl.predicates`): its argument count, or a floor at it for a shape with an
@@ -2269,8 +2279,10 @@ binding already stored, as `:violation :arity`. It also refuses a binding, a `ge
 or a `:monotonic` metatype membership or edge that would break the length of tuples
 already stored and believed (`arity/write-breaks`), and an `except` of a binding
 ([api.md](api.md#refusing-a-clash)). `core.txt`
-declares the fourteen binding functors `decontextualized_predicate`, so every binding has
+declares the twenty binding functors `decontextualized_predicate`, so every binding has
 a copy in CxUniverse ([contexts.md](contexts.md#what-the-shipped-ontology-declares-it-of)).
+Each is also `forced_decontextualized_predicate`, so a binding stated in
+any context is stored in CxUniverse.
 The length is read off the bindings of every context and the `genl` edges of every
 context, so a tuple is inert at every context, one that sees neither its binding nor the
 edges to it included.

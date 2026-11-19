@@ -100,18 +100,40 @@
        (or (some? (re-matches #"[a-z][a-z0-9_]*" (nm x)))
            (sense? x))))
 
+(defn term-role
+  "The naming role `term`'s spelling declares (`core/term-role`): nil for a `nat/`
+  constant, whose minted name declares none."
+  [term]
+  (cond
+    (sx/variable? term)  :variable
+    (number? term)       :number
+    (not (symbol? term)) nil
+    (lexeme? term)       :lexeme
+    (context? term)      :context
+    (reified-constant? term) nil
+    (individual? term)   :individual
+    (predicate? term)    :predicate
+    (sense? term)        :sense
+    (type-symbol? term)  :type
+    :else                nil))
+
 (defn predicate-spelled?
   "Is `x` spelled as a predicate of arity 2 or more: `predicate?` and not `type-symbol?`,
-  so camelCase with an interior capital?  A bare lowercase word answers false."
+  so camelCase with an interior capital?  A bare lowercase word and a `reified-constant?`
+  answer false."
   [x]
-  (and (predicate? x) (not (type-symbol? x))))
+  (and (predicate? x) (not (type-symbol? x)) (not (reified-constant? x))))
 
 (defn between-predicates?
-  "Does `literal` have an argument, every one of them `predicate-spelled?`: the literals a
-  `:forced-between-predicates` functor makes forced-monotonic (`decide/forced-literal?`),
-  and the opposed bodies the index files under `[:opposed-between f]`."
-  [literal]
-  (boolean (and (next literal) (every? predicate-spelled? (rest literal)))))
+  "Does `literal` have an argument, every one of them a predicate of arity 2 or more:
+  `predicate-spelled?`, or a `reified-constant?` that `relation?` answers true of, since a
+  minted name states no role.  The literals a `:forced-between-predicates` functor makes
+  forced-monotonic (`decide/forced-literal?`); with `relation?` `any?`, the opposed bodies
+  the index files under `[:opposed-between f]`."
+  [literal relation?]
+  (boolean (and (next literal)
+                (every? #(if (reified-constant? %) (relation? %) (predicate-spelled? %))
+                        (rest literal)))))
 
 (defn functor [sentence] (when (sequential? sentence) (first sentence)))
 (defn args    [sentence] (when (sequential? sentence) (rest sentence)))
@@ -257,7 +279,7 @@
       (= sx/default-rule-wrapper h)
       (= sx/assumption-rule-wrapper h)
       (contains? sx/constraint-rule-wrappers h)
-      (= sx/solve-rule-wrapper h)))
+      (contains? sx/modifier-wrappers h)))
 
 (defn- exception-query-conjuncts
   "The conjunct literals of an `exceptWhen` query, inside a `(set/monotonic Q)` wrapper
@@ -334,6 +356,28 @@
          (and (contains? '#{bravely cautiously} h) (= 2 n)) (applied-literals role (second form))
 
          :else [[role form]])))))
+
+(defn used-applications
+  "The ground applications headed by a symbol that `sentence` uses as terms, in an argument of a literal
+  (`applied-literals`), as a set.  A `sx/nat-quoting-predicates` literal's arguments and a
+  quoting function's arguments are mentions of syntax, and so is every argument but the
+  first of each application `attitude?` holds of."
+  [attitude? sentence]
+  (let [s (if (and (seq? sentence) (= sx/not-functor (first sentence))) (second sentence) sentence)]
+    (if-not (and (seq? s) (some coll? (rest s)))
+      #{}                                   ; no argument to walk: the common flat fact
+      (let [args (fn [x] (if (attitude? x) [(second x)] (rest x)))
+            walk (fn walk [acc x]
+                   (cond (vector? x) (reduce walk acc x)
+                         (and (seq? x) (not (sx/quoting-functor? (first x))))
+                         (reduce walk
+                                 (if (and (symbol? (first x)) (sx/ground-term? x)) (conj! acc x) acc)
+                                 (args x))
+                         :else acc))]
+        (persistent!
+         (reduce (fn [acc [_ lit]]
+                   (if (contains? sx/nat-quoting-predicates (first lit)) acc (reduce walk acc (args lit))))
+                 (transient #{}) (applied-literals sentence)))))))
 
 (defn literals
   "The `[role literal]` pairs of `applied-literals` whose functor is not a variable: the

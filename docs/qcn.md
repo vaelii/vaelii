@@ -479,6 +479,12 @@ nodes a goal names and no fact does, so what it says about a node reaches a ques
 that node. A calculus whose nodes are not all symbols names its node test (`:node?`). A
 narrowing names the dynamic vars it reads (`:bindings`), and their values are part of the
 resident network's key, so a read under a rebound var reads that binding's network.
+A calculus may also read a ground goal's own pair (`:pair`), a function of the KB, the
+context and the goal's two nodes answering a relation set and, when asked, the handles it
+read. `solve-goal` and `possible` intersect the relation set into a pair the network
+leaves undecided. `support` adds the handles where the set narrows what `possible`
+answers, so a computed answer read through `possible` rests on them. `solve-with-support`,
+which a forward join on the calculus's own literals reads, does not call it.
 
 Two calculi carry one. The interval algebra reads the metric temporal layer
 ([stp.md](stp.md)) — an interval is bounded by two instants, so a numeric bound on the gap

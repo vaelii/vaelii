@@ -156,7 +156,7 @@
 (set/monotonic (disjoint folk_biological_class folk_species))
 ;; A species membership is definitional, so each is written :monotonic and folk_species
 ;; is forced-monotonic: a membership is never the loser of a nogood, a denial
-;; of one is inert, and a rule concluding a forced-monotonic literal such as orthogonal
+;; of one is inert, and a rule concluding a forced-monotonic literal
 ;; from (folk_species ?s) alone is a forced-monotonic rule whose firings are believed
 ;; (docs/nmtms.md).
 (forced_monotonic_predicate folk_species)

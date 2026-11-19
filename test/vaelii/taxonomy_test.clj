@@ -598,6 +598,32 @@
                             (str "union, defer " defer? " trial " trial " node " n
                                  " labels " (into (sorted-map) labels)))))))))))))))
 
+(deftest a-closure-cut-to-the-types-reaching-a-head-over-monotonic-edges-agrees-with-the-reference
+  (let [nodes (mapv #(symbol (str "r_" %)) (range 12))
+        rnd   (java.util.Random. 271828)]
+    (dotimes [trial 12]
+      (let [t (tax/create-taxonomy), class (volatile! {}), mono (volatile! #{})]
+        (dotimes [h 40]
+          (let [i (.nextInt rnd (count nodes))
+                j (if (< (.nextInt rnd 10) 2)
+                    (.nextInt rnd (count nodes))
+                    (+ i (.nextInt rnd (- (count nodes) i))))
+                c (if (< (.nextInt rnd 3) 1) :monotonic :default)]
+            (when (not= i j)
+              (vswap! class assoc h c)
+              (when (= :monotonic c) (vswap! mono conj [(nodes i) (nodes j)]))
+              (tax/add-genl t (nodes i) (nodes j) h))))
+        (let [up  (:up (oracle t :genl))
+              mup (:up (tax/closures @mono))]
+          (doseq [q nodes]
+            (let [cut   (fn [n] (into #{} (filter #(or (= q %) (contains? (get mup % #{%}) q)))
+                                      (get up n #{n})))
+                  reach (tax/genls-global-reaching-fn t q @class)]
+              (doseq [n (sort-by (fn [_] (.nextInt rnd)) nodes)]
+                (is (= (cut n) (reach n)) (str "shared fn, trial " trial " head " q " node " n))
+                (is (= (cut n) ((tax/genls-global-reaching-fn t q @class) n))
+                    (str "fresh fn, trial " trial " head " q " node " n))))))))))
+
 (deftest genl?-agrees-with-reference-under-loose-depths
   ;; `genl?` / `sees?` answer reachability with a depth-pruned early-exit walk, *not*
   ;; by building the full closure `agrees?` compares.  The prune is sound only while

@@ -696,6 +696,49 @@
         (v/retract! kb mark)
         (is (not (v/ask? kb (list q hi) U)) (str order ": the firing leaves with the mark"))))))
 
+(defn- answers [kb goal context] (set (v/prove kb goal context)))
+
+(tu/deftest-kb a-backward-rule-head-answers-every-order-its-stored-fact-twin-answers
+  (tu/with-terms [listed bordersOn adjoins covers spans paired matched PairFn Ann Bob Cid]
+    (v/assert kb (list listed Ann) U)
+    (v/assert kb (list 'symmetric bordersOn) U {:strength :monotonic})
+    (v/assert kb (list 'symmetric adjoins) U {:strength :monotonic})
+    (doseq [p [covers spans]] (v/assert kb (list 'commutativeInArgAndRest p 1) U {:strength :monotonic}))
+    (v/assert kb (list 'binary_function PairFn) U)
+    (v/assert kb (list 'commutative PairFn) U {:strength :monotonic})
+    (v/assert-rule kb [(list listed '?y)] (list bordersOn '?y Bob) U {:direction :backward})
+    (v/assert kb (list adjoins Ann Bob) U)
+    (v/assert-rule kb [(list listed '?y)] (list covers '?y Bob Cid) U {:direction :backward})
+    (v/assert kb (list spans Ann Bob Cid) U)
+    (v/assert-rule kb [(list listed '?y)] (list paired (list PairFn '?y Bob)) U {:direction :backward})
+    (v/assert kb (list matched (list PairFn Ann Bob)) U)
+    (let [rows [[bordersOn adjoins
+                 (fn [p] [(list p Ann '?x) (list p '?x Ann) (list p Bob '?x) (list p '?x Bob)
+                          (list p Ann Bob) (list p Bob Ann) (list p '?a '?b)])]
+                [covers spans
+                 (fn [p] [(list p Ann '?x Cid) (list p Cid Ann '?x) (list p '?x Ann Bob)
+                          (list p '?x Bob Ann) (list p Cid Bob Ann) (list p '?a '?b '?c)])]
+                [paired matched
+                 (fn [p] (for [args [[Ann '?x] ['?x Ann] [Bob '?x] ['?x Bob] [Ann Bob] [Bob Ann] ['?a '?b]]]
+                           (list p (apply list PairFn args))))]]]
+      (doseq [[concluded stated goals] rows
+              [rg fg] (map vector (goals concluded) (goals stated))]
+        (is (= (answers kb fg U) (answers kb rg U)) (str rg " answers as " fg))))
+    (is (= 1 (count (answers kb (list paired '?z) U)))
+        "a goal variable meets the head's compound in its one written order")))
+
+(tu/deftest-kb a-backward-rule-head-reads-the-mark-as-the-asking-context-believes-it
+  (tu/with-terms [listed bordersOn adjoins Ann Bob CxW]
+    (v/assert kb (list 'genlCx CxW U) U {:strength :monotonic})
+    (v/assert kb (list listed Ann) U)
+    (let [marks (mapv #(v/assert kb (list 'symmetric %) U {:strength :monotonic}) [bordersOn adjoins])]
+      (v/assert-rule kb [(list listed '?y)] (list bordersOn '?y Bob) U {:direction :backward})
+      (v/assert kb (list adjoins Ann Bob) U)
+      (doseq [h marks] (v/assert kb (list 'except (sx/sentex-handle h)) CxW {:strength :monotonic}))
+      (doseq [[c want] [[U #{{'?x Bob}}] [CxW #{}]]
+              p [bordersOn adjoins]]
+        (is (= want (answers kb (list p '?x Ann) c)) (str p " from " c))))))
+
 (tu/deftest-kb a-compound-at-a-quoted-position-keeps-its-written-order
   (doseq [order [[:mark :decl :facts] [:mark :facts :decl] [:decl :facts :mark]
                  [:facts :decl :mark] [:decl :mark :facts] [:facts :mark :decl]]]

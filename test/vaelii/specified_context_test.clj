@@ -3,7 +3,9 @@
 (ns vaelii.specified-context-test
   (:require [clojure.test :refer [is use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.call-cap :as call-cap]
             [vaelii.impl.defining :as defining]
+            [vaelii.impl.predall :as predall]
             [vaelii.impl.sentex :as sx]
             [vaelii.test-util :as tu]))
 
@@ -19,9 +21,18 @@
   (v/assert kb (list 'unary_predicate kind) 'CxUniverse)
   (v/assert kb (list 'arg pred (if (= functor 'predAllSpecified) 2 1) 'string) 'CxUniverse))
 
-(defn- result [kb functor pred kind context]
-  (get (v/all-specified-violations kb context) [functor pred kind]
-       {:status :audited :violations #{}}))
+(defn- result
+  "The sweep's result for the Specified declaration `[functor pred kind]` in `context`,
+  `{:status :audited :violations #{}}` where it holds, as `all-specified-violations`
+  reports it.  Read off `specified-declaration-audits` restricted to `functor`'s
+  declarations, whose last entry for a key is its combined result, so no quoted audit
+  runs."
+  [kb functor pred kind context]
+  (or (->> (predall/specified-declaration-audits kb context {:functors #{functor}})
+           (filter #(= [functor pred kind] (first %)))
+           last
+           second)
+      {:status :audited :violations #{}}))
 
 (tu/deftest-kb global-type-bookkeeping-does-not-require-a-child-definition-at-the-root
   (tu/with-terms [CxHome relation_kind nearbyRel notes]
@@ -39,6 +50,10 @@
     (is (= {:status :audited :violations #{}}
            (result kb 'predAllSpecified notes relation_kind 'CxUniverse)))
     (v/assert kb (list 'binary_predicate nearbyRel) 'CxUniverse)
+    (is (= {:status :audited :violations #{}}
+           (result kb 'predAllSpecified notes relation_kind 'CxUniverse))
+        "a forced arity-class store in CxUniverse is not a definition there")
+    (v/assert kb (list 'comment nearbyRel "Stated in CxUniverse.") 'CxUniverse)
     (is (= {:status :audited :violations #{nearbyRel}}
            (result kb 'predAllSpecified notes relation_kind 'CxUniverse)))))
 
@@ -199,6 +214,7 @@
 (tu/deftest-kb classification-uses-ordinary-homes-not-quotes-or-nested-sentences
   (tu/with-terms [CxHome Subject Observer classifier_kind classified_kind item_kind
                   carriesSyntax DisplayFn]
+    (call-cap/allow predall/sweep kb 5 "the KB changes between the five audits")
     (classification-schema kb classifier_kind classified_kind item_kind)
     (v/assert kb (list 'genlCx CxHome 'CxUniverse) 'CxUniverse)
     (v/assert kb (list 'decontextualized_predicate item_kind) 'CxUniverse)
@@ -227,6 +243,7 @@
 
 (tu/deftest-kb classification-is-reader-local-and-a-child-can-except-the-requirement
   (tu/with-terms [CxParent CxLeft CxRight Subject classifier_kind classified_kind item_kind]
+    (call-cap/allow predall/sweep kb 4 "the KB changes between the four audits")
     (classification-schema kb classifier_kind classified_kind item_kind)
     (doseq [[sub super] [[CxParent 'CxUniverse] [CxLeft CxParent] [CxRight CxParent]]]
       (v/assert kb (list 'genlCx sub super) 'CxUniverse))
@@ -269,6 +286,7 @@
 (tu/deftest-kb classification-exempts-only-proven-skeletal-population
   (tu/with-terms [CxRequirement Namespace LookupFn lookupOf namespace_kind access_kind usedBy
                   Observer classifier_kind classified_kind]
+    (call-cap/allow predall/sweep kb 3 "the KB changes between the three audits")
     (classification-schema kb classifier_kind classified_kind namespace_kind)
     (v/assert kb (list 'genlCx CxRequirement 'CxUniverse) 'CxUniverse)
     (doseq [sentence [(list 'reifiable_function LookupFn)
@@ -312,6 +330,7 @@
 
 (tu/deftest-kb classification-accumulates-child-only-violations-for-one-declaration
   (tu/with-terms [CxParent CxLeft CxRight First Second classifier_kind classified_kind item_kind]
+    (call-cap/allow predall/sweep kb 3 "the KB changes between the three audits")
     (classification-schema kb classifier_kind classified_kind item_kind)
     (doseq [[sub super] [[CxParent 'CxUniverse] [CxLeft CxParent] [CxRight CxParent]]]
       (v/assert kb (list 'genlCx sub super) 'CxUniverse))

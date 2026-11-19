@@ -16,6 +16,8 @@
   (:require [clojure.test :refer [deftest is testing]]
             [vaelii.core :as v]
             [vaelii.impl.chain :as chain]
+            [vaelii.impl.jtms :as jtms]
+            [vaelii.impl.nat-read :as nat-read]
             [vaelii.impl.settle :as settle]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
@@ -171,6 +173,44 @@
         orders [[:rule :member :mark] [:member :mark :rule] [:mark :rule :member]]]
     (is (= (repeat 3 [1 '#{{?var0 RM1}}]) (map ledger orders)))))
 
+(deftest a-refusal-whose-binding-a-later-mark-reifies-reads-as-one-in-every-arrival-order
+  (let [step   {:rule   member-rule!
+                :member #(v/assert % '(rmember (Quote RM1)) ctx {:strength :monotonic})
+                :mark   #(v/assert % '(rmark (Quote RM1)) ctx)
+                :reify  #(v/assert % '(reifiable_function Quote) ctx)}
+        ledger (fn [order]
+                 (tu/with-cleared-kb [kb tu/isolated-fresh]
+                   (run! #((step %) kb) order)
+                   (let [report (into [] (comp (filter #(seq (:refusals %))) (map :refusals))
+                                      (chain/rule-firing-report kb))
+                         states (vec (for [[rh es] @(reasoning/refused kb) :when (set? es), e es]
+                                       (chain/refusal-state kb rh e)))]
+                     (v/retract! kb (v/handle-of kb '(rmember (Quote RM1)) ctx))
+                     {:report   report
+                      :states   states
+                      :released (mapv :sentence (v/sentexes-matching kb '(rseen ?x) ctx))})))
+        [late :as all] (map ledger [[:rule :member :mark :reify] [:reify :rule :member :mark]
+                                    [:rule :mark :reify :member]])]
+    (testing "recorded with (Quote RM1) bound, then the mark moves both rows onto the constant"
+      (is (= [:blocked] (:states late)) "the record re-decides the firing under the constant")
+      (is (= [[:blocked :naf]] (map (juxt :state :reason) (first (:report late)))))
+      (is (nat-read/reified-object-symbol? (second (first (:released late))))
+          "the release places the conclusion over the constant"))
+    (is (apply = all) "the report and the release read alike with the mark first")))
+
+(deftest a-genl-edge-no-block-literal-reaches-keeps-the-refusal
+  (tu/with-cleared-kb [kb tu/isolated-fresh]
+    (v/assert kb '(closed_extent_predicate rmember) ctx)
+    (v/assert kb '(implies (and (rtag ?k RTag) (not (rmember ?k)) (unknown (genl ?k rbase)))
+                           (rseen ?k))
+              ctx {:direction :forward})
+    (v/assert kb '(rmember rkind) ctx {:strength :monotonic})
+    (v/assert kb '(rtag rkind RTag) ctx)
+    (v/assert kb '(genl rother rupper) ctx)
+    (is (= 1 (recorded kb)) "the edge reaches neither side of (genl ?k rbase)")
+    (v/retract! kb (v/handle-of kb '(rmember rkind) ctx))
+    (is (seq (v/sentexes-matching kb '(rseen rkind) '?ctx)))))
+
 (deftest a-firing-swept-and-refused-by-a-bounded-join-is-one-entry-under-the-wider-bound
   (let [step   {:rule   member-rule!
                 :member #(v/assert % '(rmember RM1) ctx {:strength :monotonic})
@@ -291,6 +331,28 @@
       (v/retract! kb (v/handle-of kb '(rmember RM1) ctx))
       (is (seq (v/sentexes-matching kb '(rseen RM1) '?ctx))
           "so the release reaches the refused firing across the restart"))))
+
+(deftest a-recover-re-chains-no-rule
+  (testing "a nested NAF makes the rebuild's pass productive, and the replay leaves nothing to re-chain"
+    (tu/with-cleared-kb [kb tu/isolated-fresh]
+      (member-rule! kb)
+      (v/assert kb '(implies (and (rmark ?x) (unknown (thereExists (?y) (and (rlink ?x ?y)
+                                                                             (unknown (rgone ?y))))))
+                             (rlone ?x))
+                ctx {:direction :forward})
+      (v/assert kb '(rmember RM1) ctx {:strength :monotonic})
+      (doseq [m '[RM1 RM2]] (v/assert kb (list 'rmark m) ctx))
+      (v/assert kb '(rlink RM1 RM2) ctx)
+      (let [state #(vector (recorded kb) (:blocked (jtms/snapshot (reasoning/tms kb)))
+                           (mapv (fn [s] (v/ask? kb s ctx)) '[(rseen RM2) (rlone RM1) (rlone RM2)]))
+            before (state)
+            seen   (atom [])
+            real   settle/rechain-exception-rules]
+        (with-redefs [settle/rechain-exception-rules
+                      (fn [kb rhs] (when settle/*rebuilding?* (swap! seen into rhs)) (real kb rhs))]
+          (v/recover kb))
+        (is (empty? @seen))
+        (is (= before (state)) "the record, the blocked set and the placed firing stand")))))
 
 (deftest a-preview-leaves-the-record-where-it-found-it
   (testing "a batch reads the record and writes to it, and neither survives the rollback"
@@ -459,3 +521,26 @@
              :derived-first  [{:stored true :owns false :inert 1} {:stored true :owns true :inert 0}]}
             {:asserted-first (reading :asserted-first)
              :derived-first  (reading :derived-first)})))))
+
+(deftest a-recover-re-fires-a-different-rule-from-seeds-to-the-record-a-full-re-fire-builds
+  (testing "an identical pair, an indeterminate term, and a merged pair as a symbol and in a compound, both spellings kept in the facts' context above the merges"
+    (tu/with-cleared-kb [kb tu/isolated-fresh]
+      (v/assert kb (list 'genlCx 'CxRefusedSub ctx) 'CxUniverse)
+      (v/assert kb '(implies (and (dlink ?x ?y) (different ?x ?y)) (dpair ?x ?y)) 'CxRefusedSub
+                {:direction :forward})
+      (v/assert kb '(sameAs DB DC) 'CxRefusedSub)
+      (v/assert kb '(sameAs DH DI) 'CxRefusedSub)
+      (v/assert kb '(indeterminate_term DJ) ctx)
+      (doseq [s '[(dlink DA DA) (dlink DB DC) (dlink (DFn DH) (DFn DI)) (dlink DJ DK) (dlink DE DF)]]
+        (v/assert kb s ctx))
+      (let [record #(deref (reasoning/refused kb))
+            live   (record)
+            rh     (first (keys live))]
+        (is (= 6 (recorded kb)))
+        (is (seq (get (#'chain/refusal-seeds kb [rh]) rh)) "the rule re-fires from seeds")
+        (v/recover kb)
+        (is (= live (record)) "the seeded re-fire rebuilds the live record")
+        (with-redefs [chain/refusal-seeds (constantly nil)]
+          (v/recover kb))
+        (is (= live (record)) "and the re-fire over the extent rebuilds the same one")
+        (is (v/ask? kb '(dpair DE DF) 'CxRefusedSub))))))

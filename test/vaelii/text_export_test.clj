@@ -544,6 +544,7 @@
                           [(list 'genlCx CxText 'CxUniverse)
                            (list solid Rock)
                            (list hot Rock)
+                           (list 'set/monotonic (list 'unary warm_solid))
                            (list 'set/inert (list 'intersection hot_solid solid hot))
                            (list 'intersection warm_solid solid hot)])
           (v/load-text! kb (.getPath dir))

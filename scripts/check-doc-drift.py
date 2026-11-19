@@ -1734,11 +1734,17 @@ E16_FAMILY_CALL = re.compile(r"\bp/(" + "|".join(re.escape(r) for r in E16_FAMIL
 # allowlist names who calls one, as E17's does for `tax/…-global`. The reason lives in the
 # caller's docstring or beside the row.
 E16_GLOBAL_ALLOW = {
+    # Discovery only: sparse rule ids and candidate source contexts, not reader authority.
+    ("src/vaelii/impl/rewrite_query.clj", "read-consumer-census"),
+    ("src/vaelii/impl/rewrite_query.clj", "reader-contexts"),
     # A mark in CxUniverse is seen from every context, so its conflict reads every context.
     ("src/vaelii/impl/checks.clj", "self-tuple-declaration-conflict"),
     # A fact in CxUniverse is seen from every context, so its merge readers are the
     # contexts storing a partner.
     ("src/vaelii/impl/special.clj", "merge-readers"),
+    # A genlCx move's slice sweep finds the maps naming a slice of a context it shows in
+    # every context, and `provers/slice-parts` decides whether each names a slice.
+    ("src/vaelii/impl/special.clj", "named-slices"),
     # The taxonomy is keyed by edge, not by reader: an entry's supporters in every
     # context decide whether it is installed, and the scoped closures filter by context.
     ("src/vaelii/impl/taxonomy.clj", "supporters-of"),
@@ -1746,12 +1752,10 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/taxonomy.clj", "stored-disjoint-metatype?"),
     # The unscoped census of every stored supporter functor, for the unscoped closure.
     ("src/vaelii/impl/taxonomy.clj", "all-keys"),
-    # A declaration's `(unary_predicate T)` entailment, in whatever context the declaration
-    # holds, read when T's length moves: a length holds at every context.
-    ("src/vaelii/impl/special.clj", "declared-type-justifications"),
-    # The mints in a type bound to another length, in every context, read when its
-    # length moves: a length holds at every context.
-    ("src/vaelii/impl/special.clj", "withdrawn-type-mints"),
+    # The mints in a type and a declaration's `(unary_predicate T)` entailment, in every
+    # context, read when T's length moves: a length holds at every context.
+    ("src/vaelii/impl/special.clj", "type-mint-justifications"),
+    ("src/vaelii/impl/special.clj", "hold-type-mints!"),
     # The rules on a typed calculus predicate in every context, queued when a membership
     # moves what the predicate admits: each queued rule is re-checked from its own context.
     ("src/vaelii/impl/special.clj", "recheck-typed-admission"),
@@ -1773,12 +1777,14 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/resolution.clj", "defeated-index"),
     # A rule read with no reader context: `concluding-rule-handles`' unscoped arities and
     # `concludes?`, the shadowing check that probes the same buckets, a stratification
-    # check over every rule and its test for a rule concluding below an edge, three
-    # whole-KB reports, and the rules a correspondence moving re-spells in every context.
+    # check over every rule, its test for a rule concluding below an edge and the rules
+    # whose firing it can drop, three whole-KB reports, and the rules a correspondence
+    # moving re-spells in every context.
     ("src/vaelii/impl/resolution.clj", "concluding-rule-handles"),
     ("src/vaelii/impl/resolution.clj", "concludes?"),
     ("src/vaelii/impl/checks.clj", "stored-stratification-graph"),
     ("src/vaelii/impl/checks.clj", "edge-negation-cycle"),
+    ("src/vaelii/impl/checks.clj", "cycle-closing-rules"),
     ("src/vaelii/impl/checks.clj", "declared-firings"),
     ("src/vaelii/impl/chain.clj", "rule-firing-report"),
     ("src/vaelii/impl/nat.clj", "corresponded-rules"),
@@ -1823,6 +1829,9 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/core.clj", "term-count"),
     ("src/vaelii/core.clj", "find-terms"),
     ("src/vaelii/impl/quality.clj", "vocabulary-pass"),
+    # The term-name set keys no context, so the quoted Specified population reads every
+    # context's names and keeps those a posting in the reader's ancestor set writes.
+    ("src/vaelii/impl/predall.clj", "written-terms"),
     # A rule read keyed by predicate over the rules stated in any context: a forward firing,
     # a re-join or a lazy-forward proof places each firing from its antecedents' contexts,
     # a definitional check or a report reads every stored rule, and `direct-concluders` is
@@ -1832,9 +1841,10 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/special.clj", "rules-taking"),
     ("src/vaelii/impl/chain.clj", "transitive-rejoin-rules"),
     ("src/vaelii/impl/chain.clj", "reflexive-rejoin-rules"),
+    ("src/vaelii/impl/chain.clj", "type-rule-reader"),
     ("src/vaelii/impl/chain.clj", "closure-rejoin-rules"),
     ("src/vaelii/impl/chain.clj", "lazy-table"),
-    ("src/vaelii/impl/kb.clj", "stores-lazy-rule?"),
+    ("src/vaelii/impl/kb.clj", "stores-engine-rule?"),
     ("src/vaelii/impl/chain.clj", "lazy-readers"),
     ("src/vaelii/impl/special.clj", "lazy-guard-readers"),
     ("src/vaelii/impl/special.clj", "recheck-on-separation"),
@@ -1845,6 +1855,7 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/provers.clj", "closed-extent-rules"),
     ("src/vaelii/impl/special.clj", "transitive-partner-functors"),
     ("src/vaelii/impl/special.clj", "closure-reader-rules"),
+    ("src/vaelii/impl/special.clj", "one-justification-rules"),
     ("src/vaelii/impl/checks.clj", "negative-edge-rules"),
     ("src/vaelii/impl/checks.clj", "stored-generators"),
     ("src/vaelii/impl/integrity.clj", "converse-rule"),
@@ -1972,9 +1983,14 @@ E17_FLAT = {
 }
 E17_PRESENCE_TESTS = ("seq", "empty?", "not-empty")
 E17_ALLOW = {
+    # Evidence of the SAME KB-wide stored-key primitive, with explicit proof-local roles.
+    ("src/vaelii/impl/rewrite_query.clj", "primitive-mark-evidence"),
     # A fact in CxUniverse merges with a partner in any context: the predicates above and
     # below its functor in every context name where a partner may be stored.
     ("src/vaelii/impl/special.clj", "merge-readers"),
+    # A term merge restates the premises of every context, so a disjoint declaration in
+    # any one of them refuses it.
+    ("src/vaelii/impl/term_edit.clj", "merge-problem"),
     # The public API offers both readings, and its shorter arity IS the global one —
     # `vaelii.core/genls` documents the pair (docs/taxonomy.md).
     ("src/vaelii/core.clj", "genls"),
@@ -2020,9 +2036,16 @@ E17_ALLOW = {
     ("src/vaelii/impl/chain.clj", "transitive-source-preds"),
     ("src/vaelii/impl/chain.clj", "walks-its-own-conclusion?"),
     ("src/vaelii/impl/chain.clj", "solve-closure"),
+    ("src/vaelii/impl/chain.clj", "solve-result-type"),
+    ("src/vaelii/impl/chain.clj", "declared-functions"),
+    ("src/vaelii/impl/chain.clj", "result-type-uppers"),
+    ("src/vaelii/impl/chain.clj", "result-type-seeds"),
     ("src/vaelii/impl/chain.clj", "closure-rejoins"),
     ("src/vaelii/impl/chain.clj", "solve-separation"),
     ("src/vaelii/impl/chain.clj", "separated-from"),
+    # The types an edge reading may be owed at: each placement then decides its paths
+    # with the scoped `subsumption-support`.
+    ("src/vaelii/impl/chain.clj", "edge-readings-wanted"),
     ("src/vaelii/impl/special.clj", "separation-moved-types"),
     ("src/vaelii/impl/special.clj", "nonempty-moved-types"),
     ("src/vaelii/impl/special.clj", "requeue-separation-denial-rules"),
@@ -2036,6 +2059,12 @@ E17_ALLOW = {
     # then decides under the scoped closure (`r-evidence`).
     ("src/vaelii/impl/context_nat.clj", "comparable-terms"),
     ("src/vaelii/impl/context_nat.clj", "pairs-across"),
+    ("src/vaelii/impl/context_nat.clj", "unbroken-type?"),
+    ("src/vaelii/impl/context_nat.clj", "unbroken-arrivals"),
+    ("src/vaelii/impl/context_nat.clj", "declared-heads"),
+    # The producer's edge meets `wff/genlCx-problems`'s unscoped cycle test, so the pair
+    # reads the closure that test reads.
+    ("src/vaelii/impl/context_nat.clj", "reconcile-pair"),
     ("src/vaelii/impl/inherit.clj", "moved-in"),
     ("src/vaelii/impl/inherit.clj", "witness?"),
     # a preservation along genlCx is a claim about the context topology, read with no
@@ -2081,9 +2110,6 @@ E17_ALLOW = {
     # in; each fact is then asked its own context's declarations.
     ("src/vaelii/impl/special.clj", "declared-functors"),
     ("src/vaelii/impl/special.clj", "trigger-entailments"),
-    # The predicates an `argArg` is declared of, a superset over every context; each fact
-    # found is then asked its own context's declarations (`deduce-placed`).
-    ("src/vaelii/impl/special.clj", "mints-on-lengths"),
     ("src/vaelii/impl/special.clj", "descent-surplus-placements"),
     # The predicates below or above the one a `try-assert` writes, a superset over every
     # context: a `genl` edge stated below the writer's context relates them there, and
@@ -2228,7 +2254,7 @@ E17_ALLOW = {
     # classed by.
     ("src/vaelii/core.clj", "rehome-forced-extent!"),
     ("src/vaelii/core.clj", "target-following-meta?"),
-    ("src/vaelii/impl/assert_entry.clj", "storage-context"),
+    ("src/vaelii/impl/special.clj", "storage-context"),
     ("src/vaelii/impl/checks.clj", "checked-sentence"),
     ("src/vaelii/impl/checks.clj", "stored-spelling"),
     ("src/vaelii/impl/decide.clj", "forced-monotonic?"),
@@ -2242,6 +2268,10 @@ E17_ALLOW = {
     ("src/vaelii/impl/resolution.clj", "mention-declarations"),
     ("src/vaelii/impl/resolution.clj", "store-marks"),
     ("src/vaelii/impl/resolution.clj", "meet-order"),
+    # The meet rewrite reads the orders below a meet's order as `meet-order` reads them:
+    # the trigger filter queues a superset, and the routes rest on stored facts.
+    ("src/vaelii/impl/special.clj", "inclusion-fact?"),
+    ("src/vaelii/impl/chain.clj", "below-routes"),
     ("src/vaelii/impl/nat_read.clj", "sorted-expression"),
     ("src/vaelii/impl/nat_read.clj", "permuting-marks"),
     ("src/vaelii/impl/nat.clj", "permuted-reifiable?"),
@@ -2257,6 +2287,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/special.clj", "meta-target"),
     ("src/vaelii/impl/special.clj", "equality-wff-problems"),
     ("src/vaelii/impl/special.clj", "lifts-to-universe?"),
+    ("src/vaelii/impl/special.clj", "eternal-witnesses"),
     # A candidate superset a later step narrows: a candidate filter in front of a scoped read, a
     # trigger or seed whose re-join reads the rule's own context, a nogood candidate row
     # kept where no reader exists and placed after (`decide/unscoped-closures`), a claim
@@ -2267,6 +2298,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/nat.clj", "queue-split-uses!"),
     ("src/vaelii/impl/resolution.clj", "declares-mention?"),
     ("src/vaelii/impl/resolution.clj", "fan-mention-probes"),
+    ("src/vaelii/impl/resolution.clj", "permuting-functor-in?"),
     ("src/vaelii/impl/clashes.clj", "exposure-probes"),
     ("src/vaelii/impl/decide/membership.clj", "term-nogoods"),
     ("src/vaelii/impl/decide/membership.clj", "separation-tests"),
@@ -2311,6 +2343,8 @@ E17_ALLOW = {
     ("src/vaelii/impl/resolution.clj", "displaced-terms-in"),
     ("src/vaelii/impl/resolution.clj", "retired-for?"),
     ("src/vaelii/impl/nat_read.clj", "reify-in"),
+    ("src/vaelii/impl/named_application.clj", "used-spellings"),
+    ("src/vaelii/impl/chain.clj", "applications-in"),
     ("src/vaelii/impl/nat.clj", "names-reifiable-nat?"),
     ("src/vaelii/impl/nat.clj", "formula-position-rules"),
     # A candidate superset a later step narrows: a trigger whose firing names the mark it
@@ -2329,6 +2363,7 @@ E17_ALLOW = {
     ("src/vaelii/impl/integrate.clj", "mark-witness"),
     ("src/vaelii/impl/nat_read.clj", "withheld-at"),
     ("src/vaelii/impl/nat_read.clj", "sorted-by-at"),
+    ("src/vaelii/impl/chain.clj", "binding-readers"),
     ("src/vaelii/impl/special.clj", "reifiable-moves"),
     ("src/vaelii/impl/resolution.clj", "reified-reading"),
     ("src/vaelii/impl/resolution.clj", "constraining-predicates"),

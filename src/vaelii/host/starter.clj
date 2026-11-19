@@ -62,7 +62,7 @@
                                  dwelling vocabulary over two persons.
         - CxTra.txt       — vocabulary that is generally useful but specific to
                                  one domain: relations over software tools, their
-                                 invocations and receipts and the capabilities they
+                                 invocations and receipts and the abilities they
                                  confer, media resources and DNS names, the kinds
                                  the relations are typed over, computers and what
                                  runs on them, access to a resource and to the
@@ -100,6 +100,7 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.disk.files :as dfiles]
+            [vaelii.impl.io.shipped :as shipped]
             [vaelii.impl.io.text :as text]
             [vaelii.impl.kb :as kbi]
             [vaelii.impl.oplog :as oplog]
@@ -150,7 +151,7 @@
      (v/with-deferred-settle kb
        (core-context/load-into kb)
        (loaded sx/root-context)
-       (let [cs (seed/layer-contexts "middle")]
+       (let [cs (shipped/layer-contexts "middle")]
          (with-open [r (progress/start ::middle "starter: load the middle contexts" (count cs))]
            (doseq [c cs]
              (seed/load-context kb c "middle")
@@ -178,7 +179,7 @@
   (if (= :starter source)
     (files-sha (concat (for [f (core-context/upper-files)]
                          [(str "upper/" f) (io/resource (str "kb/upper/" f))])
-                       (for [c (seed/layer-contexts "middle")]
+                       (for [c (shipped/layer-contexts "middle")]
                          [(str "middle/" c ".txt") (io/resource (str "kb/middle/" c ".txt"))])))
     (let [^File f (io/file (str source))
           ^File m (io/file f text/manifest-file)]
@@ -294,7 +295,7 @@
   re-assert, at the strongest strength stated, each retracted sentence `said` states, and
   return `{retracted-handle new-handle}` for those."
   [kb handles said]
-  (let [fixed (into #{sx/root-context} (seed/layer-contexts "middle"))
+  (let [fixed (into #{sx/root-context} (shipped/layer-contexts "middle"))
         cands (into {} (keep (fn [h] (let [x (v/sentex kb h)]
                                        (when (and (not (fixed (:context x))) (kbi/replaceable-premise? kb h x))
                                          [h x]))))

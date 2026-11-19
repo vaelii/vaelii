@@ -95,3 +95,11 @@
   `vaelii.core/edit-with-consequences!`'s answer."
   [env result]
   (web/stored-sentexes env result))
+
+(defn page
+  "A ring response drawing `body` as a page of the browser, titled `title`: the header,
+  the menubar and the stylesheets around it on a plain request, the `#main` region alone
+  when htmx asks for it.  An extension route answering hiccup is sent as a fragment, so a
+  route a reader opens from the menubar or the address bar answers this instead."
+  [req title & body]
+  (apply web/page-response req title body))

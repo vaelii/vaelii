@@ -166,8 +166,8 @@ Data hangs below CxWell.
     example of `transitiveInArgInverse` ([inherit.md](inherit.md)).
   - `CxSocial` — what acquaintance follows from, how employment relates to
     membership, and the general relationship and dwelling vocabulary over two
-    persons: `relativeOf`, `romanticPartnerOf`, `coworkerOf`, `roommateOf`,
-    `originatorOf` (read by a rule from `parentOf`), `relationshipLabel`, and
+    persons: `kinOf` (also organisms), `romanticPartnerOf`, `coworkerOf`, `roommateOf`,
+    `originatorOf` (read from blood-qualified `parentOf`), `relationshipLabel`, and
     `dwelling`/`dwellsIn` (whose rule derives `roommateOf` for co-dwellers). Every
     rule runs one way only, because `knows` is deliberately not symmetric.
 - **CxNormalPhysicalConditions** — an **opt-in** theory in `kb/middle/` that sees
@@ -189,9 +189,9 @@ Data hangs below CxWell.
     receipts, media resources and DNS names, and the sixteen kinds the relations are
     typed over (`computational_system`, `software_tool`, `tool_invocation`,
     `media_resource`, `ip_address` and the kinds below them), each with its comment,
-    its `genl` edges and its disjointness. `(toolEnablesCapability ?tool ?kind)` says
+    its `genl` edges and its disjointness. `(toolEnablesAbility ?tool ?kind)` says
     that whoever has `?tool` can be the doer of a happening of kind `?kind`, and the
-    one computing rule, a default guarded by `causal`, reads `hasCapability` from it and
+    one computing rule, a default guarded by `causal`, reads `able` from it and
     `agentHasTool`. Both relations take a `temporal` in the tool position, the nearest kind
     software and a hammer or a jetpack share, and CxTra excepts CxBiology's
     penguin denial, through `(ist CxBiology …)`, for a penguin that has something that
@@ -208,7 +208,7 @@ Data hangs below CxWell.
     operating system install, a computational system that runs on a computer or a
     hypervisor), `onNetwork` and `kubernetesNamespaceOf`. `(hostnameOf ?thing ?name)` is functional in neither
     position, so two systems that share a name are not thereby equal.
-  - **access** — a grant is a capability: `(hasCapability ?principal (ShellAccessFn
+  - **access** — a grant is an ability: `(able ?principal (ShellAccessFn
     ?resource))`. Five reifiable functions, `ReadAccessFn`, `WriteAccessFn`,
     `ShellAccessFn`, `AdminAccessFn` and `DeployAccessFn`, map a resource to a happening
     kind below one of the five kinds under `resource_access`, and each has a functional
@@ -220,7 +220,7 @@ Data hangs below CxWell.
     `filesystem_namespace`, so a `file_path_reference` is the pair, built by the
     reifiable `FilePathRefFn` and read back through `filePathRefOf`, `pathNamespace`
     and `pathText`. `file_lookup`, resolving paths in a namespace, is an access kind
-    below `resource_access`, and `(hasCapability ?principal (FileLookupFn ?namespace))`
+    below `resource_access`, and `(able ?principal (FileLookupFn ?namespace))`
     states a grant of it, with `fileLookupOf` its corresponding predicate. Lookup
     entails no read access.
   - **pull requests** — a `pull_request` of a `forge_repository` (both below
@@ -230,7 +230,7 @@ Data hangs below CxWell.
     `closed_pr` partition `pull_request`, and `draft_pr` and `ready_pr` partition
     `open_pr`. A membership takes no time argument. `(holdsReadyLatch ?person ?repository)`
     says whose call it is that a repository's drafts are ready, and is not a grant.
-    `merge_access` is below `write_access`, `(hasCapability ?principal (MergeAccessFn
+    `merge_access` is below `write_access`, `(able ?principal (MergeAccessFn
     ?repository))` states a grant of it, with `mergeAccessOf` its functional
     corresponding predicate, and a default rule concludes write access over the same
     repository.
@@ -263,7 +263,7 @@ Data hangs below CxWell.
     its decimal-string snowflake, with `discordChannelOf` as its corresponding predicate.
     `ChannelViewFn` names the happening kind of accessing that channel under
     `VIEW_CHANNEL`, with `channelViewOf` as its corresponding predicate. A
-    `(hasCapability ?person (ChannelViewFn ?channel))` grant does not imply reading
+    `(able ?person (ChannelViewFn ?channel))` grant does not imply reading
     message history, sending messages, connector delivery or authorization to disclose
     content. `discordChannelName` records a human-readable label; names need not be
     unique and can change. `discordAccountId` links a person to the decimal-string ID
@@ -274,7 +274,7 @@ Data hangs below CxWell.
 
     ```clojure
     (ist (CxTimeFn CxDesk (InstantFn 2026 11 3 15 30 0))
-         (hasCapability ExamplePerson (ChannelViewFn (DiscordChannelFn "42"))))
+         (able ExamplePerson (ChannelViewFn (DiscordChannelFn "42"))))
     ```
 
     The instant states the permission observation's as-of time, not a persistence
@@ -282,14 +282,14 @@ Data hangs below CxWell.
     throughout its read interval. An unknown or omitted account produces neither a
     grant nor a denial. A denial for one account does not establish that a person
     lacks permission through another account. This vocabulary performs no Discord
-    reads or automatic account-to-capability projection.
+    reads or automatic account-to-ability projection.
   - **perception** — `perceives` is the general relation and `sees` specializes it.
     `seeImage` and `watchVideo` conclude `sees` by a rule guarded by its `spatial`
     second argument, since an image or a video need not be located.
   - **relationships and plural identity** — relationship vocabulary narrower than
     CxSocial's: `nestingPartnerOf` (a spec of CxSocial's `romanticPartnerOf` and
     `roommateOf`, and read by a rule from the two), `chosenSiblingOf` (a spec of
-    `relativeOf`), `construct` (a person whose mind runs on a computational substrate,
+    `chosenKinOf` and blood/chosen-neutral `siblingOf`), `construct` (a person whose mind runs on a computational substrate,
     `:monotonic`-disjoint from `organism`, `computational_system` and `organization`), its `seat` (the computational
     system it runs in, related by the non-functional `hasSeat`), `founderOf` (a spec of
     `originatorOf` naming the person who founded a construct), and the plurality terms: `singlet`, `plural_system` and
@@ -636,7 +636,16 @@ The removal is **total**, not just for reads:
   ancestor set; a late except sweeps what already fired; and retracting the except
   **re-derives** what it was hiding, in every arrival order. A firing is blocked on the
   excepts alone (`exc/except-closure-hidden-fn`: an except in force names the antecedent or
-  a handle every route of it rests on), never on a placed `defeat` (below). The except re-checks the firings over `H`'s consequence closure and re-joins from
+  a handle every route of it rests on), never on a placed `defeat` (below). A firing's
+  placement and its antecedents first ask whether a stored except with a premise mark or a
+  justification names a handle of their supports at all (`jtms/support-reaches?`). An
+  except with neither, such as one `preview` suspends, is OUT. A chaining run holds those
+  answers (`jtms/*reach-memo*`): a firing reads its antecedents' answers, and a handle
+  answered false whose support gains a route in the run is walked again. An except the
+  check read that gains a support or loses its premise mark empties the answers. A chain of
+  n links beside an except of an unrelated fact therefore costs O(n) (`lein perf`'s
+  `chain-beside-an-unrelated-except`). So does the settle after a suspension of the except
+  that hid its first link. The except re-checks the firings over `H`'s consequence closure and re-joins from
   that closure when it leaves (`special/recheck-except`, `special/drain-except-moves!`),
   so its cost is the consequences of `H` and not the extent of the rules they use
   (`lein perf`'s `except-beside-unrelated-firings`). A rule in the closure is re-joined
@@ -862,7 +871,8 @@ query half and `check_test` asserts the refusal.
 (`symmetric`, `transitive`, `functional`, …) are types under `binary_predicate`, so
 `(symmetric siblingOf)` makes `isa? siblingOf binary_predicate` hold, and the marks and
 the arity classes are `decontextualized_predicate`s, so each is read from every context
-that sees CxUniverse ([the arity rules](#the-consumers-and-what-each-of-them-may-reach)).
+that sees CxUniverse. The arity classes are also `forced_decontextualized_predicate`s, so a
+statement of one is stored in CxUniverse ([the arity rules](#the-consumers-and-what-each-of-them-may-reach)).
 
 ## decontextualized_predicate: a fact that belongs to the KB, not to one theory
 
@@ -878,6 +888,13 @@ so a fact out of belief at the declaration's arrival has its copy, which rests o
 and follows its label. A declaration that revives lifts the facts stored while it was OUT,
 which its arrival could not reach (`special/revived-declaration-sweeps`, run by the
 settle for every revived datum).
+
+`core.txt` makes `decontextualized_predicate` a `closed_extent_predicate` in CxUniverse.
+A query for `(not (decontextualized_predicate P))` is answered true of every `P` that no
+context the asker sees declares lifted.
+`decontextualized_predicate` is a `genl` of `forced_decontextualized_predicate`, so a predicate
+stored in CxUniverse by force is a member as well. The membership classifies the predicate and
+adds no lift, since the lift reads only a stated declaration.
 
 The mechanism is documented in the KB by the `comment` on `decontextualized_predicate` in
 `core.txt`. It is implemented in code rather than as a rule, because a rule stating it
@@ -1146,14 +1163,18 @@ statement is visible, as any sentence is.
 
 A fact of an eternal predicate stated in a time slice is **deduced into the context the
 slice slices**, and from there into the context that one slices while it is a slice too
-(`special/slice-lift`). A predicate `P` is eternal at a slice when the slice sees a
-membership `(eternal_predicate P)`, or `(S P)` for a type `S` below `eternal_predicate`.
-The membership is stated or concluded in the slice or a context of its `genlCx` ancestor
-set, and the slice sees a `genl` path from `S` up to `eternal_predicate`. The read is `ask?`'s fan over
-`(eternal_predicate P)` from the slice, under the network reading
-(`special/eternal-witnesses`), and each step of a nested slice reads from its own slice.
-Both `(P …)` and `(not (P …))` are copied, asserted or concluded by a rule. A fact stored in
-a context that is not a slice is not copied.
+(`special/slice-lift`). The context receiving the copy decides whether `P` is eternal. A
+fact is copied into a context `C` when `C` sees a membership `(eternal_predicate P)`, or
+`(S P)` for a type `S` below `eternal_predicate`. The membership is stated or concluded in
+`C` or a context of its `genlCx` ancestor set, and `C` sees a `genl` path from `S` up to
+`eternal_predicate`. The read is `ask?`'s fan over `(eternal_predicate P)` from `C`, under
+the network reading (`special/eternal-witnesses`). Each step of a nested slice reads from
+the context it copies into. A membership or a denial in a context the slice sees and `C`
+does not decides nothing about the copy. One stated in the slice itself is a fact of
+`eternal_predicate`, which `core.txt` makes eternal by concluding `(eternal_predicate
+eternal_predicate)`. It is therefore copied into `C`, and `C` reads it there. Both `(P …)`
+and `(not (P …))` are copied, asserted or concluded by a rule. A fact stored in a context
+that is not a slice is not copied.
 
 A slice is a context `provers/slice-parts` reads as one: a `(CxTimeFn C T)` written in place,
 which the store reifies with its `natFormula`, or a symbol a believed `(natFormula K
@@ -1162,9 +1183,9 @@ slice of the outer context ([context-nat.md](context-nat.md#a-slice-of-a-slice-f
 so its fact is copied in one step. A slice of a slice named by a hand-written `natFormula`
 is copied one step per `natFormula`.
 
-The copy rests on one justification per membership the slice reads, under the informant
+The copy rests on one justification per membership `C` reads, under the informant
 `eternal_predicate`. Its antecedents are the fact, the membership, its route, the `genlCx`
-edges the slice sees the membership and the route through, and the slice's `natFormula`.
+edges `C` sees the membership and the route through, and the slice's `natFormula`.
 The route is the least believed supporter of each `genl` edge on one path from the
 membership's type up to `eternal_predicate` (`provers/membership-route`). Retracting the fact,
 the membership, a `genlCx` edge or the `natFormula` withdraws that justification. A
@@ -1187,21 +1208,24 @@ Every arrival order stores the same copies. The fact's own write copies it
 (`special/eternal-arrival-sweep`): the membership sweeps its predicate's facts, the edge
 the predicates a membership under its lower type names, and the `natFormula` the literals
 stored in its slice. A `genlCx` edge that shows a context to the contexts below it sweeps
-the slices among them that store a sentex (`special/sweep-slices-under`, a row of the
-`genlCx` move families). A sweep runs for a rule's conclusion that is new and believed, and
-again for a datum the settle brings back IN (`special/revived-declaration-sweeps`).
+the slices of those contexts that store a sentex, found through their `natFormula`
+(`special/sweep-slices-under`, a row of the `genlCx` move families). A sweep runs for a
+rule's conclusion that is new and believed, and again for a datum the settle brings back
+IN (`special/revived-declaration-sweeps`).
 
 A slice sees the context it slices: `(contextArgGenlCx CxTimeFn 1)` places a slice written
 in place and a slice a hand-written `natFormula` names under it
 ([context-nat.md](context-nat.md#the-structural-genlcx-producer)). So the checks at the
 slice's assert read what the copy meets there, and every other slice of that context sees
 the copy whatever time it covers.
-`decontextualized_predicate` is below `eternal_predicate`, so a decontextualized fact
-stated in a slice is copied into CxUniverse and into the sliced context.
+`decontextualized_predicate` is below `eternal_predicate`, but a membership in it or a
+type below it makes no slice copy. A decontextualized fact stated in a slice is copied into
+CxUniverse, which every context sees, and into the sliced context only when another
+membership makes its predicate eternal.
 
 A write of a predicate no stored membership names under an eternal type reads one name
 set (`reads/as-stored-unary-predicates`) and no `natFormula`. The eternal types are read
-over every edge (`special/eternal-types`), as the candidates the slice's read narrows.
+over every edge (`special/eternal-types`), as the candidates the read at `C` narrows.
 
 `time.txt` makes the event-calculus predicates eternal, `happens`, `initiates`,
 `terminates` and `holdsAt` among them ([time.md](time.md#a-narrative-stated-in-a-slice)).
@@ -1216,6 +1240,22 @@ extent simply lives there. `genlCx` is declared this way (`core.txt` states
 topology has one canonical home rather than being scattered across the contexts each
 edge was asserted in.
 
+`arity`, `arityMin` and every arity class take the mark too: the relation-wide classes (`unary`
+through `quinary`, `variable_arity`, `unbounded_arity`) and the predicate and function
+classes (`unary_predicate` through `quinary_function`, the `variable_arity` and
+`unbounded_arity` kinds of each). A relation's length, floor and class are claims about the
+relation, so each has one record in CxUniverse whatever context states it. The
+`(unary_predicate T)` an argument declaration entails is stored there as well
+(`special/storage-context`, the call `assert-entry/storage-context` delegates to), so
+`(arg P 1 T)` in a context below CxUniverse justifies the CxUniverse record and stores
+no copy in its own context. Declarations naming `T` in several contexts justify that one
+record, and a rule reading `(unary_predicate T)` fires on it once
+(`arity_vocabulary_test/a-stated-and-a-declared-unary-predicate-are-one-sentex-in-either-order`,
+`intersection_test/a-declaration-below-cxuniverse-leaves-one-generated-membership-rule`).
+The forced mark places a statement. A rule firing concluding one of these is placed by
+the rule, and the `decontextualized_predicate` mark that `arity`, `arityMin` and every class but the
+three `unbounded_arity` kinds also carry lifts its conclusion into CxUniverse.
+
 The reads that look a sentence up by the context it names go to the same home:
 `handle-of`, `sentexes-matching` and `why-not` given `(P …)` or `(ist CxA (P …))` at a named
 context read CxUniverse, through the `assert-entry/storage-context` call that `assert`
@@ -1229,6 +1269,18 @@ ahead of the declaration; the move is what keeps those edges out of the contexts
 written in, and out of the `(context …)` entailments a fact there draws. The moves are one
 `edit!` batch with one settle, which seeds each fact the moved `genlCx` edges reach once
 rather than once per edge (`lein perf`'s `forced-declaration-over-edges-stated-below`).
+The `(unary_predicate T)` memberships argument declarations entailed below CxUniverse
+move with the mark as well: each declaration draws its membership in CxUniverse, the
+justification below is dropped, and the drawn records chain and settle
+(`special/declared-types-rehomed`,
+`argtype_entail_test/a-forced-unary-predicate-places-the-declared-membership-in-cxuniverse-in-either-order`).
+
+**An arity binding's mark is not retracted.** A move leaves no record of the context a fact
+was stated in, so a retraction could not put the facts back, and the KB would differ from
+one that never held the mark. `retract!` refuses a `(forced_decontextualized_predicate P)`
+for every arity binding and class with `:uncleared-forcing`, missing
+`:unforced-arity-placement` (`checks/uncleared-forcing`,
+`meta_test/an-uncleared-declaration-is-not-retracted`).
 
 Both are wff-checked at assert time, like the other special predicates:
 `decontextualized_predicate` routes through the same `prop-problems` check as
@@ -1535,9 +1587,9 @@ just as well when the feature is broken outright.
   scopes its `genl` walk as it already scoped its `fact-reach`, and re-reads the
   relation's transitivity from the same vantage.
 
-- **The predicate arity meta-ontology concludes where it was declared.** The arity
-  rules in `kb/upper/core.txt` place by the ordinary rule and name no context, so an
-  `(arity myRel 2)` stated in a context concludes `(binary_predicate myRel)` *there*.
-  **Do not name a context in them.** The KB-wide reading comes from the lift: the
-  declaration and the conclusion are both `decontextualized_predicate`s, so each has a
-  copy in CxUniverse, and the rule fires on the declaration's copy there.
+- **The predicate arity meta-ontology places by the ordinary rule.** The arity rules in
+  `kb/upper/core.txt` name no context. An `(arity myRel 2)` stated in any context is
+  stored in CxUniverse (`forced_decontextualized_predicate`), so the rule concludes
+  `(binary_predicate myRel)` there. **Do not name a context in them.** A binding a rule
+  concludes below CxUniverse is placed there, and its `decontextualized_predicate` mark
+  lifts a copy into CxUniverse, where the rule fires on the copy.

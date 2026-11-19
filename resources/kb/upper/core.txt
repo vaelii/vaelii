@@ -880,11 +880,11 @@
 (arg functionTypeByArity 1 unary_predicate)
 (arg functionTypeByArity 2 non_negative_integer)
 
-(relationTypeByArity unary 1)
-(relationTypeByArity binary 2)
-(relationTypeByArity ternary 3)
-(relationTypeByArity quaternary 4)
-(relationTypeByArity quinary 5)
+(set/monotonic (relationTypeByArity unary 1))
+(set/monotonic (relationTypeByArity binary 2))
+(set/monotonic (relationTypeByArity ternary 3))
+(set/monotonic (relationTypeByArity quaternary 4))
+(set/monotonic (relationTypeByArity quinary 5))
 
 ;; The predicate and function mappings are related to the relation-wide mapping and are
 ;; not specializations of it.  A genl edge would make every predicateTypeByArity fact a
@@ -996,8 +996,7 @@
   (at_least_ternary ?relation)))
 
 ;; arity_type classifies relations by how many arguments they take.  Each membership is
-;; definitional, so arity_type is forced-monotonic, and typeOrthogonal's
-;; rule concludes an orthogonal from one alone (docs/nmtms.md).
+;; definitional, so arity_type is forced-monotonic.
 (unary_predicate arity_type)
 (comment arity_type "A type of relation by how many arguments its members take, e.g. binary, variable_arity, at_least_ternary. Whether a relation may be hypothesized does not depend on its arity, so every arity_type is orthogonal to abducible_predicate.")
 ;; unary holds every type, so the members of arity_type are of more than one order, and
@@ -1066,6 +1065,7 @@
 (set/monotonic (transitiveInArgInverse time_varying_relation 1 genl))
 ;; Each rigidity kind holds types and predicates alike, so the members of rigidity_kind
 ;; are of more than one order, and rigidity_kind is at_least_metatype, as arity_type is.
+(unary_predicate rigidity_kind)
 (at_least_metatype rigidity_kind)
 (set/monotonic (typeGenl rigidity_kind relation))
 (set/monotonic (rigidity_kind time_invariant_relation))
@@ -1159,11 +1159,224 @@
 (set/monotonic (time_invariant_relation documentation_predicate))
 (not (decontextualized_predicate documentation_predicate))
 
+(comment definitional_predicate
+         "(definitional_predicate ?predicate) means that a (?predicate …) sentence about a term is part of that term's definitional block, the sentences a new term ships with (handbook/06-definitional-block.md): its comment and example annotations, its genl, its separations from its siblings, its order, its relation and rigidity kinds, its arity class and arity, its argument declarations, its relation properties and its termsRelated and seeAlso links. vocabulary-audit reads the members as its population: a member the engine's classification answers neither as enforced nor as inert is reported unclassified. The syncategorematic constants are the audit's second population, since they are syntax the engine reads and not predicates of a block. A membership says where a sentence belongs and not how it is believed: comment is a member and is not forced-monotonic. See docs/predicates.md.")
+(positiveExampleComment definitional_predicate "genl, since (genl dog mammal) is part of dog's block")
+(negativeExampleComment definitional_predicate "parentOf, since (parentOf Tom Bob) is a fact about two people and not a sentence about a term")
+(unary_predicate definitional_predicate)
+(set/monotonic (genl definitional_predicate predicate))
+(set/monotonic (time_invariant_relation definitional_predicate))
+(set/monotonic (orthogonal definitional_predicate forced_monotonic_predicate))
+(comment (orthogonal definitional_predicate forced_monotonic_predicate) "arg and arity are both, comment is a definitional predicate and not forced-monotonic, and equals is forced-monotonic and in no term's block.")
+;; A kinship tuple is a fact about two people, never a sentence about a term.
+(set/monotonic (disjoint definitional_predicate generic_kinship_predicate))
+(set/monotonic (disjoint definitional_predicate chosen_kinship_predicate))
+;; The KB states or derives every predicate a block is written in (below), so a predicate
+;; it does not make a member is in no term's block.
+(closed_extent_predicate definitional_predicate)
+;; order: a (type X), (metatype X) or (meta_metatype X) sentence is part of X's block
+(set/monotonic (genl type_type_by_order definitional_predicate))
+;; kind: an (instance_relation_predicate X) or (type_relation_predicate X) sentence, a rigidity
+;; kind sentence such as (time_invariant_relation X), and an (eternal_predicate X) sentence
+;; are part of X's block
+(set/monotonic (genl relation_kind definitional_predicate))
+(set/monotonic (genl rigidity_kind definitional_predicate))
+(definitional_predicate eternal_predicate)
+;; meaning and examples
+(definitional_predicate comment)
+(definitional_predicate positiveExampleComment)
+(definitional_predicate negativeExampleComment)
+(definitional_predicate positiveExample)
+(definitional_predicate negativeExample)
+;; parent and separations
+(comment ontology_predicate
+         "(ontology_predicate ?predicate) means that a (?predicate …) sentence places terms in the KB's hierarchy. The sentence names a parent that terms specialize, parts that cover a whole, a type defined as the intersection of others, a separation between terms, terms that are neither separated nor one below the other, or two predicates each of which holds of the other's tuples reversed. The terms it places are named directly, or they are the members of a classifier or the specializations of a parent that the sentence names. The sentence is part of the block of each term it names.")
+(positiveExampleComment ontology_predicate "disjoint, since (disjoint symmetric asymmetric) is part of symmetric's block")
+(negativeExampleComment ontology_predicate "arity, since (arity parentOf 2) fixes how many arguments parentOf takes and places no term in the hierarchy")
+(unary_predicate ontology_predicate)
+(set/monotonic (genl ontology_predicate definitional_predicate))
+(set/monotonic (time_invariant_relation ontology_predicate))
+(ontology_predicate genl)
+(ontology_predicate disjoint)
+(ontology_predicate separating)
+(ontology_predicate partition)
+(ontology_predicate orthogonal)
+(ontology_predicate covering)
+(ontology_predicate intersection)
+(ontology_predicate typeGenl)
+(ontology_predicate typeOrthogonal)
+(ontology_predicate diachronicallyDisjoint)
+(ontology_predicate disjoint_metatype)
+(ontology_predicate sibling_disjoint)
+(ontology_predicate siblingDisjointException)
+(ontology_predicate inverse)
+(ontology_predicate genlInverse)
+(ontology_predicate genlCx)
+(ontology_predicate orthogonalMetatypes)
+(ontology_predicate partitionedByType)
+(ontology_predicate negates)
+(not (ontology_predicate temporallyDisjoint))
+(not (ontology_predicate minCommonGenl))
+(not (ontology_predicate temporalIndexArg))
+(closed_extent_predicate ontology_predicate)
+;; arity: the binding and the arity classes describe lists under :arity-class.  Each
+;; exact-arity class a mapping fact names is definitional, so the three rules below make
+;; unary through quinary and their predicate and function specializations members.  An
+;; at_least class is the subject of no mapping fact, so no rule here reaches one.
+(set/forwardRule (implies (relationTypeByArity ?type ?arity) (definitional_predicate ?type)))
+(set/forwardRule (implies (predicateTypeByArity ?type ?arity) (definitional_predicate ?type)))
+(set/forwardRule (implies (functionTypeByArity ?type ?arity) (definitional_predicate ?type)))
+(definitional_predicate arity)
+(definitional_predicate variable_arity)
+(definitional_predicate variable_arity_predicate)
+(definitional_predicate variable_arity_function)
+;; well-formedness: what may fill a relation's positions, and what its terms satisfy
+(comment wff_predicate
+         "(wff_predicate ?predicate) means that a (?predicate ?relation …) sentence states part of what a well-formed sentence or application headed by ?relation is: which terms may fill its argument positions, or what a term in it satisfies. The sentence is part of ?relation's block.")
+(positiveExampleComment wff_predicate "arg, since (arg parentOf 1 causal) is part of parentOf's block")
+(negativeExampleComment wff_predicate "genl, since (genl dog mammal) places dog in the hierarchy and says nothing about how a sentence is written")
+(unary_predicate wff_predicate)
+(set/monotonic (genl wff_predicate definitional_predicate))
+(set/monotonic (genl wff_predicate eternal_predicate))
+(set/monotonic (time_invariant_relation wff_predicate))
+(closed_extent_predicate wff_predicate)
+(comment wff_constraint
+         "(wff_constraint ?predicate) means that a (?predicate ?relation …) sentence constrains which terms may fill one or more argument positions of ?relation. The constraint can name a type an argument must have, a genl it must specialize, a quoted form it must take, a role an argument position plays, or a relation it must bear to another argument. The sentence is part of ?relation's block.")
+(positiveExampleComment wff_constraint "arg, since (arg parentOf 1 causal) is part of parentOf's block")
+(negativeExampleComment wff_constraint "arity, since (arity parentOf 2) fixes how many arguments parentOf takes and not which terms may fill one")
+(unary_predicate wff_constraint)
+(set/monotonic (time_invariant_relation wff_constraint))
+(wff_constraint arg)
+(wff_constraint genlArg)
+(wff_constraint quotedArg)
+(wff_constraint interArg)
+(wff_constraint interArgEqual)
+(wff_constraint argArg)
+(wff_constraint argAndRestGenl)
+(wff_constraint args)
+(wff_constraint argsGenl)
+(wff_constraint argAndRest)
+(wff_constraint interArgs)
+(wff_constraint interArgAndRest)
+(wff_constraint quotedArgAndRest)
+(wff_constraint temporalIndexArg)
+(definitional_predicate temporalIndexArg)
+(closed_extent_predicate wff_constraint)
+(comment wff_satisfaction_predicate
+         "(wff_satisfaction_predicate ?predicate) means that a (?predicate ?relation …) sentence states what a term satisfies by its place in a sentence or application headed by ?relation, such as the value of an application of the function ?relation. The term can be required to be an instance or a subtype of a type, an instance of the type one of the application's arguments names, or a context below the context an argument names. The sentence is part of ?relation's block.")
+(positiveExampleComment wff_satisfaction_predicate "result, since (result QuantityFn measure) is part of QuantityFn's block")
+(negativeExampleComment wff_satisfaction_predicate "arg, since (arg parentOf 1 causal) constrains which terms may fill a position and states nothing a value satisfies")
+(unary_predicate wff_satisfaction_predicate)
+(set/monotonic (time_invariant_relation wff_satisfaction_predicate))
+(wff_satisfaction_predicate result)
+(wff_satisfaction_predicate resultArg)
+(wff_satisfaction_predicate genlResult)
+(wff_satisfaction_predicate contextArgGenlCx)
+(closed_extent_predicate wff_satisfaction_predicate)
+;; A well-formedness sentence constrains a position or states what a term satisfies, and never both.
+(set/monotonic (partition wff_predicate wff_constraint wff_satisfaction_predicate))
+;; relation properties
+(comment algebraic_predicate_property
+         "(algebraic_predicate_property ?property) means that ?property is an algebraic property of a relation: a (?property ?relation …) sentence states how the tuples or applications of ?relation constrain one another, over all of its argument positions or over the ones the sentence names. Such a property makes some tuples follow from others, rules some tuples out, alone or given others, requires some tuples to hold, or makes two applications denote one term. A (?property ?relation …) sentence is part of ?relation's block.")
+(positiveExampleComment algebraic_predicate_property "transitive, since (transitive genl) is part of genl's block")
+(negativeExampleComment algebraic_predicate_property "time_invariant_relation, since a relation's rigidity concerns how its members persist and not how its tuples constrain one another")
+(unary_predicate algebraic_predicate_property)
+(set/monotonic (genl algebraic_predicate_property definitional_predicate))
+(set/monotonic (time_invariant_relation algebraic_predicate_property))
+(algebraic_predicate_property transitive)
+(algebraic_predicate_property symmetric)
+(algebraic_predicate_property asymmetric)
+(algebraic_predicate_property reflexive)
+(algebraic_predicate_property functional)
+(algebraic_predicate_property irreflexive)
+(algebraic_predicate_property anti_symmetric)
+(algebraic_predicate_property anti_transitive)
+(algebraic_predicate_property equivalence_relation)
+(algebraic_predicate_property functionalInArg)
+(algebraic_predicate_property commutativeInArgs)
+(algebraic_predicate_property commutativeInArgAndRest)
+(algebraic_predicate_property distinctInArgAndRest)
+(algebraic_predicate_property injection)
+(algebraic_predicate_property surjection)
+(algebraic_predicate_property bijection)
+(algebraic_predicate_property associative)
+(algebraic_predicate_property commutative)
+(algebraic_predicate_property idempotent)
+(algebraic_predicate_property transitiveInArg)
+(algebraic_predicate_property transitiveInArgInverse)
+(algebraic_predicate_property functional_at_instant)
+(closed_extent_predicate algebraic_predicate_property)
+;; separations: a sentence places a term, states part of what is well formed, or states a
+;; property, never two of these
+(set/monotonic (disjoint ontology_predicate wff_predicate))
+(set/monotonic (disjoint ontology_predicate algebraic_predicate_property))
+(set/monotonic (disjoint wff_predicate algebraic_predicate_property))
+;; an at_least class is derived scaffolding, not part of any term's block
+(not (definitional_predicate at_least_binary))
+(not (definitional_predicate at_least_ternary))
+(not (definitional_predicate at_least_quaternary))
+(not (definitional_predicate at_least_quinary))
+;; the non-exact arity classes and the rigidity-adjacent marks, like the at_least classes
+(not (definitional_predicate fixed_arity))
+(not (definitional_predicate bounded_arity))
+(not (definitional_predicate unbounded_arity))
+(not (definitional_predicate fixed_arity_predicate))
+(not (definitional_predicate fixed_arity_function))
+(not (definitional_predicate unbounded_arity_predicate))
+(not (definitional_predicate unbounded_arity_function))
+(not (definitional_predicate arity_independent))
+(not (definitional_predicate time_indexed_relation))
+(not (definitional_predicate possibly_time_invariant_relation))
+;; implementation and metaknowledge predicates: what the engine does with a term, or what a theory
+;; assumes about an extent, is not part of the term's definition
+(not (definitional_predicate not_assertible))
+(not (definitional_predicate closed_extent_predicate))
+(not (definitional_predicate implementationNote))
+(not (definitional_predicate functionCorrespondingPredicate))
+(not (definitional_predicate functionCorrespondingBinaryPredicate))
+;; the quantified-population declarations and their placeholder predicates
+(not (definitional_predicate predAllExists))
+(not (definitional_predicate predAllExistsPlaceholder))
+(not (definitional_predicate predAllInstance))
+(not (definitional_predicate predAllQuotedSpecified))
+(not (definitional_predicate predAllSpecified))
+(not (definitional_predicate predExistsAll))
+(not (definitional_predicate predExistsAllPlaceholder))
+(not (definitional_predicate predExistsInstance))
+(not (definitional_predicate predExistsInstancePlaceholder))
+(not (definitional_predicate predInstanceAll))
+(not (definitional_predicate predInstanceExists))
+(not (definitional_predicate predInstanceExistsPlaceholder))
+(not (definitional_predicate predSpecifiedAll))
+(not (definitional_predicate predSpecifiedAllQuoted))
+;; links
+(definitional_predicate termsRelated)
+(definitional_predicate seeAlso)
+
 (comment situation_predicate "A predicate whose first argument is a situation and whose truth is fixed by that situation: a participant of an event, a part of a situation, an argument a call passed. A situation is a whole that timeOf places in time, so such a tuple records that whole and not what holds now, and every situation_predicate is an eternal_predicate. Taking a situation first does not by itself make a predicate one.")
 (unary_predicate situation_predicate)
 (set/monotonic (genl situation_predicate eternal_predicate))
 (set/monotonic (time_invariant_relation situation_predicate))
 (not (decontextualized_predicate situation_predicate))
+
+(comment generic_kinship_predicate "An unqualified kinship predicate whose meaning admits both a blood reading and a chosen-family reading. It does not itself choose either reading for a tuple.")
+(unary_predicate generic_kinship_predicate)
+(genl generic_kinship_predicate predicate)
+(set/monotonic (genl generic_kinship_predicate time_agnostic_relation))
+(set/monotonic (time_invariant_relation generic_kinship_predicate))
+(forced_monotonic_predicate generic_kinship_predicate)
+(implementationNote generic_kinship_predicate "Constructor inputs are structural declarations. Their mark is forced-monotonic so the guarded rules may conclude the forced-monotonic arity and argument declarations of their qualified readings.")
+
+(comment blood_kinship_predicate "The blood-qualified reading of a kinship predicate. It describes ancestry or birth history, with genetic consequences defeasible for gestational-only parenthood and other known exceptions.")
+(unary_predicate blood_kinship_predicate)
+(set/monotonic (genl blood_kinship_predicate eternal_predicate))
+(set/monotonic (time_invariant_relation blood_kinship_predicate))
+
+(comment chosen_kinship_predicate "The chosen-family reading of a kinship predicate: a tie that can end while its participants continue to exist.")
+(unary_predicate chosen_kinship_predicate)
+(genl chosen_kinship_predicate predicate)
+(set/monotonic (genl chosen_kinship_predicate time_varying_relation))
+(set/monotonic (time_invariant_relation chosen_kinship_predicate))
 
 ;; Some time-varying relations change one way only.  An organism that is dead stays
 ;; dead, and one that is not alive is never alive again.  Each is a kind of
@@ -1307,7 +1520,7 @@
 (set/monotonic (instance_relation_predicate comment))
 (set/monotonic (documentation_predicate comment))
 (arg comment 2 string)
-(quotedArg comment 1 denotational_term)   ;; the commented term as written: a type, a predicate, an individual or a context
+(quotedArg comment 1 closed_expression)   ;; the commented expression as written: a closed term (a type, a predicate, an individual, a context, a sentex handle) or a closed sentence
 
 (comment implementationNote
          "(implementationNote ?term ?text) means that ?text records how the engine or this KB's own text implements ?term, or a limit of that implementation, e.g. a rule stated only for some arities. A comment says what ?term means, and an implementation note says how the meaning is carried out. A note can go stale when the engine changes, and a comment cannot. Ordinary sentexes, queried like any fact. Nothing in the engine reads one and it draws no inference.")
@@ -1315,7 +1528,7 @@
 (instance_relation_predicate implementationNote)
 (set/monotonic (documentation_predicate implementationNote))
 (arg implementationNote 2 string)
-(quotedArg implementationNote 1 denotational_term)   ;; the noted term as written, as comment's is
+(quotedArg implementationNote 1 denotational_term)   ;; the noted term as written
 (termsRelated comment implementationNote)
 
 (comment contradicts
@@ -1341,23 +1554,19 @@
 (unary_predicate decontextualized_predicate)
 (set/monotonic (time_invariant_relation decontextualized_predicate))
 (set/monotonic (genl decontextualized_predicate eternal_predicate))
+;; The lift runs only for a declared predicate, so a predicate the KB does not declare is not lifted.
+(closed_extent_predicate decontextualized_predicate)
+;; A sentence stored in CxUniverse by force is seen from every context, as a lifted one is.
+(set/monotonic (genl forced_decontextualized_predicate decontextualized_predicate))
 
 (comment disjoint
          "(disjoint ?type1 ?type2) means that the two types have no common instance. Inherited by subtypes through genl, so declaring it of dog and cat separates every breed from every breed. The declaration keeps its written strength: a :monotonic denial defeats a :default one at the denial's context and below, where the memberships it separated clash with nothing. A membership that violates it is stored, and the two memberships form a :disjoint contradiction; try-assert refuses the second instead. A clash that only becomes visible from some descendant context is reported by exposed-clashes.")
 (set/monotonic (type_relation_predicate disjoint))
+(set/monotonic (symmetric disjoint))
 (set/monotonic (time_agnostic_relation disjoint))
 (not (eternal_predicate disjoint))
 (genlArg disjoint 1 thing)
 (genlArg disjoint 2 thing)
-
-(comment diachronicallyDisjoint
-         "(diachronicallyDisjoint ?type1 ?type2) means that nothing is an instance of both types at the same time, though one thing can be an instance of each at different times: caterpillar and butterfly, a child and an adult. disjoint is a genl of it, because never sharing an instance means never sharing one at once. Stated and queryable, not enforced: memberships are checked without time, so the engine cannot yet tell an instance that is both at once from one that is each in turn.")
-(set/monotonic (symmetric diachronicallyDisjoint))
-(set/monotonic (type_relation_predicate diachronicallyDisjoint))
-(set/monotonic (time_agnostic_relation diachronicallyDisjoint))
-(genlArg diachronicallyDisjoint 1 thing)
-(genlArg diachronicallyDisjoint 2 thing)
-(genl disjoint diachronicallyDisjoint)
 
 (comment disjoint_metatype
          "(disjoint_metatype ?metatype) means that every pair of ?metatype's member types is disjoint. The clique is consulted rather than stored, so it adds no work quadratic and retraction reaches all of it: dropping ?metatype releases every pair at once, and dropping one member releases exactly that member's pairs.")
@@ -1531,7 +1740,7 @@
 (arg defnIff 2 formula)
 
 (comment intersection
-         "(intersection ?combined . ?types) means ?combined is definitionally the intersection of ?types: a thing is a ?combined exactly when it is each of ?types. A definitional collection relation over kinds, like the defn* family above, and the twin of disjoint, which states that kinds do NOT overlap. Variable-arity; (intersection causal_event causal event) names a two-way intersection and further ?types extend it. arityMin is three: the combined kind plus at least two types, since the intersection of a single type is that type and drives no rule.")
+         "(intersection ?combined . ?types) means ?combined is definitionally the intersection of ?types: a thing is a ?combined exactly when it is each of ?types. Applies to unary kinds and to binary predicates: over binary predicates a tuple is a ?combined tuple exactly when it is a tuple of each of ?types, so (intersection can able may) says that whoever is able and permitted to do a kind of thing can do it. The combined predicate's arity chooses the membership rule: a ?combined declared unary takes the unary rule, and a ?combined declared binary takes the binary one. A ?combined of no known arity takes neither. A definitional relation, like the defn* family above, and the twin of disjoint, which states that kinds do NOT overlap. Variable-arity; (intersection causal_event causal event) names a two-way intersection and further ?types extend it. arityMin is three: the combined kind plus at least two types, since the intersection of a single type is that type and drives no rule.")
 (variable_arity_predicate intersection)
 (unbounded_arity_predicate intersection)
 (set/monotonic (time_invariant_relation intersection))
@@ -1545,7 +1754,7 @@
 
 ;; --- defining rules. A combined kind is genl each type it intersects, and anything
 ;;     that is each type is a member of the combined kind. ---------------------------
-(implementationNote intersection "The defining rules are stated for two and for three intersected types. A rule for any number of types needs list membership (vaelii/vaelii#79), so an intersection of four or more types derives neither its genl edges nor its memberships.")
+(implementationNote intersection "The defining rules are stated for two and for three intersected types, and the membership rule for a unary ?combined and for a binary one. A rule for any number of types needs list membership (vaelii/vaelii#79), so an intersection of four or more types derives neither its genl edges nor its memberships.")
 ;; Forward rules: an intersection fact materializes the genl edges when it is asserted,
 ;; so the derived edge reaches the taxonomy closure and answers a variable-free genl
 ;; goal at every read entry point. A bare (implies …) defaults to :backward, which the
@@ -1561,11 +1770,45 @@
 ;; each type at :monotonic is a :monotonic member of the combined kind, and one stated of
 ;; a type at :default is a :default member.  An intersection is a definition, and what
 ;; is each type is the combined kind without exception, so the rule adds no
-;; defeasibility of its own.
-(implies (intersection ?combined ?type1 ?type2)
-         (implies (and (?type1 ?x) (?type2 ?x)) (?combined ?x)))
-(implies (intersection ?combined ?type1 ?type2 ?type3)
-         (implies (and (?type1 ?x) (?type2 ?x) (?type3 ?x)) (?combined ?x)))
+;; defeasibility of its own.  A thing that is each type through many subtypes is a member
+;; by every pair of them, so each generated membership rule is wrapped in
+;; set/oneJustificationRule and stores one of those firings where every reader reads them
+;; alike.
+;;
+;; Each membership rule is guarded by the combined predicate's arity, so an intersection
+;; generates at most one membership rule, the one of its combined predicate's arity, and
+;; none for a combined kind of no known arity.
+;;
+;; The unary rule's guard is the membership an arity of one is read from: the outer level
+;; ranges over the classes relationTypeByArity maps to 1 (unary, and any class a KB maps
+;; to 1), and the generator it generates takes a ?combined that is a member of one.  That
+;; is a kind declared unary or unary_predicate, one entailed unary_predicate by an
+;; argument declaration naming it, or one given (arity ?combined 1), which the forward
+;; rule relationTypeByArity generates classifies unary.  These are the kinds the
+;; lazy-forward converse proves (arity ?combined 1) of, from the same membership at the
+;; same strength.  Read as the stored membership rather than proved through the converse,
+;; the guard is met in the chaining run that stores the membership, so the rule's firings
+;; over the members already stored are made in that run too.  Nothing is stored for the
+;; arity: the generated rule rests on the membership, and withdrawing a :default one
+;; withdraws the rule and what it concluded.
+;;
+;; (arity ?combined 2) holds of a predicate declared binary_predicate or given arity 2,
+;; through the lazy-forward converse relationTypeByArity generates from
+;; (relationTypeByArity binary 2).
+(implies (relationTypeByArity ?class 1)
+         (implies (and (intersection ?combined ?type1 ?type2) (?class ?combined))
+                  (set/oneJustificationRule
+                   (implies (and (?type1 ?x) (?type2 ?x)) (?combined ?x)))))
+(implies (relationTypeByArity ?class 1)
+         (implies (and (intersection ?combined ?type1 ?type2 ?type3) (?class ?combined))
+                  (set/oneJustificationRule
+                   (implies (and (?type1 ?x) (?type2 ?x) (?type3 ?x)) (?combined ?x)))))
+(implies (and (intersection ?combined ?type1 ?type2) (arity ?combined 2))
+         (set/oneJustificationRule
+          (implies (and (?type1 ?x ?y) (?type2 ?x ?y)) (?combined ?x ?y))))
+(implies (and (intersection ?combined ?type1 ?type2 ?type3) (arity ?combined 2))
+         (set/oneJustificationRule
+          (implies (and (?type1 ?x ?y) (?type2 ?x ?y) (?type3 ?x ?y)) (?combined ?x ?y))))
 
 ;; ---- the predAll / predExists / predInstance / predSpecified matrix -------
 ;; A family of ternary relations that quantify one binary ?pred's two argument positions
@@ -1804,6 +2047,31 @@
 (arg predSpecifiedAll 1 binary_predicate)
 (genlArg predSpecifiedAll 2 thing)
 
+;; The quoted twins of the Specified pair.  The population is the terms of an expression
+;; kind as the KB writes them, so (predAllQuotedSpecified comment symbol) asks a comment
+;; of every name the KB writes, where (predAllSpecified comment ?indep) asks one of each
+;; member of a collection.  A name is in the population while a stored sentex the reader
+;; sees writes it.  A compound is no name, so a quotation is never in symbol's population,
+;; and nor is a NAT, which KB text writes as the compound it reifies.
+(comment predAllQuotedSpecified
+         "(predAllQuotedSpecified ?pred ?qtype) declares the integrity requirement that every term of the expression kind ?qtype, taken as written, have a determinate filler at ?pred's second position: for every atomic name x a stored sentex writes, whose kind as written is ?qtype or below it, there is a believed (?pred x y) with y determinate and y satisfying ?pred's own slot-2 argument contract. The quoted twin of predAllSpecified: the population is the written terms of ?qtype, not the members of a collection, and the filler is audited exactly as predAllSpecified audits one. (predAllQuotedSpecified comment symbol) requires a comment of every symbol the KB writes. A NAT is taken as the compound it reifies, a non_atomic_expression, though the store spells it as a constant. A ?qtype that is no kind of expression is a declaration-contract gap the audit reports. An audit, not an inference: kb-integrity reads the declaration and returns the written terms with no determinate filler. The declaration generates no rule and concludes nothing. See docs/predall.md.")
+(binary_predicate predAllQuotedSpecified)
+(set/monotonic (time_varying_relation predAllQuotedSpecified))
+(not (eternal_predicate predAllQuotedSpecified))
+(arg predAllQuotedSpecified 1 binary_predicate)
+(genlArg predAllQuotedSpecified 2 expression)   ;; the expression kind whose written terms are audited
+
+(comment predSpecifiedAllQuoted
+         "(predSpecifiedAllQuoted ?pred ?qtype) is the argument-swapped twin of predAllQuotedSpecified: it requires that every term of the expression kind ?qtype, taken as written, have a determinate filler at ?pred's FIRST position — for every atomic name x a stored sentex writes, of kind ?qtype or below it, there is a believed (?pred y x) with y determinate and y satisfying ?pred's slot-1 argument contract. The quoted twin of predSpecifiedAll. An audit, not a stored rule. See docs/predall.md.")
+(binary_predicate predSpecifiedAllQuoted)
+(set/monotonic (time_varying_relation predSpecifiedAllQuoted))
+(not (eternal_predicate predSpecifiedAllQuoted))
+(arg predSpecifiedAllQuoted 1 binary_predicate)
+(genlArg predSpecifiedAllQuoted 2 expression)   ;; the expression kind whose written terms are audited
+;; Every name the KB writes has a comment.  A quotation is not a name, so a quoted
+;; sentence owes none.
+(predAllQuotedSpecified comment symbol)
+
 (comment typeAllSpecified
          "(typeAllSpecified ?classifier ?indep) declares the integrity requirement that every instance of collection ?indep have a believed membership in some member of the metatype ?classifier: for all x in ?indep there is a member K of ?classifier with (K x) believed, stated or reached through genl or argument preservation alike. predAllSpecified's counterpart for a classification rather than a filler. A partition of ?indep into ?classifier's members does not imply it: the partition says every instance IS in some member, and this requirement says the KB must KNOW which. An audit, not an inference: kb-integrity reads each visible declaration and reports the instances of ?indep no member of ?classifier is believed to hold, or a gap when ?classifier has no visible member. The declaration generates no rule and concludes nothing. e.g. (typeAllSpecified rigidity_kind relation) requires every relation to be classified time_invariant_relation, time_agnostic_relation or time_varying_relation. See docs/integrity.md.")
 (binary_predicate typeAllSpecified)
@@ -1820,7 +2088,7 @@
 (arg evaluate 2 thing)   ;; the expression: a number or an application
 
 (comment forced_decontextualized_predicate
-         "(forced_decontextualized_predicate ?predicate) means that every (?predicate …) sentence is stored directly in CxUniverse by force. No separate deduction and no justification: the fact's extent simply lives there. Used for genlCx, so the context topology has one canonical home instead of a copy per context.")
+         "(forced_decontextualized_predicate ?predicate) means that every (?predicate …) sentence is stored directly in CxUniverse by force. No separate deduction and no justification: the fact's extent simply lives there. Used for genlCx, so the context topology has one canonical home instead of a copy per context, and for arity, arityMin and the arity classes (unary through quinary, the predicate and function classes, the variable_arity and unbounded_arity kinds), so a relation's length, floor and class have one record however many contexts state them.")
 (unary_predicate forced_decontextualized_predicate)
 (set/monotonic (time_invariant_relation forced_decontextualized_predicate))
 (set/monotonic (genl forced_decontextualized_predicate eternal_predicate))
@@ -1835,8 +2103,10 @@
 ;; A not_assertible relation has no stored sentence, so a mark that places or treats a
 ;; relation's stored sentences has no not_assertible member: abduction stores the sentence
 ;; it assumes, the forced and decontextualized marks place stored sentences, a
-;; target_following_predicate's meta-sentex is retracted with the sentex it names, and a
-;; documentation predicate's sentences are the documentation the KB stores.
+;; target_following_predicate's meta-sentex is retracted with the sentex it names, a
+;; documentation predicate's sentences are the documentation the KB stores, a
+;; definitional predicate's sentences are the blocks the KB stores, and a
+;; kinship predicate's tuples, generic, blood or chosen, are stored when asserted.
 (set/monotonic (disjoint not_assertible abducible_predicate))
 (set/monotonic (disjoint not_assertible decontextualized_predicate))
 (set/monotonic (disjoint not_assertible forced_decontextualized_predicate))
@@ -1844,6 +2114,10 @@
 (set/monotonic (disjoint not_assertible forced_monotonic_between_predicates))
 (set/monotonic (disjoint not_assertible target_following_predicate))
 (set/monotonic (disjoint not_assertible documentation_predicate))
+(set/monotonic (disjoint not_assertible definitional_predicate))
+(set/monotonic (disjoint not_assertible generic_kinship_predicate))
+(set/monotonic (disjoint not_assertible blood_kinship_predicate))
+(set/monotonic (disjoint not_assertible chosen_kinship_predicate))
 ;; A classifier whose members are stated content has no not_assertible member: the arity
 ;; check reads the arity types' stored bindings, the definitional blocks state the order
 ;; types, the relation kinds and the arity-independent kinds, and the classifiers of
@@ -1930,7 +2204,7 @@
 (not_assertible cautiously)
 
 (comment forced_monotonic_predicate
-         "(forced_monotonic_predicate ?predicate) makes ?predicate forced-monotonic. Every (?predicate …) sentence is stored as written and keeps the strength it was written at, a genlCx edge excepted, which reads :monotonic so that it caps no firing's class, and belief is computed with the forced-monotonic set applied: a (?predicate …) sentence is never the loser of a nogood, a denial of one loses to the literal it denies at either strength, and a firing concluding one from a rule that is not all forced-monotonic antecedents with no unknown, exceptWhen or set/defaultRule supports nothing and is reported as a :forced-conclusion violation. The declaration is a switch: asserting or retracting it recomputes belief over what ?predicate reaches, so a KB that retracted it believes what a KB that never held it believes. Declared of genlCx, the relation marks, the function classes, orthogonal, the arity bindings (arity, the exact-arity classes, variable_arity and its two specializations, arityMin), the arity policies (fixed_arity and its two specializations, bounded_arity, unbounded_arity, at_least_binary through at_least_quinary, arityMax, admitsArgnum), the term kinds (relation, predicate, function, truth_valued_relation, logical_constant, logical_connective, quantifier, symbol, context, unrepresented_term and its value kinds), the numeric comparators (greaterThan, lessThan) and their quantity twins (quantityGreaterThan, quantityGreaterThanOrEqual, quantityLessThan, quantityLessThanOrEqual, sameQuantity), the argument declarations (arg, arg1 through arg5), the correspondence premises (functionCorrespondingPredicate, result), except, exceptWhen and the equality relations, every one of which the engine holds forced-monotonic whether or not it is declared; the retraction of every one of these but injection, surjection, bijection, the arity policies, the term kinds, the numeric and quantity comparators, the argument declarations and the correspondence premises is refused. Declared of inverse too, a premise of the rules typing one partner's arguments by the other's. The engine holds inverse forced-monotonic only where this declaration is seen, and its retraction is not refused. See docs/nmtms.md.")
+         "(forced_monotonic_predicate ?predicate) makes ?predicate forced-monotonic. Every (?predicate …) sentence is stored as written and keeps the strength it was written at, a genlCx edge excepted, which reads :monotonic so that it caps no firing's class, and belief is computed with the forced-monotonic set applied: a (?predicate …) sentence is never the loser of a nogood, a denial of one loses to the literal it denies at either strength, and a firing concluding one from a rule that is not all forced-monotonic antecedents with no unknown, exceptWhen or set/defaultRule supports nothing and is reported as a :forced-conclusion violation. The declaration is a switch: asserting or retracting it recomputes belief over what ?predicate reaches, so a KB that retracted it believes what a KB that never held it believes. Declared of genlCx, the relation marks, the function classes, the arity bindings (arity, the exact-arity classes, variable_arity and its two specializations, arityMin), the arity policies (fixed_arity and its two specializations, bounded_arity, unbounded_arity, at_least_binary through at_least_quinary, arityMax, admitsArgnum), the term kinds (relation, predicate, function, truth_valued_relation, logical_constant, logical_connective, quantifier, symbol, context, unrepresented_term and its value kinds), the numeric comparators (greaterThan, lessThan) and their quantity twins (quantityGreaterThan, quantityGreaterThanOrEqual, quantityLessThan, quantityLessThanOrEqual, sameQuantity), the argument declarations (arg, arg1 through arg5), the correspondence premises (functionCorrespondingPredicate, result), except, exceptWhen and the equality relations, every one of which the engine holds forced-monotonic whether or not it is declared; the retraction of every one of these but injection, surjection, bijection, the arity policies, the term kinds, the numeric and quantity comparators, the argument declarations and the correspondence premises is refused. Declared of inverse too, a premise of the rules typing one partner's arguments by the other's. The engine holds inverse forced-monotonic only where this declaration is seen, and its retraction is not refused. See docs/nmtms.md.")
 (unary_predicate forced_monotonic_predicate)
 ;; Every member of the forced-monotonic set is a predicate.
 (set/monotonic (genl forced_monotonic_predicate predicate))
@@ -1945,49 +2219,80 @@
 (forced_monotonic_predicate injection)
 (forced_monotonic_predicate surjection)
 (forced_monotonic_predicate bijection)
-(forced_monotonic_predicate orthogonal)
-;; Each arity binding is also decontextualized: its copy in CxUniverse makes a
-;; relation's length read the same at every context (docs/contexts.md).
+;; No nogood family reads an orthogonal as a ground, so its written strength decides its
+;; own clash: a :default orthogonal loses to the separation or the genl edge that
+;; contradicts it, and a rule concludes one from a defeasible membership.
+(not (forced_monotonic_predicate orthogonal))
+;; Each arity binding is decontextualized and forced-decontextualized: a statement of one
+;; is stored in CxUniverse whatever context states it, and a rule firing's conclusion is
+;; lifted there, so a relation's length reads the same at every context (docs/contexts.md).
 (forced_monotonic_predicate arity)
 (set/monotonic (decontextualized_predicate arity))
+(forced_decontextualized_predicate arity)
+;; The arity classes take both marks too: relation-wide (unary through quinary,
+;; variable_arity) and of predicates and functions.  The unary_predicate membership an
+;; argument declaration entails is stored in CxUniverse with them, so a relation's class
+;; has one record.  The three unbounded_arity kinds take the forced mark alone.
 (forced_monotonic_predicate unary)
 (set/monotonic (decontextualized_predicate unary))
+(forced_decontextualized_predicate unary)
 (forced_monotonic_predicate binary)
 (set/monotonic (decontextualized_predicate binary))
+(forced_decontextualized_predicate binary)
 (forced_monotonic_predicate ternary)
 (set/monotonic (decontextualized_predicate ternary))
+(forced_decontextualized_predicate ternary)
 (forced_monotonic_predicate quaternary)
 (set/monotonic (decontextualized_predicate quaternary))
+(forced_decontextualized_predicate quaternary)
 (forced_monotonic_predicate quinary)
 (set/monotonic (decontextualized_predicate quinary))
+(forced_decontextualized_predicate quinary)
 (forced_monotonic_predicate unary_predicate)
 (set/monotonic (decontextualized_predicate unary_predicate))
+(forced_decontextualized_predicate unary_predicate)
 (forced_monotonic_predicate binary_predicate)
 (set/monotonic (decontextualized_predicate binary_predicate))
+(forced_decontextualized_predicate binary_predicate)
 (forced_monotonic_predicate ternary_predicate)
 (set/monotonic (decontextualized_predicate ternary_predicate))
+(forced_decontextualized_predicate ternary_predicate)
 (forced_monotonic_predicate quaternary_predicate)
 (set/monotonic (decontextualized_predicate quaternary_predicate))
+(forced_decontextualized_predicate quaternary_predicate)
 (forced_monotonic_predicate quinary_predicate)
 (set/monotonic (decontextualized_predicate quinary_predicate))
+(forced_decontextualized_predicate quinary_predicate)
 (forced_monotonic_predicate unary_function)
 (set/monotonic (decontextualized_predicate unary_function))
+(forced_decontextualized_predicate unary_function)
 (forced_monotonic_predicate binary_function)
 (set/monotonic (decontextualized_predicate binary_function))
+(forced_decontextualized_predicate binary_function)
 (forced_monotonic_predicate ternary_function)
 (set/monotonic (decontextualized_predicate ternary_function))
+(forced_decontextualized_predicate ternary_function)
 (forced_monotonic_predicate quaternary_function)
 (set/monotonic (decontextualized_predicate quaternary_function))
+(forced_decontextualized_predicate quaternary_function)
 (forced_monotonic_predicate quinary_function)
 (set/monotonic (decontextualized_predicate quinary_function))
+(forced_decontextualized_predicate quinary_function)
 (forced_monotonic_predicate variable_arity)
 (set/monotonic (decontextualized_predicate variable_arity))
+(forced_decontextualized_predicate variable_arity)
 (forced_monotonic_predicate variable_arity_predicate)
 (set/monotonic (decontextualized_predicate variable_arity_predicate))
+(forced_decontextualized_predicate variable_arity_predicate)
 (forced_monotonic_predicate variable_arity_function)
 (set/monotonic (decontextualized_predicate variable_arity_function))
+(forced_decontextualized_predicate variable_arity_function)
+(forced_decontextualized_predicate unbounded_arity)
+(forced_decontextualized_predicate unbounded_arity_predicate)
+(forced_decontextualized_predicate unbounded_arity_function)
 (forced_monotonic_predicate arityMin)
 (set/monotonic (decontextualized_predicate arityMin))
+(forced_decontextualized_predicate arityMin)
 ;; The arity policies.  Each is read beside the arity bindings above, so a relation's
 ;; policy goes OUT only by retraction, as its length does.
 (forced_monotonic_predicate fixed_arity)
@@ -2051,6 +2356,8 @@
 (forced_monotonic_predicate except)
 ;; except takes one argument, the sentexHandle of the sentence it hides, and that
 ;; argument is a non-atomic term.
+(comment except
+         "(except (sentexHandle ?h)) hides the stored sentence ?h from the context where the except is stated and every context that sees it, and sweeps the firings resting on ?h placed there. It does not retract ?h.")
 (unary_predicate except)
 (set/monotonic (time_varying_relation except))
 (not (eternal_predicate except))
@@ -2292,12 +2599,26 @@
 (arg contextArgFold 2 positive_integer)
 (arg contextArgFold 3 function)
 (comment contextArgCalendarSpelling
-         "(contextArgCalendarSpelling ?function ?position) means that an application of ?function denotes the context it denotes with each calendar time in no zone at argument ?position in its one spelling read off its fields. A whole year, month or day is spelled with YearFn, MonthFn or DayFn, a whole hour, minute or second with DatetimeFn and every field zero-padded, a moment with InstantFn, (StartFn ?time) and (EndFn ?time) of a calendar term or range included, and any other range with DatetimeRangeFn from the coarsest unit starting where it starts to the coarsest unit ending where it ends. So (contextArgCalendarSpelling CxTimeFn 2) makes (CxTimeFn CxStory (DatetimeFn \"2000-01\")) and (CxTimeFn CxStory (MonthFn 2000 1)) one cx/ constant: the slot is respelled before it reifies. A time with a UTC offset or a zone, and a named time, keep the spelling they are written in. ?position is 1-based over ?function's arguments. See docs/context-nat.md.")
+         "(contextArgCalendarSpelling ?function ?position) means that an application of ?function denotes the context it denotes with each calendar time in no zone at argument ?position in its one spelling read off its fields. A whole year, month or day is spelled with YearFn, MonthFn or DayFn, a whole hour, minute, second or fraction of a second with DatetimeFn and every field zero-padded, a moment on a whole second with InstantFn, (StartFn ?time) and (EndFn ?time) of a calendar term or range included, a moment between two seconds as the StartFn of the coarsest unit starting there, and any other range with DatetimeRangeFn from the coarsest unit starting where it starts to the coarsest unit ending where it ends. So (contextArgCalendarSpelling CxTimeFn 2) makes (CxTimeFn CxStory (DatetimeFn \"2000-01\")) and (CxTimeFn CxStory (MonthFn 2000 1)) one cx/ constant: the slot is respelled before it reifies. A time with a UTC offset or a zone, and a named time, keep the spelling they are written in. ?position is 1-based over ?function's arguments. See docs/context-nat.md.")
 (binary_predicate contextArgCalendarSpelling)
 (set/monotonic (time_invariant_relation contextArgCalendarSpelling))
 (arg contextArgCalendarSpelling 1 function)
 (arg contextArgCalendarSpelling 2 positive_integer)
 (termsRelated contextArgGenlCx contextArgSubrelation contextArgFold contextArgCalendarSpelling)
+
+(comment contextsOrderedBothWays
+         "(contextsOrderedBothWays ?context1 ?context2) means that the orders contextArgSubrelation declares place each of the two contexts below the other: both are applications of one function, they agree at every argument no declaration names, and at every position where they differ each argument is below the other's by a sub-relation declared there. So under (contextArgSubrelation CxTimeFn 2 subintervalOf), the slices of one monad at two named intervals, each stated a subintervalOf the other, are ordered both ways. See docs/context-nat.md.")
+(implementationNote contextsOrderedBothWays "The structural genlCx producer stores it in CxUniverse for a pair it does not merge, justified by each route one way paired with each route the other way, and builds no genlCx edge between the two while it is believed. Where a route each way rests on :monotonic evidence alone, the producer derives equals between the two instead.")
+(set/monotonic (instance_relation_predicate contextsOrderedBothWays))
+(set/monotonic (symmetric contextsOrderedBothWays))
+;; Not transitive: a declared sub-relation need not be transitive, so two pairs ordered
+;; both ways through a shared context do not order their outer two.
+(not (transitive contextsOrderedBothWays))
+(arg contextsOrderedBothWays 1 context)
+(arg contextsOrderedBothWays 2 context)
+(set/monotonic (time_invariant_relation contextsOrderedBothWays))
+(seeAlso contextsOrderedBothWays contextArgSubrelation)
+(seeAlso contextsOrderedBothWays genlCx)
 
 (comment natFormula
          "(natFormula ?constant ?expression) means that the reified constant ?constant stands for the non-atomic term ?expression. The engine stores one when it reifies an application and reads it to get the expression back from the constant; the inverted term index answers the other direction, from expression to constant. A quoting predicate: ?expression is stored as written, neither reified nor type-checked as a term.")
@@ -2369,17 +2690,41 @@
 ;; The shipped contexts.  Every genlCx edge is stored in CxUniverse, and (arg genlCx 1
 ;; context) and (arg genlCx 2 context) type both of its arguments, so the memberships are
 ;; stated here.
+(comment CxAnatomy
+         "What kinds of thing have what kinds of part (partType claims). It concludes nothing about an individual.")
 (context CxAnatomy)
+(comment CxBiology
+         "A defeasible biology theory: flight, air breathing, being alive or awake, mortality and warm-bloodedness, concluded from an organism's kind or state.")
 (context CxBiology)
+(comment CxChange
+         "A simple event calculus: a fluent that an event starts holds at later instants until an event clips it.")
 (context CxChange)
+(comment CxKinship
+         "Kinship and age: ancestry derived from parenthood, relative age from birth years.")
 (context CxKinship)
+(comment CxMereology
+         "Parts, location and ownership: a part is where its whole is, and an owner of a whole owns its parts.")
 (context CxMereology)
+(comment CxNormalPhysicalConditions
+         "Opt-in: the states of matter of substances at ordinary room temperature and pressure in the real world.")
 (context CxNormalPhysicalConditions)
+(comment CxRealWorld
+         "The real world, as opposed to an invented setting, such as a fictional context. A context for an invented setting goes beside it, not under it.")
 (context CxRealWorld)
+(comment CxSize
+         "Comparative size: stated between kinds, computed from measures between two particular objects.")
 (context CxSize)
+(comment CxSocial
+         "Social relations between persons, including relationships and dwelling, with rules such as knowing from friendship or marriage and membership from employment.")
 (context CxSocial)
+(comment CxTra
+         "The opt-in middle context for vocabulary that is generally useful but specific to one domain, such as computing, perception and narrow relationship terms, and so is not in a starter context that CxWell sees. CxTra sees CxUniverse and CxSocial. CxWell does not see CxTra, so a context reads the vocabulary only by placing itself under CxTra.")
 (context CxTra)
+(comment CxUniverse
+         "The shared upper ontology: the most general vocabulary and rules, visible to every context of the starter.")
 (context CxUniverse)
+(comment CxWell
+         "The default context that sees the starter's always-on middle contexts. It does not see the opt-in contexts.")
 (context CxWell)
 
 (comment greaterThan
@@ -2410,7 +2755,7 @@
 (set/monotonic (genl instance_relation_predicate binary_predicate))
 
 (comment inverse
-         "(inverse ?predicate1 ?predicate2) means that ?predicate1 and ?predicate2 are inverse relations, so (?predicate1 a b) holds exactly when (?predicate2 b a) does. Answered by a prover that hands the swapped goal back to the engine rather than matching raw facts, so an inverse composes with its partner's transitivity. Symmetric, since (inverse P Q) and (inverse Q P) say the same thing, so the two spellings store as one sentence. Forced-monotonic, since rules read it beside arg to type each partner's arguments by the other's.")
+         "(inverse ?predicate1 ?predicate2) means that ?predicate1 and ?predicate2 are inverse relations, so (?predicate1 a b) holds exactly when (?predicate2 b a) does. The matching fan reads each partner's stored facts with the arguments swapped, as it reads a genlInverse edge, so a forward rule's antecedent on one partner joins the other's facts. A prover also hands the swapped goal back to the engine, so an inverse composes with its partner's transitivity. Symmetric, since (inverse P Q) and (inverse Q P) say the same thing, so the two spellings store as one sentence. Forced-monotonic, since rules read it beside arg to type each partner's arguments by the other's.")
 (positiveExample inverse (Quote (inverse parentOf childOf)))
 (set/monotonic (instance_relation_predicate inverse))
 (set/monotonic (symmetric inverse))
@@ -2644,6 +2989,10 @@
          "(set/solveRule ?rule) means that ?rule also runs in a solve, as a normal answer-set rule. A solve derives the head of ?rule in every answer set whose atoms satisfy its body, and a constraint may name that head. A direction wrapper beside set/solveRule says how the rule runs in base, and the rule runs backward when there is none. set/inertRule beside set/solveRule makes a rule that runs in a solve alone. A virtual wrapper interpreted on assert: it adds :solve to the engines of the rule sentex and is never stored as a fact of its own. See docs/solving.md.")
 (syncategorematic set/solveRule)
 
+(comment set/oneJustificationRule
+         "(set/oneJustificationRule ?rule) means that a forward firing of ?rule places nothing where a stored justification of ?rule for the same conclusion stands at every reader and outranks it. One justification outranks another by a higher class, or by the same class and a lower content key. A firing it withholds is found again when the stored justification goes OUT, loses a class, is removed, or rests on a handle a placed defeat or an except hides from a reader. What a reader believes, and the class it believes it at, are those of the same rule unwrapped. Written outside the direction wrapper.")
+(syncategorematic set/oneJustificationRule)
+
 (comment set/assumptionRule
          "(set/assumptionRule ?rule) means that the head of ?rule is a choice offered to a solve, not a truth to derive. The rule chains in neither direction in base. A solve grounds it into one choice per ground head. A virtual wrapper interpreted on assert: it sets the effect of the rule sentex to :choose and is never stored as a fact of its own. See docs/solving.md.")
 (syncategorematic set/assumptionRule)
@@ -2782,7 +3131,7 @@
 (set/monotonic (genl idempotent function))
 
 (comment meetFunctionOf
-         "(meetFunctionOf ?function ?order) means that an application of ?function denotes the greatest thing ?order places below each of its arguments: the meet of ?order. An argument that ?order places above another argument adds nothing, so the assert entry point drops it from a ground application below the literal, and of two arguments each below the other it keeps the first in canonical term order. Whether one argument is below another is answered by the comparator the engine registers for ?order or for an order genl-below it, which reads the two terms alone; a stored (?order a b) fact is never read, so the stored form of a term does not move with belief, and an order with no registered comparator absorbs nothing. A meet is commutative, associative and idempotent, and the forward rules below conclude those three marks from this one. See docs/canonicalization.md.")
+         "(meetFunctionOf ?function ?order) means that an application of ?function denotes the greatest thing ?order places below each of its arguments: the meet of ?order. An argument that ?order places above another argument adds nothing, so the assert entry point drops it from a ground application below the literal, and of two arguments each below the other it keeps the first in canonical term order. At the write, whether one argument is below another is answered by the comparator the engine registers for ?order or for an order genl-below it. The comparator reads the two terms alone and no stored (?order a b) fact, so the stored form of a term does not move with belief, and an order with no registered comparator absorbs nothing at the write. A :monotonic stored (?order a b) fact between two arguments of a stored application derives the application's rewrite to the lower one, so answers name that argument while the fact holds. A meet is commutative, associative and idempotent, and the forward rules below conclude those three marks from this one. See docs/canonicalization.md.")
 (positiveExampleComment meetFunctionOf "the intersection of time intervals, the meet of subintervalOf")
 (decontextualized_predicate meetFunctionOf)
 (set/monotonic (instance_relation_predicate meetFunctionOf))
@@ -2832,7 +3181,7 @@
 (arg transitiveInArgInverse 3 predicate)
 
 (comment transitiveInArg
-         "(transitiveInArg ?predicate ?position ?relation) means that argument ?position of ?predicate is preserved along the arrow of the transitive ?relation, the direction of Cyc's transitiveViaArg. A stored (?predicate … W …) licenses the same claim about A whenever (?relation W A) holds, so with genl this is upward inheritance: (capabilityType bird flying) with (genl flying travelling) reaches (capabilityType bird travelling). transitiveInArgInverse is the other direction, and the two names exist so neither direction requires declaring an inverse predicate with no other use. The same restriction on ?relation applies.")
+         "(transitiveInArg ?predicate ?position ?relation) means that argument ?position of ?predicate is preserved along the arrow of the transitive ?relation, the direction of Cyc's transitiveViaArg. A stored (?predicate … W …) licenses the same claim about A whenever (?relation W A) holds, so with genl this is upward inheritance: (abilityType bird flying) with (genl flying travelling) reaches (abilityType bird travelling). transitiveInArgInverse is the other direction, and the two names exist so neither direction requires declaring an inverse predicate with no other use. The same restriction on ?relation applies.")
 (ternary_predicate transitiveInArg)
 (set/monotonic (time_invariant_relation transitiveInArg))
 (not (eternal_predicate transitiveInArg))
@@ -3155,26 +3504,27 @@
 ;; one, so the record would not survive a reload.  This is the one record kb-integrity
 ;; reads; any other spelling of an acknowledgment is a rule concluding this one.
 (comment acknowledgedFinding
-         "(acknowledgedFinding ?category ?subject ?reason) means that a kb-integrity check flagged ?subject under ?category, someone looked, and ?reason says why it stays. ?category is the sweep's category keyword. ?subject names the finding by its content, taken as written: for :rule-macro the suggested declaration as the sweep reports it, for :derivable-stated-edge the stated genl or disjoint sentence, its ?reason naming the exception of state it once that keeps the edge, and for :rule-clash the pair of rules as (RulePairFn (Quote ?rule1) (Quote ?rule2)), the two rule sentences in either order and under any variable names — each rule quoted on its own, since a quoted term is opaque, and RulePairFn, outside both quotes, naming the pair, so that the two orders name one pair (see RulePairFn). The sweep reads the record from the context the finding is read in — the rule's for :rule-macro, the audit context's for the others — and moves a :rule-macro or :rule-clash finding to that category's review-only bucket with ?reason beside it, so it stays visible and no longer turns a default sweep :gap; a :derivable-stated-edge finding, review-only already, carries ?reason where it is. Nothing else reads it and it draws no inference. See docs/integrity.md.")
-(positiveExampleComment acknowledgedFinding "(acknowledgedFinding :rule-macro (genl livesIn locatedIn) \"livesIn is meant as a default\")")
+         "(acknowledgedFinding ?category ?subject ?reason) means that a kb-integrity check flagged ?subject under ?category, someone looked, and ?reason says why it stays. ?category is the sweep's category keyword. ?subject names the finding by its content: for :rule-macro the suggested declaration as the sweep reports it, written (Quote ?declaration), for :derivable-stated-edge the stated genl or disjoint sentence, written (Quote ?sentence), its ?reason naming the exception of state it once that keeps the edge, and for :rule-clash the pair of rules as (RulePairFn (Quote ?rule1) (Quote ?rule2)), the two rule sentences in either order and under any variable names — each rule quoted on its own, since a quoted term is opaque, and RulePairFn, outside both quotes, naming the pair, so that the two orders name one pair (see RulePairFn). A quoted sentence is opaque, so the sweep reads a symmetric or commuting functor's arguments in it in either order itself. The sweep reads the record from the context the finding is read in — the rule's for :rule-macro, the audit context's for the others — and moves a :rule-macro or :rule-clash finding to that category's review-only bucket with ?reason beside it, so it stays visible and no longer turns a default sweep :gap; a :derivable-stated-edge finding, review-only already, carries ?reason where it is. Nothing else reads it and it draws no inference. See docs/integrity.md.")
+(positiveExampleComment acknowledgedFinding "(acknowledgedFinding :rule-macro (Quote (genl livesIn locatedIn)) \"livesIn is meant as a default\")")
 (positiveExampleComment acknowledgedFinding "(acknowledgedFinding :rule-clash (RulePairFn (Quote (implies (penguin_kind ?x) (not (flies ?x)))) (Quote (implies (bird_kind ?x) (flies ?x)))) \"penguins are birds that do not fly\")")
 (ternary_predicate acknowledgedFinding)
 (set/monotonic (eternal_predicate acknowledgedFinding))
 (implementationNote acknowledgedFinding "The KB contains the findings the theory acknowledges, not an immutable review history. Revise an acknowledgment by assertion or retraction, not by temporal slicing; eternal_predicate states that distinction without changing the revision machinery.")
 (arg acknowledgedFinding 1 keyword)                    ;; the category, as the sweep keys it
-;; expression, the most general type: a :rule-macro subject is a bare declaration
-;; (formula-shaped), a :rule-clash subject a RulePairFn application (non_atomic_term-
-;; shaped), and an atomic expression is admitted too, so a future category may name a
-;; finding by a single symbol.
-(quotedArg acknowledgedFinding 2 expression) ;; the finding's content, taken as written
+;; expression, the most general type: a :rule-macro or :derivable-stated-edge subject is
+;; a quoted sentence, (Quote ?sentence), which denotes that expression, and a :rule-clash
+;; subject a RulePairFn application over two quoted rules, which declares no result and
+;; so is not convicted.  The position is a use: canonicalization reaches RulePairFn,
+;; outside the quotes, and stops at each Quote.
+(arg acknowledgedFinding 2 expression)                 ;; the finding's content
 (arg acknowledgedFinding 3 string)                     ;; why the finding stays
 
 ;; RulePairFn: the unordered pair a :rule-clash acknowledgment's subject names two rules
 ;; under.  Each rule is written (Quote ?ruleN), and a quoted term is opaque, so the one
 ;; piece of inference the pair needs — the two orders are one pair — is stated outside
 ;; both quotes, of the function holding them, by (commutative RulePairFn).  The subject
-;; position is a mention, which the store keeps as written, so kb-integrity reads the
-;; pair as a bag of rules.
+;; position is a use, so the store sorts the pair, and kb-integrity reads it as a bag of
+;; rules, which either order gives.
 (comment RulePairFn
          "(RulePairFn ?rule1 ?rule2) names the unordered pair of ?rule1 and ?rule2: an acknowledgedFinding :rule-clash subject names a rule-clash pair this way, each rule written (Quote ?ruleN) so the pair is about the rules' syntax and not their truth. (RulePairFn ?rule1 ?rule2) and (RulePairFn ?rule2 ?rule1) name the same pair: RulePairFn is commutative. See docs/integrity.md.")
 (binary_function RulePairFn)
@@ -3194,13 +3544,15 @@
 
 ;; A reviewer's record on a kb-integrity rule-macro suggestion, and sugar for
 ;; acknowledgedFinding: the rule below concludes the acknowledgment kb-integrity reads,
-;; and no code reads this record.  It quotes the suggested declaration rather than naming
-;; the rule by handle, as acknowledgedFinding does, and carries no reason.
+;; and no code reads this record.  It quotes the suggested declaration, (Quote ?declaration),
+;; rather than naming the rule by handle, as acknowledgedFinding does, and carries no reason.
 (comment declined_rule_macro
-         "(declined_rule_macro ?declaration) means that a reviewer read the kb-integrity rule-macro suggestion ?declaration and keeps the rule it was suggested for as written — most often a set/defaultRule that is meant to be a default. ?declaration is the suggested declaration as the sweep reports it, written as a quoted argument. Sugar for acknowledgedFinding: a forward rule concludes (acknowledgedFinding :rule-macro ?declaration \"Acknowledged via declined_rule_macro; no reason supplied.\") in the record's context, and the rule-macro pass reads that. See docs/integrity.md.")
-(positiveExampleComment declined_rule_macro "(declined_rule_macro (genl livesIn locatedIn))")
+         "(declined_rule_macro ?declaration) means that a reviewer read the kb-integrity rule-macro suggestion ?declaration and keeps the rule it was suggested for as written — most often a set/defaultRule that is meant to be a default. ?declaration is the suggested declaration as the sweep reports it, quoted: (declined_rule_macro (Quote (genl livesIn locatedIn))). Sugar for acknowledgedFinding: a forward rule concludes (acknowledgedFinding :rule-macro ?declaration \"Acknowledged via declined_rule_macro; no reason supplied.\") in the record's context, and the rule-macro pass reads that. See docs/integrity.md.")
+(positiveExampleComment declined_rule_macro "(declined_rule_macro (Quote (genl livesIn locatedIn)))")
 (unary_predicate declined_rule_macro)
-;; What a record declines is a suggested declaration, a ground atomic sentence.
+;; What a record declines is a suggested declaration, a ground atomic sentence, written
+;; (Quote ?declaration), which denotes it.  The genl edge is the argument's type, as a
+;; unary predicate's is, so the record declares no arg.
 (set/monotonic (genl declined_rule_macro closed_predication))
 (set/monotonic (eternal_predicate declined_rule_macro))
 (set/forwardRule
@@ -3241,9 +3593,7 @@
 (set/monotonic (asymmetric successorTypeOrder))
 
 ;; typeOrthogonal is typeGenl's orthogonal twin, with the classifier first as typeGenl
-;; has it.  A generator generates one membership rule per fact.  The generated rule is strict,
-;; and it concludes a forced-monotonic literal, so its firings are believed only where the
-;; classifier is forced-monotonic.
+;; has it.  A generator generates one strict membership rule per fact.
 (comment typeOrthogonal "(typeOrthogonal ?classifier ?type) means that every instance of ?classifier is orthogonal to ?type, e.g. (typeOrthogonal arity_type abducible_predicate) says that binary, unary and every other arity type each overlap abducible_predicate without either side subsuming the other.")
 (binary_predicate typeOrthogonal)
 (set/monotonic (time_agnostic_relation typeOrthogonal))
@@ -3252,14 +3602,11 @@
 (arg typeOrthogonal 2 unary_predicate)
 (implies (typeOrthogonal ?classifier ?type)
          (set/forwardRule (implies (?classifier ?x) (orthogonal ?type ?x))))
-(implementationNote typeOrthogonal "The rule concludes (orthogonal ?type ?x), a forced-monotonic literal, from the membership (?classifier ?x). A firing from a membership that is not forced-monotonic supports nothing and is reported as a :forced-conclusion violation, so a classifier named by typeOrthogonal is declared forced_monotonic_predicate.")
 (implementationNote typeOrthogonal "The rule writes (orthogonal ?type ?x). orthogonal is symmetric, so (orthogonal ?x ?type) is the same sentence, but with that spelling a genlArg entailment over the conclusion reads a different position after a text export reloads the KB: https://github.com/vaelii/vaelii/issues/173")
 (termsRelated typeGenl typeOrthogonal orthogonal)
 
 ;; orthogonalMetatypes crosses two or more classifiers member by member.  A generator per
-;; pair of positions generates one strict rule over the two memberships, so, as with
-;; typeOrthogonal, a firing is believed only where both classifiers are
-;; forced-monotonic.
+;; pair of positions generates one strict rule over the two memberships.
 (comment orthogonalMetatypes "(orthogonalMetatypes ?metatype1 ?metatype2 ...) means that every member of each named metatype is orthogonal to every member of each other named metatype, e.g. (orthogonalMetatypes spatiality_type temporality_type) says that each of spatial and aspatial overlaps each of temporal and atemporal without either side subsuming the other. Two members of one metatype are not made orthogonal.")
 (variable_arity_predicate orthogonalMetatypes)
 (unbounded_arity_predicate orthogonalMetatypes)
@@ -3374,8 +3721,8 @@
 ;; A shrimp eaten whole is an animal and a food, and an apple a food that is no animal.
 (orthogonal animal food)
 ;; A type of any order may have no instance or may have one.  The order memberships are
-;; definitional, so type_type_by_order is forced-monotonic and the two
-;; typeOrthogonal facts conclude the pairs over type, metatype and meta_metatype.
+;; definitional, so type_type_by_order is forced-monotonic.  The two typeOrthogonal facts
+;; conclude the pairs over type, metatype and meta_metatype.
 (forced_monotonic_predicate type_type_by_order)
 (set/monotonic (time_invariant_relation type_type_by_order))
 (typeOrthogonal type_type_by_order empty)

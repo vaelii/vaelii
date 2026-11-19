@@ -333,7 +333,7 @@ The tables are generated from the register by `lein regen-goldens`, and
 | S5 | Refused firings | `special` | handle | records T1 | E2 K, E3 K, E17 R, E18 R, E19 W, E22 G | write | index | state |  | yes |
 | S7 | Last edge program | `kb` | global | records S5 | E18 R | write | index | state |  |  |
 | T1 | genl and genlCx relations | `taxonomy` | node | records M1 | E7 K, E8 K, E16 K, E17 R, E18 R | write | index | taxonomy |  |  |
-| T2 | Flat declaration caches | `taxonomy` | value | records M1 | E8 K, E9 K, E17 R, E18 R | write | index | taxonomy |  |  |
+| T2 | Flat declaration caches | `taxonomy` | value | records M1 | E3 K, E8 K, E9 K, E13 K, E17 R, E18 R | write | index | taxonomy |  |  |
 | T3 | Equality partition | `taxonomy` | term | records M1 | E8 K, E11 K, E17 R, E18 R | write | index | taxonomy |  |  |
 | T4 | Rewrite rules | `taxonomy` | handle | records M1 | E2 K, E3 K, E8 K, E17 R, E18 R | write | index | taxonomy |  |  |
 | T5 | Taxonomy closures | `taxonomy` | node | T1 M1 | E7 G, E8 G, E17 W, E21 W, every other event G* | read | cache | no | `:taxonomy-closures` |  |
@@ -345,6 +345,7 @@ The tables are generated from the register by `lein regen-goldens`, and
 | M2 | Touched set | `jtms` | handle | M1 | E5 K, E10 K, E16 W, E17 W | write | journal | no |  |  |
 | M3 | Belief hold | `jtms` | global | M1 | E6 K | settle | index | no |  |  |
 | M4 | Justification dedup | `jtms` | handle | justifications | E5 W | pass | pass | no | `:justification-dedup` |  |
+| M5 | Reach memo | `jtms` | handle | justifications index | E5 W | pass | pass | no |  |  |
 | J1 | Candidate journal | `decide` | handle | N1 N5 | E1 K, E3 K, E4 K, E7 K, E8 K, E9 K, E15 K, E17 R, E18 R, E22 K | write | journal | no |  |  |
 | J2 | Candidates by context | `decide` | context | J1 N1 | E1 K, E3 K, E4 K, E8 K, E15 K, E17 R, E18 R | read | cache | no |  |  |
 | J4 | Flat context moves | `taxonomy` | value | T2 | E8 K, E9 K, E17 R | write | journal | no |  |  |
@@ -373,6 +374,7 @@ The tables are generated from the register by `lein regen-goldens`, and
 | Q8 | Mint departures | `special` | handle | records | E17 W, E19 W, E22 Q | write | queue | no |  |  |
 | Q9 | Unpremised mints | `special` | handle | records | E17 W, E19 W, E22 Q | write | queue | no |  |  |
 | Q10 | Owed mint releases | `special` | handle | records Q8 | E18 R, E19 W | write | queue | state |  |  |
+| Q11 | Owed drops | `special` | handle | records justifications T1 | E17 R, E18 R, E19 W, E22 Q | write | queue | state |  |  |
 | R1 | Literal matches | `literal-cache` | literal | index M1 T1 | E21 W, every other event G* | read | cache | no | `:literal-matches` |  |
 | R2 | Closure answers | `provers` | node | index M1 | E21 W, every other event G* | read | cache | no | `:closure-answers` |  |
 | R3 | Resident derived values | `observe` | context | index M1 | E19 W, E21 W, every other event G* | read | cache | no | `:resident` |  |
@@ -400,15 +402,15 @@ The tables are generated from the register by `lein regen-goldens`, and
 | K11 | Calculus registry memo | `qcn-kb` | value |  | every event I | read | cache | no |  |  |
 | K12 | Built calculi | `qcn-kb` | value |  | C | read | cache | no |  |  |
 | K13 | Mint rule handles | `special` | value | index | E1 W, E3 W, E17 W, E19 W | read | cache | no |  |  |
-| K14 | Lazy-forward rule presence | `special` | value | index | E1 W, E3 W, E17 W, E19 W | read | cache | no |  |  |
+| K14 | Rule presence per engine | `special` | value | index | E1 W, E3 W, E17 W, E19 W | read | cache | no |  |  |
 
 | id | event | choke points | names | rows it retires |
 |---|---|---|---|---|
 | E1 | `stored` | `kb/create-sentex` | handle, sentence, context | T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 R1 R2 R3 R6 R9 R10 R13 K10 K11 K13 K14 |
 | E2 | `integrated` | `special/integrate-sentex`, `special/derived-sentex-added`, `special/integrate-twin` | handle, functor | S5 T4 T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
-| E3 | `removed` | `integrate/sentex-removed!` | record, except target | S5 T4 T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 D3 Q7 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 K13 K14 |
+| E3 | `removed` | `integrate/sentex-removed!` | record, except target | S5 T2 T4 T5 T7 T12 J1 J2 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 D3 Q7 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 K13 K14 |
 | E4 | `respelled` | `kb/respell-sentex!` | old and new sentex, one handle | T5 T7 T12 J1 J2 N1 N2 N5 N6 X1 X3 X4 R1 R2 R3 R6 R8 R9 R10 R13 K10 K11 |
-| E5 | `relabelled` | `jtms/supersede`, `jtms/ensure-node`, `jtms/add-premise`, `jtms/suspend-premise`, `jtms/add-justification`, `jtms/restrength-informant`, `jtms/set-forced`, `jtms/relabel`, `jtms/set-blocked`, `jtms/retract!`, `jtms/sweep!`, `jtms/drop-justification!` | the handles of the region, held in the network | T5 T7 T12 M1 M2 M4 N3 N10 X1 X3 X4 Q3 R1 R2 R3 K10 K11 |
+| E5 | `relabelled` | `jtms/supersede`, `jtms/ensure-node`, `jtms/add-premise`, `jtms/suspend-premise`, `jtms/add-justification`, `jtms/restrength-informant`, `jtms/set-forced`, `jtms/relabel`, `jtms/set-blocked`, `jtms/retract!`, `jtms/sweep!`, `jtms/drop-justification!` | the handles of the region, held in the network | T5 T7 T12 M1 M2 M4 M5 N3 N10 X1 X3 X4 Q3 R1 R2 R3 K10 K11 |
 | E6 | `held` | `settle/hold-belief!`, `settle/publish-belief!` | hold token | T5 T7 T12 M3 X1 X3 X4 Q4 R1 R2 R3 K10 K11 |
 | E7 | `edge` | `taxonomy/add-genl`, `taxonomy/del-genl!`, `taxonomy/add-genlCx`, `taxonomy/del-genlCx!` | handle, edge, context | T1 T5 T7 T11 J1 J5 N1 N2 N3 N5 N6 N8 N10 X1 X3 X4 R1 R2 R3 K10 K11 |
 | E8 | `edge-belief` | `special/reconcile-belief-change`, `taxonomy/refresh-beliefs` | moved handles, or nil for all | T1 T2 T3 T4 T5 T7 T11 J1 J2 J4 J5 N2 N3 N5 N6 N8 N10 X1 X3 X4 Q5 R1 R2 R3 K10 K11 |
@@ -416,16 +418,16 @@ The tables are generated from the register by `lein regen-goldens`, and
 | E10 | `forced-monotonic` | `checks/force-reach!` | predicate | T5 T7 M1 M2 X1 X3 X4 R1 R2 R3 K10 K11 |
 | E11 | `equality` | `taxonomy/add-equality`, `taxonomy/del-equality!` | handle, pair | T3 T5 T7 X1 X3 X4 Q5 R1 R2 R3 K10 K11 |
 | E12 | `except` | `special/recheck-except` | except, target, context | T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
-| E13 | `rule-indexed` | `special/index-rule-sentex` | rule, antecedent predicates, context | T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
+| E13 | `rule-indexed` | `special/index-rule-sentex` | rule, antecedent predicates, context | T2 T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
 | E14 | `recheck` | `special/mark-recheck` | rules; a trigger, :all or :all-rejoin | T5 T7 X1 X3 X4 R1 R2 R3 K10 K11 |
 | E15 | `inherited` | `decide.inherited/install-inherited!`, `decide.inherited/update-inherited!` | clash rows | T5 T7 J1 J2 N7 X1 X3 X4 D3 R1 R2 R3 K10 K11 |
 | E16 | `settle-exit` | `settle/settle-finish` | region | T1 T5 T7 T12 M2 X1 X3 X4 D3 Q2 Q3 Q5 Q6 R1 R2 R3 K10 K11 |
-| E17 | `recover` | `recovery/recover-from-records`, `recovery/install-rebuilt!` | the whole store | S5 T1 T2 T3 T4 T5 T7 T11 T12 M1 M2 J1 J2 J4 J5 J6 N1 N2 N3 N5 N6 N7 N8 N10 X1 X3 X4 D3 Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 R1 R2 R3 R6 R9 K10 K11 K13 K14 |
-| E18 | `image-install` | `reasoning-image/install-from!` | the image | S5 S7 T1 T2 T3 T4 T5 T7 T12 M1 J1 J2 J5 J6 N1 N2 N3 N5 N6 N7 N10 X1 X3 X4 D3 Q1 Q2 Q5 Q7 Q10 R1 R2 R3 K10 K11 |
-| E19 | `cleared` | `vaelii.core/clear!`, `reindex/reindex`, `io.import/clearing-on-refusal` | the stores, wiped | S5 T5 T7 X1 X3 X4 Q2 Q8 Q9 Q10 R1 R2 R3 R4 R10 K10 K11 K13 K14 |
+| E17 | `recover` | `recovery/recover-from-records`, `recovery/install-rebuilt!` | the whole store | S5 T1 T2 T3 T4 T5 T7 T11 T12 M1 M2 J1 J2 J4 J5 J6 N1 N2 N3 N5 N6 N7 N8 N10 X1 X3 X4 D3 Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q11 R1 R2 R3 R6 R9 K10 K11 K13 K14 |
+| E18 | `image-install` | `reasoning-image/install-from!` | the image | S5 S7 T1 T2 T3 T4 T5 T7 T12 M1 J1 J2 J5 J6 N1 N2 N3 N5 N6 N7 N10 X1 X3 X4 D3 Q1 Q2 Q5 Q7 Q10 Q11 R1 R2 R3 K10 K11 |
+| E19 | `cleared` | `vaelii.core/clear!`, `reindex/reindex`, `io.import/clearing-on-refusal` | the stores, wiped | S5 T5 T7 X1 X3 X4 Q2 Q8 Q9 Q10 Q11 R1 R2 R3 R4 R10 K10 K11 K13 K14 |
 | E20 | `closed` | `vaelii.core/close!` | the KB | T5 T7 X1 X3 X4 R1 R2 R3 R9 K10 K11 |
 | E21 | `caches-cleared` | `caches/clear-caches`, `caches/shrink!` | the KB, or every live KB | T5 T7 T11 N8 X1 X3 X4 R1 R2 R3 R6 R9 K3 K4 K5 K6 K10 K11 |
-| E22 | `settle-pass` | `settle/pass-work`, `settle/apply-pass!` | the region, the queues a pass drains | S5 T5 T7 J1 J6 N2 N3 N5 N6 N8 N10 X1 X3 X4 D3 Q1 Q3 Q5 Q7 Q8 Q9 R1 R2 R3 K10 K11 |
+| E22 | `settle-pass` | `settle/pass-work`, `settle/apply-pass!` | the region, the queues a pass drains | S5 T5 T7 J1 J6 N2 N3 N5 N6 N8 N10 X1 X3 X4 D3 Q1 Q3 Q5 Q7 Q8 Q9 Q11 R1 R2 R3 K10 K11 |
 
 <!-- end of the generated register -->
 

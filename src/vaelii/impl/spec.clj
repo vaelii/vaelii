@@ -26,17 +26,17 @@
   (`genls`, `context-up`, …) are specced too, since a wrong-arity call to one of
   them is exactly the kind of mistake instrumentation should surface early.
 
-  **Twenty-four publics that take an option map are outside it**, and instrumenting says
-  nothing about their arguments: the batch writes (`assert-many`,
-  `bulk-assert-facts!`, `edit!`, `replace-facts!`), the fork and the two consequence readers over it (`fork`,
-  `preview`, `edit-with-consequences!`), the store transfers (`import!`, `export!`,
-  `export-text!`, `load-text!`, and `load-foreign!`, whose options belong to the reader
-  plugin), the batch digest read (`digests`),
-  the two search-back reads (`search-tree`, `compare-tacticians`) and the truncation
-  report (`query-status`), the evaluatable-prover
-  registration (`add-evaluatable`), the four-valued epistemic-status read (`argue`), and
-  the two clash reports, whose one option leaves their grounds off (`conflicts`,
-  `contradictions`), and `check`, `abduce`, `kb-quality`, `clear-caches`.
+  **Thirty-two publics that take an option map are outside it**, and instrumenting says
+  nothing about their arguments: the batch writes (`assert-many`, `bulk-assert-facts!`,
+  `edit!`, `replace-facts!`), the term operations (`rename-terms!`, `merge-terms!`,
+  `copy-terms`, `remove-terms!` and each one-term form), the fork and the two consequence
+  readers over it (`fork`, `preview`, `edit-with-consequences!`), the store transfers
+  (`import!`, `export!`, `export-text!`, `load-text!`, and `load-foreign!`, whose options
+  belong to the reader plugin), the batch digest read (`digests`), the two search-back
+  reads (`search-tree`, `compare-tacticians`) and the truncation report (`query-status`),
+  the evaluatable-prover registration (`add-evaluatable`), the four-valued epistemic-status
+  read (`argue`), the two clash reports, whose one option leaves their grounds off
+  (`conflicts`, `contradictions`), and `check`, `abduce`, `kb-quality`, `clear-caches`.
   A test in
   `vaelii.spec-test` holds that list against `vaelii.core`'s own arglists, so the
   gap is a set somebody has to edit rather than a claim that goes stale in silence:

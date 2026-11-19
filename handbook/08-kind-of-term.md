@@ -86,7 +86,7 @@ his name, and states the relation the function corresponds to:
 
 ```clojure
 (reifiable_function FatherFn)
-(functionCorrespondingBinaryPredicate FatherFn fatherOf)
+(functionCorrespondingBinaryPredicate FatherFn (BloodKinFn fatherOf))
 (result FatherFn animal)
 ```
 

@@ -61,6 +61,7 @@
             [vaelii.impl.logging :as logging]
             [vaelii.impl.memory :as mem]
             [vaelii.impl.modal :as modal]
+            [vaelii.impl.named-application :as named-application]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-maintenance :as nat-maint]
@@ -83,6 +84,7 @@
             [vaelii.impl.reindex :as reindex]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rete :as rete]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.scenario :as scenario]
             [vaelii.impl.seal :as seal]
@@ -92,6 +94,7 @@
             [vaelii.impl.special :as special]
             [vaelii.impl.strength :as strength]
             [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.term-edit :as term-edit]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.vantage :as vantage]
             [vaelii.impl.violations :as viol]
@@ -549,17 +552,7 @@
   most specific role wins: `:lexeme` before `:context` before `:individual`, and `:sense`
   before `:type`."
   [term]
-  (cond
-    (sx/variable? term)    :variable
-    (number? term)         :number
-    (not (symbol? term))   nil
-    (nm/lexeme? term)      :lexeme
-    (nm/context? term)     :context
-    (nm/individual? term)  :individual
-    (nm/predicate? term)   :predicate
-    (nm/sense? term)       :sense
-    (nm/type-symbol? term) :type
-    :else                  nil))
+  (nm/term-role term))
 
 (defn indexable-terms
   "The distinct terms that make `sentex` findable — the indexable subterms of its
@@ -881,16 +874,17 @@
   "What the engine does with vocabulary term `term`: `{:enforced \"where\"}`,
   `{:inert \"why\"}`, or nil.  `:enforced` means a code path reads the term and the KB
   refuses, derives or answers differently because of it; the string names the path.
-  `:inert` means nothing does, and the string says why.  Nil means the term is not one
-  core.txt comments, so an ordinary domain predicate is out of scope.  `vocabulary-audit`
-  classifies every declared term."
+  `:inert` means nothing does, and the string says why.  Nil means the term is not one of
+  core.txt's grammar terms, so an ordinary domain predicate is out of scope.
+  `vocabulary-audit` classifies the population the KB names."
   [term] (vocab/classify term))
 
 (defn vocabulary-audit
-  "Every term core.txt comments in `kb`, classified: `{:enforced [[term why] …]
-  :inert [[term why] …] :unclassified [term …] :retired [term …] :contradicted [term
-  …]}`.  `:unclassified` is a declaration nobody classified, `:retired` a classification
-  of a term the KB no longer declares, `:contradicted` a term the special-predicate table
+  "The vocabulary population of `kb`, classified: every term a CxUniverse query of
+  `(definitional_predicate ?t)` or `(syncategorematic ?t)` answers, as `{:enforced [[term
+  why] …] :inert [[term why] …] :unclassified [term …] :retired [term …] :contradicted
+  [term …]}`.  `:unclassified` is a member nobody classified, `:retired` a classification
+  of a term no upper file comments, `:contradicted` a term the special-predicate table
   gives an arm to and the classification calls inert.  The three are empty on the shipped
   ontology."
   [kb] (vocab/audit kb))
@@ -1334,13 +1328,13 @@
 
 (defn- rehome-forced-extent!
   "When `sentence` is a `(forced_decontextualized_predicate P)` declaration, move every
-  `(P …)` premise stored outside CxUniverse into it: the same sentence asserted there
-  at the premise's own strength, and the original retracted, as one `edit!` batch
+  `(P …)` premise stored outside CxUniverse into it, as one `edit!` batch at each
+  premise's own strength, then move the `declaredType` memberships of
+  `special/declared-types-rehomed` and settle
   (docs/contexts.md#forced_decontextualized_predicate-a-canonical-home-in-cxuniverse).
-
-  Premises only: a derived `(P …)` outside CxUniverse is placed by the rule that
-  concluded it.  The extent is snapshotted before the first move, since each move writes
-  to the posting being read.  The mark is read unscoped."
+  A rule's conclusion stays where the rule placed it.  The extent is snapshotted before
+  the first move, since each move writes to the posting being read.  The mark is read
+  unscoped."
   [kb sentence]
   (let [s    (rules/inner-rule sentence)
         pred (when (and (seq? s) (= 'forced_decontextualized_predicate (first s))) (second s))]
@@ -1355,7 +1349,13 @@
           (edit! kb {:add    (mapv #(vector (:sentence %) special/universal-context
                                             {:strength (p/premise-strength (:records kb) (:id %))})
                                    moved)
-                     :remove (mapv :id moved)}))))))
+                     :remove (mapv :id moved)})))
+      (let [{:keys [new violations dropped]} (special/declared-types-rehomed kb pred)]
+        (when (seq violations) (viol/report kb violations))
+        (when (seq dropped) (chain/drop-justifications! kb dropped))
+        (when (or (seq new) (seq dropped))
+          (settle/rechain-seeds kb (special/minted-seeds kb new))
+          (settle/settle-write kb false))))))
 
 (defn- teardown-refusal
   "The refusal a storage teardown of `handle` earns, as a value, or nil.  `retract-storage!`
@@ -1418,6 +1418,7 @@
               ;; ...and the derivations that descended through a departing genl edge,
               ;; read while their justification records still exist
               owed  (special/edge-descended-justifications kb gone removed-justifications)]
+          (special/note-removed-firings! kb removed-justifications)
           ;; the removal choke point: disintegrate + unindex + delete + re-check queued,
           ;; one call — the same teardown the excepted-conclusion sweep runs, stated once
           (doseq [sx gone]
@@ -1472,16 +1473,17 @@
 
 (defn- batch-baseline
   "The derived state a batch writes and `rollback-batch!` puts back — the violations
-  ledger, the calculi's report markers, the program, the refusal record and the mint
-  queues — snapshotted before the batch runs, plus `:filed`, the identity set the batch
-  binds `viol/*batch-entries*` to."
+  ledger, the calculi's report markers, the program, the refusal record, the mint
+  queues and the owed drops — snapshotted before the batch runs, plus `:filed`, the
+  identity set the batch binds `viol/*batch-entries*` to."
   [kb]
-  {:violations @(reasoning/violations kb)
-   :seen       (some-> (reasoning/qcn kb) deref)
-   :program    @(reasoning/program kb)
-   :refused    @(reasoning/refused kb)
-   :queues     (select-keys @(reasoning/mint-queues kb) [:owed :defer-next])
-   :filed      (viol/batch-entries)})
+  {:violations  @(reasoning/violations kb)
+   :seen        (some-> (reasoning/qcn kb) deref)
+   :program     @(reasoning/program kb)
+   :refused     @(reasoning/refused kb)
+   :queues      (select-keys @(reasoning/mint-queues kb) [:owed :defer-next])
+   :owed-drops  @(reasoning/owed-drops kb)
+   :filed       (viol/batch-entries)})
 
 (defn- recheck-suspended
   "Queue the re-checks that suspending or restoring the premise `h` owes: the sentence's
@@ -1514,8 +1516,10 @@
       (integrate/take-out! kb h))))
 
 (defn- rollback-batch-unbounded!
-  "`rollback-batch!`'s body, run under `chain/call-unbounded`."
-  [kb {:keys [audit suspended violations seen program refused sink filed mark queues]}]
+  "`rollback-batch!`'s body, run under `chain/call-unbounded`.  Puts the owed drops back
+  before its settle, which makes each drop the queue owes."
+  [kb {:keys [audit suspended violations seen program refused sink filed mark queues
+              owed-drops]}]
   (let [tms     (reasoning/tms kb)
         records (:records kb)]
     ;; both bindings file the rollback's own entries into the batch's set, so the restore
@@ -1547,6 +1551,7 @@
       ;; holds up; before the settle, which rewrites records below the mark
       (when-let [h0 (some-> mark deref)]
         (remove-above-mark! kb h0)))
+    (reset! (reasoning/owed-drops kb) owed-drops)
     ;; no re-chain seeds: what they would re-derive is content the batch created, at
     ;; handles the audit cannot take back
     (binding [feed/*enabled?* false
@@ -1578,6 +1583,60 @@
   [kb baseline]
   (chain/call-unbounded #(rollback-batch-unbounded! kb baseline)))
 
+(defn- suspend-premises!
+  "Take each premise among `hs` out of belief as its removal would, deleting no record
+  (`jtms/suspend-premise`), queue the re-checks the removal posts (`recheck-suspended`),
+  and add `[handle strength]` to the volatile `suspended`, which `rollback-batch!`
+  restores."
+  [kb hs suspended]
+  (let [tms (reasoning/tms kb)]
+    (doseq [h hs :when (jtms/premise? tms h)]
+      (vswap! suspended conj [h (jtms/premise-strength tms h)])
+      (jtms/suspend-premise tms h)
+      (recheck-suspended kb h))))
+
+(defn- suspend-and-settle!
+  "Suspend the premises among `hs` (`suspend-premises!`, into the volatile `suspended`)
+  and settle as a write settles, so the re-chain the removals release runs before any
+  record is deleted.  Takes the write's mark first.  Settles nothing when no handle of
+  `hs` is a premise, unless `settle?`."
+  ([kb hs suspended] (suspend-and-settle! kb hs suspended false))
+  ([kb hs suspended settle?]
+   (when (or settle? (some #(jtms/premise? (reasoning/tms kb) %) hs))
+     ;; the suspensions flip labels no settle made
+     (binding [settle/*relabelled-before?* true]
+       (entry/take-write-mark! kb)
+       (suspend-premises! kb hs suspended)
+       (settle-after-teardown! kb (settle/rechain-owed kb @(reasoning/recheck kb)) nil)))))
+
+(defn- suspend-removals!
+  "`retract!`'s suspend phase, run only under a caller's bound (`chain/bounded?`):
+  `suspend-and-settle!` in a rollback scope.  A throw puts the suspensions back, removes
+  what the phase created (`rollback-batch!`), and is rethrown.  docs/inference.md,
+  \"Stopping a run\"."
+  [kb hs]
+  (when (and (chain/bounded?) (some #(jtms/premise? (reasoning/tms kb) %) hs))
+    (let [audit     (atom {})
+          mark      (volatile! nil)
+          suspended (volatile! [])
+          baseline  (batch-baseline kb)]
+      (try
+        (binding [entry/*premise-audit*      audit
+                  entry/*write-mark*         mark
+                  viol/*batch-entries*       (:filed baseline)
+                  rules/*stratification-memo* (or rules/*stratification-memo* (volatile! nil))
+                  rules/*negated-keys-memo*  (or rules/*negated-keys-memo* (volatile! nil))
+                  exc/*reader-states*        (or exc/*reader-states* (volatile! nil))
+                  chain/*rollback-scope*     true
+                  chain/*drop-covered?*      false]
+          (dur/as-unit #(do (suspend-and-settle! kb hs suspended) (chain/check-stop!))))
+        (catch Throwable t
+          (try
+            (binding [settle/*relabelled-before?* true]
+              (rollback-batch! kb (assoc baseline :audit audit :suspended @suspended :mark mark)))
+            (catch Throwable r (.addSuppressed t r)))
+          (throw t))))))
+
 (defn- write-checked
   "`f`, run so that `entry/*write-check*`, when bound, is called with the handles `f`'s
   rule firings concluded once `f` returns.  An enclosing call that bound the sink already
@@ -1591,15 +1650,25 @@
         r))
     f))
 
+(defn- make-owed-drops!
+  "Settle `kb`, unbounded and with the drop on, when a tagged rule's drop is owed: the
+  drops a write made none of while a throw could still take it back
+  (`chain/*drop-covered?*`).  A shutdown does not stop it."
+  [kb]
+  (when (seq @(reasoning/owed-drops kb))
+    (binding [chain/*drop-covered?* true
+              dur/*abortable?*      false]
+      (chain/call-unbounded #(settle/settle-write kb false)))))
+
 (defn- undoing-refusal
   "Run `f`, the body of one `assert`, under a premise audit and the bound `opts` sets
-  (`chain/call-with-stop`), and return what `f` returns.  A throw runs `rollback-batch!`
-  and is rethrown as raised, a failed rollback attached as suppressed (docs/api.md,
-  \"Validating without writing\").  A run the caller's bound ends throws `:interrupted`.
-  An enclosing audit (`edit!`, `preview`, an outer `assert`) owns the undo.  A change-feed
-  listener holds the feed (`feed/with-one-event`), and a rolled-back event is not
-  delivered.  A bound `entry/*write-check*` reads what `f`'s firings concluded
-  (`write-checked`)."
+  (`chain/call-with-stop`), then `make-owed-drops!` where the caller makes drops, and
+  return what `f` returns.  A throw runs `rollback-batch!` and is rethrown as raised, a
+  failed rollback attached as suppressed (docs/api.md, \"Validating without writing\").
+  A bound ending the run throws `:interrupted`.  An enclosing audit (`edit!`, `preview`,
+  an outer `assert`) owns the undo.  A change-feed listener holds the feed, and a
+  rolled-back event is not delivered.  A bound `entry/*write-check*` reads what `f`'s
+  firings concluded, then what `make-owed-drops!`'s did (`write-checked`)."
   [kb opts f]
   (if entry/*premise-audit*
     (binding [rules/*stratification-memo* (or rules/*stratification-memo* (volatile! nil))
@@ -1609,6 +1678,7 @@
     (let [audit    (atom {})
           mark     (volatile! nil)
           baseline (batch-baseline kb)
+          drop?    chain/*drop-covered?*
           run      (fn []
                      (try
                        (binding [entry/*premise-audit* audit
@@ -1628,10 +1698,16 @@
                                  (or rules/*negated-keys-memo* (volatile! nil))
                                  exc/*reader-states*
                                  (or exc/*reader-states* (volatile! nil))
-                                 chain/*rollback-scope* true]
+                                 chain/*rollback-scope* true
+                                 chain/*drop-covered?*  false]
                          ;; the write a rollback takes back whole, so a shutdown or the
                          ;; caller's bound may stop it
-                         (dur/as-unit #(chain/call-with-stop opts (write-checked kb f))))
+                         (dur/as-unit #(chain/call-with-stop
+                                        opts (fn []
+                                               (let [r ((write-checked kb f))]
+                                                 (when drop?
+                                                   ((write-checked kb (fn [] (make-owed-drops! kb)))))
+                                                 r)))))
                        (catch Throwable t
                          (when (or (seq @audit) @mark)
                            (try
@@ -1962,8 +2038,7 @@
        #(for [p (special/wff-problems (reasoning/taxonomy kb) sentence context)]
           {:type :not-well-formed :sentence sentence :message (str "not well-formed: " p)})
        #(some-> (problem (fn [] (checks/check-except-target kb sentence))) vector)
-       #(some-> (problem (fn [] (checks/check-edge-stratified kb sentence context))) vector)
-       #(some-> (problem (fn [] (checks/check-closed-extent-stratified kb sentence context))) vector)
+       #(some-> (problem (fn [] (checks/check-fact-stratified kb sentence context))) vector)
        #(some-> (problem (fn [] (checks/check-exact-present kb sentence context))) vector)
        #(some-> (problem (fn [] (checks/constraint-checks kb sentence context))) vector)]))))
 
@@ -2257,6 +2332,30 @@
    :bulk-load?  *bulk-load?*
    :seed-moves? (if-let [v settle/*batch-seeds-moves*] @v special/*seed-moves?*)})
 
+(defn- with-support-observer
+  "Run a write with a network-owned, queue-only named-demand listener. Dependency
+  traversal waits for the normal value-maintenance drain; departing rows are saved
+  before physical deletion, and an owned justification's add names its target
+  (`named-application/owner`). Same-network nesting reuses the listener."
+  [kb thunk]
+  (let [tms (reasoning/tms kb)
+        previous jtms/*support-observer*]
+    (if (identical? tms (:tms previous))
+      (thunk)
+      (binding [jtms/*support-observer*
+                {:tms tms :previous previous
+                 :active? #(or (nat-read/named-values-reachable? kb)
+                               (rewrite-query/possible-consumers? kb))
+                 :note (fn [hs departing? just]
+                         (let [owner (named-application/owner just)]
+                           (swap! (reasoning/respell kb) into
+                                  (map (fn [h]
+                                         (cond-> [:named-proof h
+                                                  (when departing? (some-> (p/get-sentex (:records kb) h) sx/sentence-of))]
+                                           owner (conj owner)))
+                                       hs))))}]
+        (thunk)))))
+
 (defn- closing-settle
   "The settle that closes a `with-deferred-settle` batch, under the inputs its `:settle`
   frame records (`in`, `batch-settle-inputs`), or under the batch in force when `in` is
@@ -2269,15 +2368,17 @@
   [kb in]
   (let [{:keys [bulk-load? seed-moves?]} (or in (batch-settle-inputs))
         owed chain/*batch-rejoins*]
-    (binding [special/*entail-moves?*      (not bulk-load?)
-              special/*release-withheld?* (and special/*release-withheld?* (not bulk-load?))
-              special/*seed-moves?*        seed-moves?
-              chain/*batch-rejoins*        nil
-              special/*producer-moves*     (special/producer-moves)]
-      (chain/run-batch-rejoins kb owed)
-      (let [settled (settle/settle kb)]
-        (nat-maint/reconcile-moves! kb)
-        settled))))
+    (with-support-observer
+      kb
+      #(binding [special/*entail-moves?*      (not bulk-load?)
+                 special/*release-withheld?* (and special/*release-withheld?* (not bulk-load?))
+                 special/*seed-moves?*        seed-moves?
+                 chain/*batch-rejoins*        nil
+                 special/*producer-moves*     (special/producer-moves)]
+         (chain/run-batch-rejoins kb owed)
+         (let [settled (settle/settle kb)]
+           (nat-maint/reconcile-moves! kb)
+           settled)))))
 
 (defmacro with-deferred-settle
   "Run `body`, a batch of `assert` / `assert-rule` / `ist` calls on `kb`, with belief
@@ -2638,6 +2739,7 @@
   spelling arrived.  `disjunctive-goal-problem` says why an `or` is refused."
   [goal]
   (or
+   (res/rule-head-input-problem goal)
    (disjunctive-goal-problem goal)
    (sx/dot-problem :goal goal)
    (when (vector? goal)
@@ -2661,6 +2763,7 @@
   misplaced `.` is refused as at `sentence-goal-problem`."
   [goal]
   (or
+   (res/rule-head-input-problem goal)
    (disjunctive-goal-problem goal)
    (sx/dot-problem :goal goal)
    ;; `some`, not `when-some` over the first offender: a nil conjunct is a value that
@@ -2679,13 +2782,14 @@
   mint), and `kb`.  A context application nobody has written into reifies to `no-match`,
   which answers empty, unless the producer would order it below a minted context: then
   it is the `cx/` constant its content names, read in a KB holding those edges
-  (`context-nat/unwritten-read`).  See docs/context-nat.md."
+  (`context-nat/unwritten-read`).  A context whose extent is restated in another reads
+  as that one (`kb/context-home`).  See docs/context-nat.md."
   [kb ctx]
   (let [k (nat/maybe-reify-context kb ctx false)]
     (or (when (and (= nat-read/no-match k)
                    (not-any? #(nat-read/reifiable-ground-nat? kb %) (rest ctx)))
           (context-nat/unwritten-read kb (apply list ctx)))
-        [k kb])))
+        [(or (kb/context-home kb k) k) kb])))
 
 (defn- ist-goal
   "`[goal context kb]` for a read whose goal may be an `(ist Ctx S)`: the sentence to ask,
@@ -3243,6 +3347,15 @@
   (or (:max-depth opts)
       (when (map? *query-options*) (:max-depth *query-options*))))
 
+(defn- registry-leaf
+  "What a backward search from `prove` or `query` answers a literal it does not rewrite
+  with: the prover registry's bounds (`provers/registry-bounds`) and the reader of a
+  rewrite head after its body binds (`rewrite-query/head-reader`), `head-reader` where
+  the caller holds one.  Merged into the DFS's bounds and the node engine's opts alike."
+  ([kb context] (registry-leaf kb context (rewrite-query/head-reader kb context)))
+  ([kb context head-reader]
+   (assoc (provers/registry-bounds kb context) :head-reader head-reader)))
+
 (defn- backward-within
   "One bounded run of the backward chainer over `goals` in `context`, as the anytime
   partial-result contract (`vaelii.impl.budget`), on `prove`'s engine selector: the DFS
@@ -3257,10 +3370,10 @@
     (if (and (not refuse?) (inference-engine? (:max-depth budget)))
       (inference/search-within
        (inference/session kb goals context (merge (query-options (:max-depth budget))
-                                                  (provers/registry-bounds kb context)))
+                                                  (registry-leaf kb context)))
        budget)
       (let [rules-fn  (fn [g] (provers/candidate-rules kb g context))
-            leaf      (provers/registry-bounds kb context)
+            leaf      (registry-leaf kb context)
             truncated (when refuse? (atom false))
             start     (System/nanoTime)
             {:keys [solutions status]}
@@ -3297,11 +3410,11 @@
 
               (inference-engine? nil)
               (inference/solutions kb goals ctx
-                                   (cap (merge (query-options nil) (provers/registry-bounds kb ctx))))
+                                   (cap (merge (query-options nil) (registry-leaf kb ctx))))
 
               :else
               (res/prove kb (fn [g] (provers/candidate-rules kb g ctx)) goals ctx
-                         (cap (provers/registry-bounds kb ctx))))))
+                         (cap (registry-leaf kb ctx))))))
         ;; unbounded rule expansion, so an antecedent fact is not one of `goals` and its
         ;; context never reaches a placement: outside post-hoc's domain by construction
         {:expands-rules? true})))))
@@ -3437,7 +3550,7 @@
   cost model that leaf is planned by.  `query-at` and `query-status-at` both build the
   same run from it."
   [kb context d opts]
-  (merge (query-options nil) opts {:max-depth d} (provers/registry-bounds kb context)))
+  (merge (query-options nil) opts {:max-depth d} (registry-leaf kb context)))
 
 (defn- query-at
   "`query`'s answer from **one** named context, once the depth has been read and the goal
@@ -3470,7 +3583,7 @@
             ;; answers.  Lazy, like the single-literal case.
             :else
             (res/prove-seq kb #(provers/candidate-rules kb % context) goals context
-                           (assoc (provers/registry-bounds kb context) :max-depth 0))))]
+                           (assoc (registry-leaf kb context) :max-depth 0))))]
     (if (:max-ms opts) (clocked "query" opts max-results read) (read))))
 
 (defn- query-capped
@@ -4113,18 +4226,18 @@
 
 (defn- run-prove-step
   "One bounded step of the DFS prover, wrapped in the anytime contract.  The continuation
-  captures the remaining goal stack, so `resume` continues where the search stopped.  The
+  captures the remaining stack and head owner, so `resume` continues the same search. The
   bounds map is `budget/prove-bounds`, the one translation of the key set."
-  [kb context budget stack una truncated]
+  [kb context budget stack una truncated head-reader]
   (budget/check-budget! budget)
   (let [rules-fn (fn [g] (provers/candidate-rules kb g context))
-        bounds   (merge (budget/prove-bounds budget) (provers/registry-bounds kb context)
+        bounds   (merge (budget/prove-bounds budget) (registry-leaf kb context head-reader)
                         {:truncated truncated})
         start    (System/nanoTime)
         {:keys [solutions status stack]} (binding [provers/*unenumerated* una]
                                            (res/prove-from kb rules-fn context bounds stack []))]
     (budget/from-batch solutions status start
-                       (fn [b] (run-prove-step kb context b stack una truncated)))))
+                       (fn [b] (run-prove-step kb context b stack una truncated head-reader)))))
 
 (defn prove-within
   "Anytime `prove`: run the depth-first backward chainer over `goal` (a sentence or a
@@ -4150,19 +4263,20 @@
        ;; wide unproductive stretch cannot run past the deadline.
        (let [sess (inference/session kb goals context
                                      (merge (query-options (:max-depth budget))
-                                            (provers/registry-bounds kb context)
+                                            (registry-leaf kb context)
                                             {:track-truncation? true}))]
          (budget/reporting-unenumerated
           (inference/search-within sess budget)
           #(assoc (inference/unenumerated sess) :truncated? (boolean @(:truncated sess)))))
        ;; the DFS's continuation is the goal stack, so the collectors ride the closure
        (let [una       (provers/unenumerated-collector)
-             truncated (atom false)]
+             truncated (atom false)
+             leaf      (registry-leaf kb context)]
          (budget/reporting-unenumerated
           (run-prove-step kb context budget
                           (res/initial-prove-stack kb goals context
-                                                   (:est-override (provers/registry-bounds kb context)))
-                          una truncated)
+                                                   (:est-override leaf))
+                          una truncated (:head-reader leaf))
           #(assoc (provers/unenumerated-report una) :truncated? @truncated)))))))
 
 (defn resume
@@ -4250,12 +4364,13 @@
   (not (false? (:grounds? opts))))
 
 (defn- contradictions-read
-  "The unranked dilemmas `contradictions` reports for `context`: KB-wide for a nil or
-  variable one."
+  "`[read-kb reports]`: the dilemmas `contradictions` reports for `context`, ranked, and
+  the KB they were read in, which their grounds are read in too.  KB-wide for a nil or
+  variable context, else at the context `read-context` resolves it to."
   [kb context]
   (if (or (nil? context) (sx/variable? context))
-    (clashes/contradictions-of kb)
-    (clashes/contradictions-at kb context)))
+    [kb (clashes/ranked (clashes/contradictions-of kb))]
+    (let [[k kb] (read-context kb context)] [kb (clashes/ranked (clashes/contradictions-at kb k))])))
 
 (defn conflicts
   "The contradictions the last settle could not satisfy: irreducible clashes among
@@ -4293,9 +4408,9 @@
   ;; as in `conflicts`, no arity calls another through the var
   ([kb] (clashes/with-grounds kb (clashes/ranked (clashes/contradictions-of kb))))
   ([kb context]
-   (clashes/with-grounds kb (clashes/ranked (contradictions-read kb context))))
+   (apply clashes/with-grounds (contradictions-read kb context)))
   ([kb context opts]
-   (let [rs (clashes/ranked (contradictions-read kb context))]
+   (let [[kb rs] (contradictions-read kb context)]
      (if (clash-grounds? opts "contradictions" #{:grounds?}) (clashes/with-grounds kb rs) rs))))
 
 ;; Classifying a dilemma is an opt-in solve producing *persistent* inert contexts:
@@ -4434,28 +4549,29 @@
   forward chaining, and what a bounded pass did not reach: a vector of
   `{:violation <kind> :sentence S :context C :rule handle :run n :detail {…}}`.  Read
   `:sentence` and `:context` with `when-let`: an entry about a term, pair, budget, network
-  or antecedent names no dropped sentence.  The ledger keeps the newest 1000;
-  `clear-violations!` empties it, except the `:forced-conclusion`, `:inert-argument` and
-  `:inert-rule` entries, which are read off stored state at each call.  Every kind and its
-  `:detail` keys: docs/api.md, \"The `violations` ledger\"."
+  or antecedent names no dropped sentence.  The ledger keeps the newest 1000, and
+  `clear-violations!` empties it; the entries after it are read off stored state and the
+  refusal record at each call.  Every kind and its `:detail` keys: docs/api.md, \"The
+  `violations` ledger\"."
   [kb]
   (-> @(reasoning/violations kb)
       (into (checks/forced-conclusion-entries kb))
-      (into (checks/held-argument-entries kb))))
+      (into (checks/held-argument-entries kb))
+      (into (chain/stratification-entries kb))))
 
 (defn filed-violations
   "The filed ledger alone: the entries `violations` begins with, in its order, without the
-  `:forced-conclusion`, `:inert-argument` and `:inert-rule` entries it reads off the stored
-  firings and held sentexes.  A deref that reads no record, where `violations` fetches
-  every held sentex and convicted firing from the record store."
+  `:forced-conclusion`, `:inert-argument`, `:inert-rule` and `:not-stratified` entries it
+  reads off the stored firings, the held sentexes and the refusal record.  A deref that
+  reads no record, where `violations` fetches every held sentex and convicted firing from
+  the record store."
   [kb]
   @(reasoning/violations kb))
 
 (defn clear-violations!
   "Empty the accumulated dropped-conclusion ledger.  `!` because it destroys the
-  diagnostic record — the drops themselves are long final.  The `:forced-conclusion`
-  entries `violations` reads off the stored firings stay, since they are stored state
-  and not ledger entries."
+  diagnostic record — the drops themselves are long final.  The entries `violations` reads
+  off stored state and the refusal record stay, since they are not ledger entries."
   [kb]
   (reset! (reasoning/violations kb) []) kb)
 
@@ -4686,14 +4802,14 @@
              t)
     t))
 
-(defn retract!
-  "Retract premise support for a handle, tear down solely-supported sentexes and
-  justifications (keeping anything re-derivable via other witnesses), and reverse
-  their taxonomy / rule-index effects. Returns counts.
+(def retract-opt-keys
+  "Every key `retract!` reads: the caller's bound on the re-chain the removal releases
+  (`chain/call-with-stop`)."
+  #{:max-ms :stop? :max-derivations :progress-every-ms})
 
-  An **inert** sentex (`assert-inert`) was never a TMS datum and is torn down directly,
-  with no settle.  A stored premise the TMS has no node for is refused
-  (`:unrecovered-premise`); see `retract-storage!`."
+(defn- apply-retract!
+  "`retract!`'s body, which both its arities call: under a bound, the suspend phase
+  (`suspend-removals!`), then the teardown, unbounded."
   [kb handle]
   (check-writable! kb "retract!")
   ;; A teardown settles more than once (revive, re-derive, settle again) and the orphan
@@ -4711,11 +4827,30 @@
               _      (when-let [problem (or (checks/forcing-retraction-problem kb handle "retract!")
                                             (special/mint-rule-retraction-problem kb handle "retract!"))]
                        (throw (ex-info (:message problem) (dissoc problem :message))))
-              {:keys [datum? seeds rederive] :as result} (retract-storage! kb handle)]
-          (when datum?
-            (settle-after-teardown! kb (settle/rechain-owed kb @(reasoning/recheck kb)) seeds rederive))
-          (finish-teardown! kb sink (:sentences result))
-          (dissoc result :datum? :seeds :rederive :sentences))))))
+              _      (suspend-removals! kb [handle])]
+          (chain/call-unbounded
+           (fn []
+             (let [{:keys [datum? seeds rederive] :as result} (retract-storage! kb handle)]
+               (when datum?
+                 (settle-after-teardown! kb (settle/rechain-owed kb @(reasoning/recheck kb))
+                                         seeds rederive))
+               (finish-teardown! kb sink (:sentences result))
+               (dissoc result :datum? :seeds :rederive :sentences)))))))))
+
+(defn retract!
+  "Retract premise support for a handle, tear down solely-supported sentexes and
+  justifications (keeping anything re-derivable via other witnesses), and reverse
+  their taxonomy / rule-index effects. Returns counts.
+
+  An **inert** sentex (`assert-inert`) is torn down with no settle.  A stored premise the
+  TMS has no node for is refused (`:unrecovered-premise`).  `opts` takes `retract-opt-keys`,
+  which bound the re-chain the removal releases before any record is deleted.  Ending the
+  re-chain refuses the call (`:interrupted`) and leaves the KB as the call found it."
+  ([kb handle] (apply-retract! kb handle))
+  ([kb handle opts]
+   (check-opts! :bound opts retract-opt-keys "retract!")
+   (opts/check-values! opts "retract!")
+   (chain/call-with-stop opts #(apply-retract! kb handle))))
 
 ;; ---- the records no premise and no justification supports ----------------------
 ;; docs/storage.md, "A record no premise and no justification supports".
@@ -4787,15 +4922,28 @@
 
 (def edit-opt-keys
   "Every key `edit!` and `edit-with-consequences!` read for the batch as a whole: the
-  caller's bound on the adds' chaining (`chain/call-with-stop`).  An add's own opts are
-  `assert`'s."
+  caller's bound on the adds' chaining and the removals' release (`chain/call-with-stop`).
+  An add's own opts are `assert`'s."
   #{:max-ms :stop? :progress-every-ms})
+
+(defn- believed-fn
+  "A test of whether a handle is believed as `believed` reads it: IN, and not hidden by
+  its own context's `except`s (`exc/own-hidden-fn`), the reading the settle files a
+  touched handle's earlier label under."
+  [kb]
+  (let [tms (reasoning/tms kb)
+        hid (exc/own-hidden-fn kb)]
+    #(and (jtms/in? tms %) (not (and hid (hid %))))))
 
 (defn- apply-edit!
   "`edit!`'s body, which both its arities call.  The two-argument arity calling the
   `edit!` var would be a second write inside the first, and a nested write is no unit a
-  shutdown may stop (`dur/as-unit`)."
-  [kb batch]
+  shutdown may stop (`dur/as-unit`).  A non-nil `loss` opens a write record the settle
+  reads earlier belief from, and settles the refusable phase whatever the bound.  `loss`
+  takes the adds' results and the handles believed before that phase and not after its
+  settle, and a problem it returns refuses the batch.  `loss` runs before the removals,
+  and a throw from it rolls the batch back."
+  [kb batch loss]
   (check-writable! kb "edit!")
   (check-edit-batch! batch)
   (let [{:keys [add remove]} batch]
@@ -4819,18 +4967,22 @@
       ;; the sweep, which leaves a nil sink and sends it down the whole-KB arm.
       (let [sink (teardown-sink kb)]
         (binding [integrate/*removed-sink*  sink
-                  observe/*write-record*    (settle/write-record kb)
+                  observe/*write-record*    (or (settle/write-record kb)
+                                                (when loss (java.util.IdentityHashMap.)))
                   special/*producer-moves* (or special/*producer-moves* (special/producer-moves))]
-          (let [audit    (atom {})
-                mark     (volatile! nil)
-                owed     (volatile! {})
-                baseline (batch-baseline kb)
+          (let [audit     (atom {})
+                mark      (volatile! nil)
+                owed      (volatile! {})
+                suspended (volatile! [])
+                baseline  (batch-baseline kb)
+                touched   (when loss (atom #{}))
+                was-in    (when loss (atom #{}))
                 ;; where the batch is, for the refusal to name once it has been undone
-                at       (volatile! nil)
-                ;; **The refusable phase**, and the whole of it: the adds, which are what
-                ;; an engine check refuses, and then every removal's refusal asked while
-                ;; nothing has been removed.  A throw anywhere in here is put back at the
-                ;; handles it wrote (`rollback-batch!`) and rethrown saying so.
+                at        (volatile! nil)
+                ;; **The refusable phase**: the adds, which an engine check refuses, each
+                ;; removal's refusal, and under a bound the removals' suspend phase.
+                ;; A throw in here is put back at the handles it wrote (`rollback-batch!`)
+                ;; and rethrown saying so.
                 added
                 (try
                   (binding [entry/*premise-audit* audit
@@ -4844,7 +4996,10 @@
                             (or rules/*negated-keys-memo* (volatile! nil))
                             exc/*reader-states*
                             (or exc/*reader-states* (volatile! nil))
-                            special/*owed-subsumption* owed]
+                            special/*owed-subsumption* owed
+                            chain/*drop-covered?*    false
+                            settle/*touched-sink*    (or touched settle/*touched-sink*)
+                            settle/*touched-in-sink* (or was-in settle/*touched-in-sink*)]
                     ;; a shutdown may stop this phase, which the catch takes back whole
                     (dur/as-unit
                      (fn []
@@ -4863,10 +5018,24 @@
                            (when-some [h (the-handle h "edit")]
                              (when-let [problem (teardown-refusal kb h "edit!")]
                                (throw (ex-info (:message problem) (dissoc problem :message))))))
+                         (vreset! at [:remove])
+                         (when (or loss (chain/bounded?))
+                           (suspend-and-settle! kb (keep #(the-handle % "edit") remove) suspended
+                                                (some? loss))
+                           (chain/check-stop!))
+                         (when-let [problem (when loss
+                                              (loss added
+                                                    (let [held? (believed-fn kb)]
+                                                      (filterv #(and (contains? @was-in %)
+                                                                     (p/get-sentex (:records kb) %)
+                                                                     (not (held? %)))
+                                                               @touched))))]
+                           (throw (ex-info (:message problem) (dissoc problem :message))))
                          added))))
                   (catch Throwable t
-                    (rollback-batch! kb (assoc baseline :audit audit :suspended nil
-                                               :mark mark))
+                    (binding [settle/*relabelled-before?* (boolean (seq @suspended))]
+                      (rollback-batch! kb (assoc baseline :audit audit :suspended @suspended
+                                                 :mark mark)))
                     (throw (rolled-back t @at))))
                 ;; **The committed phase.**  Nothing here refuses: the removals were cleared
                 ;; above, and a fault from a settle or teardown sweep has no undo for a swept
@@ -4894,7 +5063,7 @@
             {:added added :removed (dissoc removed :seeds :rederive :sentences)}))))))
 
 (defn edit!
-  "Apply a batch of assertions and retractions in **one settle**.
+  "Apply a batch of assertions and retractions in **one settle**, or two under a bound.
 
     `add`    — a seq of `[sentence context]` (or `[sentence context opts]`), asserted
                in order **first**;
@@ -4905,15 +5074,15 @@
   counter stays moved.  Returns `{:added <one entry per add, `assert`-shaped> :removed
   {:removed-sentexes n :removed-justifications n}}`; `edit-with-consequences` adds the
   belief diff.  `opts` takes `edit-opt-keys`; `:max-ms` and `:stop?` bound the adds'
-  chaining, and ending it before the first removal refuses the batch (`:interrupted`) and
-  rolls it back.  docs/api.md, \"Contract notes: `edit!`\"."
+  chaining and the re-chain the removals release, and ending either refuses the batch
+  (`:interrupted`) and rolls it back.  docs/api.md, \"Contract notes: `edit!`\"."
   ;; `batch` is destructured in the body, not the parameter vector, as in `check-edit`: the
   ;; published `:arglists` is what a generated client reads to name the argument.
-  ([kb batch] (apply-edit! kb batch))
+  ([kb batch] (apply-edit! kb batch nil))
   ([kb batch opts]
    (check-opts! :bound opts edit-opt-keys "edit!")
    (opts/check-values! opts "edit!")
-   (chain/call-with-stop opts #(apply-edit! kb batch))))
+   (chain/call-with-stop opts #(apply-edit! kb batch nil))))
 
 (defn- snapshot-fact
   "`[sentence strength]` for `fact` of `context`'s `replace-facts!` snapshot: the literal
@@ -4973,6 +5142,206 @@
        {:added 0 :removed 0 :edit nil}
        (let [edit (edit! kb {:add add :remove gone} (select-keys opts edit-opt-keys))]
          {:added (count (set (:added edit))) :removed (count gone) :edit edit})))))
+
+(defn check-term-edit
+  "What term operation `op` (`:rename`, `:merge`, `:copy` or `:remove`) over `mapping`
+  refuses before it builds its batch, as `[{:type :term :message} …]`, empty when it would
+  run.  `mapping` is the map or collection the operation's function takes.  A read: it
+  writes nothing.  The types are `term-edit/problems`'."
+  [kb op mapping]
+  (vec (term-edit/problems kb op mapping)))
+
+(defn- term-batch
+  "`term-edit/batch` of `op` over `mapping`, after refusing with the first of
+  `check-term-edit`'s problems, all of them under `:problems`."
+  [kb op mapping fname]
+  (when-let [[pr & more] (seq (term-edit/problems kb op mapping))]
+    (let [ty (:type pr)]
+      (throw (ex-info (str fname ": " (:message pr)
+                           (when more (str " (and " (count more) " more under :problems)")))
+                      {:type ty :term (:term pr) :problems (vec (cons pr more))}))))
+  (term-edit/batch kb op mapping))
+
+(defn term-edit-plan
+  "The `edit!` batch term operation `op` over `mapping` runs, as `{:batch {:add [[sentence
+  context opts?] …] :remove [handle …]} :restates [[handle …] …]}`, `:restates` naming the
+  originals of each add, in step with `:add`.  A read: it writes nothing, and `preview` of
+  the `:batch` answers what the operation would change in belief.  Refuses as the
+  operation does, before its write."
+  [kb op mapping]
+  (let [{:keys [add remove restates]} (term-batch kb op mapping "term-edit-plan")]
+    {:batch {:add add :remove remove} :restates restates}))
+
+(defn- term-edit-loss
+  "A term operation's `:lost-belief` refusal, or nil: some handle of `lost` (believed before
+  the write, not after its settle) has no believed image.  An original's image is its
+  restatement (`restated`); any other record's is the record storing its sentence and
+  context with each reified constant expanded, `smap` applied and each handle it names
+  replaced by that handle's image.  A reflexive tuple `term-edit/tautology?` drops holds
+  without a record, and a handle a cycle of metas names reads as itself."
+  [kb fname smap restated lost]
+  (let [recs  (:records kb)
+        memo  (volatile! {})
+        held? (believed-fn kb)]
+    (letfn [(handle-image [h] (let [i (image h)] (if (int? i) i h)))
+            (rebind [form]
+              (cond
+                (sx/sentex-handle? form) (sx/sentex-handle (handle-image (sx/handle-id form)))
+                (and (seq? form) (= sx/except-functor (first form)) (int? (second form)))
+                (list (first form) (handle-image (second form)))
+                (seq? form)    (apply list (map rebind form))
+                (vector? form) (mapv rebind form)
+                :else          form))
+            (image [h]
+              (if-let [[_ v] (find @memo h)]
+                v
+                (let [_ (vswap! memo assoc h h)
+                      v (or (get restated h)
+                            (when-let [sx (p/get-sentex recs h)]
+                              (let [s0 (nat/expand-expression kb (sx/sentence-of sx))
+                                    s1 (rebind (term-edit/substitute smap s0))
+                                    c0 (nat/expand-expression kb (:context sx))
+                                    c1 (term-edit/substitute smap c0)]
+                                (cond
+                                  (and (= s0 s1) (= c0 c1)) h
+                                  (term-edit/tautology? s1) ::holds
+                                  :else (try (handle-of kb s1 (if (= c0 c1) (:context sx) c1))
+                                             (catch clojure.lang.ExceptionInfo _ nil))))))]
+                  (vswap! memo assoc h v)
+                  v)))]
+      (when-let [bad (seq (remove #(let [i (image %)] (or (= ::holds i) (and i (held? i)))) lost))]
+        (let [key #(let [sx (p/get-sentex recs %)]
+                     (binding [*print-length* nil *print-level* nil]
+                       (pr-str [(sx/sentence-of sx) (:context sx)])))
+              bad (nm/sort-by-content-key key compare bad)
+              sx  (p/get-sentex recs (first bad))]
+          {:type    :lost-belief
+           :handles bad
+           :message (str fname ": " (count bad) " believed sentex(es) would lose belief with no"
+                         " believed counterpart under the substitution, "
+                         (pr-str (sx/sentence-of sx)) " in " (:context sx) " first; nothing"
+                         " changed")})))))
+
+(defn- carry-provenance!
+  "Merge each original's map in `carry` into the provenance of its restatement, `olds`
+  mapping original to restatement handle, and return nil.  A throw puts back every map
+  the loop wrote before rethrowing, so the batch's rollback leaves a stored restatement's
+  map as it was."
+  [kb carry olds]
+  (let [recs (:records kb)
+        prev (volatile! [])]
+    (try
+      (doseq [[old h] olds :let [m (get carry old)] :when (and h (seq m))]
+        (vswap! prev conj [h (p/get-provenance recs h)])
+        (add-provenance kb h m))
+      nil
+      (catch Throwable t
+        (try
+          (doseq [[h m] (rseq @prev)]
+            (if m (p/put-provenance recs h m) (p/delete-provenance! recs h)))
+          (catch Throwable r (.addSuppressed t r)))
+        (throw t)))))
+
+(defn- run-term-edit!
+  "Run term operation `op` over `mapping` as one `edit!` bounded by `opts`
+  (`edit-opt-keys`), and return `{:restated n :retracted n :handles {old new} :edit e}`.
+  An add's handle is the record its form states; a rule restated beside an `exceptWhen`
+  maps to the rule the new meta names.  A rename or a merge carries each original's
+  application provenance to its restatement before the removals, inside the rollback.
+  Refuses as `term-batch` does, and a write but a removal's that takes belief its
+  substitution does not restate (`term-edit-loss`); rethrows an add's refusal with
+  `:restates`, the handles the add restated."
+  [kb op mapping opts fname]
+  (check-writable! kb fname)
+  (check-opts! :bound opts edit-opt-keys fname)
+  (let [{:keys [add remove restates]} (term-batch kb op mapping fname)
+        carry (when (#{:rename :merge} op)
+                (into {} (keep (fn [h]
+                                 (when-let [m (p/get-provenance (:records kb) h)]
+                                   [h (dissoc m :creator :created integrate/spellings-key)])))
+                      (apply concat restates)))
+        new-of (fn [h i] (if (zero? i)
+                           h
+                           (some-> (p/get-sentex (:records kb) h) :sentence
+                                   sx/exceptWhen-rule-handle)))
+        olds  (fn [added]
+                (into {} (for [[hs h] (map vector restates added) [i old] (map-indexed vector hs)]
+                           [old (new-of h i)])))
+        loss  (when-not (= :remove op)
+                (fn [added lost]
+                  (let [hmap (olds added)]
+                    (or (term-edit-loss kb fname mapping hmap lost)
+                        (carry-provenance! kb carry hmap)))))
+        run   #(apply-edit! kb {:add add :remove remove} loss)
+        edit  (when (or (seq add) (seq remove))
+                (try (if (seq opts)
+                       (do (opts/check-values! opts fname) (chain/call-with-stop opts run))
+                       (run))
+                     (catch clojure.lang.ExceptionInfo e
+                       (let [{:keys [in index]} (ex-data e)]
+                         (throw (if (= :add in)
+                                  (ex-info (ex-message e)
+                                           (assoc (ex-data e) :restates (get restates index)) e)
+                                  e))))))
+        hmap  (olds (:added edit))]
+    {:restated  (count add)
+     :retracted (count remove)
+     :handles   hmap
+     :edit      edit}))
+
+(defn rename-terms!
+  "Give each term `renames` maps a new name no stored sentex uses: every premise using it
+  is restated under the new name and the original retracted, in one `edit!` that `opts`
+  (`edit-opt-keys`) bounds and a refusal rolls back.  A context's extent moves with it, a
+  reified NAT using the term is restated through its expression, and a quotation keeps
+  its spelling.  Returns `{:restated n :retracted n :handles {old new} :edit e}`.
+  Refusals: `check-term-edit`'s, `:nat-map-outside-universe`, `:unrestatable-sentex`, and
+  `edit!`'s, with `:restates`."
+  ([kb renames] (rename-terms! kb renames nil))
+  ([kb renames opts] (run-term-edit! kb :rename renames opts "rename-terms!")))
+
+(defn rename-term!
+  "`rename-terms!` of the one term `old` to `new`."
+  ([kb old new] (rename-terms! kb {old new} nil))
+  ([kb old new opts] (rename-terms! kb {old new} opts)))
+
+(defn merge-terms!
+  "Join each term `merges` maps into the existing term it names: `rename-terms!` onto a
+  term that is already stored.  A restatement the KB already holds stays the one record.
+  An edge or an equality the merge makes reflexive is dropped.  Refuses a relation and a
+  type, two arities, and two disjoint types (`:incompatible-terms`)."
+  ([kb merges] (merge-terms! kb merges nil))
+  ([kb merges opts] (run-term-edit! kb :merge merges opts "merge-terms!")))
+
+(defn merge-term!
+  "`merge-terms!` of the one term `from` into `into`."
+  ([kb from into] (merge-terms! kb {from into} nil))
+  ([kb from into opts] (merge-terms! kb {from into} opts)))
+
+(defn copy-terms
+  "Restate every premise using each term `copies` maps under the term it names, retracting
+  nothing: `rename-terms!`'s restatement, onto a new or an existing term.  `:retracted` is
+  0 and `:handles` maps each original to its copy."
+  ([kb copies] (copy-terms kb copies nil))
+  ([kb copies opts] (run-term-edit! kb :copy copies opts "copy-terms")))
+
+(defn copy-term
+  "`copy-terms` of the one term `from` to `to`."
+  ([kb from to] (copy-terms kb {from to} nil))
+  ([kb from to opts] (copy-terms kb {from to} opts)))
+
+(defn remove-terms!
+  "Retract every premise using a term of `terms` (a collection), in one `edit!`.  A
+  premise uses a term outside a quotation, through a reified NAT built from it, or by
+  being stored in it as a context; every meta naming such a premise goes too, and what
+  they alone supported.  Returns `{:restated 0 :retracted n :handles {} :edit e}`."
+  ([kb terms] (remove-terms! kb terms nil))
+  ([kb terms opts] (run-term-edit! kb :remove terms opts "remove-terms!")))
+
+(defn remove-term!
+  "`remove-terms!` of the one term `term`."
+  ([kb term] (remove-terms! kb [term] nil))
+  ([kb term opts] (remove-terms! kb [term] opts)))
 
 (defn in?
   "Is the sentex handle believed as the context it is stored in reads it: JTMS IN, and
@@ -5050,9 +5419,7 @@
   Handle order does not survive (a set), because belief is a property of each handle
   and nothing here ranks them; an unknown or torn-down handle is simply absent."
   [kb handles]
-  (let [tms (reasoning/tms kb)
-        hid (exc/own-hidden-fn kb)]
-    (into #{} (filter #(and (jtms/in? tms %) (not (and hid (hid %))))) handles)))
+  (into #{} (filter (believed-fn kb)) handles))
 
 ;; ---- introspection (used by the web browser) ----------------------------
 
@@ -5182,11 +5549,11 @@
   "The verdict `context` reads on each justification of `handle`, as `{justification-id
   reason}`: `:supports` where every handle it rests on is believed there, else
   `:antecedent-out`, unless the network blocks it (`:blocked`, its rule's `exceptWhen`
-  holds) or holds it void (`:void`), `context`'s forced-monotonic reading holds it void
-  (`:void`), a guard defeat in force at `context` covers it (`:guard`, docs/naf.md), or it
-  is a `nogood` justification of a placement `context` exempts (`:exempt`).  Belief here is
-  `why`'s reading, with the excepts not applied.  Empty for a nil handle; a non-handle is
-  refused (`:bad-handle`)."
+  holds) or holds it void (`:void`; `:inert` for a mint, docs/argtypes.md), `context`'s
+  forced-monotonic reading holds it void (`:void`), a guard defeat in force at `context`
+  covers it (`:guard`, docs/naf.md), or it is a `nogood` justification of a placement
+  `context` exempts (`:exempt`).  Belief here is `why`'s reading, with the excepts not
+  applied.  Empty for a nil handle; a non-handle is refused (`:bad-handle`)."
   [kb handle context]
   (if-some [h (the-handle handle "justification-verdicts")]
     (exc/justification-verdicts kb h context)
@@ -5896,7 +6263,8 @@
                             :informant (:informant j)
                             :verdict   (get vs (:id j))
                             :missing   (vec (remove #(in? kb %) (jtms/rests-on j)))}))]
-        (if-let [void (seq (filter void? js))]
+        (cond
+          (seq (filter void? js))
           ;; a firing the forced-monotonic set convicts (the `:void` forced set): the rule,
           ;; and the antecedent predicates a declaration would make forced-monotonic
           (assoc base :believed? false :reason :forced-conclusion :support support
@@ -5909,7 +6277,10 @@
                                          (checks/unforced-antecedents kb r)
                                          (checks/unforced-antecedents
                                           kb r (exc/forced-reading kb (:context sx))))}))
-                                  void))
+                                  (filter void? js)))
+          (some #(= :inert (:verdict %)) support)
+          (assoc base :believed? false :reason :inert :support support)
+          :else
           (assoc base :believed? false :reason :unsupported
                  :premise? (premise? kb handle) :support support))))))
 
@@ -6186,8 +6557,7 @@
    (check-opts! :bound opts #{:max-depth :max-term-depth :max-derivations :max-results
                               :release-withheld?} "preview")
    (when-some [n (:max-results opts)] (check-limit! n "preview :max-results"))
-   (let [tms        (reasoning/tms kb)
-         refused    (check-edit kb batch)
+   (let [refused    (check-edit kb batch)
          bad-add    (into #{} (comp (filter #(= :add (:in %))) (map :index)) refused)
          bad-remove (into #{} (comp (filter #(= :remove (:in %))) (map :index)) refused)
          baseline   (batch-baseline kb)
@@ -6195,7 +6565,7 @@
          audit      (atom {})
          mark       (volatile! nil)
          touched    (atom #{})
-         suspended  (atom [])
+         suspended  (volatile! [])
          thrown     (atom [])
          truncated? (atom false)
          chain-opts (select-keys opts [:max-depth :max-term-depth :max-derivations])
@@ -6210,6 +6580,7 @@
        ;; the feed is off for the batch here and for the rollback in `rollback-batch!`
        (with-bindings {#'feed/*enabled?* false
                        #'settle/*sweep?* false
+                       #'chain/*drop-covered?* false
                        ;; the suspensions, and the rollback's re-marks, flip labels no
                        ;; settle made
                        #'settle/*relabelled-before?* true
@@ -6231,13 +6602,8 @@
                                            :message (ex-message e)))))
              (when (:truncated? (:last @(reasoning/chain-stats kb))) (reset! truncated? true)))
            ;; suspended, not retracted (docs/preview.md, "The mechanism")
-           (doseq [[i h] (map-indexed vector (:remove batch))
-                   :when (and (not (bad-remove i)) (jtms/premise? tms h))]
-             (swap! suspended conj [h (jtms/premise-strength tms h)])
-             (jtms/suspend-premise tms h)
-             ;; a real removal queues the re-checks at the removal entry point; a
-             ;; suspension queues them here
-             (recheck-suspended kb h)))
+           (suspend-premises! kb (keep-indexed #(when-not (bad-remove %1) %2) (:remove batch))
+                              suspended))
          ;; no re-chain seeds: a suspension removes no sentex, and the conclusion a
          ;; suspended edge licensed goes OUT, which `:believed-removed` reports
          (settle-after-teardown! kb (settle/rechain-owed kb @(reasoning/recheck kb)) nil)
@@ -6634,23 +7000,24 @@
 
 (defn settle-record-edits!
   "Settle what `edit-records!` batches left: build belief over the edited records (`reindex`
-  when the index was never built, else `recover` when belief was not), delete the stored
-  justifications resting on a record the store does not hold, sweep the consequence closure
-  of their conclusions and of `:seeds` as a retraction does, re-chain the affected rules,
-  and bring each seed that is a stored premise fact in as `assert` brings one in.  Unless
-  `:arg-types? false`, `record-arg-types` then draws the argument-type mints a batch owes.
+  when the index was never built, else `recover` when belief was not), then sweep, re-chain
+  and bring seeds in (`record-edit/sweep!`).  Unless `:arg-types? false`, `record-arg-types`
+  then draws the argument-type mints a batch owes.
 
-  `opts`: `:seeds`, the union of the batches' `:seeds`; `:arg-types?`, default true (when
-  false, a pass a batch or the sweep owes stays owed, `arg-types-owed`); `:on-progress`,
-  called with `{:phase :done :total}` as each step begins, `:phase` being `:reindex`,
-  `:recover`, `:sweep` or `:arg-types`.  A throw from it is rethrown at the next phase
-  boundary, and a second call finishes.  Returns `{:rebuilt :reindex|:recover|nil
-  :unrooted n :removed-sentexes n :removed-justifications n :rules-chained n :rechained n
-  :arrived n :arg-types {…}}`, or `:arg-types-owed? bool` in place of `:arg-types`.
+  `opts`: `:seeds`, the union of the batches' `:seeds`; `:arg-types?`, default true (false
+  leaves the pass owed, `arg-types-owed`); `:max-ms`, `:stop?` and `:max-derivations` bound
+  the re-chain, and a stop there removes what it created and throws `:interrupted`;
+  `:on-progress`, called with `{:phase :done :total}` as each step begins, `:phase` being
+  `:reindex`, `:recover`, `:sweep` or `:arg-types`.  A throw from it is rethrown at the next
+  phase boundary.  A second call over the same `:seeds` finishes either.  Returns
+  `{:rebuilt :reindex|:recover|nil :unrooted n :removed-sentexes n :removed-justifications
+  n :rules-chained n :rechained n :arrived n :arg-types {…}}`, or `:arg-types-owed? bool`
+  in place of `:arg-types`.
   docs/storage.md, \"Editing the records of a KB without belief\"."
   ([kb] (settle-record-edits! kb nil))
   ([kb opts]
-   (opts/check! opts #{:seeds :arg-types? :on-progress} "settle-record-edits!"
+   (opts/check! opts #{:seeds :arg-types? :on-progress :max-ms :stop? :max-derivations}
+                "settle-record-edits!"
                 "A key nothing reads would leave its sweep or its mints undone.")
    (opts/check-values! opts "settle-record-edits!")
    (let [on-progress (:on-progress opts)
@@ -6668,7 +7035,11 @@
                              (do (recover kb) :recover)))
          _           (boundary!)
          seeds       (keep #(the-handle % "settle-record-edits!") (:seeds opts))
-         swept       (record-edit/sweep! kb seeds (when on-progress report!))
+         bound       (select-keys opts [:max-ms :stop? :max-derivations])
+         swept       (record-edit/sweep! kb seeds (when on-progress report!)
+                                         (fn [f] (undoing-refusal kb bound
+                                                                  #(do (entry/take-write-mark! kb)
+                                                                       (f)))))
          _           (boundary!)
          arg-types?  (get opts :arg-types? true)
          res         (cond-> (assoc swept :rebuilt rebuilt)
@@ -6795,7 +7166,7 @@
   (some-> (reasoning/mint-queues kb) (reset! {}))
   ;; ...and the inert rules' handles, which the wipe deleted: the table holds none
   (kb/forget-mint-rules! kb true)
-  (kb/forget-lazy-rules! kb true)
+  (kb/forget-engine-rules! kb true)
   ;; ...and the argument-type pass's owed record, a file beside the stores that names a
   ;; position among the deleted records and a mark the reset counter falls below
   (argpass/clear-owed! kb)
@@ -7379,26 +7750,29 @@
   a shutdown or the caller's bound stopped (`:shutdown-abort`, `:interrupted`) marks the
   log unusable: its frame describes a write that did not complete as logged.  The frame
   holds `args` without the caller's bound (`unbounded-args`), so a replay runs the write
-  to its end."
+  to its end. Record-only edits leave belief unread; their later rebuild is observed."
   [op class g]
   (fn [kb & args]
     (binding [observe/*route-gain-sink* (if (:reasoning kb)
                                           (special/route-gain-sink kb)
                                           observe/*route-gain-sink*)]
-      (dur/call-as-write
-       op
-       (fn []
-         (if (nil? (:oplog kb))
-           (do (seal/retire-unlogged! kb)
-               (apply g kb args))
-           (try
-             (oplog/run-op kb op class (unbounded-args args) #(op-inputs op)
-                           (fn [inputs] (with-op-inputs inputs #(apply g kb args))))
-             (catch clojure.lang.ExceptionInfo e
-               (when (and (#{:shutdown-abort :interrupted} (:type (ex-data e)))
-                          (not oplog/*in-op?*))
-                 (oplog/mark-unusable! (:oplog kb) [(:type (ex-data e)) op]))
-               (throw e)))))))))
+      (let [write (fn [] (dur/call-as-write
+                          op
+                          (fn []
+                            (if (nil? (:oplog kb))
+                              (do (seal/retire-unlogged! kb)
+                                  (apply g kb args))
+                              (try
+                                (oplog/run-op kb op class (unbounded-args args) #(op-inputs op)
+                                              (fn [inputs] (with-op-inputs inputs #(apply g kb args))))
+                                (catch clojure.lang.ExceptionInfo e
+                                  (when (and (#{:shutdown-abort :interrupted} (:type (ex-data e)))
+                                             (not oplog/*in-op?*))
+                                    (oplog/mark-unusable! (:oplog kb) [(:type (ex-data e)) op]))
+                                  (throw e)))))))]
+        (if (= op :edit-records)
+          (write)
+          (with-support-observer kb write))))))
 
 (def ^:private write-ops
   "Every public write entry point, as `name -> [op class]`.  The classes are
@@ -7426,6 +7800,14 @@
    :edit!                    [:edit :replay]
    :edit-with-consequences!  [:edit-with-consequences :replay]
    :replace-facts!           [:replace-facts :replay]
+   :rename-terms!            [:rename-terms :replay]
+   :rename-term!             [:rename-term :replay]
+   :merge-terms!             [:merge-terms :replay]
+   :merge-term!              [:merge-term :replay]
+   :copy-terms               [:copy-terms :replay]
+   :copy-term                [:copy-term :replay]
+   :remove-terms!            [:remove-terms :replay]
+   :remove-term!             [:remove-term :replay]
    :preview                  [:preview :replay]
    :abduce                   [:abduce :replay]
    :abduce-discard!          [:abduce-discard :replay]
@@ -7520,7 +7902,8 @@
     :specified-violations
     :stored-first-args
     :specs :store-state :subsumption-status :subsumption-statuses
-    :supporting-justifications :term-count :term-expression :terms :types :types-of
+    :supporting-justifications :term-count :term-edit-plan :check-term-edit :term-expression
+    :terms :types :types-of
     :unsupported :violations :vocabulary-audit :why :why-not})
 
 (doseq [op read-ops]

@@ -933,6 +933,23 @@ remote shell. See [`.github/SECURITY.md`](.github/SECURITY.md).
 - **Run `lein gate` before pushing** (§1.1), plus `lein test-matrix` if you touched
   storage, the index, records, recovery, overlay, inference, the TMS or retrieval, and
   `lein gate --all` when `lein gate` prints "slow owed".
+- **A red `weights` check names a namespace your change made slower.** The check
+  compares each namespace's time on CI with `develop`'s, after the runner's speed is
+  accounted for. It fails a namespace that took 2x or more of the expected time and 60 s
+  or more beyond it. The report is on the workflow run's **Summary** page, one table per
+  leg (`memory`, `disk`), with each namespace's expected and measured seconds. When the
+  slowdown is a bug, fix it. When the change is slower on purpose:
+  1. Below the table, the report prints a row for each namespace it names. Replace the
+     namespace's row in `scripts/ci-test-weights-<leg>.tsv`, for the leg the table is
+     under, with that row, and commit it with the change. The row's figure is the
+     measured time divided by the shard's speed.
+  2. Say in the pull request why the namespace is slower. A reviewer who approves the
+     pull request approves the new figure, which the diff shows.
+
+  The check accepts only the rows your pull request changes, and it never lowers a
+  figure. When every namespace slowed together, `scripts/ci-weights.sh <run-id>`
+  rewrites both files from your pull request's run, where `<run-id>` is the number in
+  the run's URL.
 - **Don't `--no-verify`**: fix the hook failure rather than bypassing it.
 - **Don't amend pushed commits**: make a new one.
 - **Merges may be rewritten.** Vaelii may squash, reword or amend your commits when
@@ -1082,6 +1099,8 @@ that is what lets it be required: a workflow a filter skips reports nothing at a
 even a skip, so a required check naming it would block every pull request the filter
 matched for ever. A red suite is a change that does not land, at the merge button rather
 than at the reviewer's discretion.
+
+`weights` is required as well, and §7 says what to do when it fails.
 
 The DCO's text says "the open source license indicated in the file", and every `.clj`
 file under `src/`, `test/` and `bench/` indicates it — a two-line SPDX header:

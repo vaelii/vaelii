@@ -20,7 +20,9 @@ vocabulary change proposes and a reviewer reads.
 comment, ships as a block: its metatype or arity class, its `genl`, every `arg`, its
 `disjoint`, `separating` or `orthogonal` relations to its siblings, and its `comment`.
 Where they apply, the block also carries relation properties (`transitive`, `functional`,
-…), example annotations and `termsRelated` or `seeAlso` links.
+…), example annotations and `termsRelated` or `seeAlso` links. Each predicate a block is
+written in is a `definitional_predicate` in core.txt, and `vocabulary-audit` requires the
+engine to answer for each one as enforced or inert.
 
 **Example.** abstract.txt ships `electronic_device` as a complete type block:
 
@@ -120,11 +122,12 @@ relation properties.
 
 ```clojure
 (comment siblingOf
-         "(siblingOf ?organism1 ?organism2) means that ?organism1 and ?organism2 share at least one biological parent, and chosen or elective kinship is not this predicate. Half-siblings count — nothing here asks that both parents match.")
+         "(siblingOf ?first ?second) means ?first and ?second are siblings, by blood or by choice. Half-siblings count.")
 (implementationNote siblingOf "Declared symmetric, so one assertion answers both orders and the two spellings store as one sentex.")
 (set/monotonic (instance_relation_predicate siblingOf))
-(arg siblingOf 1 organism)
-(arg siblingOf 2 organism)
+(arg siblingOf 1 causal)
+(arg siblingOf 2 causal)
+(generic_kinship_predicate siblingOf)
 (set/monotonic (symmetric siblingOf))
 ```
 

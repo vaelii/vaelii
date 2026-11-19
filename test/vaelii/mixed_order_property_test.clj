@@ -72,6 +72,8 @@
             [clojure.test.check.properties :as prop]
             [clojure.walk :as walk]
             [vaelii.core :as v]
+            [vaelii.impl.call-cap :as call-cap]
+            [vaelii.impl.predall :as predall]
             [vaelii.test-util :as tu]))
 
 ;; ---- the vocabulary the pool is written in --------------------------------
@@ -317,6 +319,8 @@
 (defn- reading
   "A whole-KB reading, compared as one value across orderings. Content and belief only."
   [kb]
+  (call-cap/allow predall/sweep kb (count view-contexts)
+                  "the Specified reading is one audit per view context")
   (let [rows (believed-rows kb)]
     {;; the believed sentences, grouped by the context they were asserted in
      :believed-by-context

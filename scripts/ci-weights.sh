@@ -2,11 +2,11 @@
 # scripts/ci-weights.sh — rewrite the CI shard weights from measured namespace times.
 #
 #   scripts/ci-weights.sh <run-id> [--repo owner/name]      # both legs, from a run's logs
-#   scripts/ci-weights.sh --from DIR --leg disk|memory --out FILE [--prev FILE]
+#   scripts/ci-weights.sh --from DIR --leg disk|memory --out FILE [--prev FILE] [--accept OLD]
 #                                                           # one leg, from timing rows
-#   scripts/ci-weights.sh --from DIR --leg disk|memory --check BASELINE
+#   scripts/ci-weights.sh --from DIR --leg disk|memory --check BASELINE [--accept OLD]
 #                                                           # one leg, judged against BASELINE
-#   scripts/ci-weights.sh --from DIR --leg disk|memory --list BASELINE
+#   scripts/ci-weights.sh --from DIR --leg disk|memory --list BASELINE [--accept OLD]
 #                                                           # the namespaces --check would name
 #
 # scripts/ci-shard.sh packs the shards of .github/workflows/test.yml by measured
@@ -54,6 +54,14 @@
 # own shard's speed, so one shard's file is enough.  A shard of
 # .github/workflows/test.yml runs those namespaces again (scripts/lib/ns-timings.sh,
 # `ns_timings_rerun`) before it uploads its timings.
+#
+# --accept OLD ACCEPTS A SLOWER TIME.  OLD is scripts/ci-test-weights-<leg>.tsv at the
+# change's base revision.  A row the tree's copy of that file holds at a figure OLD
+# does not hold is a row the change sets.  Each such row raises its namespace's figure
+# to its own where that is higher: in BASELINE for --check and --list, and in FILE for
+# --out.  A change that makes a namespace slower on purpose sets the namespace's row
+# to its new time, and the reviewer reads the figure in the diff.  Rewriting both files
+# from the change's own run (the run-id form) accepts a whole leg.
 { # one brace group, read whole before it runs: scripts/lint-shellcheck.sh says why
 set -uo pipefail
 
@@ -61,7 +69,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 
 REPO="vaelii/vaelii"
-RUN=""; FROM=""; LEG=""; OUT=""; PREV=""; CHECK=""; LIST=""
+RUN=""; FROM=""; LEG=""; OUT=""; PREV=""; CHECK=""; LIST=""; ACCEPT=""
 SPEED_FLOOR=2 LEG_SLOWER=1.25 NS_FLOOR=5 NS_SLOWER=2 NS_EXCESS=60
 
 usage() {
@@ -77,6 +85,7 @@ while [[ $# -gt 0 ]]; do
     --prev) PREV="${2:?--prev needs a file}"; shift 2 ;;
     --check) CHECK="${2:?--check needs a file}"; shift 2 ;;
     --list) LIST="${2:?--list needs a file}"; shift 2 ;;
+    --accept) ACCEPT="${2:?--accept needs a file}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "ci-weights: unknown option $1" >&2; usage; exit 2 ;;
     *)  RUN="$1"; shift ;;
@@ -103,9 +112,14 @@ write_weights() {
 #
 # \`namespace<TAB>seconds\`.  scripts/ci-shard.sh --leg $leg bin-packs the namespaces
 # by these numbers so that the shards of that .github/workflows/test.yml leg finish
-# together.  The workflow reads this file only when the Actions cache holds no
-# timings from an earlier green run of the leg.  A namespace absent here still runs,
-# weighted at the mean; one at 0.00 has every test \`^:slow\` or \`^:multi-jvm\`.
+# together.  The shards read this file when the Actions cache holds no weights from an
+# earlier green run, and the \`weights\` check reads it when the cache holds no baseline.
+# A namespace absent here still runs, weighted at the mean; one at 0.00 has every test
+# \`^:slow\` or \`^:multi-jvm\`.
+#
+# A pull request that makes a namespace slower on purpose replaces the namespace's row
+# here with the row the \`weights\` check's report prints, and the check accepts it
+# (CONTRIBUTING.md §7).
 #
 # Regenerate with scripts/ci-weights.sh <run-id>.
 #
@@ -118,12 +132,30 @@ HDR
   echo "ci-weights: $out — $count namespaces, ${total}s, from $source" >&2
 }
 
+# accepted <leg>: the rows of scripts/ci-test-weights-<leg>.tsv whose figure ACCEPT does
+# not hold, on stdout; none without --accept.
+accepted() {
+  local committed="scripts/ci-test-weights-$1.tsv"
+  [[ -n "$ACCEPT" && -f "$committed" ]] || return 0
+  awk -F'\t' -v old="$ACCEPT" '
+    $1 == "" || $1 ~ /^#/ { next }
+    FILENAME == old { was[$1] = $2 + 0; next }
+    !($1 in was) || was[$1] != $2 + 0 { printf "%s\t%s\n", $1, $2 + 0 }' "$ACCEPT" "$committed"
+}
+
 # check_leg <leg> <dir> <baseline> [list]: the --check form's report on stdout, its
 # exit 1 on a namespace finding and 3 on a leg finding alone; with `list`, the
-# namespace finding's names and exit 0.  The insertion sort keeps to POSIX awk, which
+# namespace finding's names and exit 0.  The accepted rows raise BASELINE's figures
+# before any is read.  A shard file's rows are in run order.  The
+# namespace finding skips each shard's first row, because the first namespace in a
+# JVM also pays the JVM's and the KB's start-up, about 70 s on CI.  On CI,
+# vaelii.query-context-test read 76 s against 6 s expected when it ran first, and
+# 75 s when rerun alone.  Every shard now runs vaelii.shared-dumps-test first
+# (scripts/ci-shard.sh), so that first row is the build of the starter and
+# upper-ontology dumps.  The insertion sort keeps to POSIX awk, which
 # has no asort.
 check_leg() {
-  awk -F'\t' -v leg="$1" -v baseline="$3" -v list="${4:-}" -v speed_floor="$SPEED_FLOOR" \
+  awk -F'\t' -v leg="$1" -v baseline="$3" -v accepted="$tmp/accepted.tsv" -v list="${4:-}" -v speed_floor="$SPEED_FLOOR" \
       -v leg_slower="$LEG_SLOWER" -v ns_floor="$NS_FLOOR" -v ns_slower="$NS_SLOWER" \
       -v ns_excess="$NS_EXCESS" '
     function median(a, n,    i, j, x) {
@@ -135,6 +167,7 @@ check_leg() {
       return (n % 2) ? a[(n + 1) / 2] : (a[n / 2] + a[n / 2 + 1]) / 2
     }
     FILENAME == baseline { if ($1 != "" && $1 !~ /^#/) w[$1] = $2 + 0; next }
+    FILENAME == accepted { if (($1 in w) && $2 + 0 > w[$1]) { w[$1] = $2 + 0; raised++ } next }
     $1 == "" { next }
     { s = FILENAME; sub(/^.*\//, "", s); sub(/-of-.*$/, "", s)
       if (!(s in rows)) shard[++shards] = s
@@ -151,10 +184,11 @@ check_leg() {
       if (!list) {
         printf "### %s leg against %s\n\n", leg, baseline
         printf "Leg speed %.2f; the check fails at %.2f.\n\n", legspeed, leg_slower
+        if (raised) printf "This change raises %d baseline figure(s) in scripts/ci-test-weights-%s.tsv.\n\n", raised, leg
       }
       for (i = 1; i <= shards; i++) {
         s = shard[i]
-        for (j = 1; j <= rows[s]; j++) {
+        for (j = 2; j <= rows[s]; j++) {
           if (!(ns[s, j] in w) || w[ns[s, j]] < ns_floor) continue
           expect = w[ns[s, j]] * speed[s]
           if (t[s, j] >= ns_slower * expect && t[s, j] - expect >= ns_excess) {
@@ -163,16 +197,21 @@ check_leg() {
               print "| namespace | shard | shard speed | baseline s | expected s | measured s | ratio |\n|---|---|---|---|---|---|---|"
             printf "| %s | %s | %.2f | %.0f | %.0f | %.0f | %.1fx |\n",
                    ns[s, j], s, speed[s], w[ns[s, j]], expect, t[s, j], t[s, j] / expect
+            paste = paste sprintf("%s\t%.2f\n", ns[s, j], t[s, j] / speed[s])
           }
         }
       }
       if (list) exit 0
-      if (found) printf "\n%d namespace(s) took %sx or more of the expected time, and %d s or more beyond it.\n",
-                        found, ns_slower, ns_excess
+      if (found) {
+        printf "\n%d namespace(s) took %sx or more of the expected time, and %d s or more beyond it.\n",
+               found, ns_slower, ns_excess
+        printf "\nTo accept these times, replace the row of each namespace in scripts/ci-test-weights-%s.tsv with its row below (CONTRIBUTING.md §7).\n", leg
+        printf "Each figure is the measured time divided by the speed of the shard.\n\n```\n%s```\n", paste
+      }
       slow = legspeed >= leg_slower
       printf "\nci-weights: %s check %s\n", leg, found ? "FAILED" : slow ? "found the leg slow" : "passed"
       exit (found ? 1 : (slow ? 3 : 0))
-    }' "$3" "$2"/*-of-*.tsv
+    }' "$3" "$tmp/accepted.tsv" "$2"/*-of-*.tsv
 }
 
 if [[ -n "$FROM" ]]; then
@@ -180,6 +219,8 @@ if [[ -n "$FROM" ]]; then
   [[ ( -n "$OUT" && -z "$CHECK$LIST" ) || ( -z "$OUT$PREV" && -n "$CHECK" && -z "$LIST" ) \
      || ( -z "$OUT$PREV$CHECK" && -n "$LIST" ) ]] || { usage; exit 2; }
   case "$LEG" in disk|memory) ;; *) echo "ci-weights: --leg is disk or memory, not $LEG" >&2; exit 2 ;; esac
+  [[ -z "$ACCEPT" || -f "$ACCEPT" ]] || { echo "ci-weights: --accept $ACCEPT is not a file" >&2; exit 1; }
+  accepted "$LEG" > "$tmp/accepted.tsv"
   if [[ -n "$LIST" ]]; then
     [[ -f "$LIST" ]] || { echo "ci-weights: --list $LIST is not a file" >&2; exit 1; }
     compgen -G "$FROM/*-of-*.tsv" > /dev/null || { echo "ci-weights: no <shard>-of-<total>.tsv under $FROM" >&2; exit 1; }
@@ -220,11 +261,18 @@ if [[ -n "$FROM" ]]; then
     ns_timings_average "$PREV" "$tmp/$LEG.measured" > "$tmp/$LEG.tsv"
     source="$source, averaged into $PREV at $NS_TIMINGS_WEIGHT"
   fi
+  if [[ -s "$tmp/accepted.tsv" ]]; then
+    awk -F'\t' -v acc="$tmp/accepted.tsv" '
+      FILENAME == acc { a[$1] = $2 + 0; next }
+      { printf "%s\t%s\n", $1, ($1 in a && a[$1] > $2 + 0) ? a[$1] : $2 }' \
+      "$tmp/accepted.tsv" "$tmp/$LEG.tsv" > "$tmp/$LEG.raised" && mv "$tmp/$LEG.raised" "$tmp/$LEG.tsv"
+    source="$source, raised to the rows this change sets"
+  fi
   write_weights "$LEG" "$tmp/$LEG.tsv" "$OUT" "$source"
   exit 0
 fi
 
-[[ -n "$RUN" && -z "$LEG$OUT$PREV$CHECK$LIST" ]] || { usage; exit 2; }
+[[ -n "$RUN" && -z "$LEG$OUT$PREV$CHECK$LIST$ACCEPT" ]] || { usage; exit 2; }
 command -v gh >/dev/null 2>&1 || { echo "ci-weights: gh not found on PATH" >&2; exit 127; }
 
 # One `gh` call resolves the job ids; the logs come one job at a time because a

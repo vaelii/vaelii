@@ -46,15 +46,14 @@
 
     {:fn         (fn [kb context] → {:net … :support …} | nil)
      :over-nodes (fn [nodes] → {:net … :support …} | nil)
+     :pair       (fn [kb context a b support?] → [#{base relations} #{handle}] | nil)
      :node?      which terms are nodes, when not every node is a symbol
      :bindings   the dynamic vars `:fn` reads, whose values key the resident network
      :sources    every predicate whose arrival or departure moves what it answers
      :contexts   the subset that puts a NODE in the network, so names a reader context}
 
-  `:over-nodes` reads only the node set, so `with-goal-nodes` runs it over a goal's nodes
-  too.  Either key may be absent.  `:sources` and `:contexts` are folded into
-  `:trigger-predicates` and `:context-predicates` here, once.
-
+  `with-goal-nodes` runs `:over-nodes` over a goal's nodes too.  Any key may be absent.
+  `:sources` and `:contexts` fold into `:trigger-predicates` and `:context-predicates`.
   `typed` is the predicates whose `arg` declarations are narrower than the network's
   nodes, answered only over arguments those types admit (`solve-goal`).
 
@@ -471,14 +470,36 @@
   [calc net i j]
   (qcn/constraint net (:algebra calc) i j))
 
+(defn possible-among
+  "A fn of two of `nodes` answering the base relations still possible between them given
+  everything believed in `context`, read off one pass over the network with `nodes`
+  added.  It answers `#{}` for every pair when a node lies in an unsatisfiable component."
+  [calc kb context nodes]
+  (let [[_ pc _ blocked] (tighten-for-goal kb calc context nodes)]
+    (if (or (= pc :inconsistent) (some #(contains? blocked %) nodes))
+      (constantly #{})
+      (fn [a b] (constraint calc pc a b)))))
+
+(defn- pair-reading
+  "The calculus's `:pair` reading of `a` and `b`, `[relations handles]`, or nil."
+  [calc kb context a b support?]
+  (when-let [f (:pair (:narrowing calc))] (f kb context a b support?)))
+
+(defn- pair-narrowed
+  "`poss`, the relations the network leaves between `a` and `b`, intersected with what the
+  calculus's `:pair` reading of the two answers, when it has one."
+  [calc kb context a b poss]
+  (if-let [[r] (pair-reading calc kb context a b false)]
+    (set/intersection poss r)
+    poss))
+
 (defn possible
   "The base relations still possible between `a` and `b` given everything believed in
-  `context` — `#{}` when either lies in an unsatisfiable component of the network."
+  `context`, narrowed by the calculus's `:pair` reading — `#{}` when either lies in an
+  unsatisfiable component of the network."
   [calc kb context a b]
-  (let [[_ pc _ blocked] (tighten-for-goal kb calc context [a b])]
-    (if (or (= pc :inconsistent) (contains? blocked a) (contains? blocked b))
-      #{}
-      (constraint calc pc a b))))
+  (let [poss ((possible-among calc kb context [a b]) a b)]
+    (cond->> poss (seq poss) (pair-narrowed calc kb context a b))))
 
 (defn definite
   "The single base relation between `a` and `b` when path consistency determines it;
@@ -588,11 +609,17 @@
 (defn support
   "The handles of the stored sentexes the relation between `a` and `b` rests on: the
   facts intersected into that pair, plus the facts behind every composition that narrowed
-  it, for one derivation.  `#{}` when the pair is unconstrained or either node lies in an
+  it, for one derivation.  The `:pair` reading's handles join them where it narrows what
+  `possible` answers.  `#{}` when the pair is unconstrained or either node lies in an
   unsatisfiable component."
   [calc kb context a b]
   (let [r (resolved calc kb context [a b])]
-    (if (:inconsistent r) #{} (get (:support r) [a b] #{}))))
+    (if (:inconsistent r)
+      #{}
+      (let [s    (get (:support r) [a b] #{})
+            poss (constraint calc (:network r) a b)
+            [rels hs] (when (seq poss) (pair-reading calc kb context a b true))]
+        (cond-> s (and rels (not (set/subset? poss rels))) (into hs))))))
 
 (defn inconsistency-culprits
   "`{:pair [i j] :support #{handle}}` for an unsatisfiable network, the pair whose
@@ -606,10 +633,10 @@
 
 (defn closure-with-support
   "The support-carrying pass over the satisfiable components of the network of `calc`
-  visible from `context`, every pair at once: `{:network … :support …}`.  A caller reading
-  many pairs reads them here; `support` walks every pair per call."
-  [calc kb context]
-  (resolved calc kb context nil))
+  visible from `context`, every pair at once, with `nodes` added: `{:network … :support
+  …}`.  A caller reading many pairs reads them here; `support` walks every pair per call."
+  ([calc kb context] (resolved calc kb context nil))
+  ([calc kb context nodes] (resolved calc kb context nodes)))
 
 (defn closed-network
   "The pass over the satisfiable components of the network of `calc` visible from
@@ -653,15 +680,16 @@
   "Solutions for a goal `(P a b)` or `(not (P a b))` in `context`, read off the
   path-consistent network: entailment `possible ⊆ denotation(P)` for the positive,
   refutation `possible ∩ denotation(P) = ∅` for the negative, nothing for a goal naming a
-  node of an unsatisfiable component, whose nodes no variable binds (`split`).  A positive goal on a `:typed` predicate also needs each argument
-  admitted by its declared types (`res/arg-admits-fn`).  The four goal shapes are
-  docs/qcn.md's, \"Reading out\".
+  node of an unsatisfiable component, whose nodes no variable binds (`split`).  A positive
+  goal on a `:typed` predicate also needs each argument admitted by its declared types
+  (`res/arg-admits-fn`).  The four goal shapes are docs/qcn.md's, \"Reading out\".
 
   `pairs`, when given, enumerates those pairs in place of the nodes; only a caller that
-  has acted on the answers it leaves out (`join-delta`) passes it.  `pairs` is ignored when
-  the goal names a node `with-goal-nodes` adds."
-  ([calc kb goal context] (solve-goal calc kb goal context nil))
-  ([calc kb goal context pairs]
+  has acted on the answers it leaves out (`join-delta`) passes it, and it is ignored when
+  the goal names a node `with-goal-nodes` adds.  With `pair?`, `pair-narrowed` reads a
+  ground goal the network leaves undecided."
+  ([calc kb goal context] (solve-goal calc kb goal context nil true))
+  ([calc kb goal context pairs pair?]
    (let [neg?  (some? (negated-literal goal))
          [pred a b] (claimed-literal calc goal)
          denot ((:denotation calc) pred)
@@ -671,12 +699,17 @@
      (when-not (or (= pc :inconsistent) (some #(contains? blocked %) extra))
        (let [admits? (when (and (not neg?) (contains? (:typed calc) pred))
                        (res/arg-admits-fn kb pred context))
+             decides? (fn [poss] (if neg?
+                                   (empty? (set/intersection poss denot))
+                                   (set/subset? poss denot)))
+             pair?   (and pair? (not-any? pvar? [a b]))
              holds?  (fn [x y]
-                       (let [poss (constraint calc pc x y)]
+                       (let [poss (constraint calc pc x y)
+                             poss (cond->> poss
+                                    (and pair? (seq poss) (not (decides? poss)))
+                                    (pair-narrowed calc kb context x y))]
                          (and (seq poss)
-                              (if neg?
-                                (empty? (set/intersection poss denot))
-                                (set/subset? poss denot))
+                              (decides? poss)
                               (or (nil? admits?) (and (admits? x 0) (admits? y 1))))))
              answer (fn [x y] (cond-> {} (pvar? a) (assoc a x) (pvar? b) (assoc b y)))]
          (if pairs
@@ -777,7 +810,7 @@
                         diag?   (nil? (negated-literal g))
                         lift    (when (not= g goal)
                                   (map first (tax/reach-support tx :genl p (first goal) ctx class)))]
-                    (for [bnd (solve-goal calculus kb g ctx)
+                    (for [bnd (solve-goal calculus kb g ctx nil false)
                           :let [x (if (pvar? a) (get bnd a) a)
                                 y (if (pvar? b) (get bnd b) b)
                                 s (support calculus kb ctx x y)]]
@@ -1088,9 +1121,9 @@
          decls  (res/declared-by kb :reflexive p context)
          stated (delay (node-statements kb calc context))
          pairs  (if (and pairs (seq decls)) (into pairs (comp cat (map #(vector % %))) pairs) pairs)
-         sols   (cond-> (solve-goal calc kb goal context pairs)
+         sols   (cond-> (solve-goal calc kb goal context pairs false)
                   (and (seq decls) (nil? pairs) (pvar? a) (pvar? b) (not= a b))
-                  (concat (map #(assoc % b (get % a)) (solve-goal calc kb (list p a a) context nil))))]
+                  (concat (map #(assoc % b (get % a)) (solve-goal calc kb (list p a a) context nil false))))]
      (for [bnd sols
            :let [x (if (pvar? a) (get bnd a) a)
                  y (if (pvar? b) (get bnd b) b)

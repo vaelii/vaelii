@@ -347,6 +347,105 @@
                "binary_predicate reaches the `binary` one reads: " k " more readers of `arity` "
                "must add " k " sentex fetches per edge, not " (* 5 k))))))
 
+(deftest a-lazy-reader-s-batch-re-join-reads-each-owing-membership-once
+  (tu/with-shipped-config
+    (let [probe (fn [tagged members]
+                  (let [kb (fresh)]
+                    (v/assert kb '(set/lazyForwardRule (implies (rf_cls ?r) (rfArity ?r 2))) 'CxPerf)
+                    (v/assert kb '(set/forwardRule (implies (and (rf_tag ?r) (rfArity ?r ?n)) (rf_out ?r)))
+                              'CxPerf)
+                    (dotimes [i 300] (v/assert kb (list 'rfArity (ind "RfS" i) 3) 'CxPerf))
+                    (dotimes [i tagged] (v/assert kb (list 'rf_tag (ind "RfT" i)) 'CxPerf))
+                    (prof/start)
+                    (v/with-deferred-settle kb
+                      (v/assert kb '(rf_cls RfT0) 'CxPerf)
+                      (dotimes [i members] (v/assert kb (list 'rf_cls (ind "RfM" i)) 'CxPerf)))
+                    [(long (get-in (prof/stop) [:fetches :sentex] 0))
+                     (v/query? kb '(rf_out RfT0) 'CxPerf)]))
+          per   (fn [tagged]
+                  (let [[few fired] (probe tagged 10)
+                        [many]      (probe tagged 20)]
+                    (is fired "the tagged member's firing proves the lazy literal")
+                    (- many few)))
+          [a b] [(per 10) (per 100)]]
+      (is (= a b)
+          (str "the reader joins `(rf_tag ?r)` before the lazy `(rfArity ?r ?n)`, so the "
+               "settle proves the lazy literal once per tagged relation from the owing "
+               "memberships (`chain/delta-lazy-rows`): ten more memberships must add the same "
+               "sentex fetches beside 10 tagged relations as beside 100 (" a " -> " b ")")))))
+
+(deftest a-run-reads-each-reader-of-a-lazy-conclusion-once
+  (tu/with-shipped-config
+    (let [k     4
+          probe (fn [readers members]
+                  (let [kb (fresh)]
+                    (v/assert kb '(set/lazyForwardRule (implies (rf_cls ?r) (rfArity ?r 2))) 'CxPerf)
+                    (dotimes [i readers]
+                      (v/assert kb (list 'set/inertRule
+                                         (list 'implies (list 'and '(rfArity ?r 2) (list (ind "rf_tag" i) '?r))
+                                               (list (ind "rf_tagged" i) '?r)))
+                                'CxPerf))
+                    (dotimes [i members] (v/assert kb (list 'rf_src (ind "RfM" i)) 'CxPerf))
+                    (prof/start)
+                    (v/assert kb '(set/forwardRule (implies (rf_src ?x) (rf_cls ?x))) 'CxPerf)
+                    (long (get-in (prof/stop) [:fetches :sentex] 0))))
+          added (fn [members] (- (probe k members) (probe 0 members)))
+          [a b] [(added 10) (added 20)]]
+      (is (= a b)
+          (str "the rule's arrival concludes one `rf_cls` membership per `rf_src` member in "
+               "one run, and each owes the inert readers of `rfArity` a re-join "
+               "(`chain/lazy-readers`): " k " readers must add the same sentex fetches to a "
+               "run concluding 10 memberships as to one concluding 20 (" a " -> " b ")")))))
+
+(deftest a-type-antecedent-no-declared-type-reaches-pages-no-declaration-per-rule
+  (tu/with-shipped-config
+    (let [probe (fn [declared? rules]
+                  (let [kb (fresh)]
+                    (when declared?
+                      (v/assert kb '(result RfMakeFn rf_cat) 'CxPerf {:strength :monotonic})
+                      (v/assert kb '(resultArg RfKindFn 2) 'CxPerf {:strength :monotonic})
+                      (v/assert kb '(rfHolds RfA (RfKindFn RfB rf_cat)) 'CxPerf {}))
+                    (dotimes [i rules] (v/assert kb (list (ind "rf_dog" i) (ind "RfD" i)) 'CxPerf {}))
+                    (prof/start)
+                    (dotimes [i rules]
+                      (v/assert kb (rules/rule-sentence [(list (ind "rf_dog" i) '?x)] '(rf_animal ?x))
+                                'CxPerf {:direction :forward :strength :monotonic}))
+                    [(reduce + 0 (vals (:fetches (prof/stop))))
+                     (v/query? kb (list 'rf_animal (ind "RfD" (dec rules))) 'CxPerf)]))
+          added (fn [rules]
+                  (let [[with fired] (probe true rules)
+                        [without]    (probe false rules)]
+                    (is fired "the last rule concludes over its member")
+                    (- (long with) (long without))))
+          few   (added 10)
+          many  (added 100)]
+      (is (= few many)
+          (str "each rule joins `(rf_dogN ?x)` with `?x` open, and the declarations type "
+               "applications as `rf_cat` alone, so they must add the same fetches to 10 "
+               "rules as to 100 (" few " -> " many ")")))))
+
+(deftest a-backward-goal-pages-no-rule-its-argument-heads-exclude
+  (tu/with-shipped-config
+    (let [probe (fn [rules]
+                  (let [kb (fresh)]
+                    (v/assert kb '(rf_src RfStart) 'CxPerf {:strength :monotonic})
+                    (v/assert kb (rules/rule-sentence ['(rf_src ?x)] '(rfLinked ?x RfEnd))
+                              'CxPerf {:strength :monotonic})
+                    (dotimes [i rules]
+                      (v/assert kb (rules/rule-sentence [(list 'rf_src (ind "RfK" i))]
+                                                        (list 'rfLinked (list 'RfPairFn (ind "RfK" i)) 'RfEnd))
+                                'CxPerf {:strength :monotonic}))
+                    (prof/start)
+                    (let [answer (v/query? kb '(rfLinked RfStart RfEnd) 'CxPerf {:max-depth 2})]
+                      [(reduce + 0 (vals (:fetches (prof/stop)))) answer])))
+          [few answered] (probe 10)
+          [many]         (probe 100)]
+      (is answered "the rule concluding `(rfLinked ?x RfEnd)` answers the goal")
+      (is (= few many)
+          (str "no `(rfLinked (RfPairFn RfKN) RfEnd)` consequent has an argument headed by "
+               "`RfStart`, so the goal pages none of them: 100 must cost the fetches 10 do ("
+               few " -> " many ")")))))
+
 (deftest a-context-edge-pages-the-marked-facts-not-the-context
   ;; A `genlCx` edge equates what a functional predicate's facts force across the contexts
   ;; it joins, so its candidates are the facts of marked predicates in the widened
@@ -460,6 +559,94 @@
         (is (= (mint 20) (mint 200))
             (str "what a stored mint pages in a recover must be flat in the facts beside it ("
                  (mint 20) " -> " (mint 200) ")"))))))
+
+(deftest a-forced-monotonic-declaration-pages-no-rule-reading-its-predicate
+  (tu/with-shipped-config
+    (let [probe (fn [rules]
+                  (let [kb (fresh)]
+                    (v/assert kb '(forced_monotonic_predicate rf_kept) 'CxPerf {:strength :monotonic})
+                    (dotimes [i rules]
+                      (v/assert kb (rules/rule-sentence ['(rf_kept ?x)] (list (ind "rf_out" i) '?x))
+                                'CxPerf {:strength :monotonic}))
+                    (prof/start)
+                    (let [held (doall (for [i (range 10)
+                                            :let [fact (list 'rfPlain (ind "RfA" i) 'RfB)]]
+                                        (do (v/assert kb fact 'CxPerf {})
+                                            (v/query? kb fact 'CxPerf))))]
+                      [(reduce + 0 (vals (:fetches (prof/stop)))) held])))
+          [few held] (probe 10)
+          [many]     (probe 100)]
+      (is (every? true? held) "each write is believed")
+      (is (= few many)
+          (str "ten writes and queries beside 10 or 100 rules reading a forced-monotonic "
+               "predicate must page the same records, since `exc/forced-reads?` reads the "
+               "rules' contexts off the index (" few " -> " many ")")))))
+
+(deftest a-write-naming-an-application-pages-no-correspondence-declaration
+  (tu/with-shipped-config
+    (let [probe (fn [decls]
+                  (let [kb (fresh)]
+                    (v/assert kb '(reifiable_function RfFruitFn) 'CxPerf {:strength :monotonic})
+                    (v/assert kb '(functionCorrespondingPredicate RfFruitFn rfFruitOf 2) 'CxPerf
+                              {:strength :monotonic})
+                    (dotimes [i decls]
+                      (v/assert kb (list 'functionCorrespondingPredicate (ind "RfFn" i) (ind "rfPred" i) 2)
+                                'CxPerf {:strength :monotonic}))
+                    (v/assert kb '(rfLikes RfAnn (RfFruitFn RfTree)) 'CxPerf {})
+                    (prof/start)
+                    (dotimes [i 10]
+                      (v/assert kb (list 'rfLikes 'RfAnn (list 'RfFruitFn (ind "RfTree" i))) 'CxPerf {}))
+                    [(reduce + 0 (vals (:fetches (prof/stop))))
+                     (v/query? kb '(rfLikes RfAnn (RfFruitFn RfTree9)) 'CxPerf)]))
+          [few held] (probe 10)
+          [many]     (probe 100)]
+      (is held "the last write is believed")
+      (is (= few many)
+          (str "ten writes naming an application beside 10 or 100 correspondence "
+               "declarations must page the same records, since `res/stored-correspondences` "
+               "holds the declarations' records (" few " -> " many ")")))))
+
+(deftest a-named-target-write-pages-no-justification-another-informant-gave
+  (tu/with-shipped-config
+    (let [probe (fn [rules]
+                  (let [kb (fresh)]
+                    (doseq [s '[(reifiable_function RfQualFn)
+                                (result RfQualFn rf_qualified)
+                                (functionCorrespondingPredicate RfQualFn rfQualOf 2)
+                                (rewriteOf RfRoot (RfQualFn RfBase))]]
+                      (v/assert kb s 'CxUniverse))
+                    (dotimes [i rules]
+                      (v/assert kb (rules/rule-sentence ['(rfTagged ?x ?t)] (list (ind "rf_out" i) '?t))
+                                'CxUniverse {:direction :forward}))
+                    (prof/start)
+                    (dotimes [i 10] (v/assert kb (list 'rfTagged 'RfRoot (ind "RfTag" i)) 'CxUniverse))
+                    [(:justification (:fetches (prof/stop)) 0)
+                     (v/ask? kb '(rfQualOf RfBase RfRoot) 'CxUniverse)]))
+          [few named] (probe 10)
+          [many]      (probe 100)]
+      (is (true? named) "the named application's projection holds")
+      (is (= few many)
+          (str "ten writes naming the target, each the antecedent of 10 or 100 rule firings "
+               "that do not name it, must page the same justifications, since "
+               "`named-application/sync!` reads the informant off the network (" few " -> "
+               many ")")))))
+
+(deftest a-genl-edge-reads-each-rule-reading-genl-once
+  (tu/with-shipped-config
+    (let [probe (fn [rules]
+                  (let [kb (fresh)]
+                    (dotimes [i rules]
+                      (v/assert kb (rules/rule-sentence [(list 'genl '?p (ind "rf_top" i))] '(rf_kindish ?p))
+                                'CxPerf {:direction :forward}))
+                    (prof/start)
+                    (dotimes [i 10] (v/assert kb (list 'genl (ind "rf_kind" i) 'rf_base) 'CxPerf))
+                    (reduce + 0 (vals (:fetches (prof/stop))))))
+          few  (probe 10)
+          many (probe 100)]
+      (is (<= (- many few) (* 10 90))
+          (str "ten edges beside 90 more rules reading `genl`, none reaching the edge, must read "
+               "each rule's record at most once per edge, since `chain/closure-rejoins` and the "
+               "trigger share one read (" few " -> " many ")")))))
 
 (deftest the-instrument-counts-nothing-when-off
   ;; The budgets are only meaningful if the call sites add no work when nobody is collecting.

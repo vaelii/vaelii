@@ -43,6 +43,8 @@
 (definterface TmsColumns
   (^ints supportsOf [^int d])
   (^ints dependentsOf [^int d])
+  (^long supportCount [^int d])
+  (^long dependentCount [^int d])
   (addSupport [^int d ^int jid])
   (addDependent [^int d ^int jid])
   (removeSupport [^int d ^int jid])
@@ -60,6 +62,9 @@
 
 (defn- posting-ints ^ints [^Int2ObjectOpenHashMap m d]
   (if-let [p (.get m (int d))] (postings/pints p) (int-array 0)))
+
+(defn- posting-count ^long [^Int2ObjectOpenHashMap m d]
+  (if-let [p (.get m (int d))] (long (postings/pcard p)) 0))
 
 (defn- posting-add! [^Int2ObjectOpenHashMap m d jid]
   (let [k (int d)
@@ -82,6 +87,8 @@
   TmsColumns
   (supportsOf [_ d] (posting-ints supports d))
   (dependentsOf [_ d] (posting-ints conseqs d))
+  (supportCount [_ d] (posting-count supports d))
+  (dependentCount [_ d] (posting-count conseqs d))
   (addSupport [_ d jid] (posting-add! supports d jid))
   (addDependent [_ d jid] (posting-add! conseqs d jid))
   (removeSupport [_ d jid] (posting-rem! supports d jid))

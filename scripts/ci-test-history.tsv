@@ -1,0 +1,45 @@
+# scripts/ci-test-history.tsv — which test namespaces have failed on CI more than once.
+#
+# `namespace<TAB>count`.  scripts/ci-shard.sh reads it, for both legs, to choose the
+# ORDER a shard runs its namespaces in.  It never changes which shard a namespace is
+# in: the weights files alone decide that.
+#
+# The order, policy 1: a shard runs its namespaces by recurring-failure count
+# descending, then by the leg's weight (the seconds the namespace is predicted to
+# take) descending, then by name ascending.  A namespace this file does not name
+# counts 0.  So a namespace that keeps failing reports first, and among the rest the
+# expensive ones start early.
+#
+# `count` is the number of distinct head commits on which at least one test in the
+# namespace failed, over the window below.  A namespace is listed when it is
+# recurring: it failed on two or more distinct head commits, or on two or more pull
+# requests.  A count is a non-negative whole number; a namespace is spelled as the
+# tree spells it (`vaelii.foo-test`).  A row naming a namespace the tree no longer
+# has is skipped.
+#
+# The two `key: value` lines below are read; every other `#` line is prose.
+# `policy` must be the version scripts/ci-shard.sh implements and `status` must be
+# `current`.  Anything else — the file missing, `status: stale`, another policy, no
+# rows, or one row that is not `namespace<TAB>count` — and ci-shard.sh ignores the
+# whole file and runs the order it ran before this file existed (lightest, heaviest,
+# second lightest, ...).  No shard loses or gains a namespace either way.
+#
+# The file is checked in so that every shard of a run, and any later replay of that
+# run, reads the same numbers: CI fetches no history of its own.  Regenerate it by
+# hand from the window's failed runs and move the window line with it, or set
+# `status: stale` when the numbers are too old to trust.
+#
+# Window: vaelii/vaelii upstream CI (.github/workflows/test.yml), runs since 2026-11-02.
+#
+# policy: 1
+# status: current
+vaelii.absent-type-order-test	5
+vaelii.assert-cost-test	2
+vaelii.context-scoping-test	2
+vaelii.disjointness-audit-test	2
+vaelii.ontology-test	2
+vaelii.query-context-test	2
+vaelii.record-fetch-cost-test	3
+vaelii.relation-properties-test	2
+vaelii.transitive-chain-test	2
+vaelii.web-funnel-test	2

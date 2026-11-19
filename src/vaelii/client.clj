@@ -79,9 +79,10 @@
   ([conn sentences context opts] (c/assert-many conn sentences context opts)))
 
 (defn retract!
-  "Retract the sentex `handle` names, tearing down what it solely supported."
-  [conn handle]
-  (c/retract! conn handle))
+  "Retract the sentex `handle` names, tearing down what it solely supported.  `opts`
+  bounds the re-chain the removal releases (`retract-opt-keys`)."
+  ([conn handle] (c/retract! conn handle))
+  ([conn handle opts] (c/retract! conn handle opts)))
 
 (defn sentexes-matching
   "The believed sentexes matching `sentence` (a pattern may carry `?vars`), as maps."

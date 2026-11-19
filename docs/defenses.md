@@ -343,6 +343,19 @@ cache its own member supports is not stable.** That is why an arity binding is a
 its nogood and never a member: the binding is forced-monotonic, so no defeat
 removes the premise the conviction reads, and the nogood is the offending tuple alone.
 
+### A removal suspends before it deletes only under a bound
+
+A bounded `retract!` or `edit!` suspends the removed premises and settles before deleting
+them, so the caller's bound reaches the re-chain the removal releases
+([inference.md](inference.md#stopping-a-run)). An unbounded removal deletes and settles
+once. Suspending before every removal measured `lein perf-ab`'s `retract-reask` probe at
+115.6 ms on the base and 240.6 ms with the suspend (2.00x, five of five pairs slower, at
+6847b71c9). The suspended removal settles twice: once with the premise out of belief, and
+once after the deletion, because a deletion moves the count-trie counts an aggregate rule
+reads ([aggregate.md](aggregate.md)). Belief after the call is the same on both paths. A
+conclusion the release re-derives keeps its record under a bound and comes back at a new
+handle without one.
+
 ### An un-merge re-seeds through a second channel
 
 A datum displaced by an equality merge is superseded while its twin joins in its place, so a
@@ -1194,7 +1207,7 @@ so the index holds symbols only and none of those readers changes.
 
 Defends [nat.md](nat.md#write-path). A process-local gensym gives one expression a second
 name in every process that mints it, and after every orphan sweep that collected it. Two
-dumps of one NAT would then hold two maps that `merge-colliding-nats!` has to reconcile,
+dumps of one NAT would then hold two maps that the collision repair has to reconcile,
 and a re-mint would not resolve to the constant a fact stated before the sweep named. A
 name hashed from the expression is the same in every process and after every rebuild.
 
@@ -1242,7 +1255,7 @@ application or `K` in a context reading the value.
 ### The collision merge reads the merged class, not the whole map
 
 Defends [nat.md](nat.md#rename-and-remove--keeping-the-11-invariant). After an equality,
-`merge-colliding-nats!` reads the collisions naming the merged class
+`nat/collision-merges` reads the collisions naming the merged class
 (`formula-rows`), one term-index intersection per class member. Re-reading the whole
 `natFormula` map on every equality makes a load that asserts equalities quadratic in the
 NATs it has minted. The cost of the narrow read is a collision no merge caused, such as
@@ -2078,11 +2091,11 @@ withdrew it. An `arg` declaration cannot refuse the case either: `time_point` is
 
 ### A moment is six integers, not a full-precision `DatetimeFn`
 
-`(InstantFn Y M D h m s)` gives each moment one term, because a term is identified by its
-shape: `"2000-01-01T00:00:00"` and `"2000-1-1T0:0:0"` are two shapes for one moment. A
-full-precision `(DatetimeFn "2000-01-01T00:00:00")` denotes the one-second interval, as the
-whole `DatetimeFn` / `YearFn` / `MonthFn` / `DayFn` family names stretches, and a stretch is
-not the moment that opens it.
+`(InstantFn Y M D h m s)` gives each moment on a whole second one term, because a term is
+identified by its shape: `"2000-01-01T00:00:00"` and `"2000-1-1T0:0:0"` are two shapes for
+one moment. A full-precision `(DatetimeFn "2000-01-01T00:00:00")` denotes the one-second
+interval, as the whole `DatetimeFn` / `YearFn` / `MonthFn` / `DayFn` family names
+stretches, and a stretch is not the moment that opens it.
 
 ### A calendar term ends where the next one starts
 

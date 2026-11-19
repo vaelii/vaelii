@@ -95,6 +95,7 @@
             [vaelii.impl.reads :as reads]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.rewrite :as rewrite]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.rules :as rules]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.taxonomy :as tax]
@@ -140,11 +141,11 @@
 
 (defn- concludes-goal?
   "Does a stored rule, in any context, conclude something `goal` unifies with?  The
-  candidates are `res/concluding-rule-handles` (the goal's predicate or a spec of it),
-  behind `res/concludes?`'s index-only answer, and the match is `res/subsuming-unify`, the
-  test the backward chainer applies before it expands a rule.  A goal whose predicate
-  some rule concludes, but at arguments the goal's cannot unify with, is concluded by
-  no rule."
+  candidates are `res/concluding-rule-handles` (the goal's predicate or a spec of it, at
+  `res/goal-heads`), behind `res/concludes?`'s index-only answer, and the match is
+  `res/subsuming-unifiers`, the test the backward chainer applies before it expands a
+  rule.  A goal whose predicate some rule concludes, but at arguments the goal's cannot
+  unify with, is concluded by no rule."
   [kb goal context]
   (let [pred (nm/functor goal)]
     (and (res/concludes? kb pred context)
@@ -152,10 +153,10 @@
            (boolean
             (some (fn [h]
                     (when-let [c (:consequent (p/get-sentex (:records kb) h))]
-                      (res/subsuming-unify
-                       kb goal (:consequent (res/freshen-rule {:consequent c :antecedents []} taken))
-                       res/no-bindings context)))
-                  (res/concluding-rule-handles kb pred context)))))))
+                      (seq (res/subsuming-unifiers
+                            kb goal (:consequent (res/freshen-rule {:consequent c :antecedents []} taken))
+                            res/no-bindings context))))
+                  (res/concluding-rule-handles kb pred context nil (res/goal-heads goal))))))))
 
 (defn- unread-inverse?
   "Is some predicate `tax/inverses-under` declares inverse to `pred` a source the
@@ -266,7 +267,7 @@
   ;; `map`, not `mapv`: matches-visible is lazy all the way down to the store, so a
   ;; caller taking one solution pays for one record fetch.  Every solve below is
   ;; lazy for the same reason.
-  (solve           [_ kb goal context] (map second (res/matches-visible kb goal context))))
+  (solve           [_ kb goal context] (map second (rewrite-query/fact-matches kb goal context))))
 
 ;; ---- transitivity (genl / genlCx via the cached closures) ---------------
 
@@ -323,13 +324,17 @@
 (defn slice-parts
   "`[context time natFormula-handle]` of the slice `c`: the arguments of a `(CxTimeFn
   context time)` application written in place, with no handle, or named by a believed
-  `(natFormula c (CxTimeFn …))` in CxUniverse; nil when `c` is not a slice."
+  `(natFormula c (CxTimeFn …))` in CxUniverse, or under `nat-read/*stated-maps?*` a
+  stated one; nil when `c` is not a slice."
   [kb c]
   (let [parts #(when (and (sequential? %) (= 'CxTimeFn (first %)) (= 3 (count %))) (vec (rest %)))]
     (or (parts c)
         (when (symbol? c)
-          (some (fn [[h b]] (some-> (parts (get b '?e)) (conj h)))
-                (res/matches-visible kb (list 'natFormula c '?e) sx/root-context))))))
+          (if nat-read/*stated-maps?*
+            (some (fn [h] (some-> (parts (nat-read/stated-map-expression kb c h)) (conj h)))
+                  (sort (reads/as-stored-with-args (:index kb) 'natFormula {1 c})))
+            (some (fn [[h b]] (some-> (parts (get b '?e)) (conj h)))
+                  (res/matches-visible kb (list 'natFormula c '?e) sx/root-context)))))))
 
 (defn- monad-of
   "The monad of the context `c`: the context a slice slices, followed to its own monad;
@@ -1471,6 +1476,15 @@
             nf    #(rewrite/normalize rules (res/representative-term kb visible? %))]
         (= (nf a) (nf b)))))
 
+(defn- public-class-spellings
+  "The scoped identity class, without exposing a spelling retired by a visible rename.
+  Nonretired sameAs/equals aliases remain distinct answers: this is not an identity
+  collapse onto one representative. Raw class/storage/provenance reads are unchanged."
+  [kb visible? term]
+  (let [tx (reasoning/taxonomy kb)]
+    (distinct (map #(tax/spelling-representative tx % visible?)
+                   (sort (scoped-equiv-class kb visible? term))))))
+
 (defrecord EqualityProver []
   Prover
   ;; A ground goal, or a symbol beside a variable; the other shapes are left to the
@@ -1497,8 +1511,8 @@
       (cond
         (and (ground? a) (ground? b))
         (if (terms-equal-in? kb vis a b) [{}] [])
-        (ground? a) (map (fn [t] {b t}) (sort (scoped-equiv-class kb vis a)))
-        :else       (map (fn [t] {a t}) (sort (scoped-equiv-class kb vis b)))))))
+        (ground? a) (map (fn [t] {b t}) (public-class-spellings kb vis a))
+        :else       (map (fn [t] {a t}) (public-class-spellings kb vis b))))))
 
 (defn- structure-kind
   "The kind `sx/structure-constructors` names for `t`, a ground application of a structure
@@ -1814,23 +1828,25 @@
   order of each `genl` edge on one path from `S` up to `c` (`tax/genl-path-edges`) that a
   reader at `context` can use, every supporter when `context` is nil.  Where an edge on
   that path has none, the supporters of a path `context` sees (`tax/reach-support`).  nil
-  when `context` sees no path up to `c`."
-  [kb h c context]
-  (let [tms  (reasoning/tms kb)
-        recs (:records kb)
-        tx   (reasoning/taxonomy kb)
-        ckey (fn [h] (let [r (p/get-sentex recs h)] [(sx/sentence-of r) (:context r)]))
-        s    (nm/functor (sx/sentence-of (p/get-sentex recs h)))]
-    (if (= s c)
-      [h]
-      (or (when-let [es (tax/genl-path-edges tx s c)]
-            (let [ws (mapv (fn [[a b]]
-                             (nm/min-by-content-key
-                              ckey (filter #(jtms/in? tms %) (tax/genl-edge-supporters tx a b context))))
-                           es)]
-              (when (every? some? ws) (into [h] ws))))
-          (when context
-            (some->> (tax/reach-support tx :genl s c context) (into [h] (map first))))))))
+  when `context` sees no path up to `c`.  The 5-arity takes `S` for an `h` that types a
+  term without being a membership, such as a `(result F S)` declaration."
+  ([kb h c context]
+   (membership-route kb h (nm/functor (sx/sentence-of (p/get-sentex (:records kb) h))) c context))
+  ([kb h s c context]
+   (let [tms  (reasoning/tms kb)
+         recs (:records kb)
+         tx   (reasoning/taxonomy kb)
+         ckey (fn [h] (let [r (p/get-sentex recs h)] [(sx/sentence-of r) (:context r)]))]
+     (if (= s c)
+       [h]
+       (or (when-let [es (tax/genl-path-edges tx s c)]
+             (let [ws (mapv (fn [[a b]]
+                              (nm/min-by-content-key
+                               ckey (filter #(jtms/in? tms %) (tax/genl-edge-supporters tx a b context))))
+                            es)]
+               (when (every? some? ws) (into [h] ws))))
+           (when context
+             (some->> (tax/reach-support tx :genl s c context) (into [h] (map first)))))))))
 
 (defn nonempty-witness
   "The handles a believed member of the type `c` seen from `context` rests on, as a set,
@@ -3767,11 +3783,11 @@
 ;; ---- rules (backward chaining through the engine) -----------------------
 
 (defn candidate-rules
-  "Rules concluding the goal's predicate or a spec of it, restricted to the
-  backward-capable ones (the consequent index also holds forward-only and inert rules).  A
-  rule concluding a subtype answers a supertype goal (`res/concluding-rule-handles`), and
-  `subsuming-unify` binds the goal variable to the subtype instance.  Each carries its
-  `exceptWhen` guard (`parse-rule`).
+  "Rules concluding the goal's predicate or a spec of it, at argument heads the goal's do not
+  exclude (`res/goal-heads`), restricted to the backward-capable ones (the consequent index
+  also holds forward-only and inert rules).  A rule concluding a subtype answers a supertype
+  goal (`res/concluding-rule-handles`), and `subsuming-unify` binds the goal variable to the
+  subtype instance.  Each carries its `exceptWhen` guard (`parse-rule`).
 
   A rule is not a candidate when the asking context cannot see it (`res/rule-visible-from?`),
   when the KB no longer believes it (`res/rule-believed?`), or when a believed visibility
@@ -3789,7 +3805,7 @@
           ;; filter below would drop
           visible (when (and (symbol? context) (not (sx/variable? context)))
                     (tax/context-up (reasoning/taxonomy kb) context))]
-      (->> (res/concluding-rule-handles kb (first goal) context visible)
+      (->> (res/concluding-rule-handles kb (first goal) context visible (res/goal-heads goal))
            (map #(p/get-sentex (:records kb) %))
            (filter rules/backward-sentex?)
            (filter #(res/rule-believed? kb (:id %)))
@@ -3978,6 +3994,29 @@
                             provers)
               ests (map #(est-bindings % kb goal '?ctx) ps)]
           (when (seq ests) (est-under (reduce max ests) ps kb goal '?ctx bound)))))))
+
+(defn open-kind-goal?
+  "Is `goal` `(k ?v)`, `k` an expression kind and `?v` a variable, with
+  `ExpressionKindProver` registered?  It answers none while `?v` is open, as
+  `quoted-form` is nil for a variable."
+  [kb goal]
+  (and (sequential? goal) (= 2 (count goal))
+       (contains? expression-kind-predicates (first goal))
+       (sx/variable? (second goal))
+       (boolean (some #(instance? ExpressionKindProver %) (:provers (support-summary kb))))))
+
+(defn open-kind-unanswered?
+  "Is `goal` an `open-kind-goal?` that no registered prover answers with support at
+  `contexts`: no `SupportingProver` other than `ExpressionKindProver` applicable at one of
+  `contexts` (`applicable-provers`)?  Any other prover's answer carries an empty support it
+  does not report (`solve-goal-reporting-support`), which a forward join drops
+  (`chain/solve-computed`)."
+  [kb goal contexts]
+  (and (open-kind-goal? kb goal)
+       (every? (fn [p]
+                 (or (instance? ExpressionKindProver p)
+                     (not-any? #(applicable? p kb goal %) contexts)))
+               (:provers (support-summary kb)))))
 
 (defn separation-est-override
   "An `:est-override` for `vaelii.impl.plan/order` that costs a `disjoint` literal by

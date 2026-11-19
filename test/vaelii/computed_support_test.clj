@@ -259,6 +259,42 @@
             (is (= #{wide} (believed kb concl)) "retracting what narrowed it")
             (run! #(when (v/sentex kb %) (v/retract! kb %)) (rseq hs))))))))
 
+(defn- check-bound-pair-overlap
+  "A ends where B starts, at `InstantFn` moments the interval network leaves unordered, and
+  the pair's own reading (`interval/order-relations`) makes them meet.  Checks that the
+  overlap rests on the bounds: `why` names the two that meet, and retracting each bound
+  `gone` indexes, with the rule stated first or last per `orders`, answers what a KB built
+  without it answers."
+  [kb orders gone]
+  (tu/with-terms [A B concl]
+    (let [at     #(list 'InstantFn 2003 1 1 %1 %2 0)
+          ends   [(list 'startOf A (at 0 0)) (list 'endOf A (at 2 0))
+                  (list 'startOf B (at 2 0)) (list 'endOf B (at 2 30))]
+          rule   (tu/fwd [(list 'overlapDuration A B '?d)] (list concl A B '?d))
+          lens   [(list 'length A '(QuantityFn 2 Hour)) (list 'length B '(QuantityFn 30 Minute))]
+          tight  (list concl A B '(QuantityFn 0 Second))
+          stated (select-keys {:rule-first (into [rule] (concat lens ends))
+                               :rule-last  (conj (into lens ends) rule)}
+                              orders)
+          hs     (mapv #(v/assert kb % C) (:rule-first stated))]
+      (is (= #{tight} (believed kb concl)))
+      (is (every? (reasons kb concl tight) [(ends 1) (ends 2)]) "why names the two bounds that meet")
+      (run! #(v/retract! kb %) (rseq hs))
+      (is (= (into {} (for [[o sentences] stated, i gone]
+                        [[o i] (believed-after kb (remove #{(ends i)} sentences) concl)]))
+             (into {} (for [[o sentences] stated, i gone]
+                        [[o i] (let [hs (mapv #(v/assert kb % C) sentences)]
+                                 (v/retract! kb (v/handle-of kb (ends i) C))
+                                 (let [b (believed kb concl)]
+                                   (run! #(when (v/sentex kb %) (v/retract! kb %)) (rseq hs))
+                                   b))])))))))
+
+(tu/deftest-kb an-overlap-a-stated-bound-pair-narrows-rests-on-those-bounds
+  (check-bound-pair-overlap kb [:rule-first] [1 2]))
+
+(tu/deftest-kb ^:slow an-overlap-a-stated-bound-pair-narrows-rests-on-each-bound-in-either-order
+  (check-bound-pair-overlap kb [:rule-first :rule-last] [0 1 2 3]))
+
 ;; ---- is the whale heavier than a ton --------------------------------------
 
 (defn- load-mass-table
@@ -598,10 +634,150 @@
                                        (list 'arg feeds 1 mammal)]
                                    (list 'arg feeds 1 animal) feeds)))))
 
-(tu/deftest-kb ^:red a-forward-rule-reads-the-type-a-function-s-result-declaration-states
+(tu/deftest-kb a-forward-rule-reads-the-type-a-function-s-result-declaration-states
   (tu/with-terms [CapitalFn city France]
     (is (= read-all (forward-reads kb [(list 'arity CapitalFn 1) (list 'result CapitalFn city)]
                                    (list city (list CapitalFn France)) France)))))
+
+(tu/deftest-kb a-type-read-off-a-result-declaration-concludes-whichever-support-arrives-last-and-goes-with-it
+  (doseq [order (let [ks [:result :genl :rule :mark]] (map #(concat (remove #{%} ks) [%]) ks))]
+    (tu/with-terms [CapitalFn city place mark noted France]
+      (v/assert kb (list 'arity CapitalFn 1) C)
+      (let [ss {:result (list 'result CapitalFn city)
+                :genl   (list 'genl city place)
+                :rule   (tu/fwd [(list mark '?x) (list place (list CapitalFn '?x))] (list noted '?x))
+                :mark   (list mark France)}
+            hs (into {} (map (fn [k] [k (v/assert kb (ss k) C)])) order)]
+        (testing (str order " concludes")
+          (is (= #{(list noted France)} (believed kb noted))))
+        (v/retract! kb (hs :genl))
+        (testing (str order ": retracting the edge withdraws the conclusion")
+          (is (empty? (believed kb noted))))
+        (v/assert kb (ss :genl) C)
+        (v/retract! kb (hs :result))
+        (testing (str order ": retracting the declaration withdraws it")
+          (is (empty? (believed kb noted))))))))
+
+(tu/deftest-kb a-type-antecedent-another-antecedent-binds-to-an-application-concludes-alike-in-either-arrival-order
+  (let [run (fn [declaration-first?]
+              (tu/with-terms [CapitalFn city mark noted France]
+                (v/assert kb (list 'arity CapitalFn 1) C)
+                (v/assert kb (tu/fwd [(list mark '?x) (list city '?x)] (list noted '?x)) C)
+                (let [steps [#(v/assert kb (list 'result CapitalFn city) C)
+                             #(v/assert kb (list mark (list CapitalFn France)) C)]]
+                  (doseq [f (if declaration-first? steps (reverse steps))] (f)))
+                (count (believed kb noted))))]
+    (is (= [1 1] [(run true) (run false)]))))
+
+(tu/deftest-kb a-type-antecedent-that-alone-binds-its-variable-concludes-for-a-mentioned-application-in-every-arrival-order
+  (doseq [order (tu/orders [:result :genl :mention :rule])]
+    (tu/with-terms [CapitalFn city place mark other noted France]
+      (v/assert kb (list 'arity CapitalFn 1) C)
+      (let [ss {:result  (list 'result CapitalFn city)
+                :genl    (list 'genl city place)
+                :mention (list mark (list CapitalFn France))
+                :rule    (tu/fwd [(list place '?x)] (list noted '?x))}
+            hs (into {} (map (fn [k] [k (v/assert kb (ss k) C)])) order)
+            m2 (v/assert kb (list other (list CapitalFn France)) C)]
+        (testing (str order " concludes")
+          (is (= #{(list noted (list CapitalFn France))} (believed kb noted))))
+        (v/retract! kb (hs :mention))
+        (testing (str order ": a second mention keeps the conclusion")
+          (is (= #{(list noted (list CapitalFn France))} (believed kb noted))))
+        (v/retract! kb m2)
+        (testing (str order ": retracting the last mention withdraws it")
+          (is (empty? (believed kb noted))))))))
+
+(defn- result-arg-readings
+  "Assert `(resultArg PickFn 1)` (`:decl`), a fact using `(PickFn kind)` (`:mention`), `(genl
+  kind place)` (`:genl`) and a rule from `(place ?x)` to `(noted ?x)` (`:rule`), the keys `ks`
+  in that order, beside `(kind Sam)`, `(place Dover)` and a `believes` whose payload uses
+  `(PickFn kind)`.  Returns `(read! sentences handles norm)`: `handles` a volatile map by
+  key, `norm` the believed `noted` sentences with keywords for the temporaries."
+  [kb ks read!]
+  (tu/with-terms [PickFn kind place mark noted Sam Dover Ann]
+    (let [ss    {:decl (list 'resultArg PickFn 1) :mention (list mark (list PickFn kind))
+                 :genl (list 'genl kind place) :rule (tu/fwd [(list place '?x)] (list noted '?x))}
+          names {PickFn :PickFn kind :kind noted :noted Sam :Sam Dover :Dover}]
+      (v/assert kb (list 'arity PickFn 1) C)
+      (v/assert kb (list kind Sam) C)
+      (v/assert kb (list place Dover) C)
+      (v/assert kb (list 'believes Ann (list mark (list PickFn kind))) C)
+      (read! ss (volatile! (into {} (map (fn [k] [k (v/assert kb (ss k) C)])) ks))
+             #(walk/postwalk-replace names (believed kb noted))))))
+
+(defn- result-arg-order-check
+  "Per order of `orders`, the `result-arg-readings` once stated and after retracting each
+  key, the key restated before the next is retracted."
+  [kb orders]
+  (into {} (for [order orders]
+             [order (result-arg-readings
+                     kb order
+                     (fn [ss hs norm]
+                       (into {:all (norm)}
+                             (for [k order]
+                               (do (v/retract! kb (@hs k))
+                                   (let [b (norm)]
+                                     (vswap! hs assoc k (v/assert kb (ss k) C))
+                                     [k b]))))))])))
+
+(def ^:private result-arg-keys [:decl :mention :genl :rule])
+
+(def ^:private result-arg-want
+  "`result-arg-order-check`'s reading for every order: the beliefs once all four keys are
+  stated, and per key those of a KB built without it.  The attitude's payload alone types no
+  application."
+  {:all     #{'(:noted :Dover) '(:noted :Sam) '(:noted (:PickFn :kind))}
+   :decl    #{'(:noted :Dover) '(:noted :Sam)}
+   :mention #{'(:noted :Dover) '(:noted :Sam)}
+   :genl    #{'(:noted :Dover)}
+   :rule    #{}})
+
+(tu/deftest-kb ^:slow a-result-arg-type-read-matches-a-kb-built-without-each-support-in-every-order
+  (let [built  (fn [ks] (result-arg-readings kb ks (fn [_ _ norm] (norm))))
+        orders (tu/orders result-arg-keys)]
+    (is (= result-arg-want
+           (into {:all (built result-arg-keys)}
+                 (map (fn [k] [k (built (remove #{k} result-arg-keys))]))
+                 result-arg-keys)))
+    (is (= (zipmap orders (repeat result-arg-want)) (result-arg-order-check kb orders)))))
+
+(tu/deftest-kb a-result-arg-type-read-matches-a-kb-built-without-each-support-with-the-declaration-last
+  (let [order (vec (reverse result-arg-keys))]
+    (is (= {order result-arg-want} (result-arg-order-check kb [order])))))
+
+(defn- mention-supports
+  "Per order, the support counts of `(noted (CapitalFn France))` over four mentions: once
+  stated, once each mention is restated, and once the second is retracted; then for a KB
+  that never stated the second, once stated and once restated.  Four supports outnumber a
+  mention's dependents, so the duplicate check reads the mention's dependents."
+  [kb orders]
+  (let [run (fn [order skip?]
+              (tu/with-terms [CapitalFn city place noted France m1 m2 m3 m4]
+                (v/assert kb (list 'arity CapitalFn 1) C)
+                (let [app    (list CapitalFn France)
+                      ss     {:result (list 'result CapitalFn city) :genl (list 'genl city place)
+                              :rule   (tu/fwd [(list place '?x)] (list noted '?x))}
+                      state! #(v/assert kb (list % app) C)
+                      sups   #(some->> (v/handle-of kb (list noted app) C) (tu/why-root kb) :support count)
+                      ms     (if skip? [m1 m3 m4] [m1 m2 m3 m4])]
+                  (doseq [k order] (if (= :mentions k) (run! state! ms) (v/assert kb (ss k) C)))
+                  (let [n (sups)]
+                    (run! state! ms)
+                    (if skip?
+                      [n (sups)]
+                      (let [n' (sups)]
+                        (v/retract! kb (v/handle-of kb (list m2 app) C))
+                        [n n' (sups)]))))))]
+    (zipmap orders (map (juxt #(run % false) #(run % true)) orders))))
+
+(tu/deftest-kb ^:slow a-conclusion-rests-once-on-each-mention-in-every-order-and-after-a-retraction
+  (let [orders (tu/orders [:result :genl :rule :mentions])]
+    (is (= (zipmap orders (repeat [[4 4 3] [3 3]])) (mention-supports kb orders)))))
+
+(tu/deftest-kb a-conclusion-rests-once-on-each-mention-stated-first-or-last-and-after-a-retraction
+  (let [orders [[:result :genl :rule :mentions] [:mentions :rule :genl :result]]]
+    (is (= (zipmap orders (repeat [[4 4 3] [3 3]])) (mention-supports kb orders)))))
 
 (tu/deftest-kb ^:red a-forward-rule-reads-the-least-common-supertype-the-taxonomy-computes
   (tu/with-terms [mammal dog cat]

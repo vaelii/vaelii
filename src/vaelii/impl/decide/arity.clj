@@ -280,18 +280,26 @@
     (assoc (if (or optional variadic) {:min (count args)} {:exact (count args)})
            :via q :grounds #{})))
 
+(defn admits-length?
+  "Does the length signature `outer` admit every length the signature `inner` admits?
+  A signature is `{:exact n}`, admitting `n` alone, or `{:min m}`, admitting every length
+  at or above `m`.  An exact `outer` admits an exact `inner` of its length and no floor;
+  a floor `outer` admits an exact `inner` or a floor `inner` at or above it."
+  [outer inner]
+  (if-let [e (:exact outer)]
+    (= e (:exact inner))
+    (<= (long (:min outer)) (long (or (:exact inner) (:min inner))))))
+
 (defn admits-shape?
   "Does a length binding of the engine term `q`, `kind` and `v` as `sx/arity-binding`
-  answers them, admit every length `q`'s shape admits (`shape-length`)?  An exact length
-  agrees with an exact shape of that length, an `arityMin` floor with a shape whose
-  shortest length is at or above it, and `variable_arity` with every shape.  True for a
-  term with no shape."
+  answers them, admit every length `q`'s shape admits (`shape-length`, `admits-length?`)?
+  An exact length agrees with an exact shape of that length, an `arityMin` floor with a
+  shape whose shortest length is at or above it, and `variable_arity` with every shape.
+  True for a term with no shape."
   [q kind v]
-  (let [{exact :exact floor :min} (shape-length q)]
-    (case kind
-      :exact (if exact (= v exact) (nil? floor))
-      :min   (<= (long v) (long (or exact floor v)))
-      :var   true)))
+  (if-let [s (shape-length q)]
+    (admits-length? (case kind :exact {:exact v} :min {:min v} :var {:min 0}) s)
+    true))
 
 (defn- reduce-own
   "The binding `q`'s own bindings `own` give it: under `variable_arity` its single
@@ -310,35 +318,49 @@
   [kb q]
   (boolean (seq (:var (held-bindings kb q)))))
 
-(defn unary-consistent?
-  "Does `t`'s own arity admit one argument and no other: an engine term's `:shape` of
-  exactly one, or, for any other term, no IN binding of a length other than one, no
-  `variable_arity` release and no `arityMin` floor above one?  A type bound to one length
-  and another admits neither, so a declaration naming it mints nothing.  The stored
-  bindings, held in the length entries (`own-held`), answer when every one of them admits
-  one, since then every IN subset of them does; otherwise the IN bindings answer
-  (`held-bindings`), so no OUT binding decides.  No `genl` closure is read, so a length
-  `t` inherits is not consulted (`mintable-type?`, docs/argtypes.md)."
-  [kb t]
-  (if-let [s (shape-length t)]
-    (= 1 (:exact s))
-    (let [ok? (fn [exacts var? mins]
-                (and (every? #(= 1 %) exacts) (not var?) (every? #(<= (long %) 1) mins)))
-          {:keys [own mins var?]} (own-held kb (reasoning/taxonomy kb) t)]
-      (or (ok? own var? mins)
-          (let [{:keys [exact var min]} (held-bindings kb t)]
-            (ok? (keys exact) (seq var) (keys min)))))))
+(defn own-length
+  "The length `q` itself is known to have, as `{:exact n}` or `{:min m}`, or nil, read the
+  same at every context and with no `genl` closure read.  It comes from an engine term's
+  `:shape` (`shape-length`), else `q`'s own IN bindings (`reduce-own`), else, for a
+  `variable_arity` release with no single `arityMin`, the highest of its floors, zero
+  without one.  An exact-arity class membership and a `:monotonic` membership reaching one
+  are own bindings.  A length the bound predicates above `q` agree on is not `q`'s own
+  (`relation-length` reads it), so the integrity pass's undeclared-arity and
+  genl-arity-mismatch censuses read `own-length`."
+  [kb q]
+  (or (some-> (shape-length q) (dissoc :via :grounds))
+      (let [own (held-bindings kb q)]
+        (or (some-> (reduce-own q own) (dissoc :via :grounds))
+            (when (seq (:var own))
+              {:min (reduce max 0 (keys (:min own)))})))))
+
+(defn mint-target?
+  "Can a membership in `t` be minted: a symbol other than `thing`, no variable, whose engine
+  `:shape`, when it has one, takes exactly one argument?  Read off `t` alone.  `thing` mints
+  nothing: a membership in it says nothing about the term.  The mint arms store a mint in a
+  target whatever its length bindings (docs/argtypes.md, \"Where it does not mint\")."
+  [t]
+  (and (symbol? t) (not (sx/variable? t)) (not= 'thing t)
+       (if-let [s (shape-length t)] (= 1 (:exact s)) true)))
 
 (defn mintable-type?
-  "Is `t` a type a membership can be minted in: a symbol other than `thing` whose own
-  arity admits one argument (`unary-consistent?`)?  A type is a unary predicate, so
-  a declared type with no arity statement is one, and the declaration that mints in it
-  entails its `unary_predicate` membership (`special/entail-existing`).  `thing` mints
-  nothing: a membership in it says nothing about the term.  One read of `t`'s stored
-  arity bindings, with no `genl` closure read (docs/argtypes.md, \"Where it does not
-  mint\")."
+  "Is `t` a type a minted membership holds in: a `mint-target?` whose own arity admits one
+  argument and no other?  No IN binding of a length other than one, no `variable_arity`
+  release and no `arityMin` floor above one, so a type bound to one length and another
+  admits neither.  A mint in a target this refuses is stored with its justification held
+  void (`special/hold-type-mints!`).  The stored bindings, held in the length entries
+  (`own-held`), answer when every one of them admits one, since then every IN subset of
+  them does; otherwise the IN bindings answer (`held-bindings`), so no OUT binding decides.
+  No `genl` closure is read, so a length `t` inherits is not consulted."
   [kb t]
-  (and (symbol? t) (not (sx/variable? t)) (not= 'thing t) (unary-consistent? kb t)))
+  (and (mint-target? t)
+       (or (some? (shape-length t))
+           (let [ok? (fn [exacts var? mins]
+                       (and (every? #(= 1 %) exacts) (not var?) (every? #(<= (long %) 1) mins)))
+                 {:keys [own mins var?]} (own-held kb (reasoning/taxonomy kb) t)]
+             (or (ok? own var? mins)
+                 (let [{:keys [exact var min]} (held-bindings kb t)]
+                   (ok? (keys exact) (seq var) (keys min))))))))
 
 (defn- bound-above
   "The predicates at or above `q` storing an exact or `variable_arity` binding, `q` left
@@ -437,6 +459,16 @@
                  (cond-> {:exact n :via via}
                    grounds? (assoc :grounds (into #{} (mapcat #(get (:exact (held %)) n))
                                                   (filter #(holds? n %) (get by-len n)))))))))))))
+
+(defn two-or-more-places?
+  "Does `q` take two or more places by its length bindings, read the same at every context:
+  a `variable_arity` release (`released?`), or an exact length or an `arityMin` floor of two
+  or more (`relation-length`)?  `decide/forced-literal?` reads a minted constant's role
+  here, since its name states none."
+  [kb q]
+  (or (released? kb q)
+      (let [{e :exact m :min} (relation-length kb q)]
+        (>= (long (or e m 0)) 2))))
 
 (defn- breaks?
   "Does a tuple of `n` arguments break `binding`?"
@@ -700,20 +732,16 @@
       #{q}
       (tax/specs-global-while tax q #(or (= q %) (not (gives-each? kb % bs)))))))
 
-(defn drain!
-  "Refresh the inert shapes (`refresh-shapes!`) of every functor whose length can have
-  moved since the last call, and answer `{:pairs {p dirs} :moved ts :bound qs :released
-  hs}`, `:released` the tuples the refresh took out of `:out`.  `:pairs`
-  holds the predicates whose arity pairs the settle places again (`pair-sets`): `:both`
-  for a queued predicate and those below it, whose own binding or whose lengths above
-  moved, and `:up` for an exact-bound predicate at or below the lower end of a `genl`
-  edge moved since `::gen`.  `:moved` is the set of terms whose length can have moved, or
-  `:all`.  `:bound` maps each predicate whose own bindings were stored, removed or
-  relabelled since the last call to those bindings' `#{[kind value]}`, on every call:
-  what `unary-consistent?` reads.
-  Everything is refreshed when the shapes are owed whole (a recover), on the first call,
-  and when the `genl` relation was rebuilt: every functor of a stored fact, `:up` for
-  every bound predicate, and `:moved` `:all`."
+(defn take-lengths!
+  "Empty the queues `drain!` reads and answer what they held, as `drain!` takes it:
+  `{:old c :whole? b :recovered? b :fs ts :pairs {p dirs}}`.  `:fs` is the set of terms
+  whose length can have moved since the last call.  `:pairs` holds the predicates whose
+  arity pairs the settle places again (`pair-sets`): `:both` for a queued predicate and
+  those below it, whose own binding or whose lengths above moved, and `:up` for an
+  exact-bound predicate at or below the lower end of a `genl` edge moved since `::gen`.
+  `:whole?` holds when the shapes are owed whole (a recover, which `:recovered?` names),
+  on the first call, and when the `genl` relation was rebuilt: `:fs` is then every
+  functor of a stored fact, and `:pairs` `:up` for every bound predicate."
   [kb]
   (let [tax     (reasoning/taxonomy kb)
         idx     (:index kb)
@@ -734,6 +762,18 @@
                          (into (keys (::fresh old))))
                      (merge (zipmap (filter #(reads/stored-arity-bound? idx %) up) (repeat :up))
                             (zipmap (keys qs) (repeat :both)))]))]
+    {:old old :whole? whole? :recovered? (boolean (::owed old)) :fs fs :pairs ps}))
+
+(defn drain!
+  "Refresh the inert shapes (`refresh-shapes!`) of every functor of `taken`, what
+  `take-lengths!` answered, and answer `{:pairs {p dirs} :moved ts :bound qs :released
+  hs}`, `:released` the tuples the refresh took out of `:out`.  `:pairs` is `taken`'s.
+  `:moved` is the set of terms whose length can have moved, or `:all` when `taken` is
+  whole.  `:bound` maps each predicate whose own bindings were stored, removed or
+  relabelled since the last call to those bindings' `#{[kind value]}`, on every call:
+  what `mintable-type?` reads."
+  [kb {:keys [old whole? fs pairs]}]
+  (let [tax (reasoning/taxonomy kb)]
     (when whole?
       ;; the shapes recorded are those of the tuples the forced set holds, whatever the
       ;; rows held before, so a refresh moves exactly the tuples whose answer moved
@@ -745,7 +785,7 @@
                        {} (jtms/forced-members (reasoning/tms kb) :out)))))
     ;; a whole refresh reads every tuple of each recorded shape: a recorded shape can
     ;; hold a tuple stored before the answer it records
-    {:pairs    ps :moved (if whole? :all fs) :bound (::bound old {})
+    {:pairs    pairs :moved (if whole? :all fs) :bound (::bound old {})
      :released (into [] (mapcat #(refresh-shapes! kb tax % (if whole?
                                                              (get-in @(reasoning/nogood-candidates kb) [::out %] #{})
                                                              (get-in old [::fresh %] #{}))))

@@ -53,7 +53,7 @@
 12	17	src/vaelii/browser/svg.clj
 77	713	src/vaelii/browser/web.clj
 28	8	src/vaelii/client.clj
-279	643	src/vaelii/core.clj
+279	642	src/vaelii/core.clj
 57	55	src/vaelii/host/cli.clj
 38	32	src/vaelii/host/client.clj
 12	5	src/vaelii/host/core_context.clj
@@ -74,19 +74,19 @@
 11	30	src/vaelii/impl/asp/edge.clj
 4	29	src/vaelii/impl/asp/label.clj
 12	29	src/vaelii/impl/asp/solve_context.clj
-80	221	src/vaelii/impl/assert_entry.clj
+80	217	src/vaelii/impl/assert_entry.clj
 32	8	src/vaelii/impl/budget.clj
 32	64	src/vaelii/impl/caches.clj
 23	2	src/vaelii/impl/capabilities.clj
-44	442	src/vaelii/impl/chain.clj
-269	358	src/vaelii/impl/checks.clj
+43	440	src/vaelii/impl/chain.clj
+266	357	src/vaelii/impl/checks.clj
 8	22	src/vaelii/impl/clashes.clj
 57	53	src/vaelii/impl/columnar.clj
 98	13	src/vaelii/impl/config.clj
 2	5	src/vaelii/impl/context_nat.clj
 11	3	src/vaelii/impl/decide.clj
 2	18	src/vaelii/impl/decide/argument.clj
-9	56	src/vaelii/impl/decide/arity.clj
+5	56	src/vaelii/impl/decide/arity.clj
 0	11	src/vaelii/impl/decide/inherited.clj
 18	31	src/vaelii/impl/decide/membership.clj
 0	9	src/vaelii/impl/decide/negation.clj
@@ -142,7 +142,7 @@
 7	6	src/vaelii/impl/overlay/rebase.clj
 38	83	src/vaelii/impl/overlay/store.clj
 20	53	src/vaelii/impl/plan.clj
-77	2	src/vaelii/impl/predall.clj
+72	2	src/vaelii/impl/predall.clj
 137	148	src/vaelii/impl/predicates.clj
 3	12	src/vaelii/impl/profile.clj
 57	88	src/vaelii/impl/protocols.clj
@@ -169,7 +169,7 @@
 5	8	src/vaelii/impl/solve.clj
 2	19	src/vaelii/impl/source_identity.clj
 33	86	src/vaelii/impl/spec.clj
-97	343	src/vaelii/impl/special.clj
+96	343	src/vaelii/impl/special.clj
 8	31	src/vaelii/impl/stp.clj
 0	2	src/vaelii/impl/strength.clj
 47	8	src/vaelii/impl/tactics.clj
@@ -189,7 +189,7 @@
 6	104	src/vaelii/impl/types/trie.clj
 2	15	src/vaelii/impl/vantage.clj
 27	6	src/vaelii/impl/violations.clj
-64	2	src/vaelii/impl/vocabulary.clj
+60	2	src/vaelii/impl/vocabulary.clj
 99	72	src/vaelii/impl/wff.clj
 24	43	src/vaelii/impl/wiring.clj
 59	38	src/vaelii/koinii/adjudication.clj
@@ -220,7 +220,7 @@
 3	48	test/vaelii/asp_aspif_test.clj
 16	2	test/vaelii/asp_namespaces_test.clj
 0	34	test/vaelii/asp_solver_test.clj
-113	313	test/vaelii/assert_cost_test.clj
+113	308	test/vaelii/assert_cost_test.clj
 4	80	test/vaelii/assert_soundness_test.clj
 10	29	test/vaelii/attitude_opacity_test.clj
 12	47	test/vaelii/backend_parity_test.clj
@@ -299,7 +299,7 @@
 8	19	test/vaelii/encodable_test.clj
 19	85	test/vaelii/entry_point_and_report_test.clj
 7	11	test/vaelii/enumeration_shape_test.clj
-1	166	test/vaelii/equality_test.clj
+1	165	test/vaelii/equality_test.clj
 21	83	test/vaelii/equational_test.clj
 0	61	test/vaelii/evaluatable_test.clj
 0	22	test/vaelii/examples_test.clj
@@ -348,7 +348,6 @@
 27	128	test/vaelii/inherited_clash_test.clj
 3	5	test/vaelii/input_output_timing_test.clj
 2	33	test/vaelii/inter_args_test.clj
-2	32	test/vaelii/intersection_test.clj
 1	45	test/vaelii/introspection_test.clj
 0	70	test/vaelii/jobs_test.clj
 34	24	test/vaelii/join_lead_cost_test.clj
@@ -405,7 +404,7 @@
 3	5	test/vaelii/normal_physical_conditions_test.clj
 18	7	test/vaelii/ns_counts.clj
 0	18	test/vaelii/ontology_folk_taxonomy_test.clj
-0	84	test/vaelii/ontology_rules_test.clj
+0	83	test/vaelii/ontology_rules_test.clj
 10	322	test/vaelii/ontology_test.clj
 24	9	test/vaelii/oplog_crash_fuzz_test.clj
 4	9	test/vaelii/oplog_test.clj
@@ -418,7 +417,7 @@
 0	42	test/vaelii/placement_context_witness_test.clj
 0	19	test/vaelii/plan_branches_test.clj
 0	14	test/vaelii/plan_levels_edge_test.clj
-20	109	test/vaelii/pr_status_true_when_test.clj
+20	86	test/vaelii/pr_status_true_when_test.clj
 18	231	test/vaelii/predall_test.clj
 17	35	test/vaelii/predicate_subsumption_test.clj
 8	4	test/vaelii/predicate_type_scope_test.clj
@@ -480,6 +479,7 @@
 7	151	test/vaelii/serve_test.clj
 16	7	test/vaelii/settle_hour_test.clj
 23	50	test/vaelii/settle_region_cost_test.clj
+0	2	test/vaelii/shared_dumps_test.clj
 0	52	test/vaelii/sibling_disjoint_test.clj
 5	56	test/vaelii/snapshot_sink_test.clj
 8	37	test/vaelii/solve_rule_test.clj
@@ -528,7 +528,7 @@
 9	20	test/vaelii/vector_spelling_test.clj
 37	41	test/vaelii/violation_kinds_test.clj
 0	15	test/vaelii/violations_test.clj
-5	18	test/vaelii/vocabulary_audit_test.clj
+5	17	test/vaelii/vocabulary_audit_test.clj
 0	30	test/vaelii/web_caches_test.clj
 0	9	test/vaelii/web_closure_test.clj
 0	19	test/vaelii/web_funnel_test.clj

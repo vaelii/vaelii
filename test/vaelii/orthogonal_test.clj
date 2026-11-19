@@ -96,7 +96,7 @@
     (v/assert kb (list 'genl subA upperA) 'CxUniverse)
     (v/assert kb (list 'genl subB upperB) 'CxUniverse)
     (v/assert kb (list 'disjoint upperA upperB) 'CxUniverse)
-    (v/assert kb (list 'orthogonal subA subB) 'CxUniverse)
+    (v/assert kb (list 'orthogonal subA subB) 'CxUniverse {:strength :monotonic})
     (is (= #{:disjoint :orthogonal} (v/subsumption-statuses kb subA subB)))
     (is (= :inconsistent (v/subsumption-status kb subB subA)))))
 
@@ -118,7 +118,7 @@
     (v/assert kb (list 'genl alphakind 'thing) 'CxUniverse)
     (v/assert kb (list 'genl betakind 'thing) 'CxUniverse)
     (v/assert kb (list 'disjoint alphakind betakind) 'CxUniverse)
-    (v/assert kb (list 'orthogonal alphakind betakind) 'CxUniverse)
+    (v/assert kb (list 'orthogonal alphakind betakind) 'CxUniverse {:strength :monotonic})
     (is (= #{:disjoint :orthogonal} (v/subsumption-statuses kb alphakind betakind)))))
 
 (tu/deftest-kb the-audit-counts-a-declared-pair-as-known
@@ -142,11 +142,13 @@
 ;; the `orthogonal` declaration.
 
 (defn- clashes
-  "The member sentence sets of the `:orthogonal` clashes `conflicts` lists."
-  [kb]
-  (into #{} (comp (filter #(= :orthogonal (:kind %)))
-                  (map (fn [r] (into #{} (map :sentence) (:sides r)))))
-        (v/conflicts kb)))
+  "The member sentence sets of the `:orthogonal` reports `reports` lists, `v/conflicts`
+  unless named."
+  ([kb] (clashes kb v/conflicts))
+  ([kb reports]
+   (into #{} (comp (filter #(= :orthogonal (:kind %)))
+                   (map (fn [r] (into #{} (map :sentence) (:sides r)))))
+         (reports kb))))
 
 (tu/deftest-kb a-consistent-declaration-is-no-clash
   (tu/with-terms [spatialKind temporalKind]
@@ -189,7 +191,7 @@
           dj   (list 'disjoint upperA upperB)]
       (testing "the separation first"
         (let [d (v/assert kb dj 'CxUniverse)
-              o (v/assert kb orth 'CxUniverse)]
+              o (v/assert kb orth 'CxUniverse {:strength :monotonic})]
           (is (= #{#{orth}} (clashes kb)))
           (is (= [dj] (map :sentence (:grounds (first (filter #(= :orthogonal (:kind %))
                                                               (v/conflicts kb)))))))
@@ -197,7 +199,7 @@
           (v/retract! kb d)))
       (is (= #{} (clashes kb)))
       (testing "the orthogonal first"
-        (let [o (v/assert kb orth 'CxUniverse)]
+        (let [o (v/assert kb orth 'CxUniverse {:strength :monotonic})]
           (is (= #{} (clashes kb)))
           (let [d (v/assert kb dj 'CxUniverse)]
             (is (= #{#{orth}} (clashes kb)) "the later separation convicts the declaration")
@@ -211,27 +213,156 @@
     (v/assert kb (list 'partition wholeKind alphaKind betaKind) 'CxUniverse)
     (v/assert kb (list 'genl subA alphaKind) 'CxUniverse)
     (v/assert kb (list 'genl subB betaKind) 'CxUniverse)
-    (v/assert kb (list 'orthogonal subA subB) 'CxUniverse)
+    (v/assert kb (list 'orthogonal subA subB) 'CxUniverse {:strength :monotonic})
     (is (= #{#{(list 'orthogonal subA subB)}} (clashes kb)))))
 
-(tu/deftest-kb orthogonal-is-forced-monotonic
-  (is (true? (v/has-prop? kb :forced-monotonic 'orthogonal)))
-  (is (= :unforced-definitional-declaration
-         (get checks/uncleared-forcing ['forced_monotonic_predicate 'orthogonal]))
-      "held on every KB, as disjoint is, and its declaration is not retracted"))
+(tu/deftest-kb orthogonal-is-not-forced-monotonic
+  (is (false? (v/has-prop? kb :forced-monotonic 'orthogonal)))
+  (is (not-any? #(= 'orthogonal (second %)) (keys checks/uncleared-forcing)))
+  (is (true? (v/ask? kb '(not (forced_monotonic_predicate orthogonal)) 'CxUniverse))
+      "CxUniverse states the declaration's denial"))
 
-(tu/deftest-kb a-default-declaration-the-taxonomy-contradicts-is-a-hard-clash
-  ;; `orthogonal` is forced-monotonic, so a declaration written at `:default`
-  ;; keeps that strength and is never the loser: its one-member nogood is a hard clash
-  ;; `conflicts` lists, every member stays believed, and the pair reads both statuses.
+(tu/deftest-kb a-monotonic-declaration-the-taxonomy-contradicts-is-a-hard-clash
+  ;; The declaration is its nogood's one member, so its class alone decides the verdict.
   (tu/with-terms [alphaKind betaKind]
     (v/assert kb (list 'genl alphaKind 'thing) 'CxUniverse)
     (v/assert kb (list 'genl betaKind alphaKind) 'CxUniverse)
-    (let [o (v/assert kb (list 'orthogonal alphaKind betaKind) 'CxUniverse {:strength :default})]
-      (is (= :default (v/defeat-class kb o)))
+    (let [o (v/assert kb (list 'orthogonal alphaKind betaKind) 'CxUniverse {:strength :monotonic})]
+      (is (= :monotonic (v/defeat-class kb o)))
       (is (= #{#{(list 'orthogonal alphaKind betaKind)}} (clashes kb)))
       (is (true? (v/ask? kb (list 'orthogonal alphaKind betaKind) 'CxUniverse)))
       (is (= :inconsistent (v/subsumption-status kb alphaKind betaKind))))))
+
+(defn- defeated?
+  "Is handle `h` stored, not believed at its own context, and reported `:defeated` by
+  `why-not`?"
+  [kb h]
+  (= [false :defeated] ((juxt :believed? :reason) (v/why-not kb h))))
+
+(tu/deftest-kb a-rule-concludes-an-orthogonal-from-a-default-membership-in-either-order
+  (doseq [rule-first? [true false]]
+    (tu/with-terms [kind_type madeKind speciesKind]
+      (doseq [t [madeKind speciesKind]] (v/assert kb (list 'genl t 'thing) 'CxUniverse))
+      (let [rule  (list 'set/forwardRule
+                        (list 'implies (list kind_type '?s) (list 'orthogonal '?s madeKind)))
+            mem   (list kind_type speciesKind)
+            orth  (list 'orthogonal speciesKind madeKind)
+            why   (if rule-first? "the rule first" "the membership first")
+            [r m] (if rule-first?
+                    [(v/assert kb rule 'CxUniverse) (v/assert kb mem 'CxUniverse)]
+                    (let [m (v/assert kb mem 'CxUniverse)] [(v/assert kb rule 'CxUniverse) m]))
+            h     (v/handle-of kb orth 'CxUniverse)]
+        (is (true? (v/ask? kb orth 'CxUniverse)) why)
+        (is (= :default (v/defeat-class kb h)) why)
+        (is (= [] (filterv #(and (= :forced-conclusion (:violation %))
+                                 (= (:sentence (v/sentex kb h)) (:sentence %)))
+                           (v/violations kb)))
+            why)
+        (v/retract! kb m)
+        (is (false? (v/ask? kb orth 'CxUniverse)) (str why ": the membership retracted"))
+        (v/retract! kb r)))))
+
+(tu/deftest-kb a-default-orthogonal-against-a-separation-or-an-edge-of-its-pair-reads-by-strength-in-either-order
+  ;; the edges climbing to the separated supertypes are grounds at either strength
+  (doseq [what [:disjoint :supertypes :edge] strength [:monotonic :default] orth-first? [true false]]
+    (tu/with-terms [upperA upperB alphaKind betaKind]
+      (doseq [[s t] [[upperA 'thing] [upperB 'thing] [alphaKind upperA] [betaKind upperB]]]
+        (v/assert kb (list 'genl s t) 'CxUniverse))
+      (let [orth   (list 'orthogonal alphaKind betaKind)
+            other  (case what
+                     :disjoint   (list 'disjoint alphaKind betaKind)
+                     :supertypes (list 'disjoint upperA upperB)
+                     :edge       (list 'genl betaKind alphaKind))
+            why    (str what " " strength (if orth-first? ", the orthogonal first" ", the orthogonal last"))
+            write! #(v/assert kb other 'CxUniverse {:strength strength})
+            early  (when-not orth-first? (write!))
+            o      (v/assert kb orth 'CxUniverse)
+            d      (or early (write!))
+            dflt?  (= :default strength)]
+        (is (= (not dflt?) (defeated? kb o)) why)
+        (is (= (if dflt? #{#{orth other}} #{}) (clashes kb v/contradictions)) why)
+        (is (true? (v/ask? kb other 'CxUniverse)) why)
+        (is (= #{} (clashes kb)) why)
+        (is (= dflt? (contains? (v/subsumption-statuses kb alphaKind betaKind) :orthogonal)) why)
+        (v/retract! kb d)
+        (is (true? (v/ask? kb orth 'CxUniverse)) (str why ": the other side retracted"))
+        (v/retract! kb o)))))
+
+(def ^:private strength-rows
+  "Each row's strengths of an orthogonal, a `disjoint` over its pair and a `genl` edge
+  between the pair, and what CxUniverse reads of the orthogonal: `[believed? conflicts
+  dilemmas]`, the last two the member sets of its `conflicts` and `contradictions`."
+  (let [o '(orthogonal alphaKind betaKind) d '(disjoint alphaKind betaKind)
+        e '(genl betaKind alphaKind)]
+    [[{:orth :default :dj :default :edge :default}   [true #{} #{#{o d} #{o e}}]]
+     [{:orth :default :dj :monotonic :edge :default} [false #{} #{}]]
+     [{:orth :default :dj :default :edge :monotonic} [false #{} #{}]]
+     [{:orth :monotonic :dj :default :edge :default} [true #{#{o}} #{}]]]))
+
+(defn- strength-reading
+  "What CxUniverse reads of the statements `sts` (`{op sentence}`) over `alpha` and
+  `beta`, renamed back to `alphaKind` and `betaKind`: whether each is believed, and the
+  member sets of the `:orthogonal` reports of `conflicts` and `contradictions`."
+  [kb sts alpha beta]
+  (walk/postwalk-replace
+   {alpha 'alphaKind beta 'betaKind}
+   {:believed  (into {} (map (fn [[op s]] [op (v/ask? kb s 'CxUniverse)])) sts)
+    :conflicts (clashes kb)
+    :dilemmas  (clashes kb v/contradictions)}))
+
+(defn- strength-run
+  "Assert the statements of `ops` in that order at `strengths`, over fresh types, and
+  return the reading (`strength-reading`) and the one after retracting each op in turn,
+  each restored after, as `[reading {op reading}]`.  Leaves the KB as it found it."
+  [kb strengths ops]
+  (tu/with-neutral-kb [k (constantly kb)]
+    (tu/with-terms [alphaKind betaKind]
+      (let [sts  {:orth (list 'orthogonal alphaKind betaKind)
+                  :dj   (list 'disjoint alphaKind betaKind)
+                  :edge (list 'genl betaKind alphaKind)}
+            put! #(v/assert k (sts %) 'CxUniverse {:strength (strengths %)})
+            read #(strength-reading k (select-keys sts %) alphaKind betaKind)]
+        (doseq [t [alphaKind betaKind]] (v/assert k (list 'genl t 'thing) 'CxUniverse))
+        (let [hs (volatile! (into {} (map (fn [op] [op (put! op)])) ops))]
+          [(read ops)
+           (into {} (map (fn [op]
+                           (v/retract! k (@hs op))
+                           (let [r (read (remove #{op} ops))]
+                             (vswap! hs assoc op (put! op))
+                             [op r])))
+                 ops)])))))
+
+(tu/deftest-kb ^:slow an-orthogonal-clash-is-read-by-strength-in-every-order
+  ;; each retraction answers as the KB built without the retracted statement does
+  (doseq [[strengths [believed? conflicts dilemmas]] strength-rows]
+    (let [ops   [:orth :dj :edge]
+          runs  (map #(strength-run kb strengths %) (oi/permutations ops))
+          built (fn [op] (first (strength-run kb strengths (remove #{op} ops))))
+          why   (pr-str strengths)]
+      (is (= 1 (count (distinct (map first runs)))) (str why ": one reading in every order"))
+      (is (= [believed? conflicts dilemmas]
+             ((juxt (comp :orth :believed) :conflicts :dilemmas) (ffirst runs)))
+          why)
+      (doseq [op ops]
+        (is (= #{(built op)} (into #{} (map #(get (second %) op)) runs))
+            (str why ": " op " retracted, the reading equals the KB built without it"))))))
+
+(tu/deftest-kb a-denial-of-an-orthogonal-is-weighed-against-it-by-class-in-either-order
+  (doseq [denial-strength [:monotonic :default] denial-first? [true false]]
+    (tu/with-terms [alphaKind betaKind]
+      (doseq [t [alphaKind betaKind]] (v/assert kb (list 'genl t 'thing) 'CxUniverse))
+      (let [orth  (list 'orthogonal alphaKind betaKind)
+            deny! #(v/assert kb (list 'not orth) 'CxUniverse {:strength denial-strength})
+            early (when denial-first? (deny!))
+            o     (v/assert kb orth 'CxUniverse)
+            d     (or early (deny!))
+            why   (str denial-strength (if denial-first? ", the denial first" ", the denial last"))]
+        (if (= :monotonic denial-strength)
+          (is (= [true false] [(defeated? kb o) (defeated? kb d)]) why)
+          (is (true? (boolean (some #(= #{o d} (set (:nogood %))) (v/contradictions kb))))
+              (str why ": a dilemma")))
+        (v/retract! kb d)
+        (v/retract! kb o)))))
 
 (tu/deftest-kb the-clash-is-read-where-the-separation-is-seen
   (tu/with-terms [upperA upperB subA subB]
@@ -239,7 +370,7 @@
       (v/assert kb (list 'genlCx cx 'CxUniverse) 'CxUniverse)
       (doseq [[s t] [[upperA 'thing] [upperB 'thing] [subA upperA] [subB upperB]]]
         (v/assert kb (list 'genl s t) 'CxUniverse))
-      (v/assert kb (list 'orthogonal subA subB) 'CxUniverse)
+      (v/assert kb (list 'orthogonal subA subB) 'CxUniverse {:strength :monotonic})
       (v/assert kb (list 'disjoint upperA upperB) cx)
       (is (= #{#{(list 'orthogonal subA subB)}} (clashes kb)))
       (is (= [#{cx}] (keep #(when (= :orthogonal (:kind %)) (clashes/report-vantages %))
@@ -263,7 +394,7 @@
           (v/assert kb (list 'genl s t) 'CxUniverse))
         (when edge-first? (v/assert kb (list 'genl subb suba) cx))
         (v/assert kb (list 'disjoint uppera upperb) 'CxUniverse)
-        (v/assert kb (list 'orthogonal suba subb) 'CxUniverse)
+        (v/assert kb (list 'orthogonal suba subb) 'CxUniverse {:strength :monotonic})
         (when-not edge-first? (v/assert kb (list 'genl subb suba) cx))
         (is (true? (v/disjoint? kb suba subb 'CxUniverse)))
         (is (= #{#{'CxUniverse}} (orth-vantages kb (list 'orthogonal suba subb)))
@@ -291,7 +422,7 @@
           (v/assert kb (list 'genl s t) 'CxUniverse {:strength :monotonic}))
         (when exemption-first? (v/assert kb exc ce))
         (v/assert kb (list 'partition parenta uppera upperb) 'CxUniverse)
-        (v/assert kb orth 'CxUniverse)
+        (v/assert kb orth 'CxUniverse {:strength :monotonic})
         (doseq [m mems] (v/assert kb m 'CxUniverse {:strength :monotonic}))
         (when-not exemption-first? (v/assert kb exc ce))
         (is (false? (v/disjoint? kb suba subb ce)))
@@ -343,15 +474,30 @@
               (doseq [op order] (v/assert k (get ops op) 'CxUniverse))
               (walk/postwalk-replace (zipmap (vals fresh) (keys fresh)) (observe k)))))))
 
-(tu/deftest-kb a-stated-disjoint-beside-an-orthogonal-places-one-contradicts-of-it
-  (is (= #{#{['(orthogonal alphaKind betaKind) 'CxUniverse '#{(disjoint alphaKind betaKind)}]}}
+(defn- placed-clashes
+  "Each stored `contradicts` with a member stating an `orthogonal` or a
+  `siblingDisjointException`, as `[#{member-sentence} context #{ground-sentence}]`: the
+  members resolved, and the antecedents of its justifications other than the members read
+  back as sentences."
+  [kb]
+  (into #{}
+        (for [c (v/sentexes-with-functor kb 'contradicts)
+              :let [ms (into #{} (map v/handle-id) (rest (:sentence c)))
+                    ss (into #{} (map #(:sentence (v/sentex kb %))) ms)]
+              :when (some #(contains? '#{orthogonal siblingDisjointException} (first %)) ss)]
+          [ss (:context c)
+           (into #{} (comp (mapcat :antecedents) (remove ms) (map #(:sentence (v/sentex kb %))))
+                 (v/supporting-justifications kb (:id c)))])))
+
+(tu/deftest-kb a-stated-disjoint-beside-an-orthogonal-places-one-contradicts-of-the-two
+  (is (= #{#{['#{(orthogonal alphaKind betaKind) (disjoint alphaKind betaKind)} 'CxUniverse #{}]}}
          (every-order kb '[alphaKind betaKind]
                       (fn [{:syms [alphaKind betaKind]}]
                         [[(list 'genl alphaKind 'thing) (list 'genl betaKind 'thing)]
                          {:dj   (list 'disjoint alphaKind betaKind)
                           :orth (list 'orthogonal alphaKind betaKind)}])
-                      placed-orthogonals))
-      "one contradicts, of the orthogonal, with the disjoint as its ground, in both orders"))
+                      placed-clashes))
+      "one contradicts of the two :default statements, in both orders"))
 
 (def ^:private marks
   "Each separation mark over `alphaKind` and `betaKind`, as the declarations that state it."
@@ -375,7 +521,7 @@
                    'betaKind betaKind}]
           (v/assert k (list 'genl wholeKind 'thing) 'CxUniverse)
           (doseq [d (decls env)] (v/assert k d 'CxUniverse))
-          (v/assert k (list 'orthogonal alphaKind betaKind) 'CxUniverse)
+          (v/assert k (list 'orthogonal alphaKind betaKind) 'CxUniverse {:strength :monotonic})
           (is (true? (v/disjoint? k alphaKind betaKind 'CxUniverse))
               (str mark ": the pair stays apart"))
           (is (= #{#{(list 'orthogonal alphaKind betaKind)}} (clashes k))
@@ -389,7 +535,7 @@
                 [[(list 'genl parentKind 'thing) (list 'genl alphaKind parentKind)
                   (list 'genl betaKind parentKind)]
                  {:mark (list 'sibling_disjoint parentKind)
-                  :orth (list 'orthogonal alphaKind betaKind)
+                  :orth (list 'set/monotonic (list 'orthogonal alphaKind betaKind))
                   :a    (list alphaKind Both)
                   :b    (list betaKind Both)}])
         with-exc (fn [env]
@@ -414,30 +560,30 @@
         "the exception is the status's witness")))
 
 (tu/deftest-kb an-exception-over-a-genl-related-pair-is-a-clash-of-the-orthogonal-it-entails
-  (is (= #{#{['(siblingDisjointException alphaKind betaKind) 'CxUniverse
-              '#{(genl betaKind alphaKind) (genl siblingDisjointException orthogonal)}]}}
+  (is (= #{#{['#{(siblingDisjointException alphaKind betaKind) (genl betaKind alphaKind)}
+              'CxUniverse '#{(genl siblingDisjointException orthogonal)}]}}
          (every-order kb '[alphaKind betaKind]
                       (fn [{:syms [alphaKind betaKind]}]
                         [[(list 'genl alphaKind 'thing)]
                          {:edge (list 'genl betaKind alphaKind)
                           :exc  (list 'siblingDisjointException alphaKind betaKind)}])
-                      placed-orthogonals))))
+                      placed-clashes))))
 
 (tu/deftest-kb a-stated-disjoint-beside-an-exception-of-the-pair-is-a-clash-of-the-exception
-  (is (= #{#{['(siblingDisjointException alphaKind betaKind) 'CxUniverse
-              '#{(disjoint alphaKind betaKind) (genl siblingDisjointException orthogonal)}]}}
+  (is (= #{#{['#{(siblingDisjointException alphaKind betaKind) (disjoint alphaKind betaKind)}
+              'CxUniverse '#{(genl siblingDisjointException orthogonal)}]}}
          (every-order kb '[alphaKind betaKind]
                       (fn [{:syms [alphaKind betaKind]}]
                         [[(list 'genl alphaKind 'thing) (list 'genl betaKind 'thing)]
                          {:dj  (list 'disjoint alphaKind betaKind)
                           :exc (list 'siblingDisjointException alphaKind betaKind)}])
-                      placed-orthogonals))))
+                      placed-clashes))))
 
 (tu/deftest-kb a-predicate-a-later-edge-puts-under-orthogonal-states-one
   (tu/with-terms [alphaKind betaKind overlapsWith]
     (v/assert kb (list 'genl alphaKind 'thing) 'CxUniverse)
     (v/assert kb (list 'genl betaKind 'thing) 'CxUniverse)
-    (v/assert kb (list 'disjoint alphaKind betaKind) 'CxUniverse)
+    (v/assert kb (list 'disjoint alphaKind betaKind) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list overlapsWith alphaKind betaKind) 'CxUniverse)
     (is (empty? (placed-orthogonals kb)))
     (let [e (v/assert kb (list 'genl overlapsWith 'orthogonal) 'CxUniverse)]

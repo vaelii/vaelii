@@ -618,7 +618,7 @@
         (tick!)
         (progress/tick! r)
         (vswap! frames-n inc)
-        (let [{:keys [informant antecedents consequence bindings strength subsumptions]} frame
+        (let [{:keys [informant antecedents consequence bindings strength subsumptions reading]} frame
               conseq (get old->new consequence)
               antes  (mapv remap antecedents)
               inf    (remap informant)]
@@ -629,7 +629,8 @@
                     (vswap! orphans inc))))
             (let [jid  (or (when preserve? (:id frame)) (p/next-id records))
                   just (jtms/->just jid inf antes conseq (or bindings {})
-                                    (strength-class strength) (some->> subsumptions seq (into #{})))]
+                                    (strength-class strength) (some->> subsumptions seq (into #{}))
+                                    (jtms/remap-reading reading antecedents remap true))]
               (p/write-record! sink just)
               (jprint jid just)
               (when-let [did (:id frame)] (vswap! ids assoc did jid))
@@ -1040,7 +1041,7 @@
           (catch Throwable t (.addSuppressed e t))))
       (throw e))
     ;; the records arrived past `kb/create-sentex`, or left
-    (finally (kb/forget-mint-rules! kb) (kb/forget-lazy-rules! kb))))
+    (finally (kb/forget-mint-rules! kb) (kb/forget-engine-rules! kb))))
 
 (defn- land-belief-records!
   "The writes of a `{:belief? true|:stored}` import, in order: the sentex pass, the

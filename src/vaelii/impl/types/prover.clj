@@ -73,3 +73,27 @@
   (support-functors   [prover])
   (support-sources    [prover])
   (solve-with-support [prover kb goal context]))
+
+(defn merge-source-roles
+  "Join two proof-local role readings; a local/scoped use wins over a structural use.
+  Nil stays nil on the ordinary no-role path. Nonplacing sources constrain no placement
+  context; label-only sources retain the primitive's network read. Every source remains
+  a dependency and class cap. Reader constraints and actual rewrite-read associations
+  are proof metadata, never logical bindings or a whole-row exemption."
+  [old-supports old-roles added-supports added-roles]
+  (when (or (seq old-roles) (seq added-roles))
+    (let [old (set old-supports)
+          added (set added-supports)]
+      (cond-> (into {}
+                    (keep (fn [axis]
+                            (let [a (get old-roles axis #{})
+                                  b (get added-roles axis #{})
+                                  strict (into (into #{} (remove a) old) (remove b) added)
+                                  relaxed (into (into #{} (remove strict) a) (remove strict) b)]
+                              (when (seq relaxed) [axis relaxed]))))
+                    [:nonplacing :label-only])
+        (or (seq (:readers old-roles)) (seq (:readers added-roles)))
+        (assoc :readers (into (or (:readers old-roles) #{}) (:readers added-roles)))
+        (or (seq (:rewrite-reads old-roles)) (seq (:rewrite-reads added-roles)))
+        (assoc :rewrite-reads (into (or (:rewrite-reads old-roles) #{})
+                                    (:rewrite-reads added-roles)))))))

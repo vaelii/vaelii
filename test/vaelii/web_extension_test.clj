@@ -113,6 +113,28 @@
             (is (str/includes? (:body r) "Nothing was written"))))
         (is (empty? @calls))))))
 
+(tu/deftest-kb a-route-answering-a-page-is-drawn-inside-the-browser
+  (let [app (bweb/app kb)]
+    (with-extension :paged
+      {:routes [["/ext/paged/" {:get (fn [_ req] (web/page req "Paged" [:p#paged "hello"]))}]]
+       :menu   [["Paged" "/ext/paged/"]]}
+      (testing "a plain request gets the whole document, the menubar around the body"
+        (let [body (:body (request app :get "/ext/paged/"))]
+          (is (str/starts-with? body "<!DOCTYPE html>"))
+          (is (str/includes? body "<title>vaelii · Paged</title>"))
+          (is (re-find #"(?s)<nav class=\"menubar\">.*<main id=\"main\">.*id=\"paged\"" body))))
+      (testing "an htmx request gets the #main region alone, which is what a boosted
+                menubar click selects"
+        (let [body (:body (request app :get "/ext/paged/" nil {"hx-request" "true"}))]
+          (is (not (str/includes? body "<!DOCTYPE")))
+          (is (not (str/includes? body "menubar")))
+          (is (re-find #"(?s)<main id=\"main\">.*id=\"paged\"" body))))
+      (testing "a history restore is answered the whole document, as every page answers it"
+        (is (str/starts-with? (:body (request app :get "/ext/paged/" nil
+                                              {"hx-request" "true"
+                                               "hx-history-restore-request" "true"}))
+                              "<!DOCTYPE html>"))))))
+
 (deftest a-malformed-extension-is-refused-at-registration
   (doseq [[label nm ext] [["a name that is not a plain keyword" :a/b {}]
                           ["an upper-case name" :Probe {}]

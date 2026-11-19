@@ -44,6 +44,7 @@
 (set/monotonic (eternal_predicate sentex_handle_term))
 (positiveExampleComment sentex_handle_term "(sentexHandle 212)")
 (negativeExampleComment sentex_handle_term "212, the bare integer, which names no sentex")
+(comment sentexHandle "(sentexHandle ?n) names the stored sentex whose integer handle is ?n. A meta-sentex writes one where it names the sentex it is about. A handle is one store's, so the same sentence stored in another KB has a different handle.")
 (comment denotational_term "An expression that DENOTES an entity: an atomic_term (a symbol or a value) or a non_atomic_term. The logic sense of 'term', spelled in full because plain 'term' is the vocabulary sense — a name the term index is keyed by.")
 (comment predication "A predicate applied to terms — (dog Muffet), (parentOf ?x Tom). Open or closed alike: the definition says nothing about variables.")
 (comment closed_predication "A closed predication — one with no free variables. What a stored LiteralSentex holds in its sentence slot.")

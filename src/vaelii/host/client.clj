@@ -351,6 +351,13 @@
   [conn batch]
   (call conn :check-edit [batch]))
 
+(defn ^:daemon-op check-term-edit
+  "What term operation `op` (`:rename`, `:merge`, `:copy` or `:remove`) over `mapping`
+  refuses before it builds its batch, as `[{:type :term :message} …]`, empty when it would
+  run."
+  [conn op mapping]
+  (call conn :check-term-edit [op mapping]))
+
 (defn ^:daemon-op clear-caches
   "Drop every cache that offers a clear, and say what went: `{:cleared [{:cache :label
   :entries}…] :entries total}`."
@@ -503,7 +510,7 @@
   ([conn a b context] (call conn :disjoint? [a b context])))
 
 (defn ^:daemon-op edit!
-  "Apply a batch of assertions and retractions in **one settle**."
+  "Apply a batch of assertions and retractions in **one settle**, or two under a bound."
   ([conn batch] (call conn :edit [batch]))
   ([conn batch opts] (call conn :edit [batch opts])))
 
@@ -555,8 +562,8 @@
 
 (defn ^:daemon-op filed-violations
   "The filed ledger alone: the entries `violations` begins with, in its order, without the
-  `:forced-conclusion`, `:inert-argument` and `:inert-rule` entries it reads off the
-  stored firings and held sentexes."
+  `:forced-conclusion`, `:inert-argument`, `:inert-rule` and `:not-stratified` entries it
+  reads off the stored firings, the held sentexes and the refusal record."
   [conn]
   (call conn :filed-violations []))
 
@@ -645,9 +652,10 @@
   "The verdict `context` reads on each justification of `handle`, as `{justification-id
   reason}`: `:supports` where every handle it rests on is believed there, else
   `:antecedent-out`, unless the network blocks it (`:blocked`, its rule's `exceptWhen`
-  holds) or holds it void (`:void`), `context`'s forced-monotonic reading holds it void
-  (`:void`), a guard defeat in force at `context` covers it (`:guard`, docs/naf.md), or it
-  is a `nogood` justification of a placement `context` exempts (`:exempt`)."
+  holds) or holds it void (`:void`; `:inert` for a mint, docs/argtypes.md), `context`'s
+  forced-monotonic reading holds it void (`:void`), a guard defeat in force at `context`
+  covers it (`:guard`, docs/naf.md), or it is a `nogood` justification of a placement
+  `context` exempts (`:exempt`)."
   [conn handle context]
   (call conn :justification-verdicts [handle context]))
 
@@ -869,8 +877,8 @@
   "Retract premise support for a handle, tear down solely-supported sentexes and
   justifications (keeping anything re-derivable via other witnesses), and reverse their
   taxonomy / rule-index effects."
-  [conn handle]
-  (call conn :retract [handle]))
+  ([conn handle] (call conn :retract [handle]))
+  ([conn handle opts] (call conn :retract [handle opts])))
 
 (defn ^:daemon-op same-class?
   "Do `a` and `b` denote the same thing? Distinct symbols denote distinct individuals until
@@ -1002,6 +1010,13 @@
   [conn]
   (call conn :term-count []))
 
+(defn ^:daemon-op term-edit-plan
+  "The `edit!` batch term operation `op` over `mapping` runs, as `{:batch {:add [[sentence
+  context opts?] …] :remove [handle …]} :restates [[handle …] …]}`, `:restates` naming the
+  originals of each add, in step with `:add`."
+  [conn op mapping]
+  (call conn :term-edit-plan [op mapping]))
+
 (defn ^:daemon-op term-expression
   "The functional expression a reified term denotes — `(FruitFn AppleTree)` for the
   constant minted from it — or nil for an ordinary term, and for a reified one whose
@@ -1049,8 +1064,10 @@
   (call conn :violations []))
 
 (defn ^:daemon-op vocabulary-audit
-  "Every term core.txt comments in `kb`, classified: `{:enforced [[term why] …] :inert
-  [[term why] …] :unclassified [term …] :retired [term …] :contradicted [term …]}`."
+  "The vocabulary population of `kb`, classified: every term a CxUniverse query of
+  `(definitional_predicate ?t)` or `(syncategorematic ?t)` answers, as `{:enforced [[term
+  why] …] :inert [[term why] …] :unclassified [term …] :retired [term …] :contradicted
+  [term …]}`."
   [conn]
   (call conn :vocabulary-audit []))
 

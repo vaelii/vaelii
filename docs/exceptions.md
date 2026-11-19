@@ -375,6 +375,13 @@ re-chains queue is left to the next pass, which re-decides its firings against t
 sentences; `lein perf`'s `released-refusal-beside-guarded-firings` bounds a retraction
 whose released firing queues a rule beside that rule's firings.
 
+A `recover` settle (`settle/*rebuilding?*`) re-chains none of the three. `recover` queues
+every rule carrying a block condition with `:all`, and that pass re-decides the blocked
+set. The re-chain would find no firing to store, since `recover` replays every stored
+justification. The refusal record is rebuilt after the settle by
+`chain/rerecord-refusals!`
+([A refused firing is remembered as bindings](#a-refused-firing-is-remembered-as-bindings)).
+
 A pass is **productive** when the blocked set moved. Three things force one that did not.
 An **aggregate** antecedent binds a *value*, so a count going 1 ⇒ 2 licenses a firing no
 block ever suppressed — and a **nested** NAF joins it there, since an arriving fact can
@@ -411,7 +418,7 @@ and enough to place the conclusion from when the answer moves. A release is then
 by **re-evaluating the record**: one query per recorded refusal, in place of a join over
 the fact extent.
 
-**Three of the five reasons are recorded**, and the other two are covered
+**Four of the six reasons are recorded**, and the other two are covered
 elsewhere rather than forgotten. An `exceptWhen` exception or an `(unknown S)` antecedent
 that holds is not among them: its firing is placed with a guard defeat, and the JTMS
 withdraws the defeat when the blocker goes OUT.
@@ -422,6 +429,7 @@ withdraws the defeat when the blocker goes OUT.
 | a `disjoint` antecedent the placement context does not read separated | yes | likewise, and the same evaluator |
 | a post-join literal had no answer | no | an aggregate is a *value* that moved, and a queued aggregate rule is re-joined whatever the blocked set did (`settle/rejoin-on-arrival-rules`) |
 | the settle blocks a placed firing, and the sweep deletes it | yes, by `chain/record-swept-firing!`, for a forward rule | the conclusion is gone from the store, so the record is what a trigger lifting the block re-derives it from, as for a firing refused at its placement. A release re-derives no firing of a rule that does not forward-chain (`chain/refusal-state`), so that firing has no entry |
+| the conclusion, a `genl` edge or a closed-extent grant, closes a cycle through negation | yes, with the cycle's members, which the settle re-decides it on ([naf.md](naf.md#stratification-from-both-arrival-orders)) | the conclusion is dropped, and only the record names what derived it |
 | a visibility `except` hides an antecedent | no | an `except` arriving or leaving, a `genlCx` edge moving which contexts see it, or a hidden datum gaining a route the `except` does not hide (`special/recheck-route-gains!`), re-joins from its target's consequence closure and the antecedents of the justifications resting on it, and re-joins each rule of that closure over its extent (`special/drain-except-moves!`), and the refusal is re-derived there. An entry would be one nothing reads |
 
 A firing whose conclusion an argument conviction convicts is not a refusal and has no
@@ -431,9 +439,10 @@ as the same sentence asserted is ([argtypes.md](argtypes.md#an-argument-that-fai
 A mint withheld because the KB says it more specifically is a derivation withheld for
 something the KB has, and it has no entry: the settle re-derives it when that something
 leaves (docs/argtypes.md). A declaration whose type an arity statement binds to another
-length has no entry either: the stored declaration is the record, and the settle reads the
-declarations naming a type when that type's own bindings move (`special/mints-on-lengths`,
-[argtypes.md](argtypes.md)). A write beside n such declarations does not grow with n (perf
+length has no entry either: its mints are stored with their justifications held void. The
+settle reads the mints in a type when that type's own bindings move
+(`special/hold-type-mints!`, [argtypes.md](argtypes.md)). A write beside n such
+declarations does not grow with n (perf
 checks `write-after-rolled-back-preview` and `genl-write-beside-waiting-declarations`). A
 `decontextualized_predicate` copy has no entry: its source context sees CxUniverse, so the
 source assert's checks read what the copy meets there, and the copy is stored unchecked
@@ -459,7 +468,10 @@ the shape an answer has:
   believed and nothing conflicts; the rule simply did not fire.
 - **It is keyed on content.** Two refusals of the same rule at the same bindings from
   different passes are one entry, so arrival order cannot be read back out of it. The
-  entry keeps the wider of the two runs' `:max-depth` bounds, no bound over a number.
+  entry keeps the wider of the two runs' `:max-depth` bounds, no bound over a number. Two
+  refusals over the same antecedents whose bindings settle at the placement to the same
+  terms (`chain/settled-bindings`) are one entry too, under the later spelling. A firing
+  refused before a `reifiable_function` mark arrives and re-joined after it is one such pair.
 - **A refusal that fires is re-derived from what it recorded** — `place-conclusion` with
   the recorded conclusion, placement and antecedents, and the depth recomputed from the
   antecedent facts. Never a fresh join: re-joining is the cost the record exists to
@@ -487,7 +499,12 @@ The record is **derived state**, and no store holds it — a refused firing left
 justification for `recover` to replay. So `recover` rebuilds it the way it rebuilds
 blocking, by re-deciding rather than by reading: `chain/rerecord-refusals!` re-fires
 every rule that can refuse, after the settle that establishes belief, and the refusals
-re-record. A firing that is placeable is placed and deduped by `has-justification?`.
+re-record. A firing that is placeable is placed and deduped by `has-justification?`. The
+rules concluding a `genl` edge or a closed-extent grant are among them where a cycle
+through negation is possible (`checks/cycle-closing-rules`), and
+`special/rerecord-cycle-drops!` derives the edge and grant mints and restatements again,
+so the drops [naf.md](naf.md#stratification-from-both-arrival-orders) describes re-record
+too.
 
 That re-fire runs under the **default** bounds, not the bounds each original run set: a
 run's `:max-depth` and `:max-term-depth` are session config no store holds, and `recover`
@@ -508,6 +525,27 @@ a common condition can refuse far more than it places. On either side of the cap
 An overflowed rule is still reached by every trigger, and the two edge triggers that
 narrow on a rule's firings wave it through, as they wave an aggregate through: a rule
 with no entries has nothing to test.
+
+### A recover re-fires a `different` rule from seeds
+
+`chain/rerecord-refusals!` re-fires a `different`-only rule (`special/different-only-rule?`)
+from binding maps instead of over its extent (`chain/different-seeds`). A `(different …)`
+literal refuses a firing in three cases, and each case gives the maps that reach it:
+
+| the literal fails because | the maps |
+|---|---|
+| two arguments are equal once each ground symbol reads as its class representative | the unifier of the two arguments |
+| two arguments are distinct spellings of one equality class | per variable of the literal, one per stored term naming a symbol of a merged class (`chain/merged-stored-terms`) |
+| an argument is an indeterminate term | the unifier of the argument with each one (`chain/indeterminate-terms`) |
+
+The second case reaches a firing over a spelling the merge left in place. A fact keeps its
+spelling in a context that does not see the merge, and a rule in a context below it that
+does see the merge refuses the firing. The rule re-fires over its extent when a `different`
+literal holds no variable, or when another antecedent can refuse the firing (a separation,
+a calculus, a mention). It does so too while a class is merged and another computed
+antecedent can bind a term no stored sentence holds. Every other watched rule re-fires over
+its extent. The seeded re-fire and the re-fire over the extent record the same refusals
+(`refused_firing_test/a-recover-re-fires-a-different-rule-from-seeds-to-the-record-a-full-re-fire-builds`).
 
 ### Taxonomy changes are keyed on what the closure moved
 
@@ -921,9 +959,10 @@ two arrival orders.
 
 **The edge is refused.** The `genl` assert is the operation at fault, so refusing it
 is the consistent answer: it is what `wff` already does to an edge that would make
-the taxonomy cyclic, and it keeps the invariant that stored state is *always*
-stratified — which is what lets the rule-side walk look only for cycles through the
-rule being added. As on the rule path, the check runs before anything is written and
+the taxonomy cyclic, and it keeps stored state stratified, which is what lets the
+rule-side walk look only for cycles through the rule being added. An equality
+restatement's twin of an edge takes no walk, so it can store an edge that closes a cycle
+([naf.md](naf.md#stratification-from-both-arrival-orders)). As on the rule path, the check runs before anything is written and
 before the taxonomy is touched, so a refusal leaves no sentex, no justification, and no
 closure that learned the edge.
 
@@ -946,12 +985,13 @@ rule fired first.
 
 So this joins the **`violations`** mechanism, which exists for exactly the same
 situation one layer over: a derived conclusion that breaks a definitional constraint.
-`chain/place-conclusion` asks `edge-stratification-violation` alongside
+`chain/place-conclusion` asks `fact-stratification-violation` alongside
 `checks/constraint-admission` and `special/wff-violation`, and a bad edge is **dropped** — no sentex, no justification,
 nothing in the closures — and reported in `(violations kb)` as
-`{:violation :not-stratified :detail {:cycle …}}`. Dropping rather than merely
-reporting is what keeps the invariant: an unstratified edge that was only reported
-would still be in the taxonomy.
+`{:violation :not-stratified :detail {:cycle …}}`. The edge is dropped rather than
+only reported because a reported edge would still be in the taxonomy. The refusal record
+holds the drop with the cycle's members, so retracting a rule on its cycle derives the
+edge again ([naf.md](naf.md#stratification-from-both-arrival-orders)).
 
 With stratified negation the **settled** state is unique and order-independent, and
 the intermediate states during a load are not: a rule may fire and then have its

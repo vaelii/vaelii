@@ -73,7 +73,7 @@
       (v/assert kb (list 'genl t root_kind) 'CxUniverse))
     (v/assert kb '(symmetric orthogonal) 'CxUniverse)
     (let [separation (v/assert kb (list 'disjoint first_kind second_kind) 'CxUniverse)]
-      (v/assert kb (list 'orthogonal first_kind second_kind) 'CxUniverse)
+      (v/assert kb (list 'orthogonal first_kind second_kind) 'CxUniverse {:strength :monotonic})
       (let [row (pair-row (assert-reference kb 'CxUniverse) first_kind second_kind)]
         (is (= #{:disjoint :orthogonal} (:statuses row)))
         (is (= :inconsistent (:status row)))

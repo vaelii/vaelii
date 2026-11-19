@@ -14,10 +14,12 @@
                                                -any-node? -any-belief? -depth -premise?
                                                -premise-strength -defeat-class
                                                -blocked -superseded -touched -touched-in
-                                               -touched-new -touched-out -reset-touched
+                                               -touched-new -touched-out -touched-down
+                                               -touched-up -reset-touched
                                                -touch-mark -touched-since
-                                               -supports
-                                               -dependents -justification -justifications
+                                               -supports -support-count
+                                               -dependents -dependent-count
+                                               -justification -justifications
                                                -ensure-node -add-premise -suspend-premise
                                                -add-justification -restrength-informant
                                                -forced? -forced-members -set-forced
@@ -92,16 +94,20 @@
   "Construct a Justification, defaulting `strength` to :monotonic — a bare monotone
   justification adds no defeasibility of its own, so `conferred-class` caps it at its
   weakest antecedent.  A rule-handle informant is taken out of `antecedents`
-  (`without-informant`).  `subsumptions` is a rule firing's set of `[sub super]` pairs,
-  stored under `:subsumptions` when it is not empty."
+  (`without-informant`). `subsumptions` is a firing's `[sub super]` set. Optional
+  `reading` records a producer's source interpretation, outside logical bindings;
+  both are retained only when nonempty and participate in proof identity."
   ([id informant antecedents consequence bindings]
    (->just id informant antecedents consequence bindings :monotonic nil))
   ([id informant antecedents consequence bindings strength]
    (->just id informant antecedents consequence bindings strength nil))
   ([id informant antecedents consequence bindings strength subsumptions]
+   (->just id informant antecedents consequence bindings strength subsumptions nil))
+  ([id informant antecedents consequence bindings strength subsumptions reading]
    (cond-> (tms-types/->Justification id informant (without-informant informant antecedents)
                                       consequence bindings (or strength :monotonic))
-     (seq subsumptions) (assoc :subsumptions subsumptions))))
+     (seq subsumptions) (assoc :subsumptions subsumptions)
+     (seq reading) (assoc :reading reading))))
 
 (defn graph-just
   "The part of a justification the network is made of: everything except the firing's
@@ -110,10 +116,43 @@
   want them, and those take the record from the store.  Measured (`lein bench-jtms`): 80 of
   277 B per justification at 3.6 justifications per node.  It also normalizes (antecedents to a
   vector without the informant, strength defaulted) so both representations store equal
-  values.  `:bindings` is nil, not dropped.  `:subsumptions` stays for `just-key`."
+  values. `:bindings` is nil, not dropped. `:subsumptions` and optional `:reading`
+  stay for `just-key`; a reader policy must explicitly interpret the latter."
   [j]
   (->just (:id j) (:informant j) (:antecedents j) (:consequence j) nil (:strength j)
-          (:subsumptions j)))
+          (:subsumptions j) (:reading j)))
+
+;; Owner-key remapping shares the dedup key defined after the network accessors.
+(declare justification-key)
+
+(defn remap-reading
+  "Remap a source reading's antecedent ids during import or a row fold. If several
+  old sources become the SAME handle, an ordinary strict source wins on each axis.
+  Reader contexts and other non-handle evidence are preserved. Nil remains nil."
+  ([reading antecedents remap] (remap-reading reading antecedents remap false))
+  ([reading antecedents remap informant?]
+   (when (seq reading)
+     (let [changed (reduce (fn [r axis]
+                             (if-let [relaxed (get reading axis)]
+                               (let [strict (into #{} (comp (remove relaxed) (keep remap)) antecedents)
+                                     kept (into #{} (comp (keep remap) (remove strict)) relaxed)]
+                                 (if (seq kept) (assoc r axis kept) (dissoc r axis)))
+                               r))
+                           reading [:nonplacing :label-only])
+           changed (cond-> changed
+                     (seq (:rewrite-reads reading))
+                     (assoc :rewrite-reads
+                            (into #{} (keep (fn [{:keys [handle] :as read}]
+                                              (when-let [h (remap handle)]
+                                                (assoc read :handle h))))
+                                  (:rewrite-reads reading))))]
+       (if-let [[inf owner-antes subs owner-reading] (:owner-key reading)]
+         ;; Import remaps the owning informant; folding retains it.
+         (assoc changed :owner-key
+                (justification-key (if informant? (remap inf) inf)
+                                   (mapv remap owner-antes) subs
+                                   (remap-reading owner-reading owner-antes remap informant?)))
+         changed)))))
 
 ;; ---- derivation depth ---------------------------------------------------
 ;;
@@ -372,12 +411,19 @@
       (update-in state [:marks :epochs (dec (count es))] into hs)
       state)))
 
+(defn- class-rank
+  "The rank of datum `d`'s defeat-class under the IN set `in` and the classes map
+  `classes` (an absent entry is `:default`), and 0 when `d` is OUT."
+  [in classes d]
+  (if (contains? in d) (long (strength/rank-of (get classes d :default))) 0))
+
 (defn- relabel-region*
   "Recompute `:in` and the defeat-classes for `region`, holding every node outside it fixed.
   Equivalent to a global relabel whenever the region is the affected closure of what changed,
   and proportional to the region."
   [state region]
   (let [old-in   (:in state #{})
+        old-cls  (:classes state {})
         ;; the region members not relabelled since the last reset: their label now is their label before
         ;; anything since the reset moved, the reading `touched-in` wants.
         fresh    (into #{} (remove (:touched state #{})) region)
@@ -387,13 +433,21 @@
                                 (keep #(get-in state [:justs %])))
                        region)
         in       (region-fixpoint state region cands (set/difference old-in region))
-        state    (assoc state :in in)]
+        state    (assoc state :in in)
+        classes  (region-classes state region in)]
     ;; Record the region as touched: a supporter's belief can flip only inside a relabelled region, so
     ;; the accumulated set is a superset of every handle whose belief moved this settle
     ;; (`tax/refresh-beliefs`).  `touched-in` records which were believed before, which gives the
-    ;; direction of each move.
+    ;; direction of each move.  `touched-down` and `touched-up` record the class moves of this
+    ;; relabel itself.
     (-> state
-        (assoc :classes (region-classes state region in))
+        (assoc :classes classes)
+        (update :touched-down (fnil into #{})
+                (filter #(> (class-rank old-in old-cls %) (class-rank in classes %))) region)
+        (update :touched-up (fnil into #{})
+                (filter #(and (contains? old-in %)
+                              (< (class-rank old-in old-cls %) (class-rank in classes %))))
+                region)
         (update :touched (fnil into #{}) region)
         (note-epoch region)
         (update :touched-in (fnil into #{})
@@ -773,9 +827,12 @@
   (-touched-in [_] (:touched-in @state #{}))
   (-touched-new [_] (:touched-new @state #{}))
   (-touched-out [_] (:touched-out @state #{}))
+  (-touched-down [_] (:touched-down @state #{}))
+  (-touched-up [_] (:touched-up @state #{}))
   (-reset-touched [_]
     (swap! state #(-> %
-                      (assoc :touched #{} :touched-in #{} :touched-new #{} :touched-out #{})
+                      (assoc :touched #{} :touched-in #{} :touched-new #{} :touched-out #{}
+                             :touched-down #{} :touched-up #{})
                       (update :marks (fn [m] {:gen (inc (:gen m 0)) :epochs []}))))
     nil)
   (-touch-mark [_]
@@ -794,6 +851,8 @@
         (:touched st #{}))))
   (-supports [_ datum] (get-in (ref-state hold state) [:nodes datum :supports] #{}))
   (-dependents [_ datum] (get-in (ref-state hold state) [:nodes datum :consequences] #{}))
+  (-support-count [_ datum] (count (get-in (ref-state hold state) [:nodes datum :supports])))
+  (-dependent-count [_ datum] (count (get-in (ref-state hold state) [:nodes datum :consequences])))
   (-justification [_ jid] (get-in (ref-state hold state) [:justs jid]))
   (-justifications [_] (vals (:justs (ref-state hold state))))
   (-ensure-node [_ datum depth]
@@ -837,7 +896,8 @@
   (let [state (atom {:nodes {} :justs {} :blocked #{} :superseded {}
                      :forced {:mono #{} :out #{} :void #{} :held #{}}
                      :classes {} :in #{}
-                     :touched #{} :touched-in #{} :touched-new #{} :touched-out #{}})
+                     :touched #{} :touched-in #{} :touched-new #{} :touched-out #{}
+                     :touched-down #{} :touched-up #{}})
         tms   (->RefTms state (AtomicReference. nil))]
     ;; the state map a swap replaces is the open write record's value for this network,
     ;; the first time a swap since the record opened replaces one (`before-network`)
@@ -932,6 +992,17 @@
   the last reset\", and they are the two halves `revived` has to keep apart."
   [tms] (-touched-new tms))
 
+(defn touched-down
+  "The datums a relabel since the last reset took down: from IN to OUT, or from
+  `:monotonic` to `:default`.  Each relabel records its own moves, so a datum created and
+  taken down within one settle is in it."
+  [tms] (-touched-down tms))
+
+(defn touched-up
+  "The datums a relabel since the last reset took from `:default` to `:monotonic` while
+  IN."
+  [tms] (-touched-up tms))
+
 (defn revived
   "The datums brought back since the last reset: relabelled, believed now, not believed at the
   reset, and already in the graph at the reset.  A revival is the one belief move nothing
@@ -1000,6 +1071,16 @@
 (defn dependents
   "Justification ids that use `datum` as an antecedent (or a defeater)."
   [tms datum] (-dependents tms datum))
+
+(defn support-count
+  "How many justifications conclude `datum`: `(count (supports tms datum))`, read off the
+  network's count rather than a built id set."
+  ^long [tms datum] (long (-support-count tms datum)))
+
+(defn dependent-count
+  "How many justifications use `datum` as an antecedent: `(count (dependents tms datum))`,
+  read off the network's count rather than a built id set."
+  ^long [tms datum] (long (-dependent-count tms datum)))
 
 (defn justification [tms jid] (-justification tms jid))
 (defn justifications [tms] (-justifications tms))
@@ -1071,17 +1152,145 @@
 ;; (Integer 7 is not Long 7) and the reference scan compares with `=`.
 (defn- unbox ^Object [x] (if (int? x) (long x) x))
 
+;; ---- whether a support reaches a target, held for one run --------------------------
+
+(def ^:dynamic *reach-memo*
+  "`{:tms :key :answers :grown :watched}` (a volatile, a HashMap, two HashSets), or nil
+  (default): then `support-reaches?` walks the support on every ask.  Bound by
+  `chain/chain` for one run over the TMS it names.  `:answers` maps a handle to whether its
+  support reaches a target.  A handle answered false that gains a support or loses its
+  premise mark joins `:grown`, which the next ask walks again.  A `:watched` handle
+  (`watch-support!`) doing either, and `retract!`, `sweep!` and `drop-justification!`,
+  empty the memo.  See docs/contexts.md, \"except\"."
+  nil)
+
+(defn- reach-memo-for
+  "The bound reach memo when it mirrors `tms`, else nil (see `*reach-memo*`)."
+  [tms]
+  (let [m *reach-memo*] (when (and m (identical? (:tms m) tms)) m)))
+
+(defn run-reach-memo
+  "The reach memo a run over `tms` binds as `*reach-memo*`: the bound one when it mirrors
+  `tms`, else a fresh one, or nil when `observe/*chain-fast-paths*` is bound false."
+  [tms]
+  (or (reach-memo-for tms)
+      (when observe/*chain-fast-paths*
+        {:tms tms :key (volatile! nil) :answers (java.util.HashMap.) :grown (java.util.HashSet.)
+         :watched (java.util.HashSet.)})))
+
+(defn- clear-reach-memo!
+  "Empty reach memo `m`."
+  [m]
+  (.clear ^java.util.HashMap (:answers m))
+  (.clear ^java.util.HashSet (:grown m))
+  (.clear ^java.util.HashSet (:watched m)))
+
+(defn watch-support!
+  "Watch `datum` in the reach memo bound over `tms`: a support it gains or a premise mark
+  it loses empties the memo.  A `support-reaches?` target predicate calls it for each
+  handle whose support it reads."
+  [tms datum]
+  (when-let [m (reach-memo-for tms)]
+    (.add ^java.util.HashSet (:watched m) (unbox datum))))
+
+(defn- note-grown!
+  "Note in the bound reach memo that `datum` gained a support or lost the premise mark a
+  walk stops at: a watched `datum` empties the memo, and one answered false joins
+  `:grown`."
+  [tms datum]
+  (when-let [m (reach-memo-for tms)]
+    (let [d (unbox datum)]
+      (cond (.contains ^java.util.HashSet (:watched m) d)     (clear-reach-memo! m)
+            (false? (.get ^java.util.HashMap (:answers m) d)) (.add ^java.util.HashSet (:grown m) d)))))
+
+(defn- clear-run-memos!
+  "Empty the run-scoped memos bound over `tms`, the dedup index and the reach memo: a
+  removal leaves an entry naming what is gone."
+  [tms]
+  (when-let [^java.util.Map c (dedup-cache-for tms)] (.clear c))
+  (some-> (reach-memo-for tms) clear-reach-memo!))
+
+(defn- reach-walk
+  "Walk `root`'s support depth-first: each justification's `rests-on`, not past a premise.
+  True at the first handle `target?` answers for or `answers` holds true.  A handle
+  `answers` holds false is not walked past.  A walk that finds none records every handle
+  it visited as false, since each one's support lies inside the walk."
+  [tms target? ^java.util.HashMap answers root]
+  (let [seen (java.util.HashSet.)]
+    (loop [stack (list root)]
+      (if-let [d (first stack)]
+        (let [more (rest stack)]
+          (if-not (.add seen d)
+            (recur more)
+            (let [a (when-not (= d root) (.get answers d))]
+              (cond (true? a)        true
+                    (false? a)       (recur more)
+                    (target? d)      true
+                    (premise? tms d) (recur more)
+                    :else (recur (into more (comp (keep #(justification tms %)) (mapcat rests-on)
+                                                  (map unbox))
+                                       (supports tms d)))))))
+        (do (doseq [d seen] (.put answers d false))
+            false)))))
+
+(defn- reach-flip!
+  "Record `d` as reaching a target in `answers`, and every handle answered false that is
+  not a premise and rests on a handle so recorded."
+  [tms ^java.util.HashMap answers d]
+  (.put answers d true)
+  (loop [todo [d]]
+    (when-let [x (peek todo)]
+      (recur (into (pop todo)
+                   (keep (fn [jid]
+                           (when-let [j (justification tms jid)]
+                             (let [c (unbox (:consequence j))]
+                               (when (and (false? (.get answers c)) (not (premise? tms c))
+                                          (some #(= x (unbox %)) (rests-on j)))
+                                 (.put answers c true)
+                                 c)))))
+                   (dependents tms x))))))
+
+(defn support-reaches?
+  "Does `h`'s support hold a handle `target?` answers true for: `h`, or a handle a
+  justification of one of them rests on (`rests-on`), transitively, not past a premise?
+  Under a bound `*reach-memo*` over `tms` the answers last for the run, so asking each
+  link of a chain walks each handle once.  `key` names the target set; a memo held for
+  another key is emptied first."
+  [tms h target? key]
+  (let [h (unbox h)]
+    (if-let [m (reach-memo-for tms)]
+      (let [^java.util.HashMap answers (:answers m)
+            ^java.util.HashSet grown   (:grown m)]
+        (when-not (= key @(:key m))
+          (vreset! (:key m) key)
+          (clear-reach-memo! m))
+        (when-not (.isEmpty grown)
+          (let [gs (vec grown)]
+            (.clear grown)
+            (doseq [g gs :when (false? (.get answers g))]
+              (when (reach-walk tms target? answers g) (reach-flip! tms answers g)))))
+        (let [a (.get answers h)]
+          (cond (some? a)                              (boolean a)
+                (reach-walk tms target? answers h)     (do (reach-flip! tms answers h) true)
+                :else                                  false)))
+      (reach-walk tms target? (java.util.HashMap.) h))))
+
 (defn- just-key
   "The content `has-justification?` deduplicates on — the informant, the antecedents
   **as a set**, `same-antecedents?`'s judgement (order and duplicates immaterial) frozen
   into one hashable value, and the subsumptions.  A rule-handle informant is dropped
   from the set: a stored record never lists it there, and a firing's handle list does.
   Two firings that pair the same facts with different literals can rest on one
-  antecedent set, and the subsumptions keep them two (`late_route_test`)."
-  [informant antecedents subsumptions]
-  (let [inf (unbox informant)
-        s   (set antecedents)]
-    [inf (if (integer? inf) (disj s inf) s) (not-empty subsumptions)]))
+  antecedent set, and the subsumptions keep them two (`late_route_test`). Optional
+  source readings remain correlated alternatives, never a union of exemptions. The
+  ordinary nil-reading key retains its three-element shape."
+  ([informant antecedents subsumptions]
+   (just-key informant antecedents subsumptions nil))
+  ([informant antecedents subsumptions reading]
+   (let [inf (unbox informant)
+         s   (set antecedents)]
+     (cond-> [inf (if (integer? inf) (disj s inf) s) (not-empty subsumptions)]
+       (seq reading) (conj reading)))))
 
 (defn- dedup-keys
   "The cached key set for `consequence`, built from its supports on the first ask."
@@ -1091,7 +1300,7 @@
         (let [s (java.util.HashSet.)]
           (doseq [jid (-supports tms consequence)]
             (when-let [j (-justification tms jid)]
-              (.add s (just-key (:informant j) (:antecedents j) (:subsumptions j)))))
+              (.add s (just-key (:informant j) (:antecedents j) (:subsumptions j) (:reading j)))))
           (.put cache ck s)
           s))))
 
@@ -1101,41 +1310,81 @@
   `has-justification?` and then adds the justification, and so would otherwise build the
   same set twice."
   ([informant antecedents] (just-key informant antecedents nil))
-  ([informant antecedents subsumptions] (just-key informant antecedents subsumptions)))
+  ([informant antecedents subsumptions] (just-key informant antecedents subsumptions))
+  ([informant antecedents subsumptions reading] (just-key informant antecedents subsumptions reading)))
+
+(defn- rarest-antecedent
+  "The handle of `antes` the fewest justifications use (`dependent-count`), or nil when
+  `antes` is empty."
+  [tms antes]
+  (when (seq antes)
+    (reduce (fn [a b] (if (< (dependent-count tms b) (dependent-count tms a)) b a)) antes)))
 
 (defn has-justification?
   "Is there already a support for `consequence` from `informant` over exactly these
   antecedents (as a set), with the same subsumptions?  Guards against duplicate
-  justifications.  Answered from the dedup index when one is bound for this TMS — the
-  same judgement, one hash probe — and by the supports scan otherwise.  `k`, when given,
-  is `justification-key` of the same informant and antecedents, and carries the
-  subsumptions; without it the question is about a justification with none."
+  justifications.  A built dedup index entry answers with one hash probe.  Otherwise, when
+  an antecedent has fewer dependents than `consequence` has supports, its dependents are
+  scanned (`rarest-antecedent`); else the index is built, or the supports scanned.  `k`,
+  when given, is `justification-key` of the same informant and antecedents, and carries
+  the subsumptions; without it the question is about a justification with none."
   ([tms informant antecedents consequence]
    (has-justification? tms informant antecedents consequence nil))
   ([tms informant antecedents consequence k]
-   (if-let [^java.util.Map cache (dedup-cache-for tms)]
-     (.contains (dedup-keys tms cache consequence) (or k (just-key informant antecedents nil)))
-     (let [antes (without-informant informant antecedents)
-           subs  (when k (nth k 2))]
-       (boolean
-        (some (fn [jid]
-                (let [j (-justification tms jid)]
-                  (and (= informant (:informant j))
-                       (= subs (:subsumptions j))
-                       (same-antecedents? antes (:antecedents j)))))
-              (-supports tms consequence)))))))
+   (let [^java.util.Map cache (dedup-cache-for tms)
+         ^java.util.Set built (when cache (.get cache (unbox consequence)))
+         antes   (without-informant informant antecedents)
+         subs    (when k (nth k 2))
+         reading (when k (nth k 3 nil))
+         same?   (fn [jid]
+                   (let [j (-justification tms jid)]
+                     (and (= informant (:informant j))
+                          (= subs (:subsumptions j))
+                          (= reading (:reading j))
+                          (same-antecedents? antes (:antecedents j)))))
+         lead    (when-not built (rarest-antecedent tms antes))]
+     (cond
+       built (.contains built (or k (just-key informant antecedents nil)))
+       (and lead (< (dependent-count tms lead) (support-count tms consequence)))
+       (boolean (some #(and (= consequence (:consequence (-justification tms %))) (same? %))
+                      (-dependents tms lead)))
+       cache (.contains (dedup-keys tms cache consequence) (or k (just-key informant antecedents nil)))
+       :else (boolean (some same? (-supports tms consequence)))))))
 
 ;; Every mutating entry point below wraps its mutation in `moving`, and notes the handles whose
 ;; support it moved while a write record is open (`moved-supports`).
 
+(def ^:dynamic *support-observer*
+  "Optional queue-only support listener frames: :tms, :active?, :note, :previous.
+  `:note` takes the moved handles, whether they depart, and the justification an add
+  moved them with (nil for every other move).  The first identical network owns an
+  event; nested writes on another network cannot observe a hypothetical network or
+  deliver the same event twice. No write report is opened."
+  nil)
+
+(defn- support-observer
+  "The active listener belonging to this exact network, never a read-copy network."
+  [tms]
+  (loop [frame *support-observer*]
+    (when frame
+      (if (identical? tms (:tms frame))
+        (when ((:active? frame)) frame)
+        (recur (:previous frame))))))
+
 (defn- note-moved!
-  "Add the handles `hs` to the handles whose support `tms` moved, in the open write
-  record."
-  [tms hs]
-  (when (and observe/*write-record* (seq hs))
-    (let [^java.util.Map m (observe/record-of ::moved #(java.util.IdentityHashMap.))
-          ^java.util.Set s (or (.get m tms) (let [s (java.util.HashSet.)] (.put m tms s) s))]
-      (run! #(.add s %) hs))))
+  "Record touched `hs` for an optional write report, and notify the listener of
+  `changed` (default `hs`). Listener no-op filtering leaves report touches unchanged;
+  a listener-only event can pass no report handles."
+  ([tms hs] (note-moved! tms hs false hs))
+  ([tms hs departing?] (note-moved! tms hs departing? hs))
+  ([tms hs departing? changed] (note-moved! tms hs departing? changed nil))
+  ([tms hs departing? changed just]
+   (when (seq changed)
+     (when-let [frame (support-observer tms)] ((:note frame) changed departing? just)))
+   (when (and observe/*write-record* (seq hs))
+     (let [^java.util.Map m (observe/record-of ::moved #(java.util.IdentityHashMap.))
+           ^java.util.Set s (or (.get m tms) (let [s (java.util.HashSet.)] (.put m tms s) s))]
+       (run! #(.add s %) hs)))))
 
 (defn moved-supports
   "The handles whose premise mark, justifications, or forced or blocked membership `tms`
@@ -1147,7 +1396,7 @@
   "Note the consequences of the supports a removal (`retract!`'s shape) took, and return
   the result."
   [tms result]
-  (note-moved! tms (concat (map first (:removed-supports result)) (:removed-sentexes result)))
+  (note-moved! tms (concat (map first (:removed-supports result)) (:removed-sentexes result)) true)
   result)
 
 (defn ensure-node
@@ -1174,8 +1423,11 @@
   ([tms datum] (add-premise tms datum :default))
   ([tms datum strength-kw]
    (note-route-gain tms datum)
-   (moving (-add-premise tms datum (or strength-kw :default)))
-   (note-moved! tms [datum])
+   (note-grown! tms datum)
+   (let [strength (or strength-kw :default)
+         old (when (support-observer tms) (-premise-strength tms datum))]
+     (moving (-add-premise tms datum strength))
+     (note-moved! tms [datum] false (when (not= old strength) [datum])))
    datum))
 
 (defn suspend-premise
@@ -1183,7 +1435,12 @@
   effect on belief, undone by `add-premise` at the same strength.  Unknown datums no-op.
   Bare, not `!`: the node and its justifications stay.  `core/preview` is the caller
   (docs/nmtms.md)."
-  [tms datum] (moving (-suspend-premise tms datum)) (note-moved! tms [datum]) datum)
+  [tms datum]
+  (note-grown! tms datum)
+  (let [old (when (support-observer tms) (-premise-strength tms datum))]
+    (moving (-suspend-premise tms datum))
+    (note-moved! tms [datum] false (when old [datum])))
+  datum)
 
 (defn add-justification
   "Add `just` to the network.  `k`, when given, is its `justification-key`, already built
@@ -1191,8 +1448,10 @@
   ([tms just] (add-justification tms just nil))
   ([tms just k]
    (note-route-gain tms (:consequence just))
-   (moving (-add-justification tms just))
-   (note-moved! tms [(:consequence just)])
+   (let [old (when (support-observer tms) (-justification tms (:id just)))]
+     (moving (-add-justification tms just))
+     (note-moved! tms [(:consequence just)] false
+                  (when (not= old (graph-just just)) [(:consequence just)]) just))
    (when-let [^java.util.Set s observe/*fired-sink*]
      (when (integer? (:informant just)) (.add s (:consequence just))))
    ;; keep a bound dedup index in step: extend the one entry this justification lands
@@ -1200,7 +1459,9 @@
    ;; which now includes this justification, so absence needs nothing)
    (when-let [^java.util.Map cache (dedup-cache-for tms)]
      (when-let [^java.util.HashSet ks (.get cache (unbox (:consequence just)))]
-       (.add ks (or k (just-key (:informant just) (:antecedents just) (:subsumptions just))))))
+       (.add ks (or k (just-key (:informant just) (:antecedents just) (:subsumptions just)
+                                (:reading just))))))
+   (note-grown! tms (:consequence just))
    just))
 
 (defn restrength-informant
@@ -1232,8 +1493,11 @@
   justification exists, so the element never holds a label the set rules out."
   [tms kind xs on?]
   (when (seq xs)
-    (moving (-set-forced tms kind xs on?))
-    (note-moved! tms (if (= :void kind) (keep #(:consequence (-justification tms %)) xs) xs)))
+    (let [changed (when (support-observer tms)
+                    (filterv #(not= (boolean on?) (boolean (-forced? tms kind %))) xs))
+          datums (fn [xs] (if (= :void kind) (keep #(:consequence (-justification tms %)) xs) xs))]
+      (moving (-set-forced tms kind xs on?))
+      (note-moved! tms (datums xs) false (datums changed))))
   tms)
 
 (defn premise-class
@@ -1262,13 +1526,30 @@
   exceptions were discovered in.  The region is seeded from the consequences of the
   justifications whose blocked status changed; a call that changes nothing does no work."
   [tms jids]
-  (let [old (when observe/*write-record* (-blocked tms))]
+  (let [old (when (or observe/*write-record* (support-observer tms)) (-blocked tms))]
     (moving (-set-blocked tms jids))
     (when old
       (let [new (set jids)]
         (note-moved! tms (keep #(:consequence (-justification tms %))
                                (concat (remove new old) (remove (set old) new)))))))
   tms)
+
+(defn justification-confers
+  "The class justification `jid` confers on its consequence (`conferred-class`), read off
+  the current labels, or nil when it is not valid: an antecedent or its rule informant
+  OUT, blocked, or void."
+  [tms jid]
+  (when-let [j (-justification tms jid)]
+    (let [inf (:informant j)
+          ifc (when (integer? inf) (-defeat-class tms inf))]
+      (when (and (every? #(-defeat-class tms %) (:antecedents j))
+                 (or (not (integer? inf)) ifc)
+                 (not (contains? (-blocked tms) jid))
+                 (not (-forced? tms :void jid)))
+        (cond-> (reduce (fn [c a] (strength/min c (-defeat-class tms a)))
+                        (or (:strength j) :monotonic)
+                        (class-antecedents j))
+          (and ifc (not (-premise? tms inf))) (strength/min ifc))))))
 
 (defn hold!
   "Open hold `h` (`observe/new-hold`) on `tms`, and answer whether it opened: false when a
@@ -1429,10 +1710,15 @@
   without a justification fetch.  Unknown datums no-op (empty result): retraction is
   idempotent."
   [tms datum]
-  ;; the one path besides `sweep!` that removes justifications — a bound dedup index
-  ;; over this TMS is cleared wholesale rather than edited (see `*dedup-cache*`)
-  (note-removed! tms (moving (when-let [^java.util.Map c (dedup-cache-for tms)] (.clear c))
-                             (-retract tms datum))))
+  ;; the one path besides `sweep!` that removes justifications — the run memos bound
+  ;; over this TMS are cleared wholesale rather than edited (`clear-run-memos!`)
+  (let [old (when (support-observer tms) (-premise-strength tms datum))
+        result (note-removed! tms (moving (clear-run-memos! tms)
+                                          (-retract tms datum)))]
+    ;; A premise can leave while another support keeps the datum IN and no sweep
+    ;; removes anything. Its independent-demand authority still changed.
+    (note-moved! tms nil true (when old [datum]))
+    result))
 
 (defn sweep!
   "Garbage-collect the consequence closure of `seeds`: every datum in it that is not a premise
@@ -1441,9 +1727,8 @@
   `exceptWhen` (docs/exceptions.md, \"Garbage collection, not defeat\").  Labels must already be
   current (`set-blocked` relabels the same region)."
   [tms seeds]
-  ;; removes justifications, so a bound dedup index over this TMS is cleared (see
-  ;; `*dedup-cache*`)
-  (note-removed! tms (moving (when-let [^java.util.Map c (dedup-cache-for tms)] (.clear c))
+  ;; removes justifications, so the run memos bound over this TMS are cleared
+  (note-removed! tms (moving (clear-run-memos! tms)
                              (-sweep tms seeds))))
 
 (defn drop-justification!
@@ -1453,9 +1738,8 @@
   justification, for a permuting mark leaving: the firing still holds, at a spelling the store
   stopped folding into its row (`chain/reconcile-spellings!`)."
   [tms jid]
-  ;; removes a justification, so a bound dedup index over this TMS is cleared (see
-  ;; `*dedup-cache*`)
-  (note-removed! tms (moving (when-let [^java.util.Map c (dedup-cache-for tms)] (.clear c))
+  ;; removes a justification, so the run memos bound over this TMS are cleared
+  (note-removed! tms (moving (clear-run-memos! tms)
                              (-drop-justification tms jid))))
 
 (defn snapshot
@@ -1499,7 +1783,8 @@
   :retired-by {:relabelled :K :forced-monotonic :K :settle-exit :W :recover :W}
   :computed :write :imaged? false :at [[:tms]]
   :value (fn [kb] (select-keys (snapshot (tms-of kb))
-                               [:touched :touched-in :touched-new :touched-out]))
+                               [:touched :touched-in :touched-new :touched-out
+                                :touched-down :touched-up]))
   :note "the handles relabelled since the last settle exit, with the reader marks into it; `reset-touched!` at the settle exit empties it and moves the mark generation"})
 
 (caches/register-derived
@@ -1516,3 +1801,10 @@
   :keyed-by :handle :reads [:justifications]
   :retired-by {:relabelled :W} :computed :pass :imaged? false :var #'*dedup-cache*
   :note "the justification keys each conclusion holds, bound for one chaining run; `retract!`, `sweep!` and `drop-justification!` clear it"})
+
+(caches/register-derived
+ {:id :M5 :label "Reach memo" :kind :pass
+  :holds-content? false
+  :keyed-by :handle :reads [:justifications :index]
+  :retired-by {:relabelled :W} :computed :pass :imaged? false :var #'*reach-memo*
+  :note "whether a stored `except` with a support names a handle of each asked handle's support, bound for one chaining run; a support gained or a premise mark lost marks a false answer to walk again and empties it at a watched `except`, a removal empties it, and a moved except count empties it at the next ask"})

@@ -96,9 +96,19 @@ should. The file map is [namespaces.md](namespaces.md). Entry points are `lein r
 (release-withheld! kb)                          ; draw them, chain, settle -> {:terms :released :ms}
                                                 ; (docs/argtypes.md, "Nothing records a withheld mint")
 (edit! kb {:add [[sentence context opts?] ...] :remove [handle ...]} opts?) ; add-then-remove, one settle;
-                                                ; opts :max-ms / :stop? bound the adds (`edit-opt-keys`)
+                                                ; opts :max-ms / :stop? bound the adds and the
+                                                ; removals' release, settled first (`edit-opt-keys`)
 (replace-facts! kb context facts opts?)         ; context's ground literal premises become `facts`, in one
                                                 ; edit! -> {:added n :removed n :edit <edit!'s result>}
+(rename-terms! kb {old new …} opts?)            ; restate every premise using `old` under `new`, retract
+                                                ; the original, in one edit! -> {:restated n :retracted n
+                                                ; :handles {old-handle new-handle} :edit e}
+(merge-terms! kb {from into …} opts?)           ; the same onto a stored term
+(copy-terms kb {from to …} opts?)               ; the restatement alone, retracting nothing
+(remove-terms! kb [term …] opts?)               ; retract every premise using a term
+(rename-term! kb old new opts?)                 ; one term; likewise merge-term!, copy-term, remove-term!
+(check-term-edit kb op mapping)                 ; what a term operation refuses -> [] or [{:type :term :message}]
+(term-edit-plan kb op mapping)                  ; the edit! batch it runs -> {:batch {:add [...] :remove [...]} :restates [...]}
 (check kb sentence context opts)                ; would assert succeed? -> [] or [{:type :message …}]
 (check-edit kb {:add […] :remove […]})          ; the same over an edit batch, each problem naming its entry
 (preview kb {:add […] :remove […]} opts)        ; what the batch would BELIEVE -> the diff, then rolled back
@@ -148,7 +158,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; reason) / :silent.  O(rules), off the ledger
 (violations kb) / (clear-violations! kb)         ; accumulating ledger of dropped derived conclusions (tagged with the run, capped),
                                                 ; then the :forced-conclusion entries read off the stored void firings
-                                                ; and the :inert-argument / :inert-rule entries read off the held sentexes
+                                                ; and the :inert-argument / :inert-rule entries read off the held sentexes,
+                                                ; and the :not-stratified drops read off the refusal record
 (filed-violations kb)                           ; the ledger alone, a deref: none of the entries read off stored state
 (kb-quality kb opts)                            ; the seven readings about the *knowledge* —
                                                 ; {:rules :extents :chains :taxonomy :declarations
@@ -224,7 +235,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; over a pair a stated separation divides, the suggested
                                                 ; declaration for every stored rule that a declaration the
                                                 ; engine implements states, every genl node with no
-                                                ; declared arity, every argument declaration naming a
+                                                ; declared arity, every genl edge whose spec admits a
+                                                ; length its genl does not, every argument declaration naming a
                                                 ; position its predicate lacks, and every live rule pair
                                                 ; whose conclusions would contradict if both fired, plus three
                                                 ; review-only smells: sibling types sharing one direct
@@ -246,7 +258,7 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                 ; :not-under-thing, :implicit-genl,
                                                 ; :implicit-arity-class, :undeclared-term,
                                                 ; :orthogonal-over-separation, :rule-macro,
-                                                ; :undeclared-arity,
+                                                ; :undeclared-arity, :genl-arity-mismatch,
                                                 ; :uncorresponded-function, :stranded-declaration,
                                                 ; :rule-clash, :twin-genls, :derivable-stated-edge,
                                                 ; :disjoint-could-be-partition, :missing-arg,
@@ -584,7 +596,7 @@ default-chain-opts                              ; the bounds a chain run takes w
 (vocabulary-audit kb)                          ; the whole picture, incl. :unclassified
 (term-role term)                               ; the naming role a spelling declares: :variable :number
                                                ; :lexeme :context :individual :predicate :sense
-                                               ; :type, or nil — decided most-specific first
+                                               ; :type, or nil (a nat/ constant) — most-specific first
 (describe kb term [context] [opts])            ; EVERYTHING the KB holds about one term, in one map,
                                                ; keyed by the term's role — "what can I ask about X?"
                                                ; every shape: :term :role :context :comment, the
@@ -720,7 +732,9 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ; the metas naming it; {:believed? true} filters
 (provenance kb handle)                          ; the per-handle bookkeeping map, or nil
 (add-provenance kb handle m)                     ; merge application fields into it
-(retract! kb handle)                            ; teardown -> {:removed-sentexes n :removed-justifications n}
+(retract! kb handle opts?)                      ; teardown -> {:removed-sentexes n :removed-justifications n}
+                                                ; opts: retract-opt-keys, bounding the re-chain
+                                                ; the removal releases (inference.md, "Stopping a run")
 (unsupported kb)                                ; the records the open found no premise, no
                                                 ; justification and no :inert mark for -> {:n :handles}
 (remove-unsupported! kb {:handles hs})          ; delete those among hs, which the caller attests
@@ -742,9 +756,10 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ; firings' antecedents, bring the stored premise
                                                 ; seeds in as assert does, record-arg-types;
                                                 ; {:arg-types? false} leaves the pass owed,
-                                                ; :on-progress reports each phase
-                                                ; (docs/storage.md, "Editing the records of a
-                                                ; KB without belief")
+                                                ; :max-ms / :stop? / :max-derivations bound
+                                                ; the chain and re-chain, :on-progress reports
+                                                ; each phase (docs/storage.md, "Editing the
+                                                ; records of a KB without belief")
 (in? kb handle)                                 ; raw structural JTMS IN, before contextual exceptions
 (believed? kb handle context)                   ; IN and not withdrawn from context (an except, a
                                                 ; placed defeat it sees, or resting only on one), before
@@ -816,8 +831,8 @@ assertable-strengths                            ; #{:monotonic :default}, the se
 ;;   the same knowledge reports identically whatever order it was loaded in (nmtms.md)
 (justification-verdicts kb handle context)      ; {jid reason}: the verdict `context` reads on
                                                 ; each justification of `handle` — :supports,
-                                                ; :antecedent-out, :blocked, :void, :guard or
-                                                ; :exempt (nmtms.md).  `why` carries it on each
+                                                ; :antecedent-out, :blocked, :inert, :void,
+                                                ; :guard or :exempt (nmtms.md).  `why` carries it on each
                                                 ; :support entry at the node's own context
 (blocked-justifications kb)                     ; the ids a rule exception currently blocks —
                                                 ; every antecedent IN and supporting nothing.
@@ -871,8 +886,10 @@ The read excludes literal `Quote` contents and nested sentences, but enters ordi
 function terms. NAT bookkeeping is recognized by the owning reified constant, including
 a projection mentioning another term as an argument. A lift-only copy and a consequence
 with only skeletal content support do not create an ordinary home. The engine's
-generated arity-class copy is skeletal too. An independent
-ordinary content support preserves the home. A fact an equality merge respells keeps the
+generated arity-class copy is skeletal too. An arity, `arityMin` or arity-class premise
+(a `forced_decontextualized_predicate`, stored in CxUniverse whichever context states it)
+gives a home only when no other leaf does, so a type a middle theory defines keeps that
+theory as its home. An independent ordinary content support preserves the home. A fact an equality merge respells keeps the
 home of the fact as stated, since the stated spelling the merge supersedes classifies as
 a premise.
 
@@ -1013,7 +1030,8 @@ snapshot loaded over a larger KB takes a chained write
 `:stop?` bound the load as they bound `assert-many` ([inference.md](inference.md#stopping-a-run)).
 
 `edit!` batches assertions **and** retractions into one settle — `{:add [[sentence
-context opts?] …] :remove [handle …]}`.  The adds land **before** the removes, so a
+context opts?] …] :remove [handle …]}` — and into two under a `:max-ms` or `:stop?` bound,
+whose first settles the removals' release ([inference.md](inference.md#stopping-a-run)).  The adds land **before** the removes, so a
 conclusion the removed premises solely-supported but an added one re-derives keeps a
 witness through the dependency-directed sweep: it is not swept and rebuilt, and never
 flickers OUT and back.  The final belief equals running the asserts and retracts
@@ -1215,7 +1233,7 @@ spelling — `functor lives_in in rule consequent (lives_in ?x cold_place) is sn
 It returns a **vector of problems**, empty when the sentence is admissible.  Each is a
 map with the `:type` keyword `assert` would have thrown — `:naming`, `:not-ground`,
 `:not-well-formed`, `:unknown-handle` (an `except` naming no stored sentex), `:not-range-restricted`, `:not-indexable`, `:disjunction-too-wide`, `:not-stratified`,
-`:not-assertible`, `:exception-not-closed`, `:exact-present` (an exact or dated start of the real
+`:not-assertible`, `:exception-not-closed`, `:exact-present` (an exact, dated or upper-bounded start of the real
 world's present, [time.md](time.md#the-real-worlds-present)), `:arg-type`, `:arg-genl`, `:inter-arg-type`,
 `:disjoint`, `:functional`, `:asymmetric`,
 `:anti-transitive` — a readable
@@ -1648,6 +1666,7 @@ take back. Usually that means destroying or removing stored knowledge, and on
 | `edit!` | its `:remove` half runs the same teardown `retract!` does, so a batch that adds and removes is as irreversible as its removals |
 | `edit-with-consequences!` | the same write, reporting what it turned out to mean |
 | `replace-facts!` | an `edit!` whose `:remove` half retracts each premise of the context the new facts do not name |
+| `rename-terms!`, `merge-terms!`, `remove-terms!` | an `edit!` that retracts every premise using the term; `copy-terms` retracts nothing |
 | `clear!` | wipes every record and index entry |
 | `clear-violations!` | empties the dropped-conclusion ledger (the drops are final either way); the `:forced-conclusion` entries `violations` reads off the stored firings stay |
 | `abduce-discard!` | drops an abduction's scratch context and everything it licensed |
@@ -1703,7 +1722,7 @@ under `resources/kb/`, read by `vaelii.host.seed`
 (`read-sentences` / `load-context`, via `clojure.edn`, so a KB file is data and can
 never run code). Every sentence about a term is grouped **term-centrically** (blocks in
 natural sort order), and every context file is **discovered on the classpath and loaded
-on kb start** (`seed/layer-files`), so adding a KB is dropping a file — no code
+on kb start** (`shipped/layer-files`), so adding a KB is dropping a file — no code
 change. What stays in `starter.clj` is the *order the layers* load in. A type's file
 declares it a `unary_predicate` beside its definition, in the context whose `genl` edges
 make it a subtype of `thing`. `(load-into kb
@@ -1754,11 +1773,11 @@ a variable so they join — grandparentOf, part-location, owns-parts).
 **A binary predicate says which level it relates at, unless its two ends disagree.**
 `relation_kind` is a `disjoint_metatype` over `instance_relation_predicate` and
 `type_relation_predicate`: `parentOf`, `northOf` and `madeOf` relate individuals; `genl`,
-`disjoint`, `orthogonal`, `typeLargerThan`, `partType` and `capabilityType` relate kinds. *At most* one, not
+`disjoint`, `orthogonal`, `typeLargerThan`, `partType` and `abilityType` relate kinds. *At most* one, not
 exactly one — the unmarked are those whose two ends sit at different levels, or at no
 level at all (`implies` is a connective; `rewriteOf` takes either role so long as its two
 sides agree; `result` and `genlResult` relate a function to a type;
-`functionCorrespondingPredicate` relates a function to a predicate; `hasCapability`
+`functionCorrespondingPredicate` relates a function to a predicate; `able`
 relates one causal thing to an event kind). The mark is not decoration: an
 `instance_relation_predicate` relates individuals, which are never subtypes, so
 `try-assert` refuses `genlArg` on one (`:arg-constraint-kind`). A `type_relation_predicate` takes `genlArg` and
@@ -1818,7 +1837,7 @@ not be admitted: no sentex, no justification, and `why-not` reduced to `:not-sto
 | `:arg-type` / `:arg-genl` | an argument fails a declared constraint — `arg`'s type, or `genlArg`'s subtype floor.  A rule's conclusion convicted at its own argument is stored and held instead, as `:inert-argument`; one convicted at a function application's input is dropped here | `:arg` `:expected` `:position` `:message` |
 | `:inter-arg-type` | an `interArg` conditional constraint, or an `interArgs` / `interArgAndRest` homogeneity constraint, whose trigger argument holds and whose target argument does not | `:arg` `:expected` `:position` `:trigger` `:trigger-type` `:trigger-position` `:message` |
 | `:disjoint` | an application whose result type is disjoint from a type its argument position demands, before its constant is minted, so no second sentex stands for the pair | the check's problem map |
-| `:not-stratified` | a derived `genl` / `genlCx` edge would put a cycle through negation in the rule set, or a minted generator would close a generator cycle | `:cycle` `:message` |
+| `:not-stratified` | a derived `genl` edge or closed-extent grant would put a cycle through negation in the rule set, or a minted generator would close a generator cycle.  An edge's or a grant's entry is read off the refusal record while the cycle holds | `:cycle` `:message` |
 | `:not-well-formed` | a minted sentence a special predicate's own structure check refuses | `:problems` `:message` |
 | `:naming` | a minted sentence breaking a naming invariant — the spellings in docs/naming.md | `:message` |
 | `:no-placement` | the join completed and no context sees the rule, every antecedent fact, and the `genl` edges the match climbed | `:rule-context` `:fact-contexts` `:subsumed` `:would-place` `:message` |
@@ -1880,7 +1899,10 @@ off the stored firings (`checks/forced-conclusion-entries`): neither the cap nor
 `clear-violations!` removes one.  The `:inert-argument` and `:inert-rule` entries follow
 those, in content order, read off the held facts and rules
 (`checks/held-argument-entries`), and neither the cap nor `clear-violations!` removes
-one either.
+one either. The `:not-stratified` entries of a grant or `genl` edge dropped for a cycle
+through negation come last, in content order, read off the refusal record
+(`chain/stratification-entries`). Each stays while its cycle holds and leaves when the
+grant or edge is stored ([naf.md](naf.md#stratification-from-both-arrival-orders)).
 
 ## Contract notes
 
@@ -1896,7 +1918,7 @@ The docstring of each var below holds its contract; the rest of what it said is 
 | `:superseded` | an equality merge restated it under its class representative; it lost no argument and retracting the equality gives it straight back | `:superseded-by` `:rewrites` |
 | `:defeated` | the target of a placed `defeat` in force at its own context, whose handles `:defeats` names and whose nogoods convict through the declarations `:grounds` names, as a clash report's do | `:contradicted-by` `:defeats` `:grounds` |
 | `:withdrawn` | IN in the network, and not believed at its own context because every justification rests on a handle a placed `defeat` in force there hides; each `:withdrawn-by` entry names that handle, its context, the `:defeat` and the defeat's context under `:vantage` (docs/nmtms.md) | `:withdrawn-by` |
-| `:inert` | a tuple whose length breaks its functor's, or a fact whose argument fails its declared argument type, stored and held OUT (docs/nmtms.md). `:conviction` is the argument check's problem map, the one `try-assert` throws as `:definitional-clash` (docs/argtypes.md). `:binding` names the length the tuple breaks, `{:length n}` or `{:min m}`, the predicate `:via` binds it and the binding handles under `:grounds` (docs/taxonomy.md, "Arity") | `:binding` for a tuple, `:conviction` for an argument |
+| `:inert` | a tuple whose length breaks its functor's, or a fact whose argument fails its declared argument type, stored and held OUT (docs/nmtms.md); or not a premise, with a mint held void while `arity/mintable-type?` refuses its type (docs/argtypes.md, "Where it does not mint"). `:conviction` is the argument check's problem map, the one `try-assert` throws as `:definitional-clash` (docs/argtypes.md). `:binding` names the length the tuple breaks, `{:length n}` or `{:min m}`, the predicate `:via` binds it and the binding handles under `:grounds` (docs/taxonomy.md, "Arity"). For a held mint, `:support` lists the justifications as `:unsupported` does, each held mint's `:verdict` `:inert` | `:binding` for a tuple, `:conviction` for an argument, `:support` for a mint |
 | `:forced-conclusion` | not a premise, and a supporting justification is a firing held void, at its own context, for concluding a forced-monotonic literal from antecedents that are not forced-monotonic (docs/nmtms.md). Each `:convicted` entry names the `:rule` and, under `:not-forced-monotonic`, the antecedent predicates a `forced_monotonic_predicate` declaration would make forced-monotonic; `:support` lists the other justifications as `:unsupported` does | `:convicted` `:support` |
 | `:unsupported` | not a premise, and no supporting justification reads `:supports` at its own context: each entry's `:verdict` is `justification-verdicts`' reason, and `:missing` lists the handles it rests on that are OUT in the network | `:support` with `:verdict` and `:missing` |
 | `:excepted` | a rule applied and its `exceptWhen` query held: under forward chaining its conclusion is stored with a guard defeat, through `:monotonic` and `:default` blockers alike (docs/exceptions.md) | `:rule` `:exception` `:via` |
@@ -1983,6 +2005,92 @@ applied.  This entry point's headline guarantee is a JTMS claim — belief that 
 edit is never swept and rebuilt — and over an empty network there is no belief for it
 to be about; what is left is "assert these unchecked, delete those unswept".
 
+### Contract notes: term operations
+
+`rename-terms!`, `merge-terms!`, `copy-terms` and `remove-terms!` change a term in every
+premise that uses it.  Each runs as one `edit!` whose batch `vaelii.impl.term-edit/batch`
+builds, and each singular form (`rename-term!`, …) takes one term.
+
+**A use** is the term in a premise's sentence outside a quotation, the term in the
+expression of a reified NAT constant the sentence names, or the term as the premise's
+context.  The argument of a `(Quote …)` or a `(Quasiquote …)` is a mention and keeps its
+spelling; an `(Unquote …)` hole inside a `Quasiquote` is a use.  A `quotedArg` position
+(`comment`, `seeAlso`) is not a quotation, so a term written there is a use.  A term
+exists when a stored sentex uses it.  A rule is restated whole, its antecedent,
+consequent and `exceptWhen` query alike.
+
+**The restatement.**  A rename or a merge writes each premise it reaches as
+`export-text!` writes it, with the new term in place of the old.  The batch adds that
+sentence at the original's strength and options, and removes the original.  A reified
+NAT is restated through its expression, so the assert finds or mints the constant for the
+new expression, and the old constant's `natFormula` row goes with its last use
+([nat.md](nat.md#rename-and-remove--keeping-the-11-invariant)).  A writer-spelled
+constant, one a CxUniverse premise maps to an expression whose content name is another
+constant, keeps its name: the batch restates its map as written and does not expand the
+constant in a premise that names it.  A meta naming a restated premise by handle (`except`,
+`defeat`) is restated naming the new handle.  The adds keep the originals' assertion
+order.  The application provenance of each original, less
+`:creator` and `:created`, is copied to its restatement before the originals are removed,
+and a failed copy rolls the whole operation back.  `:handles` maps each original's
+handle to its restatement's.  An `exceptWhen` premise is written with the rule it names,
+and that rule is restated only when it uses the term itself; an exception whose query
+alone uses the term is restated over the rule's own record.
+
+**A merge** is a rename onto a stored term.  A restatement the KB already holds stays one
+record.  A restatement that the merge turns into a reflexive `genl` or `genlCx` edge, or a
+reflexive equality, is dropped, since `check` refuses one.  A copy restates and retracts
+nothing, drops the same reflexive restatements, and onto a stored term is refused as a
+merge of the two would be.  A remove retracts every premise using a term and every meta
+naming one, and the settle takes what they alone supported.
+
+`term-edit-plan` answers `{:batch :restates}`, the `edit!` batch an operation runs and
+the originals of each add, and writes nothing; `preview` of the `:batch` answers what the
+operation would change in belief.  `check-term-edit` answers what an operation refuses
+before it builds the batch, and the operation throws the first of those problems with all
+of them under `:problems`:
+
+| `:type` | the operation refuses |
+|---|---|
+| `:shape` | an operation other than the four, an empty or ill-typed mapping (a map, or a collection for a remove), a term mapped to itself, a target the mapping also changes, or two terms renamed to one |
+| `:reserved-term` | a non-symbol, a variable, or a namespaced symbol outside `lex/` (a reified constant, a wrapper), as either term |
+| `:role-change` | a new term whose spelling admits none of the roles the old one's admits ([naming.md](naming.md)): a bare lowercase word admits a predicate and a type, and a sense a type; an old term whose spelling admits no role takes any new name |
+| `:shipped-term` | a rename, merge or remove of a term a form of `resources/kb/upper/` or `resources/kb/middle/` names, or of a middle context; a copy of one, or a merge into one, runs |
+| `:unknown-term` | a term no stored sentex names, as the old term, or as a merge's target |
+| `:term-exists` | a rename onto a stored term, which is a merge |
+| `:incompatible-terms` | a merge, or a copy onto a stored term, of a relation and a type, of two arities, or of two disjoint types |
+
+Building the batch throws `:unrestatable-sentex`, with `:handles`, when a premise to
+restate, or a meta naming one, has no text form or is inert; a remove takes such a
+premise.  It throws `:nat-map-outside-universe`, with `:handles`, when any of the four
+operations reaches a `natFormula` premise stored in a context other than CxUniverse
+([nat.md](nat.md#what-reification-does-not-cover)).  An add the engine
+refuses is `edit!`'s refusal, rolled back, with `:restates` naming the originals of the
+refused line.
+
+**A rename, merge or copy keeps every belief its substitution carries.**  Before its first
+deletion, the operation settles its adds and the suspension of its retractions.  Each
+handle that lost belief then gets an image.  An original's image is its restatement.  Any
+other record's image is the record storing its sentence and context, with reified
+constants expanded, the substitution applied and each named handle replaced by its
+image's.  A reflexive tuple a merge drops holds without a record.  When an image is not believed, the operation throws
+`:lost-belief`, rolled back, with `:handles` naming the handles in content order.  A merge
+of two terms an `irreflexive` relation links refuses so, and so does a restatement that
+defeats another premise.  `check-term-edit` does not answer this refusal, and `preview` of
+the plan's `:batch` names the belief the operation would take.
+
+A plan reads the KB as it stood when it was built.  An `edit!` of its `:batch` applies no
+`:lost-belief` check, and leaves unrestated a premise a write between the plan and the
+edit stored.  A reader beside a running operation reads belief as each settle publishes it
+([storage.md](storage.md#the-single-writer-contract)), and reads storage live, so it can
+find an original and its restatement both stored until the deletions.
+
+`opts` are `edit!`'s (`edit-opt-keys`).  `:stop?` and `:max-ms` bound an operation until
+its first deletion, through the adds and the re-chain the retractions release, and a stop
+there rolls the operation back as `:interrupted`.  The deletions and the settle that
+follow run to their end.  No operation
+restates an inert sentex.  The browser's term bar runs an operation as a job
+([web.md](web.md), "The term bar").
+
 ### Contract notes: `query`
 
 The depth may also come from `*query-options*` `:max-depth`, which is where `prove`
@@ -2057,7 +2165,8 @@ walked.
 
 **`term-role` precedence.**  A namespace decides `:lexeme` outright and the name half is
 not ours to read; a context name is also CapitalCamel, so `:context` wins over
-`:individual`; a sense is a type, so `:sense` is reported before `:type`.
+`:individual`; a sense is a type, so `:sense` is reported before `:type`. A `nat/`
+constant's minted name declares no role, so it answers nil.
 
 **`close!` releases process registries.**  An in-memory `:space` stays registered until
 `clear!`; an engine-allocated space (an ephemeral fork's own half, a `kb-diff` side), the

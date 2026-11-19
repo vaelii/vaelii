@@ -92,11 +92,14 @@
   (doseq [d [(jtms/->just 20 :rule [1 2 3] 4 '{?x A} :monotonic)
              (jtms/->just 21 'someRule [] 5 nil :default)
              (jtms/->just 22 9 [1 9] 5 nil :default)
-             (jtms/->just 23 9 [1 2] 5 '{?x A} :monotonic '#{[kind inspace] [sort intime]})]]
+             (jtms/->just 23 9 [1 2] 5 '{?x A} :monotonic '#{[kind inspace] [sort intime]})
+             (jtms/->just 24 9 [1 2] 5 '{?x A} :monotonic nil
+                          {:nonplacing #{2} :label-only #{2} :reader 'CxPrivate})]]
     (let [t (d-trip d)]
       (is (= d t))
       (is (instance? vaelii.impl.types.tms.Justification t))
-      (is (= (if (:subsumptions d) 7 6) (count (codec/encode-justification d)))))))
+      (is (= (cond (:reading d) 8 (:subsumptions d) 7 :else 6)
+             (count (codec/encode-justification d)))))))
 
 (deftest an-earlier-frame-decodes-to-a-record-without-subsumptions
   ;; A store can hold frames with an always-empty `:out` set in the last position and a

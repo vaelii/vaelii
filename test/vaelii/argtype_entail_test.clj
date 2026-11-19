@@ -1081,6 +1081,33 @@
         (is (nil? (entailed kb (list 'unary_predicate orphan_t) CxWorld))
             "retracting the declaration takes the membership back")))))
 
+(tu/deftest-kb a-forced-unary-predicate-places-the-declared-membership-in-cxuniverse-in-either-order
+  (let [results
+        (for [order [[:mark :decl] [:decl :mark]]]
+          (tu/with-neutral-kb [kb tu/fresh]
+            (tu/with-terms [parentOf orphan_t CxWorld]
+              (with-entailing
+                (a-context kb CxWorld)
+                (doseq [step order]
+                  (case step
+                    :mark (v/assert kb '(forced_decontextualized_predicate unary_predicate) 'CxUniverse)
+                    :decl (v/assert kb (list 'arg parentOf 1 orphan_t) CxWorld)))
+                (let [m (list 'unary_predicate orphan_t)]
+                  [order (walk/postwalk-replace
+                          {parentOf 'parentOf orphan_t 'orphan_t CxWorld 'CxWorld}
+                          {:homes   (sort-by str (keep #(when (= m (:sentence %)) (:context %))
+                                                       (kb/find-sentexes kb 'unary_predicate)))
+                           :support (set (for [j (some->> (v/handle-of kb m 'CxUniverse)
+                                                          (v/supporting-justifications kb))]
+                                           [(:informant j)
+                                            (into #{} (map #(v/sentence-of (v/sentex kb %))) (:antecedents j))]))
+                           :read    (believed? kb m CxWorld)})])))))]
+    (is (= #{{:homes   ['CxUniverse]
+              :support #{['declaredType #{'(arg parentOf 1 orphan_t)}]}
+              :read    true}}
+           (set (map second results)))
+        (pr-str results))))
+
 ;; ---- argArg: the type read off the sentence -----------------------------
 
 (tu/deftest-kb an-arg-arg-entails-the-type-the-sentence-names
@@ -1103,7 +1130,7 @@
 (tu/deftest-kb every-arrival-order-of-an-arg-arg-reaches-the-same-belief
   ;; The declaration, the fact, and the retraction of the binding that gives the named
   ;; type two arguments.  With the retraction last the fact names a type that is not
-  ;; mintable yet, so it waits on its own handle and is minted when the binding leaves.
+  ;; mintable yet, so its mint is stored OUT and comes IN when the binding leaves.
   (doseq [order (tu/permutations [:declaration :fact :type])]
     (tu/with-neutral-kb [kb tu/fresh]
       (tu/with-terms [kindOf dog Rex CxWorld]
@@ -1770,23 +1797,24 @@
            (support (fn [r a z] (list r z a)))))
     (is (true? (second (support (fn [r a z] (list r z a))))))))
 
-(tu/deftest-kb a-type-bound-to-another-length-mints-nothing-and-records-nothing
+(tu/deftest-kb a-type-bound-to-another-length-stores-its-mint-inert-and-records-nothing
   ;; `t` is declared binary, so `(t Rex)` would be a tuple of a length its binding denies:
-  ;; `arity/mintable-type?` reads `t`'s arity and the declaration mints nothing.  No
-  ;; refusal reads a binding (docs/taxonomy.md, "Arity"): the fact stands, and the
-  ;; refusal record holds nothing for the declaration.  The binding leaving mints.
+  ;; `arity/mintable-type?` reads `t`'s arity and the mint is stored OUT.  No refusal reads
+  ;; a binding (docs/taxonomy.md, "Arity"): the fact stands, and the refusal record holds
+  ;; nothing for the declaration.  The binding leaving brings the mint IN.
   (tu/with-terms [t rel Rex Mary CxWorld]
     (with-entailing
       (a-context kb CxWorld)
       (a-type kb t CxWorld)
-      (let [bh (v/assert kb (list 'binary_predicate t) CxWorld)
-            dh (v/assert kb (list 'arg rel 1 t) CxWorld)]
+      (let [bh     (v/assert kb (list 'binary_predicate t) CxWorld)
+            dh     (v/assert kb (list 'arg rel 1 t) CxWorld)
+            minted #(some->> (v/handle-of kb (list t Rex) CxWorld) (v/in? kb))]
         (v/assert kb (list rel Rex Mary) CxWorld)
         (is (v/ask? kb (list rel Rex Mary) CxWorld) "the fact stands")
-        (is (nil? (v/handle-of kb (list t Rex) CxWorld)) "no membership in t is stored")
+        (is (false? (minted)) "the membership in t is stored OUT")
         (is (nil? (get @(reasoning/refused kb) dh)) "nothing is recorded")
         (v/retract! kb bh)
-        (is (some? (v/handle-of kb (list t Rex) CxWorld)) "the binding leaving mints"))))
+        (is (true? (minted)) "the binding leaving brings it IN"))))
   (testing "with the entailment off, the constraint reading admits it — Rex is untyped"
     (tu/with-terms [t rel Rex Mary CxWorld]
       (without-entailing
@@ -1796,10 +1824,10 @@
        (v/assert kb (list 'arg rel 1 t) CxWorld)
        (is (some? (v/assert kb (list rel Rex Mary) CxWorld)))))))
 
-(tu/deftest-kb a-type-bound-to-another-length-mints-nothing-on-the-derivation-path
+(tu/deftest-kb a-type-bound-to-another-length-stores-its-mint-inert-on-the-derivation-path
   ;; The same declaration, reached by a rule firing instead of by a caller: the
-  ;; conclusion stands and mints nothing, as at the entry point, with nothing in the
-  ;; ledger.
+  ;; conclusion stands and its mint is stored OUT, as at the entry point, with nothing in
+  ;; the ledger.
   (tu/with-terms [t rel trigger Rex Mary CxWorld]
     (with-entailing
       (a-context kb CxWorld)
@@ -1811,7 +1839,8 @@
       (v/assert kb (list trigger Rex Mary) CxWorld)
       (is (some? (v/handle-of kb (list rel Rex Mary) CxWorld))
           "the conclusion stands")
-      (is (nil? (v/handle-of kb (list t Rex) CxWorld)) "no membership in t is stored")
+      (is (false? (some->> (v/handle-of kb (list t Rex) CxWorld) (v/in? kb)))
+          "the membership in t is stored OUT")
       (is (empty? (v/violations kb))))))
 
 (tu/deftest-kb a-declaration-arriving-over-stored-facts-closes-the-whole-chain

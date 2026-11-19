@@ -296,6 +296,35 @@
                        (tu/permutations [:ground :e1 :e2])))
       "the except leaves"))
 
+(defn- context-merge-reading
+  "The types of `Rex` each of CxA, CxB and CxLow (under CxA) believes once `ops` run in
+  order: `:dog` `(dog Rex)` in CxA, `:cat` `(cat Rex)` in CxB, `:merge` `(equals CxA
+  CxB)` in CxUniverse, `:unmerge` its retraction.  The terms are read back by name."
+  [ops]
+  (tu/with-neutral-kb [kb tu/fresh]
+    (tu/with-terms [dog cat Rex CxA CxB CxLow]
+      (v/assert kb (list 'genlCx CxLow CxA) 'CxUniverse)
+      (let [eq (list 'equals CxA CxB)]
+        (doseq [op ops]
+          (case op
+            :dog     (v/assert kb (list dog Rex) CxA)
+            :cat     (v/assert kb (list cat Rex) CxB)
+            :merge   (v/assert kb eq 'CxUniverse)
+            :unmerge (v/retract! kb (v/handle-of kb eq 'CxUniverse))))
+        (into {} (for [[c n] [[CxA 'CxA] [CxB 'CxB] [CxLow 'CxLow]]]
+                   [n (into #{} (keep (fn [[t tn]] (when (v/ask? kb (list t Rex) c) tn)))
+                            [[dog 'dog] [cat 'cat]])]))))))
+
+(deftest two-names-of-one-context-share-its-extent-in-every-order-and-part-with-the-equality
+  (testing "the equality standing: each name, and a context under one, sees both facts"
+    (is (= #{'{CxA #{dog cat} CxB #{dog cat} CxLow #{dog cat}}}
+           (into #{} (map context-merge-reading) (tu/permutations [:dog :cat :merge])))))
+  (testing "the equality retracted: the KB that never had it"
+    (is (= #{'{CxA #{dog} CxB #{cat} CxLow #{dog}}}
+           (into #{} (map #(context-merge-reading (concat % [:unmerge])))
+                 (tu/permutations [:dog :cat :merge]))
+           #{(context-merge-reading [:dog :cat])}))))
+
 ;; ---- 3. congruence -------------------------------------------------------
 ;; Every other test puts the merged term in top-level argument position, so this is the
 ;; one test of a nested occurrence (docs/equality.md, "Congruence comes free").
@@ -1054,17 +1083,16 @@
                   :open #{a b c} :prove 1 :matching 1}
                  (equation-reads kb pred a b c CxEq))))))))
 
-(tu/deftest-kb a-stated-rewrite-of-is-answered-as-a-directed-edge
-  ;; `rewriteOf` is directional: the stated edge answers every read, and neither its
-  ;; converse nor a self-edge (which `wff` refuses) is answered.  The goal is asked as
-  ;; spelled, since the spelling rename it states would otherwise rewrite the goal into
-  ;; `(rewriteOf a a)`.
+(tu/deftest-kb a-stated-rewrite-of-is-answered-through-reader-representatives
+  ;; The stored preference stays directed. Its public relation normalizes both
+  ;; endpoints before matching, so a visible edge can witness a canonical self pair.
+  ;; It does not assert that self pair or change raw record/provenance reads.
   (tu/with-terms [CxEq]
     (let [[a b c] (sort [(tu/tmp-ind "Rw") (tu/tmp-ind "Rw") (tu/tmp-ind "Rw")])]
       (v/assert kb (list 'rewriteOf a b) CxEq {:strength :monotonic})
       (v/assert kb (list 'sameAs b c) CxEq {:strength :monotonic})
-      (is (= {:stated true :symmetric false :reflexive false :chain false
-              :open #{b} :prove 1 :matching 1}
+      (is (= {:stated true :symmetric true :reflexive true :chain true
+              :open #{a} :prove 1 :matching 1}
              (equation-reads kb 'rewriteOf a b c CxEq))))))
 
 (tu/deftest-kb an-equation-is-answered-only-where-it-is-visible

@@ -409,7 +409,8 @@
       (p/unindex-sentex! i1 sx h)
       (when (rules/rule? sx)
         (rules/unindex-rule! i1 h (rules/antecedent-keys (:antecedent sx))
-                             (rules/consequent-index-pred sx) (:context sx)))
+                             (rules/consequent-index-pred sx) (rules/consequent-heads sx)
+                             (:context sx)))
       (special/unpost-mint! i1 (sx/sentence-of sx) (:context sx) h)
       (tax/retire-stored-supporter! i1 h))
     (doseq [[h sx] sxs]

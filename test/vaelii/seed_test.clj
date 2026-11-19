@@ -9,6 +9,7 @@
             [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
             [vaelii.host.seed :as seed]
+            [vaelii.impl.io.shipped :as shipped]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/empty-kb))
@@ -28,17 +29,17 @@
   ;; the point of layer discovery: a KB is added by dropping a file, no code change
   (testing "upper holds the vocabulary, the interface rules and the domain files, sorted;
              the loader reads core.txt first"
-    (is (= ["abstract.txt" "core.txt" "interface-rules.txt" "life.txt" "measure.txt"
+    (is (= ["abstract.txt" "core.txt" "interface-rules.txt" "kinship.txt" "life.txt" "measure.txt"
             "organism.txt" "reflection.txt" "society.txt" "space.txt" "structure.txt"
             "time.txt"]
-           (seed/layer-files "upper")))
+           (shipped/layer-files "upper")))
     (is (= "core.txt" (first (core-context/upper-files)))))
   (testing "middle holds the theory contexts"
     (is (= '[CxAnatomy CxBiology CxChange CxKinship CxMereology
              CxNormalPhysicalConditions CxRealWorld CxSize CxSocial CxTra]
-           (seed/layer-contexts "middle"))))
+           (shipped/layer-contexts "middle"))))
   (testing "an absent layer is nil, not a crash"
-    (is (nil? (seed/layer-contexts "no-such-layer")))))
+    (is (nil? (shipped/layer-contexts "no-such-layer")))))
 
 (deftest a-missing-kb-file-fails-loudly
   ;; a silently empty ontology is worse than a failure to start
@@ -89,8 +90,8 @@
   (tu/load-core! kb)
   (seed/load-context kb 'CxBiology "middle")
   (testing "its sentences land in the context the file names"
-    (is (seq (v/sentexes-matching kb '(capabilityType bird flying) 'CxBiology)))
-    (is (empty? (v/sentexes-matching kb '(capabilityType bird flying) 'CxUniverse))))
+    (is (seq (v/sentexes-matching kb '(abilityType bird flying) 'CxBiology)))
+    (is (empty? (v/sentexes-matching kb '(abilityType bird flying) 'CxUniverse))))
   (testing "and its edges are stored in CxUniverse, where every edge is"
     (is (seq (v/sentexes-matching kb '(genlCx CxBiology CxUniverse) 'CxUniverse))))
   (testing "and its rules read the upper layer's genl closure"

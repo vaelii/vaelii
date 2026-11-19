@@ -41,6 +41,16 @@ over a schema. Stored and queried terms are normalized to a single normal form, 
 stored `(parent_chain (fatherOf (fatherOf Tom)))` and a query `(parent_chain
 (grandfather_of Tom))` meet. Everything below is Part B.
 
+A compound `(rewriteOf T E)`, with `E` a ground application and `T` a symbol among its
+arguments, is a ground rule `E → T` beside its NAT reify-to-term reading
+([nat.md](nat.md)) (`rewrite/equation-rule`). It rewrites an application that stays a
+term, such as an `unreifiable_function` application, wherever a stored literal names it;
+a meet's absorption is one
+([canonicalization.md](canonicalization.md#a-meet-a-stated-inclusion-absorbs)). A `T`
+outside `E`'s arguments names the reified NAT, and `nat-read`'s rival check answers for
+it, so no rule is cached
+(`rewrite_query_test/a-private-rival-rechecks-an-inherited-forward-rewrite-answer`).
+
 `vaelii.impl.rewrite` is the pure term algebra — orientation, matching,
 normalization — knowing nothing of the store, belief, or the taxonomy. The taxonomy
 caches the active oriented rules (belief-following, like the partition),
@@ -100,6 +110,12 @@ a separate and larger mechanism. An equation whose variable condition fails both
   (equals (grandfather_of Tom) (grandfather_of Tom)))`, a denial of reflexivity. A
   literal beside an equality literal, in a rule's antecedent for instance, normalizes as
   usual, and `rule-applies?` reads the same positions `normalize-sentence` rewrites.
+- **A `natFormula` payload keeps its root.** The payload is the application its constant
+  was minted for, so a rule rewrites its arguments and never the payload itself
+  (`rewrite/payload-predicates`): `(natFormula K (CxTimeFn CxStory (TimeIntersectionFn
+  Noon Y2000)))` restates as `(natFormula K (CxTimeFn CxStory Noon))` under `(rewriteOf
+  Noon (TimeIntersectionFn Noon Y2000))`, and `(natFormula K E)` stays under `(rewriteOf
+  T E)`.
 
 ## The write path — cache, migrate, supersede
 
@@ -193,7 +209,13 @@ hides the twins there. What a reader there answers follows from where the fact l
   original (`special/retired-copy`). So the stored copies and what a reader reads do not
   depend on the order the facts and the excepts arrive in. A ground `sameAs` / `equals`
   / `rewriteOf` excepted below the fact's context gives that reader a copy too, since the
-  except splits the reader's class.
+  except splits the reader's class. An except of a handle an equality rests on counts as
+  an except of the equality, for the readers migration takes and for the copy's
+  witnesses. An except of `(equals JanA JanB)` therefore reaches the uses of the
+  constants of `(FruitFn JanA)` and `(FruitFn JanB)` through the collision merge that
+  rests on it. The sweep an except's move runs migrates every equality in its target's
+  consequence closure (`special/except-move-sweeps`,
+  `nat_test/a-context-that-excepts-a-merge-reads-each-use-under-the-name-it-was-written-with`).
 
 An except of an equality is never carried onto the twins the equality raised
 (`special/handle-twins`): migration never restates an equality, so the equality has no
@@ -262,7 +284,7 @@ non-confluent set confluent), and AC-rewriting for permutative equations. See
 ## Where it lives
 
 - `vaelii.impl.rewrite` — pure: `term-size`, `orient` / `kbo>`, `match`, `normalize` /
-  `normalize-sentence`, `schematic-equation?`, `rule-applies?`, and
+  `normalize-sentence`, `schematic-equation?`, `equation-rule`, `rule-key`, `rule-applies?`, and
   `non-joining-pairs` (critical-pair confluence detection). Requires only
   `vaelii.impl.sentex`.
 - `vaelii.impl.taxonomy` — the belief-following rewrite-rule cache

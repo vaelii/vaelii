@@ -13,7 +13,8 @@
   every membership the uses entail, the orthogonal declarations (`orthogonal` and
   `siblingDisjointException`) over a pair a stated separation divides, the stored rules a
   declaration the engine implements states, the `genl` nodes with no declared arity, the
-  functions a held rule applies with no single correspondence, the argument declarations
+  `genl` edges whose spec admits a length its genl does not, the functions a held rule
+  applies with no single correspondence, the argument declarations
   that name a position their predicate does not have, the rule pairs whose conclusions
   would contradict each other if both fired, and for review: three ontology-engineering
   smells (sibling types with one direct `genl` set, stated edges that derive without
@@ -91,7 +92,8 @@ reads no census: one candidate term, then its memberships and its first use, at 
 The `orthogonal` pass reads one census of visible orthogonal declarations, then one
 declaration at a time. The rule-macro pass reads one census of the stored rules, then
 one rule at a time. The undeclared-arity pass reads one census of the visible `genl`
-edges, then one node at a time. The uncorresponded-function pass reads one census of the
+edges, then one node at a time. The genl-arity-mismatch pass reads the same census, then
+one edge at a time. The uncorresponded-function pass reads one census of the
 stored rules, then one rule at a time. The stranded-declaration pass reads one census of the
 argument declarations, then one declaration at a time. The two rule-clash passes read one
 census of the stored rules, then one candidate pair at a time. The taxonomy-island pass
@@ -221,7 +223,8 @@ The pass has these limits:
   declaration remains believed. Classification is read in that same reader, so a
   sibling's membership cannot discharge the obligation. Literal `Quote` and nested
   sentences do not define their contents; ordinary function arguments do. Generated
-  lifts, arity-class copies and NAT bookkeeping alone create no ordinary home.
+  lifts, arity-class copies and NAT bookkeeping alone create no ordinary home, and a
+  forced arity-class store in CxUniverse creates one only for a term with no other home.
 - **Only proven skeletal population is exempt.** An answer with no stored defining home
   is still audited unless its support proves it skeletal-only. Incomplete live defining
   support reports `{:status :gap :gap :incomplete-defining-contexts :classifier c
@@ -627,6 +630,7 @@ shapes, with `?o…` standing for the free arguments of a predicate of arity `n`
 | `(inverse P Q)` | `(P ?a ?b)` ⇒ `(Q ?b ?a)`, and a second rule `(Q ?a ?b)` ⇒ `(P ?b ?a)` | `P` and `Q` declared with arity 2; both rules are visible from CxUniverse |
 | `(genl P Q)` | `(P ?o1 … ?on)` ⇒ `(Q ?o1 … ?on)` | `Q` is not a term the engine interprets; neither `P` nor `Q` is declared with another arity or with variable arity |
 | `(arg P i C)` | `(P ?o1 … ?on)` ⇒ `(C ?oi)` | `P` declared with arity `n ≥ 2` (a unary `P` gives a type, so `(P ?x)` ⇒ `(C ?x)` is the `genl` row); `C` is not a term the engine interprets; the rule is visible from CxUniverse |
+| `(intersection P A B)` | `(A ?o1 … ?on)`, `(B ?o1 … ?on)` ⇒ `(P ?o1 … ?on)`, `n` 1 or 2, and the same with a third component `C` for `(intersection P A B C)` | `P` and the components are distinct and none is a term the engine interprets; none is declared with another arity or with variable arity |
 | `(predAllInstance P C K)` | `(C ?x)` ⇒ `(P ?x K)`, `K` ground | the rule is a `set/defaultRule`, and `P` is not declared with another arity |
 | `(predInstanceAll P K C)` | `(C ?y)` ⇒ `(P K ?y)`, `K` ground | as `predAllInstance` |
 
@@ -656,15 +660,15 @@ A reviewer records a decision on any suggestion with an
 
 ```clojure
 ;; (set/defaultRule (set/forwardRule (implies (livesIn ?a ?p) (locatedIn ?a ?p))))
-(acknowledgedFinding :rule-macro (genl livesIn locatedIn) "livesIn is meant as a default")
-(declined_rule_macro (genl livesIn locatedIn))
+(acknowledgedFinding :rule-macro (Quote (genl livesIn locatedIn)) "livesIn is meant as a default")
+(declined_rule_macro (Quote (genl livesIn locatedIn)))
 ```
 
 A suggestion the rule's context sees acknowledged moves from `:rule-macro` to the
 review-only `:rule-macro-review`, marked with the reason as `:acknowledged`. A forward
-rule in `core.txt` concludes `(acknowledgedFinding :rule-macro D "Acknowledged via
-declined_rule_macro; no reason supplied.")` from a `(declined_rule_macro D)` record, and
-the pass reads only the acknowledgment. The record quotes the suggestion rather than
+rule in `core.txt` concludes `(acknowledgedFinding :rule-macro (Quote D) "Acknowledged via
+declined_rule_macro; no reason supplied.")` from a `(declined_rule_macro (Quote D))` record,
+and the pass reads only the acknowledgment. The record quotes the suggestion rather than
 naming the rule by `(sentexHandle H)`: a handle belongs
 to one store, and `export-text!` skips a sentence that names one, so a handle-based record
 would not survive a reload. The suggestion is a function of the rule's sentence, so the
@@ -745,19 +749,24 @@ missing declaration. So the sweep reads each node of the visible `genl` edges:
 {:status :gap
  :candidate-count 0
  :undeclared-arity
- [{:term loose_kind} {:term stray_kind}]}
+ [{:term below_kind} {:term loose_kind} {:term stray_kind}]}
 ```
 
-One finding is reported for each node, in print order. A node has an arity when
-`arity/relation-length` binds it to an exact length or a `variable_arity` membership
-releases it (`arity/released?`), read the same at every context
-([taxonomy.md](taxonomy.md#arity)): an `(arity P n)` declaration, a membership in an
-exact-arity class (`unary_predicate`, `binary_predicate`, `unary_function`, and the
-others of `sx/exact-arity-classes`), a `:monotonic` membership in a type that reaches one
-through `:monotonic` `genl` edges, or a `variable_arity`, `variable_arity_predicate` or
-`variable_arity_function` membership, each stated in any context, or the one exact length
-the bound predicates above the node agree on. A node below a bound predicate is therefore
-not a finding.
+One finding is reported for each node, in print order. A node has an arity when the
+node itself is known to have an exact length (`arity/own-length`) or a `variable_arity`
+membership releases it (`arity/released?`), read the same at every context
+([taxonomy.md](taxonomy.md#arity)): an engine grammar term's `:shape`, an `(arity P n)`
+declaration, a membership in an exact-arity class (`unary_predicate`, `binary_predicate`,
+`unary_function`, and the others of `sx/exact-arity-classes`), a `:monotonic` membership
+in a type that reaches one through `:monotonic` `genl` edges, or a `variable_arity`,
+`variable_arity_predicate` or `variable_arity_function` membership, each stated of the
+node in any context. An arity is part of a predicate's own definition, as an `arg`
+declaration is. So a length the node would read through `genl` from a bound predicate
+above it does not declare the node: `below_kind` above is a finding although
+`placed_kind` is a `unary_predicate`. `arity/relation-length` reads that inherited length
+for the argument-position check and the inert-tuple test. The genl-arity-mismatch pass
+checks that the lengths the two ends of an edge are known to have agree
+([below](#what-a-genl-arity-mismatch-finding-means)).
 
 `core.txt` declares an arity for every type it places under `thing`, and the upper and
 middle text files declare `(unary_predicate X)` beside each type's definition, in the
@@ -780,6 +789,51 @@ The pass has these limits:
 
 Reading each edge and each node's two arity reads spend one work unit, and
 `:max-results` counts these findings after the rule-macro category.
+
+## What a genl-arity-mismatch finding means
+
+A `genl` edge `(genl spec super)` says every `spec` tuple is a `super` tuple, so every
+length `spec` admits has to be one `super` admits. The sweep reads each visible `genl`
+edge and compares the arity each end is known to have of itself (`arity/own-length`,
+the reading the undeclared-arity pass takes). An exact length `n` admits `n` alone. A
+`variable_arity` release admits every length at or above its `arityMin`, or every length
+when it states none. An edge is a finding when `spec` admits a length `super` does not
+(`arity/admits-length?`):
+
+```clojure
+;; (unary_predicate placed_kind)
+;; (variable_arity chainOf)
+;; (genl placed_kind chainOf)
+;; (genl chainOf placed_kind)
+{:status :gap
+ :candidate-count 0
+ :genl-arity-mismatch
+ [{:spec chainOf :genl placed_kind :spec-arity {:min 0} :genl-arity {:exact 1}}]}
+```
+
+`(genl placed_kind chainOf)` is not a finding: the one length `placed_kind` admits,
+`chainOf` admits too. `(genl chainOf placed_kind)` is one, since `chainOf` admits two
+arguments and `placed_kind` admits one. Two exact lengths agree only when they are
+equal. A floor of 3 under a floor of 2 agrees, and a floor of 2 under a floor of 3 does
+not. An arity is part of each predicate's own definition, as an `arg` declaration is, so
+the sweep checks that the two definitions an edge relates agree rather than reading one
+end's length into the other.
+
+One finding is reported for each edge, in print order of its `spec` and then its
+`genl`. `:spec-arity` and `:genl-arity` give each end's signature, `{:exact n}` or
+`{:min m}`.
+
+The pass has these limits:
+
+- **Edge census, not candidate terms.** The caller's candidate set does not bound the
+  pass. The pass reads every visible `genl` edge once, as the undeclared-arity pass does.
+- **Both ends known.** An edge with an end that has no arity of its own is not read: that
+  end is an undeclared-arity finding. An edge from a term to itself is not read.
+- **Visible from the audit context.** An edge asserted in a context the audit context
+  cannot see is not read; each end's arity is read the same at every context.
+
+Reading each edge and each edge's two arity reads spend one work unit, and `:max-results`
+counts these findings after the undeclared-arity category.
 
 ## What an uncorresponded-function finding means
 
@@ -812,7 +866,7 @@ The pass has these limits:
 - **Visible from the audit context.** A rule the audit context cannot see is not read.
 
 Reading each rule spends one work unit, and `:max-results` counts these findings after
-the undeclared-arity category.
+the genl-arity-mismatch category.
 
 ## What a stranded-declaration finding means
 
@@ -1257,9 +1311,9 @@ stays visible with the reason beside it and no longer makes a default sweep `:ga
 
 | category | subject | review bucket | read from |
 |---|---|---|---|
-| `:rule-macro` | the suggested declaration, `(genl livesIn locatedIn)` | `:rule-macro-review` | the rule's context |
+| `:rule-macro` | the suggested declaration, quoted: `(Quote (genl livesIn locatedIn))` | `:rule-macro-review` | the rule's context |
 | `:rule-clash` | the pair, `(RulePairFn (Quote R1) (Quote R2))` | `:rule-clash-review` | the audit context |
-| `:derivable-stated-edge` | the stated sentence, `(genl plant organism)` | `:derivable-stated-edge`, already review-only | the audit context |
+| `:derivable-stated-edge` | the stated sentence, quoted: `(Quote (genl plant organism))` | `:derivable-stated-edge`, already review-only | the audit context |
 
 `acknowledgedFinding` and its `declined_rule_macro` sugar are `eternal_predicate`s:
 their tuples hold independently of time within the theory, not only at a time slice.
@@ -1314,14 +1368,16 @@ not an expiring grant.
 
 Whole-event participation (`actor` and all its binary specializations), causes,
 sub-situations, provenance and biological genealogy describe fixed history and are
-eternal. Current kinship `relativeOf`, which also admits chosen family, is instead
-time-agnostic and explicitly non-eternal. The current RCC region relations describe
+eternal. Generic kinship predicates, including `kinOf`, are time-agnostic and
+non-eternal. `BloodKinFn` qualifies their eternal blood readings; `ChosenKinFn`
+qualifies their time-varying chosen readings. Qualification does not transfer eternity
+back to the common predicate. These marks do not implement cross-slice projection (#272). The current RCC region relations describe
 fixed extents and are eternal; this does not promote compass relations between moving
 objects or introduce a geographic-territory distinction.
 
 Audit-completeness requirements (`predAllSpecified`, `predSpecifiedAll`,
 `typeAllSpecified`) are time-varying and non-eternal. `siblingDisjointException`,
-`partType` and `capabilityType` are time-agnostic and non-eternal, like taxonomy laws.
+`partType` and `abilityType` are time-agnostic and non-eternal, like taxonomy laws.
 Algebraic rule macros are eternal and decontextualized: `reflexive`, `irreflexive`,
 `asymmetric`, `anti_symmetric`, `transitive`, `anti_transitive`, `associative` and
 `idempotent`, like the canonicalization properties `commutative`, `commutativeInArgs`,
@@ -1372,11 +1428,19 @@ Each rule is quoted on its own. A quoted term is opaque, so no inference or
 canonicalization reaches inside either one, and what the pair needs inferred — that
 `(RulePairFn R1 R2)` and `(RulePairFn R2 R1)` name the same pair — belongs to
 `RulePairFn`, outside both quotes. `core.txt` states `(commutative RulePairFn)`. The
-subject position is a mention, `(quotedArg acknowledgedFinding 2 expression)`, which the
-store keeps as written, so the two orders store as two sentexes
+subject position is a use, `(arg acknowledgedFinding 2 expression)`, so the store sorts
+`RulePairFn`'s two quoted arguments and enters neither quote
 ([canonicalization.md](canonicalization.md#compounds-below-the-literal-sorted)). The sweep
 reads the subject as a bag of rules (`integrity/acknowledged-pair`), so either order names
 the pair.
+
+A `:rule-macro` or `:derivable-stated-edge` subject is one sentence, written `(Quote S)`.
+The store does not enter the quote, so the sweep takes S out of it. It reads S as the KB
+would store it in the context the record is read from (`kb/canonical-sentence`), and
+compares the finding's sentence the same way. Under the symmetric `inverse` and
+`disjoint`, `(Quote (inverse P Q))` and `(Quote (inverse Q P))` name one suggestion, and
+`(Quote (disjoint A B))` and `(Quote (disjoint B A))` one stated edge. A subject not
+written `(Quote S)` names no finding of these two categories.
 
 ```clojure
 ;; (acknowledgedFinding :rule-clash

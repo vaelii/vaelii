@@ -28,7 +28,6 @@
             [clojure.java.io :as io]
             [clojure.set :as set]
             [clojure.string :as str]
-            [clojure.walk :as walk]
             [hiccup.page :as hpage]
             [hiccup2.core :as h]
             [reitit.ring :as ring]
@@ -591,6 +590,7 @@
   believed confers nothing."
   {:blocked "a block its rule carries holds (a closed extent, a withdrawn different), so the truth-maintenance network blocks this justification"
    :guard   "a guard defeat in force at its context covers this justification: its rule's exception or unknown antecedent holds there"
+   :inert   "its type's length bindings admit no membership, so the truth-maintenance network holds this mint void"
    :void    "the forced-monotonic declarations its context sees hold this firing void"
    :exempt  "its context exempts the placement this justification concludes"})
 
@@ -761,6 +761,14 @@
       (frag (list [:title (str "vaelii · " title)] [:main#main body]))
       (resp (str/replace (page title body) line-break-at "\n")))))
 
+(defn page-response
+  "`body` as a page of the browser, for a handler that is not one of its own: the whole
+  document on a plain request, the `#main` fragment when htmx asks (`render`).  It reads
+  nothing off `req` but the htmx headers, so a handler mounted in front of the browser
+  calls it as an extension's route does."
+  [req title & body]
+  (apply render {:fragment? (fragment-request? req)} title body))
+
 (defn- edges-of
   "The [sub super] edges of a transitivity relation, read as the believed sentexes
   that state them.  The taxonomy caches the *closure*; the tree wants the direct
@@ -848,9 +856,9 @@
 ;; A ground `(F a…)` under a `reifiable_function` is stored as an opaque constant in the
 ;; reserved `nat/` namespace (docs/nat.md), so **no page ever shows one**: every place a
 ;; term is rendered goes through `term-link`, and a reified one renders as the expression
-;; it was minted from.  The parens are **bold**, which separates a reified NAT from an
-;; ordinary compound beside it (on the constant's own page `(natFormula K E)` would
-;; otherwise render K and E identically).  The opening paren links to the constant's page.
+;; it was minted from.  Its parens are **bold** and violet, which separates a reified NAT
+;; from a compound beside it (on the constant's page `(natFormula K E)` would otherwise
+;; render K and E identically).  The opening paren links to the constant's page.
 
 (defn- nat-expression
   "What reified term `k` denotes, from the per-request cache — one `v/term-expression`
@@ -886,6 +894,18 @@
      (sequential? t) (str "(" (str/join " " (map #(term-text env % seen) t)) ")")
      :else           (pr-str t))))
 
+(defn- quotation
+  "Wrap `args`, the rendered arguments of `f`, in the span that sets their dimming.
+  `Quote` and `Quasiquote` (`sx/quoting-functors`) take a mention, so their arguments go
+  in `.quoted` or `.quasiquoted`.  An `Unquote` argument goes in `.unquoted`, which
+  restores the sentence's colour under a `Quasiquote`.  Any other `f` leaves `args` bare."
+  [f args]
+  (case f
+    Quote      [:span.quoted args]
+    Quasiquote [:span.quasiquoted args]
+    Unquote    [:span.unquoted args]
+    args))
+
 ;; The cycle: a reified term renders as its expression, whose arguments are terms — an
 ;; unreified structural NAT compound, or another reified term, which renders as *its* expression.
 (declare render-form)
@@ -896,7 +916,7 @@
 (declare handle-layout)
 
 (defn- nat-ref
-  "A reified term, rendered as the expression it was minted from with **bold parens**.
+  "A reified term, rendered as the expression it was minted from with **bold violet parens**.
   The opening paren links to the constant's own page — the one place its `natFormula`
   map, its materialized result types and its uses are listed — so the reified term is
   one click away and still never spelled out.
@@ -910,7 +930,8 @@
      [:a.nat-paren {:href  (str "/term?q=" (url-enc (pr-str k)))
                     :title "the reified term itself"} "("]
      (if e
-       (interpose " " (map #(render-form env % (conj seen k)) e))
+       (let [[f & args] (map #(render-form env % (conj seen k)) e)]
+         (list f (when (seq args) " ") (quotation (first e) (interpose " " args))))
        [:span.muted {:title "no believed expression for this reified term"} "…"])
      [:span.nat-paren ")"]]))
 
@@ -944,17 +965,15 @@
 (defn- paren
   "One parenthesis, coloured by nesting depth.  `depth` counts from 0 at a sentence's
   outermost paren and wraps at `rb-depths`, so a matching pair is one colour and no pair
-  is the colour of the one inside it.  With `href`, the paren is a link there, in the
-  same colour."
-  ([depth s]
-   [:span {:class (str "rb" (inc (mod depth rb-depths)))} s])
-  ([depth s href]
-   [:a {:class (str "rb" (inc (mod depth rb-depths))) :href href :title "the term itself"} s]))
+  is the colour of the one inside it."
+  [depth s]
+  [:span {:class (str "rb" (inc (mod depth rb-depths)))} s])
 
 (defn- term-compound?
   "Is `form` a ground compound term, a structural NAT: its functor is spelled as a function
-  or a context (CapitalCamelCase), which no literal is headed by.  Its open paren links to
-  its term page, as a reified term's does (`nat-ref`)."
+  or a context (CapitalCamelCase), which no literal is headed by.  Its parens are
+  `.struct-paren`, outside the depth colours, and its open paren links to its term page,
+  as a reified term's does (`nat-ref`)."
   [form]
   (and (#{:individual :context} (v/term-role (first form)))
        (not-any? #(= :variable (v/term-role %)) (tree-seq sequential? seq form))))
@@ -1089,6 +1108,7 @@
     (let [f     (first form)
           rule? (and (= 'implies f) (= 3 (count form)))
           conn? (and in-rule? (contains? laid-out-connectives f) (> (count form) 2))
+          snat? (term-compound? form)
           k     (+ col 2 (count (term-text env f seen)))
           args  (mapv #(if (and (= 'comment f) (string? %))
                          [(comment-text env % seen) false]
@@ -1096,13 +1116,14 @@
                       (rest form))
           multi (boolean (or rule? conn? (some second args)))
           sep   (if multi (str "\n" (apply str (repeat k \space))) " ")]
-      [[:span.sx (if (term-compound? form)
-                   (paren depth "(" (str "/term?q=" (url-enc (pr-str form))))
+      [[:span.sx (if snat?
+                   [:a {:class "struct-paren" :href (str "/term?q=" (url-enc (pr-str form)))
+                        :title "the term itself"} "("]
                    (paren depth "("))
         (first (layout env f seen (inc col) (inc depth) false))
         (when (seq args) " ")
-        (interpose sep (map first args))
-        (paren depth ")")]
+        (quotation f (interpose sep (map first args)))
+        (if snat? [:span {:class "struct-paren"} ")"] (paren depth ")"))]
        multi])
 
     (sequential? form) [[:span.sx (paren depth "(") (paren depth ")")] false]
@@ -4035,7 +4056,7 @@
               [:div
                (when goal [:p.muted "A goal is a sentence, e.g. " [:code "(animal ?x)"]
                            " — or a vector of them, e.g. "
-                           [:code "[(bird ?x) (hasCapability ?x flying)]"] ", which is a conjunctive "
+                           [:code "[(bird ?x) (able ?x flying)]"] ", which is a conjunctive "
                            "query and gets a join plan."])
                [:h3 "The levels"]
                [:ul (for [{lvl :level nm :name adds :adds} table]
@@ -4051,7 +4072,7 @@
               [:div
                [:h2 "Not a goal" in-cx (term-link env ctx)]
                [:p.muted "A vector goal is a conjunction, so each member has to be a "
-                "sentence — e.g. " [:code "[(bird ?x) (hasCapability ?x flying)]"] ". "
+                "sentence — e.g. " [:code "[(bird ?x) (able ?x flying)]"] ". "
                 "One sentence is written as a list: " [:code "(animal ?x)"] ", not "
                 [:code "[animal ?x]"] "."]]
 
@@ -4715,7 +4736,7 @@
     (render env "not found" [:p "No sentex #" h])))
 
 ;; ---- the non-monotonicity demo ------------------------------------------
-;; `(hasCapability Pingu flying)` is believed; the KB then learns `(penguin Pingu)` and
+;; `(able Pingu flying)` is believed; the KB then learns `(penguin Pingu)` and
 ;; stops believing it, with nothing deleted or overridden.  Retracting the penguin claim
 ;; brings it back.  Every step is an ordinary `edit` against the reader's own sandbox, and
 ;; every handle links to its record.  The conclusion that comes back is the **same
@@ -4734,10 +4755,10 @@
   [pred] (list pred demo-subject))
 
 (defn- demo-cap
-  "`(hasCapability Pingu <event-kind>)` — what the walkthrough's conclusion is about.
+  "`(able Pingu <event-kind>)` — what the walkthrough's conclusion is about.
   Flight is an event kind Pingu can be the doer of rather than a one-place property, so the
   conclusion under test is a binary sentence and the demo builds it apart from `demo-claim`."
-  [event-kind] (list 'hasCapability demo-subject event-kind))
+  [event-kind] (list 'able demo-subject event-kind))
 
 (def ^:private demo-script
   "The three steps.  `:from` is the state the KB has to be in for a step to be the next
@@ -4746,15 +4767,15 @@
   [{:n 1 :from :before   :op "start"
     :button "Assert (bird Pingu)"
     :does   "Tell the KB that Pingu is a bird. Say nothing whatever about flying."
-    :then   "(hasCapability Pingu flying) becomes believed"}
+    :then   "(able Pingu flying) becomes believed"}
    {:n 2 :from :believed :op "except"
     :button "Assert (penguin Pingu)"
     :does   "Tell it Pingu is a penguin. Retract nothing, delete nothing, override nothing."
-    :then   "(hasCapability Pingu flying) stops being believed"}
+    :then   "(able Pingu flying) stops being believed"}
    {:n 3 :from :blocked  :op "restore"
     :button "Retract (penguin Pingu)"
     :does   "Take the penguin claim back."
-    :then   "(hasCapability Pingu flying) is believed again — the same record"}])
+    :then   "(able Pingu flying) is believed again — the same record"}])
 
 (def ^:private demo-watched
   "The five sentences the walkthrough touches, in the order they make sense in: the two
@@ -4921,7 +4942,7 @@
               "thing brings it back. Each step below is a real write to "
               [:a {:href "/assert"} "your own sandbox"] "."]
              (demo-ledger st)
-             [:h3 "The conclusion under test " [:span.muted "(hasCapability Pingu flying)"]]
+             [:h3 "The conclusion under test " [:span.muted "(able Pingu flying)"]]
              (demo-verdict env st)
              (demo-controls st)
              [:h3 "Everything about Pingu " [:span.muted "as the KB holds it right now"]]
@@ -6161,21 +6182,15 @@
 
 ;; ---- a term's operations: rename, copy, remove ---------------------------
 ;;
-;; Each one rewrites every **asserted** sentex that mentions the term — the derived ones
-;; follow what they rest on — so each is a job, and each opens on a panel saying how
-;; many sentexes it touches and roughly how long that takes before anything is written.
+;; Each runs one of `vaelii.core`'s term operations as a job (docs/api.md, "Contract notes:
+;; term operations"), after a panel saying how many asserted sentexes mention the term and
+;; roughly how long the operation takes.  The operation needs the KB in this process.
 
 (def ^:private term-op-scan
   "How many sentexes the confirmation panel walks a term's index for.  Past it the panel
   says \"more than\" and the estimate is a floor, since counting a term with millions of
   mentions is itself a read of millions of records."
   50000)
-
-(def ^:private term-op-chunk
-  "How many sentexes one `edit!` of a term operation carries.  A chunk is one settle, and
-  the boundary between two is where a cancel lands and the progress moves, so a rename of
-  a large term reports as it goes and stops cleanly when asked."
-  500)
 
 (def ^:private term-op-confirm-ms
   "The estimated run past which a term operation asks for an explicit acknowledgement of
@@ -6186,91 +6201,76 @@
   "The estimate's rate before this process has timed a term operation on a KB."
   50.0)
 
+(def ^:private term-op-poll-ms
+  "How often a running term operation's `:stop?` reads the job's cancel flag, which is
+  also how often its progress note is filed."
+  200)
+
 ;; milliseconds per sentex of the last term operation on each KB, by name
 (defonce ^:private term-op-rates (atom {}))
 
 (defn- asserted-mentions
-  "The handles of the asserted sentexes mentioning `term` — at most `cap` of them, with
-  whether the walk stopped at the cap, when `cap` is given."
-  ([kb term]
-   (into [] (comp (filter :strength) (map :id)) (v/find-sentexes kb term)))
-  ([kb term cap]
-   (let [hs (into [] (comp (filter :strength) (map :id) (take (inc cap)))
-                  (v/find-sentexes kb term))]
-     [(vec (take cap hs)) (> (count hs) cap)])))
+  "The handles of the first `cap` asserted sentexes mentioning `term`, and whether the walk
+  stopped at the cap."
+  [kb term cap]
+  (let [hs (into [] (comp (filter :strength) (map :id) (take (inc cap)))
+                 (v/find-sentexes kb term))]
+    [(vec (take cap hs)) (> (count hs) cap)]))
 
 (defn- term-op-estimate-ms [kb n]
   (long (* n (get @term-op-rates (kb-name kb) default-ms-per-sentex))))
 
-(defn- rewrite-entry
-  "Sentex `s` as an `edit!` entry with `to` in place of `term`, its context included."
-  [s term to]
-  (let [swap #(if (= term %) to %)
-        opts (when (= :monotonic (:strength s)) {:strength :monotonic})]
-    (cond-> [(walk/postwalk swap (lines/wrapped-sentence s)) (swap (:context s))]
-      opts (conj opts))))
+(defn- term-op-kind
+  "The core operation the term bar's `op` runs on `term`: a rename onto a stored term is a
+  merge."
+  [kb op term to]
+  (case op
+    "copy"   :copy
+    "remove" :remove
+    "rename" (if (some #(= :term-exists (:type %)) (v/check-term-edit kb :rename {term to}))
+               :merge
+               :rename)))
 
-(def ^:private term-op-sample
-  "How many of a term's asserted sentexes the new-name check rewrites and asks
-  `check-edit` about: enough to catch the clash a merge makes, few enough to answer on a
-  pause in typing."
-  50)
-
-(defn- merge-problems
-  "Why `term` should not be merged into the existing term `to`, as text, or nil: the two
-  disjoint, a type and a relation, two relations of different arities, or a rewritten
-  sentex among the first `term-op-sample` that `check-edit` refuses."
-  [kb term to]
-  (let [rel?  #(v/relation? kb %)
-        arity #(v/relation-arity kb %)
-        [hs]  (asserted-mentions kb term term-op-sample)
-        adds  (into [] (comp (keep #(v/sentex kb %)) (map #(rewrite-entry % term to))) hs)
-        bad   (filter #(= :add (:in %)) (when (seq adds) (v/check-edit kb {:add adds})))]
-    (seq (concat
-          (when (v/disjoint? kb term to)
-            [(str term " and " to " are disjoint, so nothing can be both.")])
-          (when (not= (rel? term) (rel? to))
-            ["One is a relation and the other a type."])
-          (when (and (rel? term) (rel? to) (arity term) (arity to) (not= (arity term) (arity to)))
-            [(str term " takes " (arity term) " arguments and " to " takes " (arity to) ".")])
-          (when (seq bad)
-            [(str (count bad) " of the first " (count adds) " rewritten sentexes would be "
-                  "refused and stay as they are: " (or (:message (first bad)) "check-edit refuses it") ".")])))))
+(defn- term-op-mapping [kind term to]
+  (if (= :remove kind) [term] {term to}))
 
 (defn- term-op-name-status
   "What a rename or copy panel says of the new name `to` as it is typed (read as a
-  parameter: nil for none, anything but a symbol for text that names no term): not a name, the
-  term's own name, a name for another role, a new term, or an existing one — and then
-  whether `term` merges into it cleanly (`merge-problems`).  A GET: it writes nothing."
+  parameter: nil for none, anything but a symbol for text that names no term): not a name,
+  the term's own name, a new term or an existing one, and what `check-term-edit` refuses
+  of the operation it would run.  A GET: it writes nothing."
   [{:keys [kb]} op term to]
-  (let [role #(some-> (v/term-role %) name)]
-    (cond
-      (nil? to) nil
-      (not (symbol? to))
-      [:p.problem "Not a term name."]
-      (= term to)
-      [:p.problem "That is its own name."]
-      (not= (v/term-role term) (v/term-role to))
-      [:p.problem [:code (pr-str to)] " is spelled as a " (or (role to) "name of no role") ", and "
-       [:code (pr-str term)] " is a " (or (role term) "name of no role") "; the new name keeps its role."]
-      (empty? (v/find-sentexes kb to))
-      [:p.term-op-new [:code (pr-str to)] " is a new term: nothing mentions it yet."]
-      (= "copy" op)
-      [:p.term-op-exists [:code (pr-str to)] " exists: the copies join what it already has."]
-      :else
-      (let [problems (merge-problems kb term to)]
+  (cond
+    (nil? to) nil
+    (not (symbol? to)) [:p.problem "Not a term name."]
+    (= term to) [:p.problem "That is its own name."]
+    :else
+    (let [kind     (term-op-kind kb op term to)
+          exists?  (or (= :merge kind)
+                       (some #(= :term-exists (:type %)) (v/check-term-edit kb :rename {term to})))
+          problems (v/check-term-edit kb kind {term to})
+          name     [:code (pr-str to)]]
+      (cond
+        (and (seq problems) (not= :merge kind))
+        [:p.problem (:message (first problems)) "."]
+        (= :merge kind)
         [:div.term-op-exists
-         [:p [:code (pr-str to)] " exists, so this merges " [:code (pr-str term)] " into it."]
-         (if problems
-           (list [:p.problem "Not compatible:"] [:ul (for [p problems] [:li p])])
-           [:p.muted "Compatible: not disjoint, the same kind of term, and the first "
-            term-op-sample " rewritten sentexes pass check-edit."])]))))
+         [:p name " exists, so this merges " [:code (pr-str term)] " into it."]
+         (if (seq problems)
+           (list [:p.problem "Not compatible:"]
+                 [:ul (for [p problems] [:li (:message p) "."])])
+           [:p.muted "Compatible: the same kind of term, of one arity, and not disjoint."])]
+        exists?
+        [:p.term-op-exists name " exists: the copies join what it already has."]
+        :else
+        [:p.term-op-new name " is a new term: nothing mentions it yet."]))))
 
 (defn- term-op-panel
   "The confirmation a term bar button opens: what the operation does, how many asserted
-  sentexes it touches, roughly how long that takes, the new name for one that needs it,
-  and the button.  A run estimated past `term-op-confirm-ms` also needs its length
-  acknowledged.  A GET: it writes nothing."
+  sentexes mention the term, roughly how long the operation takes, the new name for one
+  that needs it, and the button.  A run estimated past `term-op-confirm-ms` also needs its
+  length acknowledged.  A term `check-term-edit` refuses, or a KB outside this process,
+  gets the reason and no button.  A GET: it writes nothing."
   [{:keys [kb] :as env} op term]
   (let [{:keys [verb named?]} (term-ops op)
         [hs more?] (asserted-mentions kb term term-op-scan)
@@ -6278,30 +6278,42 @@
         est    (term-op-estimate-ms kb n)
         long?  (> est term-op-confirm-ms)
         text   (term-text env term)
+        local? (some? (v/local-kb kb))
+        refused (when (and local? (pos? n) (not= "copy" op))
+                  (first (filter (comp #{:shipped-term :reserved-term} :type)
+                                 (v/check-term-edit kb :remove [term]))))
         close  [:button#sx-cancel {:type "button"} "Cancel"]]
     [:div.editor
      [:h3 verb " " [:code text]]
      [:p (case op
-           "rename" (list "Every asserted sentex that mentions " [:code text]
+           "rename" (list "Every premise that uses " [:code text]
                           " is asserted again with the new name in its place, and the old "
-                          "one is retracted. If the new name is already a term, this "
-                          "merges the two.")
-           "copy"   (list "Every asserted sentex that mentions " [:code text]
+                          "one is retracted, in one edit. If the new name is already a "
+                          "term, this merges the two. A quotation keeps the old name.")
+           "copy"   (list "Every premise that uses " [:code text]
                           " is asserted again with the new name in its place; the "
                           "originals stay.")
-           "remove" (list "Every asserted sentex that mentions " [:code text]
+           "remove" (list "Every premise that uses " [:code text]
                           " is retracted, and the derived ones go with what they rest on. "
                           "The " [:a {:href "/removed"} "removed list"]
                           " keeps the last " removed/max-kept " of them."))]
      [:p.muted (if more? "More than " "") (commas n) " asserted sentex"
-      (when (not= 1 n) "es") " · about " (duration-text est)
+      (when (not= 1 n) "es") " mention it · about " (duration-text est)
       (when-not (contains? @term-op-rates (kb-name kb))
         " (a guess until a term operation on this KB has been timed)")
-      ". It runs as a job, " (commas term-op-chunk) " sentexes a settle, and a cancel "
-      "stops it between two."]
-     (if (zero? n)
+      ". It runs as a job. A cancel before its retractions delete rolls the whole "
+      "operation back; the deletions then run to their end."]
+     (cond
+       (zero? n)
        (list [:p.muted "Nothing to do: no asserted sentex mentions it."]
              [:div.editor-actions close])
+       (not local?)
+       (list [:p.muted "A term operation needs the KB in this process, and this browser "
+              "reads a daemon."]
+             [:div.editor-actions close])
+       refused
+       (list [:p.problem (:message refused) "."] [:div.editor-actions close])
+       :else
        ;; the answer replaces #main (the body's target); the panel closes once it lands
        ;; a rename and a remove ask once more in a browser dialog, after the panel's button
        [:form (cond-> {:hx-post "/term-op"
@@ -6316,8 +6328,8 @@
           (list
            [:div.assert-row
             [:label {:for "term-op-to"} "New name"]
-            ;; each pause in typing asks whether the name is a term and, for a rename,
-            ;; whether the two merge
+            ;; each pause in typing asks whether the name is a term and what the
+            ;; operation it would run refuses
             [:input#term-op-to {:type "text" :name "to" :size 32 :autocomplete "off"
                                 :required true
                                 :hx-get "/term-op/name" :hx-include "closest form"
@@ -6334,31 +6346,12 @@
           verb " " (when more? "over ") (commas n)]
          close]])]))
 
-(defn- term-op-chunk!
-  "Apply one chunk of a term operation and answer `{:written :refused}`.  The additions
-  are checked first; an addition `check-edit` refuses is dropped **with** the retraction
-  it pairs with, so a rename never removes a sentex whose replacement was not admitted."
-  [kb op term to hs]
-  (let [ss      (into [] (keep #(v/sentex kb %)) hs)
-        adds    (when (not= "remove" op) (mapv #(rewrite-entry % term to) ss))
-        bad     (into #{} (keep #(when (= :add (:in %)) (:index %)))
-                      (when (seq adds) (v/check-edit kb {:add adds})))
-        keep-i  (remove bad (range (count ss)))
-        batch   (cond-> {}
-                  adds              (assoc :add (mapv adds keep-i))
-                  (not= "copy" op)  (assoc :remove (mapv #(:id (ss %)) keep-i)))
-        rows    (when (= "remove" op) (removal-rows kb (:remove batch)))]
-    (when (or (seq (:add batch)) (seq (:remove batch)))
-      (v/edit! kb batch))
-    (when rows
-      (removed/note! (removed-owner kb) :term (keep #(when-not (v/sentex kb %) (rows %))
-                                                    (:remove batch))))
-    {:written (count keep-i)
-     :refused (for [i (sort bad)] (pr-str (first (adds i))))}))
-
 (defn- term-op-job
-  "A term operation as a job, and return its id.  The handles are read once, up front, so
-  the chunks walk a fixed list rather than an index the rewrite is changing under them."
+  "A term operation as a job, and return its id: one call of the core operation on the
+  in-process KB `kb`.  Its `:stop?` files a progress note and reads the job's cancel flag
+  every `term-op-poll-ms`, so a cancel before the deletions rolls it back whole.  A
+  remove reads its batch first (`term-edit-plan`) to note what it retracts in the removed
+  list."
   [kb op term to in-monitor]
   (let [{:keys [verb]} (term-ops op)
         label  (str verb " " (pr-str term) (when to (str " → " (pr-str to))) " in " (kb-name kb))
@@ -6370,42 +6363,53 @@
      (fn [progress!]
        (in-monitor
         (fn []
-          (let [t0  (System/currentTimeMillis)
-                hs  (asserted-mentions kb term)
-                total (count hs)]
-            (progress! {:phase (keyword op) :done 0 :total total})
-            (let [r (reduce (fn [acc chunk]
-                              (let [{:keys [written refused]} (term-op-chunk! kb op term to chunk)
-                                    acc (-> acc
-                                            (update :sentexes + written)
-                                            (update :done + (count chunk))
-                                            (update :refused into refused))]
-                                (progress! {:phase (keyword op) :done (:done acc) :total total})
-                                acc))
-                            {:sentexes 0 :done 0 :refused []}
-                            (partition-all term-op-chunk hs))
-                  ms (- (System/currentTimeMillis) t0)]
-              (when (pos? total)
-                (swap! term-op-rates assoc (kb-name kb) (/ (double ms) total)))
-              (with-meta (select-keys r [:sentexes])
-                {:answer {:op op :term term :to to :total total
-                          :written (:sentexes r) :refused (:refused r)}})))))))))
+          (let [kind    (term-op-kind kb op term to)
+                mapping (term-op-mapping kind term to)
+                going   (when (= :remove kind)
+                          (:remove (:batch (v/term-edit-plan kb kind mapping))))
+                rows    (when going (removal-rows kb going))
+                t0      (System/currentTimeMillis)
+                polled  (volatile! 0)
+                stopped (volatile! false)
+                stop?   (fn []
+                          (let [now (System/currentTimeMillis)]
+                            (when (>= (- now @polled) term-op-poll-ms)
+                              (vreset! polled now)
+                              (try (progress! {:phase (keyword op) :done 0
+                                               :note "running; a cancel rolls it all back"})
+                                   (catch clojure.lang.ExceptionInfo e
+                                     (if (jobs/cancelled? e) (vreset! stopped true) (throw e)))))
+                            @stopped))
+                r       (try (v/term-edit! (v/local-kb kb) kind mapping {:stop? stop?})
+                             (catch clojure.lang.ExceptionInfo e
+                               (throw (if @stopped
+                                        (jobs/cancellation
+                                         "stopped before its deletions, as asked: rolled back, nothing changed")
+                                        e))))
+                ms      (- (System/currentTimeMillis) t0)
+                total   (+ (:restated r) (:retracted r))]
+            (when rows
+              (removed/note! (removed-owner kb) :term
+                             (keep #(when-not (v/sentex kb %) (rows %)) going)))
+            (when (pos? total)
+              (swap! term-op-rates assoc (kb-name kb) (/ (double ms) total)))
+            (with-meta {:sentexes total}
+              {:answer {:op op :kind kind :term term :to to
+                        :restated (:restated r) :retracted (:retracted r)}}))))))))
 
 (defn- term-op-result
-  "What a finished term operation says: how many sentexes it wrote, the ones it could
-  not, and where its result is."
-  [env {:keys [op term to total written refused]}]
+  "What a finished term operation says: how many premises it restated and retracted, and
+  where its result is."
+  [env {:keys [op kind term to restated retracted]}]
   (let [target (if (= "remove" op) term to)]
     (render env "term operation"
-            [:h2 (:verb (term-ops op)) " " [:code (term-text env term)]
-             (when to (list " → " [:code (pr-str to)]))]
-            [:p (commas written) " of " (commas total) " asserted sentexes "
-             (case op "rename" "rewritten" "copy" "copied" "remove" "removed") "."]
-            (when (seq refused)
-              (list [:h3 (commas (count refused)) " refused"]
-                    [:p.muted "Their replacement did not pass "
-                     [:code "check-edit"] ", so the original stays."]
-                    [:ul (for [r (take 50 refused)] [:li [:code r]])]))
+            [:h2 (case kind :merge "Merge" (:verb (term-ops op))) " " [:code (term-text env term)]
+             (when to (list (if (= :merge kind) " into " " → ") [:code (pr-str to)]))]
+            [:p (case kind
+                  :copy   (str "Restated " (commas restated) " premises; the originals stay.")
+                  :remove (str "Retracted " (commas retracted) " premises.")
+                  (str "Restated " (commas restated) " premises and retracted "
+                       (commas retracted) "."))]
             [:p [:a {:href (str "/term?q=" (url-enc (pr-str target)))}
                  "The term " [:code (pr-str target)]]])))
 
@@ -9072,21 +9076,29 @@
                        (bad-parameter env "op" op (str "one of " (str/join ", " (keys term-ops))))
                        (or (= unreadable t) (not (symbol? t)))
                        (bad-parameter env "q" rq "a term, e.g. dog")
-                       (and (:named? (term-ops op))
-                            (or (not (symbol? to)) (= t to)
-                                (not= (v/term-role t) (v/term-role to))))
-                       (bad-parameter env "to" raw
-                                      (str "a name other than " t " spelled as a "
-                                           (name (v/term-role t)) " is"))
+                       (and (:named? (term-ops op)) (or (not (symbol? to)) (= t to)))
+                       (bad-parameter env "to" raw (str "a name other than " t))
+                       (nil? (v/local-kb (:kb env)))
+                       (assoc (refusal-page env "term operation" (pr-str t)
+                                            [" is held by a daemon this browser reads."]
+                                            ["A term operation needs the KB in this process."])
+                              :status 400)
                        :else
-                       (writing-job
-                        target req
-                        (fn [kb in-monitor]
-                          (job-answer
-                           (render-env kb req)
-                           #(term-op-job kb op t to in-monitor)
-                           (fn [j] (term-op-result (render-env kb req) (job-result j)))
-                           edit-wait-ms))))))}]
+                       (if-let [p (first (let [kind (term-op-kind (:kb env) op t to)]
+                                           (v/check-term-edit (:kb env) kind
+                                                              (term-op-mapping kind t to))))]
+                         (assoc (refusal-page env "term operation" (pr-str t)
+                                              [": " (:message p) "."]
+                                              ["The operation did not run."])
+                                :status 400)
+                         (writing-job
+                          target req
+                          (fn [kb in-monitor]
+                            (job-answer
+                             (render-env kb req)
+                             #(term-op-job kb op t to in-monitor)
+                             (fn [j] (term-op-result (render-env kb req) (job-result j)))
+                             edit-wait-ms)))))))}]
          ["/removed/restore"
           {:post (fn [req]
                    (let [id (get-in req [:params "id"])]

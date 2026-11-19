@@ -78,32 +78,32 @@ once. So these two say the same join and only one of them can be stored:
 ;; refused :not-indexable — ?type is bound by the antecedent next to it, so the rule
 ;; that gets stored still has a variable in functor position
 (implies (typeVersion ?ipred ?tpred)
-         (implies (and (?tpred ?type ?cap) (?type ?instance))
-                  (?ipred ?instance ?cap)))
+         (implies (and (?tpred ?type ?ability) (?type ?instance))
+                  (?ipred ?instance ?ability)))
 
 ;; accepted — ?type is a hole of the middle level, so it is filled before the rule
 ;; using it as a functor is stored
 (implies (typeVersion ?ipred ?tpred)
-         (implies (?tpred ?type ?cap)
+         (implies (?tpred ?type ?ability)
                   (implies (?type ?instance)
-                           (?ipred ?instance ?cap))))
+                           (?ipred ?instance ?ability))))
 ```
 
 The second is a type-level/instance-level bridge stated once rather than once per pair.
-`(typeVersion hasCapability capabilityType)` generates a generator:
+`(typeVersion able abilityType)` generates a generator:
 
 ```clojure
-(implies (capabilityType ?type ?cap)
-         (implies (?type ?instance) (hasCapability ?instance ?cap)))
+(implies (abilityType ?type ?ability)
+         (implies (?type ?instance) (able ?instance ?ability)))
 ```
 
-`(capabilityType bird flying)` generates that generator's rule:
+`(abilityType bird flying)` generates that generator's rule:
 
 ```clojure
-(implies (bird ?instance) (hasCapability ?instance flying))
+(implies (bird ?instance) (able ?instance flying))
 ```
 
-and `(bird Tweety)` concludes `(hasCapability Tweety flying)`. Three levels, three
+and `(bird Tweety)` concludes `(able Tweety flying)`. Three levels, three
 firings, and the only thing ever keyed by the index is the concrete rule at the bottom
 and the two generators above it — filed under `implies`, which is where every generator
 is filed at every depth.
@@ -135,7 +135,10 @@ consequent — the shipped `predAllInstance` generator writes the first, and
 lazy-forward and the two would otherwise be a backward cycle. The lazy-forward converse
 `(binary ?r) ⇒ (arity ?r 2)` lets a forward rule guarded on `(arity ?r ?n)` fire for a
 relation its exact-arity class declares, and stores no arity
-([inference.md](inference.md#a-lazy-forward-rule)).
+([inference.md](inference.md#a-lazy-forward-rule)). The unary `intersection` generator
+reads the combined kind's membership in a class `relationTypeByArity` maps to 1, not an
+`(arity ?combined 1)` guard, so the rule it generates rests on no rule concluding an
+arity, the lazy-forward converse included.
 
 The **generator itself defaults to forward**, even bare. Its conclusion is a rule, and no
 backward goal asks for one — `res/concluding-rule-handles` reads a goal's predicate, and a

@@ -369,6 +369,179 @@
     (v/assert kb (list 'genlInverse childOf parentOf) 'CxUniverse {:strength :monotonic})
     (is (v/handle-of kb (list hasChild Tom Bob) 'CxUniverse))))
 
+(defn- inverse-join!
+  "Assert `(inverse childOf parentOf)` in `inverse-cx`, and `(childOf C0 P0)` and the
+  forward rule `(parentOf ?p ?c) → (parent_ ?p)` in `CxTop`, in `order`.  Answers
+  `{:inverse h :fact h}`."
+  [kb order [childOf parentOf parent_ C0 P0 CxTop] inverse-cx]
+  (into {} (for [step order]
+             [step (case step
+                     :inverse (v/assert kb (list 'inverse childOf parentOf) inverse-cx {:strength :monotonic})
+                     :fact    (v/assert kb (list childOf C0 P0) CxTop {:strength :monotonic})
+                     :rule    (v/assert kb (list 'implies (list parentOf '?p '?c) (list parent_ '?p))
+                                        CxTop {:direction :forward}))])))
+
+(tu/deftest-kb a-forward-rule-joins-a-declared-inverse-partner-in-every-arrival-order
+  (doseq [order (tu/permutations [:inverse :fact :rule])]
+    (tu/with-terms [childOf parentOf parent_ C0 P0 CxTop]
+      (v/assert kb (list 'genlCx CxTop 'CxUniverse) 'CxUniverse)
+      (let [terms     [childOf parentOf parent_ C0 P0 CxTop]
+            believed? #(boolean (some->> (v/handle-of kb (list parent_ P0) CxTop) (v/in? kb)))]
+        (testing (str order " with the inverse beside the fact")
+          (let [{:keys [inverse fact]} (inverse-join! kb order terms CxTop)]
+            (is (believed?))
+            (v/retract! kb inverse)
+            (is (not (believed?)) "retracting the inverse withdraws it")
+            (v/assert kb (list 'inverse childOf parentOf) CxTop {:strength :monotonic})
+            (is (believed?))
+            (v/retract! kb fact)
+            (is (not (believed?)) "retracting the fact withdraws it")))))
+    (tu/with-terms [childOf parentOf parent_ C0 P0 CxTop CxLow]
+      (v/assert kb (list 'genlCx CxTop 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxLow CxTop) 'CxUniverse)
+      (testing (str order " with the inverse in CxLow, a decontextualized_predicate's sentence")
+        (inverse-join! kb order [childOf parentOf parent_ C0 P0 CxTop] CxLow)
+        (is (v/ask? kb (list parentOf P0 C0) CxTop))
+        (is (some->> (v/handle-of kb (list parent_ P0) CxTop) (v/in? kb)))))))
+
+(tu/deftest-kb a-fact-the-fan-reaches-as-written-and-swapped-fires-each-reading-over-its-own-path
+  (doseq [order (tu/permutations [:inverse :fact :rule])]
+    (tu/with-terms [childOf parentOf kinOf kin_ A B]
+      (v/assert kb (list 'genl parentOf kinOf) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl childOf kinOf) 'CxUniverse {:strength :monotonic})
+      (let [hs        (into {} (for [step order]
+                                 [step (case step
+                                         :inverse (v/assert kb (list 'inverse childOf parentOf) 'CxUniverse
+                                                            {:strength :monotonic})
+                                         :fact    (v/assert kb (list parentOf A B) 'CxUniverse {:strength :monotonic})
+                                         :rule    (v/assert kb (list 'implies (list kinOf '?x '?y) (list kin_ '?x))
+                                                            'CxUniverse {:direction :forward}))]))
+            believed? #(boolean (some->> (v/handle-of kb (list kin_ %) 'CxUniverse) (v/in? kb)))]
+        (testing (str order " (parentOf A B) is (kinOf A B), and read as (childOf B A), (kinOf B A)")
+          (is (believed? A))
+          (is (believed? B)))
+        (testing (str order " the swapped reading names the inverse, the reading as written does not")
+          (is (contains? (because-premises kb (list kin_ B)) (:sentence (v/sentex kb (:inverse hs)))))
+          (v/retract! kb (:inverse hs))
+          (is (believed? A))
+          (is (not (believed? B))))))))
+
+(tu/deftest-kb a-reading-across-a-swap-cycle-to-its-own-predicate-rests-on-the-cycle
+  (doseq [cycle [:self-inverse :inverse-and-genl]
+          order (tu/permutations [:cycle :fact :rule])]
+    (tu/with-terms [relOf partnerOf out_ A B]
+      (let [m         {:strength :monotonic}
+            hs        (into {} (for [step order]
+                                 [step (case step
+                                         :cycle (if (= cycle :self-inverse)
+                                                  [(v/assert kb (list 'inverse relOf relOf) 'CxUniverse m)]
+                                                  [(v/assert kb (list 'inverse relOf partnerOf) 'CxUniverse m)
+                                                   (v/assert kb (list 'genl partnerOf relOf) 'CxUniverse m)])
+                                         :fact  (v/assert kb (list relOf A B) 'CxUniverse m)
+                                         :rule  (v/assert kb (list 'implies (list relOf '?x '?y) (list out_ '?x))
+                                                          'CxUniverse {:direction :forward}))]))
+            believed? #(boolean (some->> (v/handle-of kb (list out_ %) 'CxUniverse) (v/in? kb)))]
+        (testing (str cycle " " order)
+          (is (believed? A))
+          (is (believed? B))
+          (v/retract! kb (peek (:cycle hs)))
+          (is (believed? A) "the reading as written rests on no edge")
+          (is (not (believed? B)) "retracting an edge of the cycle withdraws the swapped reading"))))))
+
+(defn- rests-on?
+  "Does a justification of the stored `sentence` in CxUniverse name the sentex `h`?"
+  [kb sentence h]
+  (boolean (some (fn [j] (some #(= h (:handle %)) (:because j)))
+                 (:support (tu/why-root kb (v/handle-of kb sentence 'CxUniverse))))))
+
+(defn- second-route-rows!
+  "Assert each row `[edge! second! depart!]` of `rows` with the fact `(pOf A B)` and the
+  forward rule `(qOf ?x ?y) → (out_ ?x)`, in every arrival order.  The firing names the
+  departing edge.  After `depart!` the second route still answers `(qOf B A)`, and
+  `(out_ B)` is believed."
+  [kb rows]
+  (doseq [[label [edge! second! depart!]] rows
+          order (tu/permutations [:edge :second :fact :rule])]
+    (tu/with-terms [pOf qOf rOf out_ A B]
+      (let [m  {:strength :monotonic}
+            hs (into {} (for [step order]
+                          [step (case step
+                                  :edge   (edge! pOf qOf rOf)
+                                  :second (second! pOf qOf rOf)
+                                  :fact   (v/assert kb (list pOf A B) 'CxUniverse m)
+                                  :rule   (v/assert kb (list 'implies (list qOf '?x '?y) (list out_ '?x))
+                                                    'CxUniverse {:direction :forward}))]))]
+        (testing (str label " " order)
+          (is (rests-on? kb (list out_ B) (:edge hs)) "the firing names the departing edge")
+          (depart! pOf qOf (:edge hs))
+          (is (v/ask? kb (list qOf B A) 'CxUniverse))
+          (is (some->> (v/handle-of kb (list out_ B) 'CxUniverse) (v/in? kb))))))))
+
+(tu/deftest-kb a-retracted-swap-edge-leaves-the-firing-a-second-route-licenses
+  (let [m {:strength :monotonic}]
+    (second-route-rows!
+     kb {"a genlInverse beside an inverse"
+         [(fn [p q _] (v/assert kb (list 'genlInverse p q) 'CxUniverse m))
+          (fn [p q _] (v/assert kb (list 'inverse p q) 'CxUniverse m))
+          (fn [_ _ h] (v/retract! kb h))]
+         "a genlInverse beside a genlInverse and a genl edge"
+         [(fn [p q _] (v/assert kb (list 'genlInverse p q) 'CxUniverse m))
+          (fn [p q r] (v/assert kb (list 'genlInverse p r) 'CxUniverse m)
+            (v/assert kb (list 'genl r q) 'CxUniverse m))
+          (fn [_ _ h] (v/retract! kb h))]})))
+
+(tu/deftest-kb a-defeated-swap-edge-leaves-the-firing-a-second-route-licenses
+  (let [m {:strength :monotonic}]
+    (second-route-rows!
+     kb {"a defeated :default genlInverse beside a genlInverse and a genl edge"
+         [(fn [p q _] (v/assert kb (list 'genlInverse p q) 'CxUniverse {:strength :default}))
+          (fn [p q r] (v/assert kb (list 'genlInverse p r) 'CxUniverse m)
+            (v/assert kb (list 'genl r q) 'CxUniverse m))
+          (fn [p q _] (v/assert kb (list 'not (list 'genlInverse p q)) 'CxUniverse m))]})))
+
+(tu/deftest-kb an-except-on-a-swap-edge-hides-a-firing-where-no-second-route-licenses-it
+  (doseq [[label edges second neg? lit seen?]
+          [["genlInverse alone"          (fn [p q _] [(list 'genlInverse p q)]) (fn [_ _ _] []) false :q false]
+           ["genlInverse beside genl"    (fn [p q _] [(list 'genlInverse p q)]) (fn [p q _] [(list 'genl p q)]) false :q false]
+           ["genlInverse beside an odd route" (fn [p q _] [(list 'genlInverse p q)])
+            (fn [p q r] [(list 'genlInverse p r) (list 'genl r q)]) false :q true]
+           ["genlInverse beside an even route" (fn [p q _] [(list 'genlInverse p q)])
+            (fn [p q r] [(list 'genlInverse p r) (list 'inverse r q)]) false :q false]
+           ["inverse alone"              (fn [p q _] [(list 'inverse p q)]) (fn [_ _ _] []) false :q false]
+           ["inverse beside an odd route" (fn [p q _] [(list 'inverse p q)])
+            (fn [p q r] [(list 'genlInverse p r) (list 'genl r q)]) false :q true]
+           ["inverse beside the reverse edge" (fn [p q _] [(list 'inverse p q)])
+            (fn [p q _] [(list 'genlInverse q p)]) false :q false]
+           ["negated, genlInverse alone" (fn [p q _] [(list 'genlInverse q p)]) (fn [_ _ _] []) true :q false]
+           ["negated, genlInverse beside an odd route" (fn [p q _] [(list 'genlInverse q p)])
+            (fn [p q r] [(list 'genlInverse q r) (list 'genl r p)]) true :q true]
+           ["negated, inverse alone"     (fn [p q _] [(list 'inverse q p)]) (fn [_ _ _] []) true :q false]
+           ["negated, inverse beside an odd route" (fn [p q _] [(list 'inverse q p)])
+            (fn [p q r] [(list 'genlInverse q r) (list 'genl r p)]) true :q true]
+           ["self-inverse alone"         (fn [p _ _] [(list 'inverse p p)]) (fn [_ _ _] []) false :p false]
+           ["self-inverse beside an odd route" (fn [p _ _] [(list 'inverse p p)])
+            (fn [p _ r] [(list 'genlInverse p r) (list 'genl r p)]) false :p true]
+           ["an inverse and genl cycle alone" (fn [p q _] [(list 'inverse p q) (list 'genl q p)])
+            (fn [_ _ _] []) false :p false]
+           ["an inverse and genl cycle beside an odd route" (fn [p q _] [(list 'inverse p q) (list 'genl q p)])
+            (fn [p _ r] [(list 'genlInverse p r) (list 'genl r p)]) false :p true]]
+          edge-last? [false true]]
+    (tu/with-terms [pOf qOf rOf out_ A B CxHide]
+      (let [m    {:strength :monotonic}
+            put! (fn [ss] (mapv #(v/assert kb % 'CxUniverse m) ss))
+            _    (v/assert kb (list 'genlCx CxHide 'CxUniverse) 'CxUniverse m)
+            es   (when-not edge-last? (put! (edges pOf qOf rOf)))
+            _    (put! (second pOf qOf rOf))
+            es   (or es (put! (edges pOf qOf rOf)))
+            l    (if (= :p lit) pOf qOf)
+            neg  #(if neg? (list 'not %) %)]
+        (v/assert kb (neg (list pOf A B)) 'CxUniverse m)
+        (v/assert kb (list 'implies (neg (list l '?x '?y)) (list out_ '?x)) 'CxUniverse {:direction :forward})
+        (testing (str label (when edge-last? ", the edge last"))
+          (is (v/ask? kb (list out_ B) 'CxUniverse))
+          (v/assert kb (list 'except (sx/sentex-handle (first es))) CxHide m)
+          (is (= seen? (v/ask? kb (list out_ B) CxHide))))))))
+
 (tu/deftest-kb a-default-genlInverse-edge-is-defeasible
   (tu/with-terms [childOf parentOf hasChild Tom Bob]
     (let [edge (v/assert kb (list 'genlInverse childOf parentOf) 'CxUniverse {:strength :default})]

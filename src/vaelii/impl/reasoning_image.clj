@@ -95,6 +95,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.reads :as reads]
+            [vaelii.impl.rewrite-query :as rewrite-query]
             [vaelii.impl.solve :as solve]
             [vaelii.impl.source-identity :as si]
             [vaelii.impl.types.reasoning :as reasoning])
@@ -129,8 +130,9 @@
 
 (def added-atoms
   "The state atoms an image an earlier build wrote may lack, each left as the open made it
-  when the image holds none: `:mint-queues`, which carries the owed mint releases."
-  #{:mint-queues})
+  when the image holds none: `:mint-queues`, which carries the owed mint releases, and
+  `:owed-drops`."
+  #{:mint-queues :owed-drops})
 
 (defn unimaged-atoms
   "The KB atoms an image leaves as the open made them: every other `Reasoning` atom, and
@@ -530,7 +532,12 @@
                         (dense/read-image! (dense/create-dense-tms) i))
                       (read-state dir r read)]))]
              (dense/copy-into! (reasoning/tms kb) net)
-             (swap! (reasoning/taxonomy kb) merge (:taxonomy st))
+             (swap! (reasoning/taxonomy kb)
+                    (fn [tax]
+                      (let [installed (merge tax (:taxonomy st))]
+                        (if (contains? (:taxonomy st) rewrite-query/consumer-key)
+                          installed
+                          (dissoc installed rewrite-query/consumer-key)))))
              (doseq [[a v] (:atoms st)] (reset! (get (reasoning/of kb) a) v))
              ;; the discovery memo's `:mark` names a point in the writer's touched set,
              ;; and the installed network opens touched sets of its own at generation 0, where

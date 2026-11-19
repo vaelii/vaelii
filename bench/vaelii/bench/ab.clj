@@ -293,10 +293,38 @@
   (let [kb (starter/load-into (fresh-kb))]
     (sample #(v/recover kb) 1 3)))
 
+(defn- correspondence-read
+  "200 queries of `(ab_tagged (AbFruitFn ?t))`, each reading the correspondence declarations
+  `cx` sees, over 200 `abFruitOf` and `ab_tagged` facts.  With `excepted?`, an `except` of
+  the declaration is stored in a context `cx` does not see, so the answers stay the same."
+  [excepted?]
+  (let [kb (fresh-kb)]
+    (v/with-deferred-settle kb
+      (doseq [c [cx 'CxAbHid]] (v/assert kb (list 'genlCx c 'CxUniverse) 'CxUniverse strong))
+      (v/assert kb '(reifiable_function AbFruitFn) 'CxUniverse strong)
+      (v/assert kb '(binary_predicate abFruitOf) 'CxUniverse strong)
+      (dotimes [i 200]
+        (v/assert kb (list 'abFruitOf (node i) (symbol (str "AbFruit" i))) cx {:chain? false})
+        (v/assert kb (list 'ab_tagged (symbol (str "AbFruit" i))) cx {:chain? false})))
+    (let [d (v/assert kb '(functionCorrespondingPredicate AbFruitFn abFruitOf 2) 'CxUniverse strong)]
+      (when excepted? (v/assert kb (list 'except (list 'sentexHandle d)) 'CxAbHid)))
+    (sample #(dotimes [_ 200] (count (v/query kb '(ab_tagged (AbFruitFn ?t)) cx))) 2 9)))
+
+(defn- declaration-read
+  "`correspondence-read` on a KB that stores no `except`."
+  []
+  (correspondence-read false))
+
+(defn- excepted-declaration-read
+  "`correspondence-read` on a KB storing an `except` of the declaration."
+  []
+  (correspondence-read true))
+
 (def probes
   [#'genl-read #'transitive-ask #'retract-reask #'assert-load #'forward-join #'naf-prove
    #'arith-prove #'read-after-import #'arity-assert #'arity-edge-move #'arity-read
-   #'arity-recover #'starter-load #'starter-recover])
+   #'arity-recover #'declaration-read #'excepted-declaration-read #'starter-load
+   #'starter-recover])
 
 (defn -main [& args]
   (let [[flag value] args

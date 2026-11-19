@@ -103,9 +103,9 @@
 
 (defn signed-reach
   "`p`'s global `genl` closure in direction `dir` (`:up` or `:down`), together with the
-  predicates `genlInverse` edges reach either way round (`tax/signed-closure`): every
+  predicates swap edges reach either way round (`tax/signed-closure`): every
   predicate an antecedent or fact on `p` can meet through the matching fan.  The plain
-  closure itself on a KB declaring no `genlInverse`."
+  closure itself on a KB declaring no swap edge."
   [tax dir p]
   (let [[st sw] (tax/signed-closure tax dir p nil)]
     (if (empty? sw) st (into st sw))))
@@ -127,9 +127,9 @@
       (let [g (second k)]
         (reads/as-stored-rule-keys-meeting
          index
-         ;; the bounded spec walk sees no genlInverse edge, so a KB declaring one takes
+         ;; the bounded spec walk sees no swap edge, so a KB declaring one takes
          ;; the pass
-         (fn [n] (when (tax/genl-inverse-free? tax)
+         (fn [n] (when (tax/swap-free? tax)
                    (some->> (tax/specs-global-within tax g n) (map #(vector :not %)))))
          #(and (vector? %) (contains? (signed-reach tax :up (second %)) g))))
       (let [up (delay (signed-reach tax :up k))]
@@ -927,11 +927,11 @@
   restores the qualified rule's other wrappers.  `rewrap-sentex` reads them off a stored
   record.  An exceptWhen is not among them (`split-exceptWhen`).  A cardinality constraint
   rule restores its authored surface, `(asp/atMost k ?v pattern)`, instead of the internal
-  `set/hardConstraint (implies …)` form (`normalize-cardinality`).  `solve?` puts
-  `set/solveRule` outermost, around the direction wrapper."
+  `set/hardConstraint (implies …)` form (`normalize-cardinality`).  Each wrapper of `mods`
+  (`sx/modifiers`) goes outside the direction wrapper, in `sx/modifier-wrappers`' order."
   ([sentence direction defeasible assumption constraint]
-   (rewrap sentence direction defeasible assumption constraint false))
-  ([sentence direction defeasible assumption constraint solve?]
+   (rewrap sentence direction defeasible assumption constraint nil))
+  ([sentence direction defeasible assumption constraint mods]
    (let [conseq (when (sx/implies? sentence) (consequent sentence))
          cf     (when (sequential? conseq) (first conseq))]
      (cond
@@ -960,19 +960,20 @@
          constraint      (->> (list (get {:hard 'set/hardConstraint :soft 'set/softConstraint}
                                          constraint)))
          direction       (wrap-direction direction)
-         solve?          (->> (list sx/solve-rule-wrapper)))))))
+         (seq mods)      (as-> r (reduce (fn [r [w m]] (if (contains? mods m) (list w r) r))
+                                         r sx/modifier-wrappers)))))))
 
 (defn rewrap-sentex
-  "`rewrap` with the wrappers read off the stored rule sentex `sx` — the form its author
-  wrote, around `sentence` (its canonical or its originalized sentence).  A `:derive`
-  rule gets its direction wrapper (none for backward, the default), `set/defaultRule`
-  when defeasible and `set/solveRule` when a solve runs it; a choice or constraint rule gets its head wrapper
-  alone, since the wrapper stack refuses anything beside it."
+  "`rewrap` with the wrappers read off the stored rule sentex `sx`, around `sentence` (its
+  canonical or its originalized sentence).  A `:derive` rule gets its direction wrapper
+  (none for backward), `set/defaultRule` when defeasible, and each `sx/modifier-wrappers`
+  wrapper its engines name.  A choice or constraint rule gets its head wrapper alone,
+  since the wrapper stack refuses anything beside it."
   [sentence sx]
   (let [effect (:effect sx)]
     (if (= :derive effect)
       (rewrap sentence (sx/engines-direction (:engines sx)) (:defeasible sx) nil nil
-              (contains? (:engines sx) :solve))
+              (not-empty (into #{} (filter (set (vals sx/modifier-wrappers))) (:engines sx))))
       (rewrap sentence nil nil (= :choose effect) (sx/effect-constraint effect)))))
 
 (defn expand-consequent
@@ -986,11 +987,11 @@
   own handle."
   [sentence]
   (let [[dir def? _exc assum con inner] (sx/peel-rule-wrapper sentence)
-        solve? (sx/solve-wrapped? sentence)]
+        mods (sx/modifiers sentence)]
     (if (and (rule-sentence? inner)
              (conjunctive? (consequent inner)) (seq (rest (consequent inner))))
       (let [as (antecedents inner)]
-        (mapv #(rewrap (rule-sentence as %) dir def? assum con solve?) (rest (consequent inner))))
+        (mapv #(rewrap (rule-sentence as %) dir def? assum con mods) (rest (consequent inner))))
       [sentence])))
 
 ;; ---- polycanonicalization: distribute a disjunctive antecedent ----------
@@ -1076,14 +1077,14 @@
   `[sentence]` unexpanded, and `disjunction-problems` reports both from that form."
   [sentence]
   (let [[dir def? _exc assum con inner] (sx/peel-rule-wrapper sentence)
-        solve? (sx/solve-wrapped? sentence)]
+        mods (sx/modifiers sentence)]
     (if (and (rule-sentence? inner) (some distributes-or? (antecedents inner)))
       (let [antes (antecedents inner)
             n     (antecedent-alternative-count antes)]
         (if (or (zero? n) (> n max-alternatives))
           [sentence]
           (mapv #(rewrap (rule-sentence (:antecedents %) (consequent inner))
-                         dir def? assum con solve?)
+                         dir def? assum con mods)
                 (antecedent-alternatives antes))))
       [sentence])))
 
@@ -1115,7 +1116,7 @@
     (if (seq exc)
       [(vec exc) (if (sx/sentex-handle? inner)
                    inner
-                   (rewrap inner dir def? assum con (sx/solve-wrapped? sentence)))]
+                   (rewrap inner dir def? assum con (sx/modifiers sentence)))]
       [nil sentence])))
 
 (defn exceptWhen-not-a-rule
@@ -1512,7 +1513,7 @@
   rule is a pattern and the mint is what gets stored, checked in its own right when minted.  A
   variable an enclosing level binds is ground before anything is keyed on it, so one generator
   can range over a family of predicates.  A variable bound by a literal of the rule being
-  stored (`(implies (and (?tpred ?type ?cap) (?type ?instance)) …)`) is refused; written one
+  stored (`(implies (and (?tpred ?type ?ability) (?type ?instance)) …)`) is refused; written one
   level further in it is a hole of the middle level and both functors are concrete.  A
   generated variable functor no enclosing level binds is refused, naming the generator."
   [sentence]
@@ -1579,6 +1580,23 @@
       p/var-consequent-key
       c)))
 
+(defn consequent-heads
+  "The heads `index-rule` files `rule-sentex` under beside its consequent key `k`
+  (`consequent-index-pred`), a set: the `sx/term-head` of each argument of a consequent
+  `(k a1 … an)`.  The set is `#{p/var-consequent-key}`, a key every narrowed read takes
+  (`resolution/concluding-rule-handles`), when an argument is a variable or a list headed
+  by one.  It is the same when the consequent is dotted, is not a literal on `k`, or has no
+  argument with a head.  The answer is nil when `k` is not a plain symbol."
+  [rule-sentex]
+  (let [k (consequent-index-pred rule-sentex)
+        c (:consequent rule-sentex)]
+    (when (sx/plain-symbol? k)
+      (let [open? #(or (sx/variable? %) (and (sequential? %) (sx/variable? (first %))))
+            hs    (when (and (sequential? c) (= k (first c)) (not (sx/dotted? c))
+                             (not-any? open? (rest c)))
+                    (into #{} (keep sx/term-head) (rest c)))]
+        (if (seq hs) hs #{p/var-consequent-key})))))
+
 ;; ---- the rule indexes' writes ---------------------------------------------
 
 (def ^:dynamic *stratification-memo*
@@ -1612,30 +1630,32 @@
         (when mem (vreset! mem [index nk]))
         nk))))
 
-;; A rule is posted under each antecedent key in the `:rule-antecedent` count trie and under
-;; its consequent key in `:rule-consequent`, each ending in the rule's context; a watched
-;; rule is posted in the `:exception-index` set of each predicate its re-check condition
-;; mentions and in the `[:rules]` set.  Each is one `p/family-apply!` batch, and a post
-;; of a handle already filed (or a retire of one not filed) changes nothing.
+;; A rule is posted under each antecedent key in `:rule-antecedent`, under its consequent
+;; key in `:rule-consequent`, and under that key and each consequent head in
+;; `:rule-consequent-head`, each leaf ending in its context.  A watched rule is posted in the
+;; `:exception-index` set of each predicate its re-check condition mentions and in `[:rules]`.
+;; Each is one `p/family-apply!` batch, and a post of a handle already filed changes nothing.
 
 (defn- rule-family-ops
-  [op handle ante-keys conseq-key context]
+  [op handle ante-keys conseq-key heads context]
   (cond-> (mapv (fn [k] [op :rule-antecedent [k context] handle]) (distinct ante-keys))
-    (some? conseq-key) (conj [op :rule-consequent [conseq-key context] handle])))
+    (some? conseq-key) (conj [op :rule-consequent [conseq-key context] handle])
+    (some? conseq-key) (into (map (fn [h] [op :rule-consequent-head [conseq-key h context] handle]))
+                             heads)))
 
 (defn index-rule
-  "Post rule `handle`, stated in `context`, under each of `ante-keys` and under
-  `conseq-key` (nil when it has none).  `antecedent-keys` and `consequent-index-pred`
-  compute the keys."
-  [index handle ante-keys conseq-key context]
-  (p/family-apply! index (rule-family-ops :post handle ante-keys conseq-key context))
+  "Post rule `handle`, stated in `context`, under each of `ante-keys`, under `conseq-key`
+  (nil when it has none) and under `conseq-key` with each of `heads`.  `antecedent-keys`,
+  `consequent-index-pred` and `consequent-heads` compute them."
+  [index handle ante-keys conseq-key heads context]
+  (p/family-apply! index (rule-family-ops :post handle ante-keys conseq-key heads context))
   (forget-stratification)
   nil)
 
 (defn unindex-rule!
   "Retire rule `handle`, stated in `context`, from the keys `index-rule` posted it under."
-  [index handle ante-keys conseq-key context]
-  (p/family-apply! index (rule-family-ops :retire handle ante-keys conseq-key context))
+  [index handle ante-keys conseq-key heads context]
+  (p/family-apply! index (rule-family-ops :retire handle ante-keys conseq-key heads context))
   (forget-stratification)
   nil)
 

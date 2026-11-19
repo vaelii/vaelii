@@ -6,6 +6,7 @@
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.budget :as budget]
+            [vaelii.impl.call-cap :as call-cap]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.predall :as predall]
             [vaelii.impl.reads :as reads]
@@ -20,6 +21,43 @@
   "`report` without the `:work` and `:elapsed-ms` every answer carries."
   [report]
   (dissoc report :work :elapsed-ms))
+
+(defn- least-budget
+  "The least budget in `[lo, hi]` at which `ok?` holds, found by bisection.  `ok?` must
+  hold at `hi` and at every budget above the least."
+  [ok? lo hi]
+  (loop [lo lo, hi hi]
+    (if (< lo hi)
+      (let [mid (quot (+ lo hi) 2)]
+        (if (ok? mid) (recur lo mid) (recur (inc mid) hi)))
+      hi)))
+
+(defn- work-exhaustion-keeps-the-first-finding
+  "Assert that `run`, a `kb-integrity` report per `:max-work` budget, truncates below the
+  budget that completes it.  Bisection finds `needed`, the least budget below `limit` whose
+  report is `:gap`, and `found`, the least whose report has a `findings`.  Budgets 0, 1,
+  `found` - 1, `found` and `needed` - 1 must report `:truncated` by `:max-work`.  `found`
+  must lie below `needed`, and its report must satisfy `kept?`, which `message` names.
+  `scope` `:tiny`, the only scope, is the sampled budgets over `run`'s population: its
+  candidate terms bound the term-taking passes, and its `:categories` the KB-wide ones.
+  `run` is memoized, under an allowance on `kb` sized to the bisections and samples."
+  [kb run {:keys [scope limit findings kept? message]}]
+  (case scope :tiny nil)
+  (let [bits (- 64 (Long/numberOfLeadingZeros limit))
+        run  (memoize run)
+        gap? #(= :gap (:status (run %)))]
+    (call-cap/allow predall/sweep kb (+ 1 bits bits 5)
+                    "bisection over :max-work budgets and five sampled budgets")
+    (is (gap? (dec limit)) "some finite work budget completes the sweep")
+    (when (gap? (dec limit))
+      (let [needed (least-budget gap? 0 (dec limit))
+            found  (least-budget #(boolean (seq (findings (run %)))) 0 needed)]
+        (doseq [b (distinct [0 1 (dec found) found (dec needed)])
+                :when (< -1 b needed)]
+          (is (= [:truncated :max-work] [(:status (run b)) (:reason (run b))])
+              (str "budget " b " of " needed " is truncated by work")))
+        (is (< found needed) message)
+        (is (kept? (run found)) message)))))
 
 (defn- state-snapshot [kb]
   (let [handles (tu/sentex-ids kb)]
@@ -122,6 +160,7 @@
 
 (tu/deftest-kb every-answer-carries-the-work-and-time-it-spent
   (tu/with-terms [widget qualifies required]
+    (call-cap/allow predall/sweep kb 3 "three bounds, each answer's own meter read")
     (v/add-evaluatable kb qualifies (constantly true))
     (v/add-evaluatable kb required  (constantly false))
     (v/assert kb (list 'defnSufficient widget (list qualifies '?x)) 'CxUniverse)
@@ -570,6 +609,8 @@
 
 (tu/deftest-kb type-all-specified-reports-each-instance-no-classifier-member-holds
   (tu/with-terms [colour_kind red_kind blue_kind gadget GadgetOne GadgetTwo GadgetThree]
+    (call-cap/allow predall/sweep kb 4
+                    "the KB changes between audits, and one audit runs the default sweep")
     (classifier-world kb {:colour_kind colour_kind :red_kind red_kind :blue_kind blue_kind
                           :gadget gadget :GadgetOne GadgetOne :GadgetTwo GadgetTwo
                           :GadgetThree GadgetThree})
@@ -739,13 +780,13 @@
       (is (= :gap (:status (v/kb-integrity kb #{} 'CxUniverse {:max-results 2})))))
     (testing "work exhaustion inside the pass is truncated, never audited, and keeps the
               findings completed before it"
-      (let [run    #(v/kb-integrity kb #{} 'CxUniverse {:max-work %})
-            needed (first (filter #(= :gap (:status (run %))) (range 0 1000)))]
-        (is (some? needed) "some finite work budget completes the sweep")
-        (let [partials (map run (range 0 needed))]
-          (is (every? #(and (= :truncated (:status %)) (= :max-work (:reason %))) partials))
-          (is (some #(= 1 (count (:genl-arg-widening %))) partials)
-              "a budget exhausted between the two positions keeps the first finding"))))))
+      (work-exhaustion-keeps-the-first-finding
+       kb #(v/kb-integrity kb #{} 'CxUniverse {:max-work %})
+       {:scope    :tiny
+        :limit    1000
+        :findings :genl-arg-widening
+        :kept?    #(= 1 (count (:genl-arg-widening %)))
+        :message  "a budget exhausted between the two positions keeps the first finding"}))))
 
 ;; ---- not-under-thing ------------------------------------------------------
 
@@ -814,14 +855,13 @@
           (is (= in-order (:not-under-thing report)))))
       (testing "work exhaustion inside the pass is truncated, never audited, and keeps the
                 findings completed before it"
-        (let [run    #(v/kb-integrity kb terms 'CxUniverse {:max-work % :categories without-missing-arg})
-              needed (first (filter #(= :gap (:status (run %))) (range 0 1000)))]
-          (is (some? needed) "some finite work budget completes the sweep")
-          (let [partials (map run (range 0 (or needed 0)))]
-            (is (every? #(and (= :truncated (:status %)) (= :max-work (:reason %)))
-                        partials))
-            (is (some #(= (subvec in-order 0 1) (:not-under-thing %)) partials)
-                "a budget exhausted between the two terms keeps the first finding")))))))
+        (work-exhaustion-keeps-the-first-finding
+         kb #(v/kb-integrity kb terms 'CxUniverse {:max-work % :categories without-missing-arg})
+         {:scope    :tiny
+          :limit    1000
+          :findings :not-under-thing
+          :kept?    #(= (subvec in-order 0 1) (:not-under-thing %))
+          :message  "a budget exhausted between the two terms keeps the first finding"})))))
 
 ;; ---- implicit-genl --------------------------------------------------------
 
@@ -933,14 +973,13 @@
           (is (= in-order (shown report)))))
       (testing "work exhaustion inside the pass is truncated, never audited, and keeps the
                 findings completed before it"
-        (let [run    #(v/kb-integrity kb terms 'CxUniverse {:max-work %})
-              needed (first (filter #(= :gap (:status (run %))) (range 0 2000)))]
-          (is (some? needed) "some finite work budget completes the sweep")
-          (let [partials (map run (range 0 (or needed 0)))]
-            (is (every? #(and (= :truncated (:status %)) (= :max-work (:reason %)))
-                        partials))
-            (is (some #(= (subvec in-order 0 1) (shown %)) partials)
-                "a budget exhausted between the two terms keeps the first finding")))))))
+        (work-exhaustion-keeps-the-first-finding
+         kb #(v/kb-integrity kb terms 'CxUniverse {:max-work %})
+         {:scope    :tiny
+          :limit    2000
+          :findings :implicit-genl
+          :kept?    #(= (subvec in-order 0 1) (shown %))
+          :message  "a budget exhausted between the two terms keeps the first finding"})))))
 
 ;; ---- implicit-arity-class ---------------------------------------------------
 
@@ -1074,9 +1113,10 @@
 (tu/deftest-kb every-form-of-stated-separation-is-reported
   (tu/with-terms [left_kind right_kind upper_left upper_right parent_kind kind_metatype
                   sib_a sib_b]
+    (call-cap/allow predall/sweep kb 4 "the KB changes between the four audits")
     (testing "an explicit disjoint over the pair"
       (v/assert kb (list 'disjoint left_kind right_kind) 'CxUniverse)
-      (v/assert kb (list 'orthogonal left_kind right_kind) 'CxUniverse)
+      (v/assert kb (list 'orthogonal left_kind right_kind) 'CxUniverse {:strength :monotonic})
       (is (= [[(set (list 'orthogonal left_kind right_kind))
                #{(set (list 'disjoint left_kind right_kind))}]]
              (shown-orthogonals (v/kb-integrity kb #{} 'CxUniverse)))))
@@ -1094,7 +1134,7 @@
       (v/assert kb (list 'genl sib_a parent_kind) 'CxUniverse)
       (v/assert kb (list 'genl sib_b parent_kind) 'CxUniverse)
       (v/assert kb (list 'sibling_disjoint parent_kind) 'CxUniverse)
-      (v/assert kb (list 'orthogonal sib_a sib_b) 'CxUniverse)
+      (v/assert kb (list 'orthogonal sib_a sib_b) 'CxUniverse {:strength :monotonic})
       (is (some #(= [(set (list 'orthogonal sib_a sib_b))
                      #{(set (list 'sibling_disjoint parent_kind))}] %)
                 (shown-orthogonals (v/kb-integrity kb #{} 'CxUniverse)))))
@@ -1108,10 +1148,25 @@
                        (set (list kind_metatype right_kind))}] %)
                 (shown-orthogonals (v/kb-integrity kb #{} 'CxUniverse)))))))
 
+(tu/deftest-kb a-default-orthogonal-is-reported-beside-a-default-separation-and-not-a-monotonic-one
+  ;; a `:monotonic` separation defeats the declaration, and a `:default` one is its dilemma
+  (doseq [strength [:default :monotonic]]
+    (tu/with-terms [left_kind right_kind]
+      (let [d (v/assert kb (list 'disjoint left_kind right_kind) 'CxUniverse {:strength strength})
+            o (v/assert kb (list 'orthogonal left_kind right_kind) 'CxUniverse)]
+        (is (= (if (= :default strength)
+                 [[(set (list 'orthogonal left_kind right_kind))
+                   #{(set (list 'disjoint left_kind right_kind))}]]
+                 [])
+               (shown-orthogonals (v/kb-integrity kb #{} 'CxUniverse)))
+            (str strength))
+        (v/retract! kb o)
+        (v/retract! kb d)))))
+
 (tu/deftest-kb orthogonal-over-separation-findings-respect-context-visibility
   (tu/with-terms [tangible_like intangible_like CxHidden]
     (v/assert kb (list 'genlCx CxHidden 'CxUniverse) 'CxUniverse)
-    (v/assert kb (list 'orthogonal tangible_like intangible_like) 'CxUniverse)
+    (v/assert kb (list 'orthogonal tangible_like intangible_like) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'partition 'thing tangible_like intangible_like) CxHidden)
     (is (= :audited (:status (v/kb-integrity kb #{} 'CxUniverse)))
         "a separation asserted below the audit context is not seen from it")
@@ -1120,8 +1175,8 @@
 (tu/deftest-kb orthogonal-over-separation-findings-truncate-under-every-bound
   (tu/with-terms [left_part right_part middle_part]
     (v/assert kb (list 'partition 'thing left_part middle_part right_part) 'CxUniverse)
-    (v/assert kb (list 'orthogonal left_part middle_part) 'CxUniverse)
-    (v/assert kb (list 'orthogonal middle_part right_part) 'CxUniverse)
+    (v/assert kb (list 'orthogonal left_part middle_part) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'orthogonal middle_part right_part) 'CxUniverse {:strength :monotonic})
     (testing "a result cap below the finding count keeps the completed prefix"
       (let [report (v/kb-integrity kb #{} 'CxUniverse {:max-results 1})]
         (is (= :truncated (:status report)))
@@ -1132,13 +1187,13 @@
                        (v/kb-integrity kb #{} 'CxUniverse {:max-results 2}))))))
     (testing "work exhaustion inside the pass is truncated, never audited, and keeps the
               findings completed before it"
-      (let [run    #(v/kb-integrity kb #{} 'CxUniverse {:max-work %})
-            needed (first (filter #(= :gap (:status (run %))) (range 0 2000)))]
-        (is (some? needed) "some finite work budget completes the sweep")
-        (let [partials (map run (range 0 (or needed 0)))]
-          (is (every? #(and (= :truncated (:status %)) (= :max-work (:reason %))) partials))
-          (is (some #(= 1 (count (:orthogonal-over-separation %))) partials)
-              "a budget exhausted between the two orthogonals keeps the first finding"))))))
+      (work-exhaustion-keeps-the-first-finding
+       kb #(v/kb-integrity kb #{} 'CxUniverse {:max-work %})
+       {:scope    :tiny
+        :limit    2000
+        :findings :orthogonal-over-separation
+        :kept?    #(= 1 (count (:orthogonal-over-separation %)))
+        :message  "a budget exhausted between the two orthogonals keeps the first finding"}))))
 
 ;; ---- twin-genls -------------------------------------------------------------
 
@@ -1275,7 +1330,10 @@
 (tu/deftest-kb an-acknowledged-derivable-edge-carries-its-reason
   ;; Handbook ch. 14 asks that a stated edge a cover also installs say which exception of
   ;; state it once applies; the record is that note, and the sweep reads it.
+  ;; Core.txt declares disjoint symmetric.  This KB holds the interface rules alone, so
+  ;; the test states the mark the reader canonicalizes both spellings under.
   (tu/with-terms [whole_kind left_part right_part]
+    (v/assert kb (list 'symmetric 'disjoint) 'CxUniverse)
     (v/assert kb (list 'partition whole_kind left_part right_part) 'CxUniverse)
     (v/assert kb (list 'genl left_part whole_kind) 'CxUniverse)
     (v/assert kb (list 'disjoint right_part left_part) 'CxUniverse)
@@ -1284,9 +1342,11 @@
                         (:derivable-stated-edge
                          (v/kb-integrity kb #{} 'CxUniverse {:categories #{:derivable-stated-edge}})))
           hs     [(v/assert kb (list 'acknowledgedFinding :derivable-stated-edge
-                                     (list 'genl left_part whole_kind) reason) 'CxUniverse)
+                                     (list 'Quote (list 'genl left_part whole_kind)) reason)
+                            'CxUniverse)
                   (v/assert kb (list 'acknowledgedFinding :derivable-stated-edge
-                                     (list 'disjoint left_part right_part) reason) 'CxUniverse)]]
+                                     (list 'Quote (list 'disjoint left_part right_part)) reason)
+                            'CxUniverse)]]
       (is (= {'genl reason 'disjoint reason} (run))
           "each finding its stated sentence names carries the reason, in either argument
            order of a disjoint")
@@ -1706,6 +1766,45 @@
     (is (= #{(list 'genl bird_kind warm_blooded_kind) (list 'genl fatherX parentX)}
            (set (map #(nth % 2) (rule-macros kb)))))))
 
+(defn- intersection-of
+  "An `(intersection C . types)` declaration as `[C #{types}]`, since the sweep may name
+  the intersected types in either order."
+  [decl]
+  (when (and (seq? decl) (= 'intersection (first decl)))
+    [(second decl) (set (nnext decl))]))
+
+(tu/deftest-kb a-conjunction-rule-is-reported-as-intersection
+  (tu/with-terms [swimmer_kind diver_kind both_kind third_kind all_kind ableX mayX canX]
+    (doseq [p [ableX mayX canX]]
+      (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list swimmer_kind '?x) (list diver_kind '?x))
+                             (list both_kind '?x)))
+              'CxUniverse)
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list swimmer_kind '?x) (list diver_kind '?x)
+                                            (list third_kind '?x))
+                             (list all_kind '?x)))
+              'CxUniverse)
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list ableX '?a '?k) (list mayX '?a '?k))
+                             (list canX '?a '?k)))
+              'CxUniverse)
+    (is (= #{[both_kind #{swimmer_kind diver_kind}]
+             [all_kind #{swimmer_kind diver_kind third_kind}]
+             [canX #{ableX mayX}]}
+           (set (keep #(intersection-of (nth % 2)) (rule-macros kb)))))))
+
+(tu/deftest-kb a-conjunction-over-crossed-arguments-is-not-an-intersection
+  (tu/with-terms [ableX mayX canX]
+    (doseq [p [ableX mayX canX]]
+      (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+    (v/assert kb (list 'set/forwardRule
+                       (list 'implies (list 'and (list ableX '?a '?k) (list mayX '?k '?a))
+                             (list canX '?a '?k)))
+              'CxUniverse)
+    (is (empty? (keep #(intersection-of (nth % 2)) (rule-macros kb))))))
+
 (defn- default-rule
   "The `set/defaultRule` `(implies (antecedent) (consequent))`, forward and backward."
   [ante conseq]
@@ -1789,7 +1888,7 @@
       (let [decl (list 'genl livesInX locatedInX)]
         (is (= [[decl true]] (own decl (shaped-of kb))))
         (is (= [] (own decl (acknowledged-macros kb))))
-        (let [h (v/assert kb (list 'declined_rule_macro decl) 'CxUniverse)]
+        (let [h (v/assert kb (list 'declined_rule_macro (list 'Quote decl)) 'CxUniverse)]
           (is (= [] (own decl (shaped-of kb))) "a declined suggestion is not a :rule-macro finding")
           (is (= [[decl sugar-reason]] (own decl (acknowledged-macros kb)))
               "it is a :rule-macro-review finding, with the sugar's reason")
@@ -1807,12 +1906,13 @@
     (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
     (let [decl   (list 'genl livesInX locatedInX)
           reason "living somewhere is usually being there, and the default is meant"
-          h      (v/assert kb (list 'acknowledgedFinding :rule-macro decl reason) 'CxUniverse)]
+          h      (v/assert kb (list 'acknowledgedFinding :rule-macro (list 'Quote decl) reason)
+                           'CxUniverse)]
       (is (= [] (shaped-of kb)))
       (is (= [[decl reason]] (acknowledged-macros kb)))
       (testing "an acknowledgment under another category acknowledges nothing here"
         (v/retract! kb h)
-        (v/assert kb (list 'acknowledgedFinding :rule-clash decl reason) 'CxUniverse)
+        (v/assert kb (list 'acknowledgedFinding :rule-clash (list 'Quote decl) reason) 'CxUniverse)
         (is (= [[decl true]] (shaped-of kb)))
         (is (= [] (acknowledged-macros kb)))))))
 
@@ -1824,10 +1924,43 @@
       (v/assert kb (list 'genlCx CxTheory 'CxUniverse) 'CxUniverse)
       (v/assert kb (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p)) 'CxUniverse)
       (let [decl (list 'genl livesInX locatedInX)]
-        (v/assert kb (list 'declined_rule_macro decl) CxTheory)
+        (v/assert kb (list 'declined_rule_macro (list 'Quote decl)) CxTheory)
         (is (= 1 (count (own decl (shaped-of kb))))
             "a record below the rule's context does not decline it")
         (is (= [] (own decl (acknowledged-macros kb))))))))
+
+(tu/deftest-kb acknowledged-finding-matches-either-spelling-of-a-commutative-sentence
+  ;; Two converse rules over childX and parentX are each the inverse macro's shape.  Each
+  ;; finding suggests the declaration with its own rule's antecedent predicate first:
+  ;; (inverse childX parentX) for one, (inverse parentX childX) for the other.  inverse is
+  ;; symmetric (core.txt), so the two suggestions are one sentence.  An acknowledgment
+  ;; naming that sentence in either argument order moves both findings to review.
+  (tu/with-terms [childX parentX]
+    (doseq [spelling [(list 'inverse childX parentX) (list 'inverse parentX childX)]]
+      (tu/with-cleared-kb [kb core-kb]
+        (doseq [p [childX parentX]]
+          (v/assert kb (list 'binary_predicate p) 'CxUniverse))
+        (let [rules  (mapv (fn [r] (v/assert kb r 'CxUniverse) (v/handle-of kb r 'CxUniverse))
+                           [(list 'implies (list childX '?x '?y) (list parentX '?y '?x))
+                            (list 'implies (list parentX '?x '?y) (list childX '?y '?x))])
+              reason "the converse rules are kept as written"
+              ours   (fn [category]
+                       (->> (get (v/kb-integrity kb #{} 'CxUniverse {:categories #{category}})
+                                 category)
+                            (filter #(some #{(:rule %)} rules))
+                            (map (juxt :rule :macro :acknowledged))
+                            set))]
+          (is (= #{[(first rules) 'inverse nil] [(second rules) 'inverse nil]}
+                 (ours :rule-macro))
+              "before the acknowledgment each rule is an inverse finding")
+          (is (= #{} (ours :rule-macro-review)))
+          (v/assert kb (list 'acknowledgedFinding :rule-macro (list 'Quote spelling) reason)
+                    'CxUniverse)
+          (is (= #{} (ours :rule-macro))
+              (str "acknowledging " spelling " leaves no inverse finding under :rule-macro"))
+          (is (= #{[(first rules) 'inverse reason] [(second rules) 'inverse reason]}
+                 (ours :rule-macro-review))
+              (str "acknowledging " spelling " moves both findings to review with its reason")))))))
 
 (defn- with-temp-dirs
   "`(f dir-a dir-b)` on two new temp directory paths, removed afterwards."
@@ -1850,16 +1983,18 @@
             (v/assert src (list 'binary_predicate p) 'CxUniverse))
           (v/assert src (default-rule (list livesInX '?a '?p) (list locatedInX '?a '?p))
                     'CxUniverse)
-          (v/assert src (list 'declined_rule_macro (list 'genl livesInX locatedInX)) 'CxUniverse)
+          (v/assert src (list 'declined_rule_macro (list 'Quote (list 'genl livesInX locatedInX)))
+                    'CxUniverse)
           (is (zero? (:skipped (v/export-text! src dir)))))
         (tu/with-cleared-kb [reloaded core-kb]
           (v/load-text! reloaded dir)
-          (let [record (list 'declined_rule_macro (list 'genl livesInX locatedInX))]
+          (let [decl   (list 'genl livesInX locatedInX)
+                record (list 'declined_rule_macro (list 'Quote decl))]
             (is (seq (v/sentexes-matching reloaded record 'CxUniverse)))
-            (is (= [] (own (second record) (shaped-of reloaded)))
+            (is (= [] (own decl (shaped-of reloaded)))
                 "the reloaded record still declines the suggestion")
             (v/retract! reloaded (v/handle-of reloaded record 'CxUniverse))
-            (is (= 1 (count (own (second record) (shaped-of reloaded))))
+            (is (= 1 (count (own decl (shaped-of reloaded))))
                 "the reloaded rule is the one the record named")))))))
 
 (tu/deftest-kb a-monotonic-generator-shape-is-not-reported
@@ -2020,21 +2155,29 @@
                                                   {:categories #{:undeclared-arity}})))))
 
 (tu/deftest-kb a-genl-node-with-no-arity-is-reported
-  (tu/with-terms [stray_kind loose_kind placed_kind below_kind]
-    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
-    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+  (tu/with-terms [stray_kind loose_kind]
     (v/assert kb (list 'genl stray_kind loose_kind) 'CxUniverse)
     (let [before (state-snapshot kb)
           report (v/kb-integrity kb #{} 'CxUniverse {:categories #{:undeclared-arity}})]
       (is (= :gap (:status report)))
       (is (= (mapv (fn [t] {:term t}) (sort-by nm/print-key [loose_kind stray_kind]))
              (:undeclared-arity report))
-          "a subtype inherits its supertype's length, and both ends of an edge no length binds are findings")
+          "both ends of an edge no length binds are findings")
       (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
 
+(tu/deftest-kb a-genl-node-below-a-bound-predicate-is-reported
+  ;; `arity` is part of a predicate's own definition, as `arg` is: a length the node
+  ;; would read through `genl` from a bound supertype does not declare the node.
+  (tu/with-terms [placed_kind below_kind relP relQ]
+    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
+    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+    (v/assert kb (list 'arity relQ 2) 'CxUniverse)
+    (v/assert kb (list 'genl relP relQ) 'CxUniverse)
+    (is (= (sort-by nm/print-key [below_kind relP]) (undeclared kb))
+        "below_kind under a unary_predicate and relP under an (arity relQ 2) state no arity of their own")))
+
 (tu/deftest-kb a-genl-node-with-a-declared-arity-is-not-reported
-  (tu/with-terms [typed_kind upper_kind linksX relatesX listsX gathersX arityX aritiesX
-                  relP relQ Xa Xb Xc]
+  (tu/with-terms [typed_kind upper_kind linksX relatesX listsX gathersX arityX aritiesX]
     (v/assert kb (list 'unary_predicate typed_kind) 'CxUniverse)
     (v/assert kb (list 'unary_predicate upper_kind) 'CxUniverse)
     (v/assert kb (list 'genl typed_kind upper_kind) 'CxUniverse)
@@ -2047,12 +2190,9 @@
     (v/assert kb (list 'arity arityX 3) 'CxUniverse)
     (v/assert kb (list 'arity aritiesX 3) 'CxUniverse)
     (v/assert kb (list 'genl arityX aritiesX) 'CxUniverse)
-    (v/assert kb (list 'arity relQ 2) 'CxUniverse)
-    (v/assert kb (list 'genl relP relQ) 'CxUniverse)
-    (v/assert kb (list relP Xa Xb Xc) 'CxUniverse)
     (is (= [] (undeclared kb))
         "a unary_predicate, a binary_predicate, a variable_arity and an (arity P n)
-         declaration each state an arity, and relP inherits relQ's")))
+         declaration each state an arity")))
 
 (tu/deftest-kb undeclared-arity-reads-the-edges-a-context-sees-and-an-arity-stated-anywhere
   (tu/with-terms [CxHidden stray_kind placed_kind hidden_kind loose_kind chainOf relatedTo]
@@ -2080,6 +2220,92 @@
         (let [report (run {:max-results 1})]
           (is (= [:truncated :max-results] ((juxt :status :reason) report)))
           (is (= (subvec in-order 0 1) (:undeclared-arity report)))))
+      (testing "work exhaustion is truncated, never audited"
+        (let [needed (first (filter #(= :gap (:status (run {:max-work %}))) (range 0 5000)))]
+          (is (some? needed))
+          (is (every? #(= [:truncated :max-work] ((juxt :status :reason) (run {:max-work %})))
+                      (range 0 (or needed 0)))))))))
+
+;; ---- genl-arity-mismatch --------------------------------------------------
+
+(defn- mismatched
+  "The `:genl-arity-mismatch` findings a sweep run with that category alone reports in
+  CxUniverse."
+  [kb]
+  (vec (:genl-arity-mismatch (v/kb-integrity kb #{} 'CxUniverse
+                                             {:categories #{:genl-arity-mismatch}}))))
+
+(tu/deftest-kb a-unary-predicate-under-an-unbounded-one-is-not-a-mismatch
+  (tu/with-terms [placed_kind chainOf]
+    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
+    (v/assert kb (list 'variable_arity chainOf) 'CxUniverse)
+    (v/assert kb (list 'genl placed_kind chainOf) 'CxUniverse)
+    (is (= [] (mismatched kb))
+        "every length placed_kind admits, chainOf admits")))
+
+(tu/deftest-kb an-unbounded-predicate-under-a-unary-one-is-a-mismatch
+  (tu/with-terms [placed_kind chainOf]
+    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
+    (v/assert kb (list 'variable_arity chainOf) 'CxUniverse)
+    (v/assert kb (list 'genl chainOf placed_kind) 'CxUniverse)
+    (let [before (state-snapshot kb)
+          report (v/kb-integrity kb #{} 'CxUniverse {:categories #{:genl-arity-mismatch}})]
+      (is (= :gap (:status report)))
+      (is (= [{:spec chainOf :genl placed_kind :spec-arity {:min 0} :genl-arity {:exact 1}}]
+             (:genl-arity-mismatch report))
+          "chainOf admits two arguments, which placed_kind does not")
+      (is (= before (state-snapshot kb)) "the audit stores, believes and files nothing"))))
+
+(tu/deftest-kb exact-lengths-mismatch-when-they-differ
+  (tu/with-terms [linksX relatesX tiesX bindsX]
+    (v/assert kb (list 'arity linksX 2) 'CxUniverse)
+    (v/assert kb (list 'binary_predicate relatesX) 'CxUniverse)
+    (v/assert kb (list 'genl linksX relatesX) 'CxUniverse)
+    (v/assert kb (list 'arity tiesX 3) 'CxUniverse)
+    (v/assert kb (list 'arity bindsX 2) 'CxUniverse)
+    (v/assert kb (list 'genl tiesX bindsX) 'CxUniverse)
+    (is (= [{:spec tiesX :genl bindsX :spec-arity {:exact 3} :genl-arity {:exact 2}}]
+           (mismatched kb))
+        "equal lengths agree, and a ternary under a binary does not")))
+
+(tu/deftest-kb floors-mismatch-when-the-spec-admits-a-shorter-length
+  (tu/with-terms [listsX gathersX joinsX meetsX]
+    (doseq [[p m] [[listsX 2] [gathersX 3] [joinsX 3] [meetsX 2]]]
+      (v/assert kb (list 'variable_arity p) 'CxUniverse)
+      (v/assert kb (list 'arityMin p m) 'CxUniverse))
+    (v/assert kb (list 'genl listsX gathersX) 'CxUniverse)
+    (v/assert kb (list 'genl joinsX meetsX) 'CxUniverse)
+    (is (= [{:spec listsX :genl gathersX :spec-arity {:min 2} :genl-arity {:min 3}}]
+           (mismatched kb))
+        "a floor of two under a floor of three admits two arguments the genl does not;
+         a floor of three under a floor of two admits nothing more")))
+
+(tu/deftest-kb a-genl-end-with-no-known-arity-is-not-a-mismatch
+  (tu/with-terms [placed_kind below_kind stray_kind loose_kind]
+    (v/assert kb (list 'unary_predicate placed_kind) 'CxUniverse)
+    (v/assert kb (list 'genl below_kind placed_kind) 'CxUniverse)
+    (v/assert kb (list 'genl stray_kind loose_kind) 'CxUniverse)
+    (is (= [] (mismatched kb))
+        "an end with no arity of its own is an undeclared-arity finding, not this one")))
+
+(tu/deftest-kb genl-arity-mismatch-findings-truncate-under-every-bound
+  (tu/with-terms [one_kind two_kind chainOf linksOf]
+    (v/assert kb (list 'unary_predicate one_kind) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate two_kind) 'CxUniverse)
+    (v/assert kb (list 'variable_arity chainOf) 'CxUniverse)
+    (v/assert kb (list 'variable_arity linksOf) 'CxUniverse)
+    (v/assert kb (list 'genl chainOf one_kind) 'CxUniverse)
+    (v/assert kb (list 'genl linksOf two_kind) 'CxUniverse)
+    (let [run      #(v/kb-integrity kb #{} 'CxUniverse
+                                    (assoc % :categories #{:genl-arity-mismatch}))
+          in-order (vec (sort-by (comp nm/print-key :spec)
+                                 [{:spec chainOf :genl one_kind :spec-arity {:min 0} :genl-arity {:exact 1}}
+                                  {:spec linksOf :genl two_kind :spec-arity {:min 0} :genl-arity {:exact 1}}]))]
+      (is (= in-order (:genl-arity-mismatch (run {}))))
+      (testing "a result cap below the finding count keeps the completed prefix"
+        (let [report (run {:max-results 1})]
+          (is (= [:truncated :max-results] ((juxt :status :reason) report)))
+          (is (= (subvec in-order 0 1) (:genl-arity-mismatch report)))))
       (testing "work exhaustion is truncated, never audited"
         (let [needed (first (filter #(= :gap (:status (run {:max-work %}))) (range 0 5000)))]
           (is (some? needed))

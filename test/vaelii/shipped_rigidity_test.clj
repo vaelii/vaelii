@@ -141,10 +141,9 @@
 (tu/deftest-kb interpretation-predicates-are-time-agnostic
   (all-of-kind kb 'time_agnostic_relation '[means denotes] 'CxUniverse))
 
-(tu/deftest-kb kinship-and-biology-are-time-invariant
+(tu/deftest-kb biology-and-parent-functions-are-time-invariant
   (all-of-kind kb 'time_invariant_relation
-               '[parentOf childOf motherOf fatherOf ancestorOf siblingOf birthYearOf mortal
-                 warm_blooded MotherFn FatherFn]
+               '[mortal warm_blooded MotherFn FatherFn]
                'CxUniverse))
 
 (tu/deftest-kb social-relations-are-time-varying
@@ -217,10 +216,10 @@
     (is (not (v/ask? kb (list 'stable_once_false r) 'CxUniverse)))))
 
 (tu/deftest-kb biological-history-is-fixed-but-current-chosen-kinship-can-change
-  (all-of-kind kb 'time_invariant_relation '[grandparentOf madeOf] 'CxUniverse)
+  (all-of-kind kb 'time_invariant_relation '[madeOf] 'CxUniverse)
   (all-of-kind kb 'time_invariant_relation '[originatorOf] 'CxSocial)
-  (all-of-kind kb 'time_agnostic_relation '[relativeOf] 'CxSocial)
-  (is (v/ask? kb '(not (eternal_predicate relativeOf)) 'CxSocial))
+  (all-of-kind kb 'time_agnostic_relation '[kinOf] 'CxSocial)
+  (is (v/ask? kb '(not (eternal_predicate kinOf)) 'CxSocial))
   (all-of-kind kb 'time_varying_relation '[breathes_air preysOn] 'CxUniverse))
 
 (tu/deftest-kb contains-and-the-durations-are-time-invariant
@@ -229,7 +228,8 @@
 
 (tu/deftest-kb the-integrity-requirements-placeholders-and-contradicts-are-classified
   (all-of-kind kb 'time_varying_relation
-               '[typeAllSpecified predAllSpecified predSpecifiedAll]
+               '[typeAllSpecified predAllSpecified predSpecifiedAll
+                 predAllQuotedSpecified predSpecifiedAllQuoted]
                'CxUniverse)
   (all-of-kind kb 'time_invariant_relation
                '[predAllExistsPlaceholder predExistsAllPlaceholder
@@ -254,9 +254,9 @@
   (all-of-kind kb 'time_varying_relation '[solid liquid gas plasma] 'CxUniverse)
   (all-of-kind kb 'time_invariant_relation '[software_tool] 'CxTra))
 
-(tu/deftest-kb acquaintance-place-eating-capability-and-sleep-are-time-varying
+(tu/deftest-kb acquaintance-place-eating-ability-and-sleep-are-time-varying
   (all-of-kind kb 'time_varying_relation
-               '[knows livesIn locatedIn eats hasCapability asleep awake]
+               '[knows livesIn locatedIn eats able asleep awake]
                'CxUniverse)
   (all-of-kind kb 'time_varying_relation '[chosenSiblingOf nestingPartnerOf]
                'CxTra))
@@ -323,11 +323,11 @@
                  temporallyDisjoint]
                'CxUniverse))
 
-(tu/deftest-kb quantities-their-comparators-and-birth-order-are-time-invariant
+(tu/deftest-kb quantities-and-their-comparators-are-time-invariant
   (all-of-kind kb 'time_invariant_relation
                '[quantity measureInUnit measureRangeInUnit quantityGreaterThan
                  quantityGreaterThanOrEqual quantityLessThan quantityLessThanOrEqual
-                 sameQuantity olderThan]
+                 sameQuantity]
                'CxUniverse)
   (testing "each quantity function takes its predicate's kind through the correspondence"
     (all-of-kind kb 'time_invariant_relation '[QuantityFn QuantityIntervalFn] 'CxUniverse)))
@@ -336,8 +336,8 @@
   (all-of-kind kb 'time_varying_relation '[heightOf weightOf tallerThan heavierThan]
                'CxUniverse))
 
-(tu/deftest-kb kind-level-parts-and-capabilities-allow-slice-dependent-profiles
-  (all-of-kind kb 'time_agnostic_relation '[partType capabilityType] 'CxUniverse))
+(tu/deftest-kb kind-level-parts-and-abilities-allow-slice-dependent-profiles
+  (all-of-kind kb 'time_agnostic_relation '[partType abilityType] 'CxUniverse))
 
 (tu/deftest-kb parthood-is-time-agnostic-tangible-parthood-time-varying-and-situation-parthood-time-invariant
   ;; A wheel can come off a car and both go on existing, while a part of an event or a
@@ -475,7 +475,7 @@
 
 (tu/deftest-kb cxtra-placement-naming-and-custody-are-time-varying-and-content-relations-classified
   (all-of-kind kb 'time_varying_relation
-               '[toolEnablesCapability runsOn clusterNode onNetwork hasSeat hostnameOf
+               '[toolEnablesAbility runsOn clusterNode onNetwork hasSeat hostnameOf
                  discordChannelName nameString custodianOf holdsReadyLatch discordAccountId
                  agentClaims]
                'CxTra)

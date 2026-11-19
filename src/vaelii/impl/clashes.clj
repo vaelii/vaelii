@@ -110,10 +110,10 @@
   `irreflexive` mark over a self tuple and the `anti_transitive` mark over a chain; the
   `negates` declarations over two tuples of one argument list, or over a lone tuple whose
   functor is below both sides; the covers whose every part a denial in `sens` rules out
-  for the whole's member; and the separations of the two types a lone `(orthogonal a b)`
-  names, or a lone fact whose functor is a `genl` of `orthogonal`.  A `genl` edge is no
-  flat-cache entry, so an `orthogonal` convicted through one alone reads nothing, as a
-  `disjoint` over related types does.  A shape no conviction has reads nothing.
+  for the whole's member; and the separations of the two types the one `(orthogonal a b)`
+  among them names, or the one fact whose functor is a `genl` of `orthogonal`.  A `genl`
+  edge is no flat-cache entry, so an `orthogonal` convicted through one alone reads
+  nothing, as a `disjoint` over related types does.  A shape no conviction has reads nothing.
   `climb-ok?` is as for `strict-separating-keys`."
   [tax sens v climb-ok?]
   (let [pos    (filterv #(not (sx/negation? %)) sens)
@@ -146,11 +146,14 @@
                  (marks [:asymmetric :anti-symmetric]))))
            (when (and binary (= 1 (count pos)) (apply = (args (first pos))))
              (marks [:irreflexive]))
-           (when (and (empty? denied) (= 1 (count pos)) (= 2 (nm/arity (first pos)))
-                      (let [f (nm/functor (first pos))]
-                        (or (= 'orthogonal f) (tax/genl? tax f 'orthogonal v))))
-             (let [[a b] (args (first pos))]
-               (tax/separating-keys tax a b v)))
+           (when (empty? denied)
+             (let [os (filter #(and (= 2 (nm/arity %))
+                                    (let [f (nm/functor %)]
+                                      (or (= 'orthogonal f) (tax/genl? tax f 'orthogonal v))))
+                              pos)]
+               (when (= 1 (count os))
+                 (let [[a b] (args (first os))]
+                   (tax/separating-keys tax a b v)))))
            (when (and (empty? denied) (<= 1 (count pos) 2) (apply = (map args pos))
                       (every? #(symbol? (nm/functor %)) pos))
              (let [[f g] (map nm/functor (if (= 1 (count pos)) [(first pos) (first pos)] pos))]
@@ -244,7 +247,7 @@
   denial) that one of its vantages sees, or the whole KB for a report weighed at none; for
   an inert tuple, its binding's grounds (`inert-binding`), and for a `negates`
   declaration's length clash, the bindings stating the lengths (`arity/negates-clash`).
-  No `genl` edge is named.
+  No `genl` edge and no member is named.
   Empty for a rebuttal, an `:inherited` clash and an `:arity-descension` pair, whose
   reasons are members (docs/nmtms.md, \"The clash reports\")."
   [kb r]
@@ -264,7 +267,7 @@
              (:negates-arity :negates-unary)
              (mapcat #(:grounds (arity/negates-clash kb (:sentence (p/get-sentex recs %)))) (:nogood r))
              (into #{} (mapcat at) (or (seq (report-vantages r)) [nil])))
-           (into #{})
+           (into #{} (remove (set (:nogood r))))
            (into [] (comp (filter #(jtms/in? tms %))
                           (keep #(p/get-sentex recs %))
                           (map (fn [s] {:handle (:id s) :sentence (sx/sentence-of s)

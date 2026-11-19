@@ -332,6 +332,8 @@
         (is (= '(QuantityFn 1800 Second) (bound kb (list 'temporalDistance '(InstantFn 2000 1 1 0 30 0) P '?d)))))
       (testing "no gap joins a moment in no zone to an absolute one"
         (is (empty? (v/ask kb (list 'temporalDistance '(StartFn (DatetimeFn "2000-01-01T00:00Z")) P '?d) C))))
+      (testing "no gap joins a moment between two seconds"
+        (is (empty? (v/ask kb (list 'temporalDistance '(StartFn (DatetimeFn "2000-01-01T00:00:00.5")) P '?d) C))))
       (v/retract! kb h))
     (v/assert kb '(dimensionOf Metre Length) C)
     (v/assert kb (list 'temporalDistance P X '(QuantityFn 5 Metre)) C)

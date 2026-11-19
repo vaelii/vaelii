@@ -6,7 +6,7 @@
   (docs/density.md, Phase 3).
 
     nodes / premises / in / blocked / forced mono, out, void, held
-    touched / touched-in / touched-new / touched-out         RoaringBitmap
+    touched / -in / -new / -out / -down / -up                RoaringBitmap
     depths                                  Int2IntOpenHashMap  (absent => 0)
     supports / consequences Int2ObjectOpenHashMap<IntPostings>  (absent => empty)
     a justification         columns keyed by id, never an object
@@ -174,10 +174,11 @@
                    ;; depth, adjacency, and the consequence / informant / antecedent
                    ;; columns — see `TmsColumns`
                    ^TmsColumns cols
-                   ;; the live ids, and the two sparse or two-class columns
+                   ;; the live ids, sparse annotations and two-class strength
                    ^RoaringBitmap jids
                    ^Int2ObjectOpenHashMap j-inf-sym
                    ^Int2ObjectOpenHashMap j-subs
+                   ^Int2ObjectOpenHashMap j-reading
                    ^RoaringBitmap j-mono
                    ^RoaringBitmap in
                    ^RoaringBitmap blocked
@@ -186,6 +187,8 @@
                    ^RoaringBitmap touched-new
                    ;; what a forced-set change took from IN to OUT since the reset
                    ^RoaringBitmap touched-out
+                   ^RoaringBitmap touched-down
+                   ^RoaringBitmap touched-up
                    ^RoaringBitmap mono
                    ;; the forced sets (`jtms-protocol/-forced?`): premises held `:monotonic`,
                    ;; datums held OUT, justifications held void, datums IN and not believed
@@ -273,9 +276,11 @@
   (-touched-in [_] (with-read lock (rb-set touched-in)))
   (-touched-new [_] (with-read lock (rb-set touched-new)))
   (-touched-out [_] (with-read lock (rb-set touched-out)))
+  (-touched-down [_] (with-read lock (rb-set touched-down)))
+  (-touched-up [_] (with-read lock (rb-set touched-up)))
   (-reset-touched [_]
     (with-write lock (.clear touched) (.clear touched-in) (.clear touched-new)
-      (.clear touched-out)
+      (.clear touched-out) (.clear touched-down) (.clear touched-up)
       (.set marks {:gen (inc (long (:gen (.get marks)))) :epochs []})) nil)
   (-touch-mark [_]
     ;; a mark taken while the open epoch is empty shares it: nothing was recorded between
@@ -297,6 +302,8 @@
           (rb-set touched)))))
   (-supports [_ datum] (with-read lock (supports-set cols datum)))
   (-dependents [_ datum] (with-read lock (dependents-set cols datum)))
+  (-support-count [_ datum] (if (integer? datum) (with-read lock (.supportCount cols (int datum))) 0))
+  (-dependent-count [_ datum] (if (integer? datum) (with-read lock (.dependentCount cols (int datum))) 0))
   (-justification [this jid] (with-read lock (when (rb-has? jids jid) (just-record this jid))))
   (-justifications [this] (with-read lock (seq (mapv #(just-record this %) (rb-longs jids)))))
   (-ensure-node [this datum depth]
@@ -524,7 +531,9 @@
            nil
            (if (rb-has? ^RoaringBitmap (.-j-mono this) jid) :monotonic :default))
     (.containsKey ^Int2ObjectOpenHashMap (.-j-subs this) (int jid))
-    (assoc :subsumptions (.get ^Int2ObjectOpenHashMap (.-j-subs this) (int jid)))))
+    (assoc :subsumptions (.get ^Int2ObjectOpenHashMap (.-j-subs this) (int jid)))
+    (.containsKey ^Int2ObjectOpenHashMap (.-j-reading this) (int jid))
+    (assoc :reading (.get ^Int2ObjectOpenHashMap (.-j-reading this) (int jid)))))
 
 ;; ---- validity and class, against the dense structures -------------------
 ;;
@@ -696,7 +705,9 @@
         ;; labels in place and the prior ones are then gone.  See `jtms/touched-in`.
         fresh    (RoaringBitmap/andNot region ^RoaringBitmap (.-touched this))
         ;; a `:held` member is IN and was not believed
-        fresh-in (without-held (RoaringBitmap/and fresh in) (.-f-held this))]
+        fresh-in (without-held (RoaringBitmap/and fresh in) (.-f-held this))
+        was-in   (RoaringBitmap/and region in)
+        was-mono (RoaringBitmap/and region mono)]
     ;; ...and the same record for an open hold, whose readers read the labels as they
     ;; were before its first relabel moved them, and for the open write record — read
     ;; FIRST for the same reason
@@ -716,6 +727,11 @@
     ;; region for their boundary — so the region is cleared out of `mono` and no further
     (.andNot mono region)
     (region-classes! this region in mono)
+    (let [now-in   (RoaringBitmap/and region in)
+          now-mono (RoaringBitmap/and region mono)]
+      (.or ^RoaringBitmap (.-touched-down this) (RoaringBitmap/andNot was-in now-in))
+      (.or ^RoaringBitmap (.-touched-down this) (RoaringBitmap/andNot (RoaringBitmap/and was-mono now-in) now-mono))
+      (.or ^RoaringBitmap (.-touched-up this) (RoaringBitmap/andNot (RoaringBitmap/and was-in now-mono) was-mono)))
     (.or ^RoaringBitmap (.-touched-in this) fresh-in)
     ;; A supporter's belief can flip only inside a relabelled region, so the accumulated
     ;; touched set is a superset of every handle whose belief moved this settle — what
@@ -851,7 +867,7 @@
   forward closure is walked once, when a fact is first derived. Any real change takes the
   full resettle."
   [^DenseTms this just]
-  (let [{:keys [id informant antecedents consequence strength subsumptions]} (jtms/graph-just just)
+  (let [{:keys [id informant antecedents consequence strength subsumptions reading]} (jtms/graph-just just)
         jid   (int (check-handle! id "justification id"))
         cols  ^TmsColumns (.-cols this)
         in    ^RoaringBitmap (.-in this)
@@ -871,6 +887,9 @@
     (if subsumptions
       (.put ^Int2ObjectOpenHashMap (.-j-subs this) jid subsumptions)
       (.remove ^Int2ObjectOpenHashMap (.-j-subs this) jid))
+    (if reading
+      (.put ^Int2ObjectOpenHashMap (.-j-reading this) jid reading)
+      (.remove ^Int2ObjectOpenHashMap (.-j-reading this) jid))
     (if (= :monotonic strength)
       (rb-add! ^RoaringBitmap (.-j-mono this) jid)
       (rb-del! ^RoaringBitmap (.-j-mono this) jid))
@@ -998,6 +1017,7 @@
     (.dropJustification cols k)
     (.remove ^Int2ObjectOpenHashMap (.-j-inf-sym this) k)
     (.remove ^Int2ObjectOpenHashMap (.-j-subs this) k)
+    (.remove ^Int2ObjectOpenHashMap (.-j-reading this) k)
     (rb-del! ^RoaringBitmap (.-j-mono this) k)
     (.removeSupport cols (int c) k)
     (dotimes [i (alength antes)] (.removeDependent cols (aget antes i) k))
@@ -1159,6 +1179,8 @@
                              (if (rb-has? (.-mono-premises this) d) :monotonic :default)))))
         (-supports [_ d] (ids (jtms/supports this d) (get by-c (k d))))
         (-dependents [_ d] (ids (jtms/dependents this d) (get by-a (k d))))
+        (-support-count [_ d] (count (ids (jtms/supports this d) (get by-c (k d)))))
+        (-dependent-count [_ d] (count (ids (jtms/dependents this d) (get by-a (k d)))))
         (-justification [_ jid]
           (if (and (k jid) (.containsKey justs (k jid)))
             (.get justs (k jid))
@@ -1180,6 +1202,8 @@
         (-touched-in [_] (no '-touched-in))
         (-touched-new [_] (no '-touched-new))
         (-touched-out [_] (no '-touched-out))
+        (-touched-down [_] (no '-touched-down))
+        (-touched-up [_] (no '-touched-up))
         (-reset-touched [_] (no '-reset-touched))
         (-touch-mark [_] (no '-touch-mark))
         (-touched-since [_ _] (no '-touched-since))
@@ -1210,7 +1234,7 @@
 (def image-version
   "The byte image's layout number.  `read-image!` refuses any other, so an image of
   another layout is discarded rather than misread."
-  6)
+  7)
 
 (def ^:private ^:const image-magic 0x76544D53)
 
@@ -1328,7 +1352,7 @@
       (write-postings! o (.-supports c))
       (write-postings! o (.-conseqs c))
       (write-arrays! o (.-j-antes c)))
-    (doseq [m [(.-j-inf-sym t) (.-j-subs t)]]
+    (doseq [m [(.-j-inf-sym t) (.-j-subs t) (.-j-reading t)]]
       (write-data! o (mapv (fn [k] [k (.get ^Int2ObjectOpenHashMap m (int k))]) (sorted-keys m))))
     (write-data! o (into (sorted-map) @(.-superseded t))))
   nil)
@@ -1355,7 +1379,7 @@
       (read-postings! i (.-supports c))
       (read-postings! i (.-conseqs c))
       (read-arrays! i (.-j-antes c)))
-    (doseq [^Int2ObjectOpenHashMap m [(.-j-inf-sym t) (.-j-subs t)]]
+    (doseq [^Int2ObjectOpenHashMap m [(.-j-inf-sym t) (.-j-subs t) (.-j-reading t)]]
       (doseq [[k v] (read-data i)] (.put m (int k) v)))
     (reset! (.-superseded t) (into {} (read-data i))))
   t)
@@ -1420,7 +1444,8 @@
             [[(.-supports tc) (.-supports sc)] [(.-conseqs tc) (.-conseqs sc)]
              [(.-j-antes tc) (.-j-antes sc)]
              [(.-j-inf-sym target) (.-j-inf-sym src)]
-             [(.-j-subs target) (.-j-subs src)]]]
+             [(.-j-subs target) (.-j-subs src)]
+             [(.-j-reading target) (.-j-reading src)]]]
       (.putAll t s)))
   (reset! (.-superseded target) @(.-superseded src)))
 
@@ -1486,7 +1511,9 @@
      :touched     (rb-set ^RoaringBitmap (.-touched this))
      :touched-in  (rb-set ^RoaringBitmap (.-touched-in this))
      :touched-new (rb-set ^RoaringBitmap (.-touched-new this))
-     :touched-out (rb-set ^RoaringBitmap (.-touched-out this))}))
+     :touched-out (rb-set ^RoaringBitmap (.-touched-out this))
+     :touched-down (rb-set ^RoaringBitmap (.-touched-down this))
+     :touched-up  (rb-set ^RoaringBitmap (.-touched-up this))}))
 
 ;; ---- construction -------------------------------------------------------
 
@@ -1500,9 +1527,10 @@
               (rb)                                             ; jids
               (Int2ObjectOpenHashMap.)                         ; j-inf-sym
               (Int2ObjectOpenHashMap.)                         ; j-subs
+              (Int2ObjectOpenHashMap.)                         ; j-reading
               (rb)                                             ; j-mono
-              (rb) (rb) (rb) (rb) (rb) (rb) (rb)               ; in blocked touched touched-in
-                                                               ; touched-new touched-out mono
+              (rb) (rb) (rb) (rb) (rb) (rb) (rb) (rb) (rb)     ; in blocked touched touched-in touched-new
+                                                               ; touched-out touched-down touched-up mono
               (rb) (rb) (rb) (rb)                              ; f-mono f-out f-void f-held
               (atom {})
               (AtomicReference. nil)

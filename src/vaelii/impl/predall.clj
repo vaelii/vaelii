@@ -37,6 +37,7 @@
   all treated as determinate here, which is what makes `predAllSpecified` the exact
   antagonist of `predAllExists`."
   (:require [vaelii.impl.budget :as budget]
+            [vaelii.impl.call-cap :as call-cap]
             [vaelii.impl.defining :as defining]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
@@ -128,30 +129,43 @@
     :type-position (or (ask? kb (list 'genl y type) ctx)
                        (ask? kb (list 'unary_predicate y) ctx))))
 
+(defn- admissible-binding?
+  "Does the binding `b` carry a determinate `?y` satisfying every slot constraint in
+  `typings` in `ctx`?  A binding that carries no `?y` is not a filler: the registry
+  answers a goal with `[{}]` where a prover proves it without binding anything, and a
+  typing question about nil is not a membership question."
+  [kb typings ctx b]
+  (let [y (get b '?y)]
+    (and (some? y)
+         (not (indeterminate-term? kb y ctx))
+         (every? #(satisfies-typing? kb y % ctx) typings))))
+
 (defn- admissible-filler?
   "Does at least one **determinate** filler `y`, believed at slot `n` of `pred`'s
-  tuples about `x` in `ctx`, satisfy every derived slot constraint in `typings`?
-  Named for both bites: a violation means no filler was determinate *and*
-  contract-satisfying — absence, a skolem, and a constraint-failing filler all read
-  the same from the caller's side.
+  tuples about `x` in `ctx`, satisfy every derived slot constraint in `typings`
+  (`admissible-binding?`)?  Named for both bites: a violation means no filler was
+  determinate *and* contract-satisfying — absence, a skolem, and a constraint-failing
+  filler all read the same from the caller's side.
 
-  `n` is the audited slot — 2 audits `(pred x ?y)`, 1 audits `(pred ?y x)` — the one
-  place the position is turned into a goal shape, fed by the same `n`
-  `specified-violations` derived the typings with.
-
-  A binding that carries no `?y` is not a filler: the registry answers a goal with
-  `[{}]` where a prover proves it without binding anything, and a typing question
-  about nil is not a membership question."
+  `n` is the audited slot — 2 audits `(pred x ?y)`, 1 audits `(pred ?y x)` — fed by the
+  same `n` `specified-violations` derived the typings with."
   [kb pred x typings n ctx]
-  (let [goal    (if (= n 2) (list pred x '?y) (list pred '?y x))
-        answers (quasiquote/ask-prepared kb goal ctx)]
-    (boolean
-     (some (fn [b]
-             (let [y (get b '?y)]
-               (and (some? y)
-                    (not (indeterminate-term? kb y ctx))
-                    (every? #(satisfies-typing? kb y % ctx) typings))))
-           answers))))
+  (let [goal (if (= n 2) (list pred x '?y) (list pred '?y x))]
+    (boolean (some #(admissible-binding? kb typings ctx %)
+                   (quasiquote/ask-prepared kb goal ctx)))))
+
+(defn- filler-table
+  "`pred`'s believed tuples in `ctx` read by one open goal, `(pred ?x ?y)` for slot `n`
+  2 or `(pred ?y ?x)` for 1, as the bindings grouped by their `?x`.  An answer with
+  `?x` bound to `x` answers the bound goal `admissible-filler?` asks about `x`, so a
+  term the table admits is admitted by that ask.  A budget or deadline signal from the
+  read propagates, and any other throw answers the empty table."
+  [kb pred n ctx]
+  (let [goal (if (= n 2) (list pred '?x '?y) (list pred '?y '?x))]
+    (try
+      (group-by #(get % '?x) (quasiquote/ask-prepared kb goal ctx))
+      (catch Exception e
+        (if (or (budget/exhausted e) (budget/unit-over? e)) (throw e) {})))))
 
 (defn- member-selector
   [kb]
@@ -230,6 +244,97 @@
              (merge {:status :gap :gap :incomplete-defining-contexts :pred pred}
                     (select-keys (ex-data e) [:term :handles]))
              (throw e))))))))
+
+(defn- written-terms
+  "The non-variable symbols of the term-name set (`reads/stored-terms-global`) that a
+  stored sentex in a context `ctx` sees writes, by term-index posting, belief unread.
+  The read is global because the term-name set keys no context, and the postings'
+  contexts scope it to `ctx`."
+  [kb ctx]
+  (let [up   (set (tax/context-up (reasoning/taxonomy kb) ctx))
+        recs (:records kb)
+        idx  (:index kb)]
+    (filter (fn [x]
+              (and (symbol? x) (not (sx/variable? x))
+                   (some #(contains? up (:context (p/get-sentex recs %)))
+                         (budget/checked-seq (reads/as-stored-with-term idx x)))))
+            (budget/checked-seq (reads/stored-terms-global idx)))))
+
+(defn- written-form
+  "The form the term `x` writes: for a reified constant (`nm/reified-constant?`), the
+  expression its `natFormula` visible from `ctx` maps it to, the content-least where a
+  collision maps it to several; else `x`.  The store spells a NAT as a reified constant,
+  and KB text writes it as the compound it reifies."
+  [kb x ctx]
+  (or (when (nm/reified-constant? x)
+        (some->> (res/matches-visible kb (list 'natFormula x '?e) ctx)
+                 (keep #(get (second %) '?e))
+                 (nm/min-by-content-key identity)))
+      x))
+
+(defn- of-written-kind?
+  "Is the term `x`, taken as written (`written-form`), of the expression kind `qtype` in
+  `ctx`: is one of its spelling's kinds (`provers/shape-kinds`) `qtype` or below it?  A
+  NAT is a `non_atomic_expression`, so no `symbol`, whatever constant stores it."
+  [kb tax x qtype ctx]
+  (boolean (some #(or (= % qtype) (tax/genl? tax % qtype ctx))
+                 (provers/shape-kinds (written-form kb x ctx)))))
+
+(def sweep
+  "The `call-cap` name of one full audit of a KB, capped at 2 per KB.  Each of these counts
+  once: `all-specified-violations`, `kb-integrity` reaching a Specified pass,
+  `type-specified-declaration-audits`, `specified-declaration-audits` running a quoted
+  section, and `quoted-specified-violations` reaching the written-term population.  An
+  audit inside a counted one adds nothing."
+  (call-cap/capped ::sweep 2))
+
+(defn quoted-specified-violations
+  "Audit `(predAllQuotedSpecified pred qtype)` in `ctx`, `arg-pos` `:first` for
+  `predSpecifiedAllQuoted`: `{:status :audited :violations #{x …}}`, each written term
+  (`written-terms`) of kind `qtype` (`of-written-kind?`) with no admissible filler as
+  `specified-violations` judges one, kept where `eligible?` admits it.  `eligible?` is the
+  unquoted twin's defining-home eligibility.  `{:status :gap :gap :non-syntactic-type :pred
+  :type}` when `qtype` is below no `expression`, and `:missing-slot-typing` and
+  `:incomplete-defining-contexts` as the unquoted twin gives them.  A term whose
+  `filler-table` entry holds an admissible binding is admitted without its own ask, and
+  every other term takes `admissible-filler?`.  See docs/predall.md, \"Quoted Specified\"."
+  ([kb pred qtype ctx] (quoted-specified-violations kb pred qtype ctx :second))
+  ([kb pred qtype ctx arg-pos]
+   (let [eligible? (member-selector kb)]
+     (quoted-specified-violations kb pred qtype ctx arg-pos #(eligible? ctx ctx %))))
+  ([kb pred qtype ctx arg-pos eligible?]
+   (let [n   (case arg-pos
+               :second 2
+               :first  1
+               (throw (ex-info (str "arg-pos must be :second or :first, got " (pr-str arg-pos))
+                               {:type :bad-args :op 'quoted-specified-violations
+                                :arg-pos arg-pos})))
+         tax (reasoning/taxonomy kb)]
+     (if-not (and (symbol? qtype) (not (sx/variable? qtype))
+                  (or (= 'expression qtype) (tax/genl? tax qtype 'expression ctx)))
+       {:status :gap :gap :non-syntactic-type :pred pred :type qtype}
+       (let [typings (slot-typings kb pred n ctx)]
+         (if (empty? typings)
+           {:status :gap :gap :missing-slot-typing :pred pred :position n}
+           (call-cap/counted
+            sweep kb
+            #(let [table (filler-table kb pred n ctx)
+                   admitted? (fn [x]
+                               (or (some (partial admissible-binding? kb typings ctx) (get table x))
+                                   (admissible-filler? kb pred x typings n ctx)))]
+               (try
+                 {:status :audited
+                  :violations
+                  (into #{}
+                        (comp (filter (fn [x] (of-written-kind? kb tax x qtype ctx)))
+                              (remove admitted?)
+                              (filter eligible?))
+                        (written-terms kb ctx))}
+                 (catch clojure.lang.ExceptionInfo e
+                   (if (= :incomplete-defining-contexts (:type (ex-data e)))
+                     (merge {:status :gap :gap :incomplete-defining-contexts :pred pred}
+                            (select-keys (ex-data e) [:term :handles]))
+                     (throw e))))))))))))
 
 (defn- exists-reading
   "`[subjects goal filler-type placeholder]` for the *Exists* declaration `(functor pred a
@@ -355,41 +460,57 @@
 
 (defn specified-declaration-audits
   "Every declaration audit as a lazy stream of `[declaration result]` entries.
-
   A stored Specified declaration audits every known reader seeing that requirement and
   an ordinary defining home of an instance, each with its own population, contracts and
   fillers, and the results combine under one canonical key. Native-only registry answers
   retain the supplied context, since their binding maps carry no defining context.
-
-  The open reads are only the unavoidable declaration censuses. Each expensive audit
-  after that is focused on one declared predicate and independent collection. Keeping
-  the units lazy lets the integrity sweep checkpoint and retain progress between them."
-  [kb ctx]
-  (concat
-   (res/lazy-mapcat
-    (fn [[functor arg-pos]]
+  The open reads are the declaration censuses, and each audit after them reads one
+  declared predicate and collection. Laziness lets the integrity sweep checkpoint between
+  units. `opts`' `:functors` set keeps only the sections whose functor it names, and an
+  omitted section runs neither its census nor any audit."
+  ([kb ctx] (specified-declaration-audits kb ctx {}))
+  ([kb ctx opts]
+   (let [functors (:functors opts)
+         wanted?  (if functors #(contains? functors %) (constantly true))
+         only     (fn [f xs] (filter #(wanted? (f %)) xs))
+         quoted   (only first [['predAllQuotedSpecified :second] ['predSpecifiedAllQuoted :first]])]
+     (when (seq quoted) (call-cap/counted sweep kb (constantly nil)))
+     (concat
       (res/lazy-mapcat
-       #(declaration-context-audits
-         kb functor (fn [pred indep reader eligible?]
-                      (specified-violations kb pred indep reader arg-pos eligible?)) %)
-       (declaration-contexts kb functor ctx)))
-    [['predAllSpecified :second] ['predSpecifiedAll :first]])
-   (res/lazy-mapcat
-    (fn [functor]
+       (fn [[functor arg-pos]]
+         (res/lazy-mapcat
+          #(declaration-context-audits
+            kb functor (fn [pred indep reader eligible?]
+                         (specified-violations kb pred indep reader arg-pos eligible?)) %)
+          (declaration-contexts kb functor ctx)))
+       (only first [['predAllSpecified :second] ['predSpecifiedAll :first]]))
       (res/lazy-mapcat
-       (fn [[pred a b]]
-         (list [[functor pred a b]
-                {:status :gap :gap :legacy-ternary-declaration
-                 :pred pred :sentence (list functor pred a b)}]))
-       (legacy-ternary-declarations kb functor ctx)))
-    '[predAllSpecified predSpecifiedAll])
-   (res/lazy-mapcat
-    (fn [functor]
+       (fn [[functor arg-pos]]
+         (res/lazy-mapcat
+          #(declaration-context-audits
+            kb functor (fn [pred qtype reader eligible?]
+                         (call-cap/uncounted
+                          sweep
+                          (fn []
+                            (quoted-specified-violations kb pred qtype reader arg-pos eligible?)))) %)
+          (declaration-contexts kb functor ctx)))
+       quoted)
       (res/lazy-mapcat
-       (fn [declaration]
-         (list [declaration (exists-violations kb (apply list declaration) ctx)]))
-       (exists-declarations kb functor ctx)))
-    '[predAllExists predExistsAll predExistsInstance predInstanceExists])))
+       (fn [functor]
+         (res/lazy-mapcat
+          (fn [[pred a b]]
+            (list [[functor pred a b]
+                   {:status :gap :gap :legacy-ternary-declaration
+                    :pred pred :sentence (list functor pred a b)}]))
+          (legacy-ternary-declarations kb functor ctx)))
+       (only identity '[predAllSpecified predSpecifiedAll]))
+      (res/lazy-mapcat
+       (fn [functor]
+         (res/lazy-mapcat
+          (fn [declaration]
+            (list [declaration (exists-violations kb (apply list declaration) ctx)]))
+          (exists-declarations kb functor ctx)))
+       (only identity '[predAllExists predExistsAll predExistsInstance predInstanceExists]))))))
 
 (defn type-specified-violations
   "Audit `(typeAllSpecified classifier indep)` in `ctx` using believed memberships.
@@ -430,6 +551,7 @@
   population and classifier memberships; cumulative findings share one declaration key.
   Native-only declaration answers retain `ctx`."
   [kb ctx]
+  (call-cap/counted sweep kb (constantly nil))
   (res/lazy-mapcat
    #(declaration-context-audits kb 'typeAllSpecified
                                 (fn [classifier indep reader eligible?]
@@ -438,7 +560,8 @@
    (declaration-contexts kb 'typeAllSpecified ctx)))
 
 (defn all-specified-violations
-  "Audit visible Specified and Exists declarations as `{declaration result …}`.
+  "Audit visible Specified, quoted Specified and Exists declarations as `{declaration
+  result …}`.
   Binary keys are `[functor pred indep]`; Exists and legacy-ternary keys keep all
   arguments. Results are `{:status :audited :violations #{…}}` or explicit `:gap`
   diagnostics. Omit satisfied declarations, never gaps; an empty map is clean.
@@ -446,6 +569,8 @@
   instances, and reports incomplete support. No-home/native answers retain the actual
   reader. Uses the same declaration stream as `kb-integrity`; see docs/integrity.md."
   [kb ctx]
-  (into {}
-        (filter (fn [[_ r]] (or (= :gap (:status r)) (seq (:violations r)))))
-        (specified-declaration-audits kb ctx)))
+  (call-cap/counted
+   sweep kb
+   #(into {}
+          (filter (fn [[_ r]] (or (= :gap (:status r)) (seq (:violations r)))))
+          (specified-declaration-audits kb ctx))))

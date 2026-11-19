@@ -95,7 +95,7 @@
     ;; ...and the candidates of the nogood families the settle places
     (decide/note-candidate! kb sentex false)
     (kb/note-mint-rule-moved! kb sentex)
-    (kb/note-lazy-rule-moved! kb sentex)
+    (kb/note-engine-rule-moved! kb sentex)
     ;; ...and the mint family, the remove half of `special/entail-arg-type`'s add, and
     ;; the departure the settle re-derives withheld mints from
     (special/retire-mint! kb sentex)
@@ -336,14 +336,16 @@
         recs (:records kb)]
     (doseq [jid  (vec (jtms/dependents tms doomed))
             :let [j     (or (p/get-justification recs jid) (jtms/justification tms jid))
-                  antes (mapv #(if (= % doomed) survivor %) (:antecedents j))]
+                  move #(if (= % doomed) survivor %)
+                  antes (mapv move (:antecedents j))
+                  reading (jtms/remap-reading (:reading j) (:antecedents j) move)]
             :when (and j (not= (:consequence j) survivor)
                        (not (jtms/has-justification?
                              tms (:informant j) antes (:consequence j)
-                             (jtms/justification-key (:informant j) antes (:subsumptions j)))))]
+                             (jtms/justification-key (:informant j) antes (:subsumptions j) reading))))]
       (let [nid  (p/next-id recs)
             just (jtms/->just nid (:informant j) antes (:consequence j)
-                              (:bindings j) (:strength j) (:subsumptions j))]
+                              (:bindings j) (:strength j) (:subsumptions j) reading)]
         (p/put-justification recs just)
         (jtms/add-justification tms just)
         ;; the copy concludes what the original did, spelled as the original was
@@ -367,10 +369,10 @@
                          (not (jtms/has-justification?
                                tms (:informant j) (:antecedents j) survivor
                                (jtms/justification-key (:informant j) (:antecedents j)
-                                                       (:subsumptions j)))))
+                                                       (:subsumptions j) (:reading j)))))
                   (let [nid  (p/next-id recs)
                         just (jtms/->just nid (:informant j) (vec (:antecedents j)) survivor
-                                          (:bindings j) (:strength j) (:subsumptions j))]
+                                          (:bindings j) (:strength j) (:subsumptions j) (:reading j))]
                     (p/put-justification recs just)
                     (jtms/add-justification tms just)
                     (assoc copied jid nid))
@@ -395,9 +397,11 @@
 (defn apply-removals!
   "Delete from the stores what a network removal `r` swept (`swept-records`), and tear
   each deleted record down through `sentex-removed!`: `r` is a `jtms/retract!`,
-  `jtms/sweep!` or `jtms/drop-justification!` result."
+  `jtms/sweep!` or `jtms/drop-justification!` result.  A removed firing whose record is
+  still stored queues its rule's re-ask (`special/note-removed-firings!`)."
   [kb {:keys [removed-sentexes removed-justifications] :as r}]
   (let [recs (:records kb)
+        _    (special/note-removed-firings! kb removed-justifications)
         gone (swept-records kb removed-sentexes)]
     (doseq [sx gone] (sentex-removed! kb sx))
     (doseq [jid removed-justifications] (p/delete-justification! recs jid))

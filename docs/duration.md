@@ -169,7 +169,9 @@ withdraws the conclusion ([inference.md](inference.md), "What a computed answer 
 - **`overlapDuration`** rests on those, on the Allen network's support for the pair
   (`interval/allen-support`, empty for an unconstrained pair), and on the metric overlap window's
   support wherever an overlap window of the lengths' dimension was intersected in. A KB with no
-  `temporalDistance` gets a conclusion resting on nothing metric.
+  `temporalDistance` gets a conclusion resting on nothing metric. Where the pair's own
+  reading of its stated bounds narrows the relations, `allen-support` adds that reading's
+  support ([time.md](time.md#the-points-of-a-temporal-thing)).
 - **The check arm** adds the stated measure's own unit-table rows, since the check
   compares after normalizing it.
 

@@ -725,9 +725,9 @@
             (str (name row) ": the forward rule's unknown, stored with `reads` first"))))))
 
 (tu/deftest-kb stored-memberships-and-the-open-arm-answer-what-the-ground-arm-accepts
-  ;; The entailing reading mints a membership in a type `arity/mintable-type?` admits, so
-  ;; `ArgTypeProver` answers an open goal only for the others; together they answer the
-  ;; individuals the ground arm types.  `t5` is declared in CxA and used in CxB, so only
+  ;; The entailing reading believes a minted membership in a type `arity/mintable-type?`
+  ;; admits, so `ArgTypeProver` answers an open goal only for the others; together they
+  ;; answer the individuals the ground arm types.  `t5` is declared in CxA and used in CxB, so only
   ;; CxC, which sees both, types `M`.
   (tu/with-entailing
     (tu/with-terms [CxA CxB CxC p1 p4 p5 p6 t1 t5 t6 X Y W V M N K L]

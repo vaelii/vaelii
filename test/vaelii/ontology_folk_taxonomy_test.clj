@@ -92,9 +92,9 @@
       (is (true? (v/ask? kb '(folk_species dog) 'CxUniverse))))))
 
 (tu/deftest-kb a-rule-from-folk-species-to-orthogonal-is-a-forced-monotonic-rule
-  ;; A rule that declares every species orthogonal to a kind of tangible thing:
-  ;; its one antecedent is a forced-monotonic literal, so its firings are believed rather than held
-  ;; void and reported as a :forced-conclusion.
+  ;; A rule that declares every species orthogonal to a kind of tangible thing: its one
+  ;; antecedent is a forced-monotonic literal, and its firings are believed with no
+  ;; :forced-conclusion entry.
   (tu/with-terms [tended]
     (v/assert kb (list 'genl tended 'tangible) 'CxUniverse)
     (v/assert kb (list 'set/forwardRule

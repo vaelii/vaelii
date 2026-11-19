@@ -104,8 +104,7 @@ not it loads the upper layer:
 | `arity`, the nine exact-arity classes, `variable_arity` and its two specializations, `arityMin` | grounds of the arity family |
 | `irreflexive`, `anti_symmetric` | grounds of the self and converse family |
 | `functional`, `functionalInArg`, `anti_transitive`, `asymmetric`, `negates` | grounds of the tuple-mark family |
-| `genl` between two arguments spelled as predicates of arity 2 or more ([naming.md](naming.md)) | grounds of the arity, self and converse, and tuple-mark families, which read the stored predicate edges |
-| `orthogonal` | the one member of the related-types family's clash of it, which is a conflict and never a defeat |
+| `genl` between two predicates of arity 2 or more: arguments spelled as predicates, or minted constants whose length bindings give two or more places ([naming.md](naming.md)) | grounds of the arity, self and converse, and tuple-mark families, which read the stored predicate edges |
 | `genlCx` | every context's ancestor set reads the stored edges |
 | `except` | taking one OUT un-hides its target, so what a reader hides would shrink ([reference.md](reference.md#decisions) 2 and 14) |
 | `exceptWhen` | taking one OUT unblocks the firings of the rule it names, so what a reader holds blocked would shrink ([exceptions.md](exceptions.md)) |
@@ -118,7 +117,7 @@ not it loads the upper layer:
 | `greaterThan`, `lessThan` | the numeric comparators: each holds of numbers only, and `core.txt`'s rules concluding `at_least_binary` through `at_least_quinary` read `greaterThan` beside `arity` and `arityMin` |
 | `quantityGreaterThan`, `quantityGreaterThanOrEqual`, `quantityLessThan`, `quantityLessThanOrEqual`, `sameQuantity` | the quantity comparators, computed from the unit table as the numeric comparators are from the numbers |
 | `arg`, `arg1`, `arg2`, `arg3`, `arg4`, `arg5` | the argument declarations: read beside the arity bindings, and `core.txt`'s twin rules conclude each projection from `arg` and `arg` from each, so the six are forced-monotonic together |
-| `genlInverse` between two arguments spelled as predicates of arity 2 or more, by `forced_monotonic_between_predicates` | `genl` with its arguments swapped, forced as `genl` between predicates is |
+| `genlInverse` between two predicates of arity 2 or more, by `forced_monotonic_between_predicates` | `genl` with its arguments swapped, forced as `genl` between predicates is |
 
 CxTra declares its value kinds below `string` (`ip_address`, `ipv4_address`,
 `ipv6_address`) by `forced_monotonic_predicate`, so they are forced-monotonic at the readers
@@ -178,7 +177,7 @@ on the relabel path or the belief read:
 |---|---|---|
 | `:mono` | a premise of a `genlCx` edge (`checks/forced-premise?`) | its premise mark confers `:monotonic` |
 | `:out` | a stored tuple that breaks its functor's length, at either strength (`arity/inert-tuple?`, [taxonomy.md](taxonomy.md#arity)), a stored fact whose argument fails its declared argument type (`checks/argument-conviction`, [argtypes.md](argtypes.md#an-argument-that-fails-its-declared-type-is-held-inert)), and a stored rule one of whose variables no term can fill ([argtypes.md](argtypes.md#a-rule-whose-variable-no-term-can-fill-is-held-inert)) | the fixpoint never adds it, so it is never believed, forms no nogood and fires no rule; a firing of a held rule is never valid |
-| `:void` | a firing convicted with its conclusion read against the baseline forced-monotonic set and its antecedents against the union of every reader's set (`checks/network-void?`) | the justification is invalid: it supports nothing and confers no class |
+| `:void` | a firing convicted with its conclusion read against the baseline forced-monotonic set and its antecedents against the union of every reader's set (`checks/network-void?`), and a mint in a type `arity/mintable-type?` refuses (`special/hold-type-mints!`, [argtypes.md](argtypes.md#where-it-does-not-mint)) | the justification is invalid: it supports nothing and confers no class |
 | `:held` | a stored rule holding an open application its own context respells nowhere (`nat/held-application?`, [nat.md](nat.md#a-rule-or-a-goal-that-names-an-open-application)) | nothing: the rule keeps its label, so the spellings resting on it stay valid, and `in?` subtracts the set, so it is never believed and fires no rule; an empty set costs `in?` one emptiness check |
 
 **The network reads the most permissive forced-monotonic set, and the read walk hides.** A
@@ -218,9 +217,14 @@ breaking tuple that a mint, a lift or a rewrite stores (`decide/note-candidate!`
 `checks/hold-rule-conviction!` writes the `:out` membership of a convicted rule a
 generator or a `defn*` fact mints before its justification is added, and the
 chainer writes `:void` before it adds a convicted firing's justification
-(`chain/place-fact-conclusion`), so no element holds a label its set rules out, even for
+(`chain/place-fact-conclusion`) and the mint path before it adds a mint in a type
+`arity/mintable-type?` refuses (`special/entail-arg-type`), so no element holds a label its set rules out, even for
 one relabel. A binding or an edge moving moves the arity members at the settle's next
-pass (`arity/drain!`).
+pass (`arity/drain!`). At the same pass, a minted constant whose length can have moved
+moves the forced memberships of, and the verdicts over, the stored literals naming it
+under a `:forced-between-predicates` functor and their denials (`chain/minted-reach`). A
+`(result F binary_predicate)` declared after a `genl` between two of `F`'s constants
+therefore forces the `genl` as one declared before it does (`nat_test`).
 
 **A denial of a forced-monotonic literal is believed until the literal is.** A stored
 `(not S)` is an ordinary premise: it is believed, forms nogoods and fires rules while no
@@ -253,7 +257,7 @@ logs a convicted firing once at `:warn`, as its justification is added. `why-not
 answers `:forced-conclusion` with the rule and the same predicates. A forced-monotonic rule's firings confer the class its
 antecedents give. `core.txt`'s `injection`, `surjection` and `bijection` rules are of this
 kind. A `genl` consequent with variable arguments is forced-monotonic only where a firing
-binds two predicate-spelled terms. An `exceptWhen` arriving on a forced-monotonic rule convicts its
+binds two predicates. An `exceptWhen` arriving on a forced-monotonic rule convicts its
 firings, and the last one leaving releases them (`special/index-exceptWhen-meta`,
 `special/unindex-exceptWhen-meta`).
 
@@ -311,8 +315,8 @@ rather than a defeat ([nat.md](nat.md)).
 `retract!` and `edit!` refuse the retraction of the declarations `checks/uncleared-forcing`
 lists, with `:type :uncleared-forcing`, the `:predicate` and the `:missing` semantics: the
 `forced_monotonic_between_predicates` declaration of `genl`, and the `forced_monotonic_predicate`
-declarations of `genlCx`, `except`, `exceptWhen`, the relation marks, `orthogonal`, the five
-separations, the arity bindings and the equality relations. The retraction of any other
+declarations of `genlCx`, `except`, `exceptWhen`, the relation marks, the arity bindings and the
+equality relations. The retraction of any other
 forcing declaration succeeds. `genlCx` is always
 forced and lifted. The refusal reads the sentence alone.
 
@@ -409,7 +413,7 @@ closing a cycle
 ([taxonomy.md](taxonomy.md#the-closure-is-not-materialized--it-is-answered-on-demand)), a
 rule or grant closing a cycle through negation
 ([naf.md](naf.md#stratification-from-both-arrival-orders)), and a fact or `genlCx` edge
-giving the real world's present an exact or dated start
+giving the real world's present an exact, dated or upper-bounded start
 ([time.md](time.md#the-real-worlds-present)). The stored knowledge still yields the same
 beliefs whatever order it was stored in.
 
@@ -740,6 +744,12 @@ holds a second copy of one. `core/justification` and its two neighbours read the
 for the same reason — a justification *is* a record, and a record's home is the store.
 (The projection also normalizes, which is what makes the two representations store values
 equal to each other's however a caller spelled the justification.)
+
+Optional `:reading` evidence is separate from variable bindings. Graph projection,
+durable encoding and proof dedup preserve it: two source interpretations with the same
+handles need not be interchangeable. An ordinary proof has no such annotation, and
+the network's validity calculation does not infer a policy from its presence. A
+semantic reader must explicitly interpret any source roles it records.
 
 **No stored antecedent vector is in arrival order**, because belief reads it as a set and
 every *report* reads it as a list. Three of the eleven builders get there by **sorting on
@@ -1158,7 +1168,7 @@ trigger where the belief moved: it re-seeds the revived datums onto the chaining
 (`settle/revived-seeds`), and the ordinary fixpoint does the rest.
 
 A relabelled region is mostly datums that did not move, and everything the settle
-*created* reads as newly believed too. The JTMS keeps four touched sets, cleared
+*created* reads as newly believed too. The JTMS keeps six touched sets, cleared
 together when `settle` finishes with them:
 
 | | |
@@ -1167,6 +1177,8 @@ together when `settle` finishes with them:
 | `touched-in` | of those, the ones already believed when the settle first relabelled them |
 | `touched-new` | the ones whose **node this settle created** |
 | `touched-out` | the ones a forced-set change took from IN to OUT ([The forced-monotonic set](#the-forced-monotonic-set)) |
+| `touched-down` | the ones a relabel took from IN to OUT, or from `:monotonic` to `:default` |
+| `touched-up` | the ones a relabel took from `:default` to `:monotonic` |
 
 `jtms/revived` is `touched` minus `touched-in` and `touched-new`, plus `touched-out`,
 filtered to what is believed now. A datum a declaration took OUT and a later write in the
@@ -1246,6 +1258,10 @@ flip is in none of the three touched sets, and `jtms/revived` cannot see it.
 entry it replaced (`special/take-supersession-moves!`), which `settle-finish` reads once
 the loop has converged. So the spellings a flip gives back go into
 `settle/*unmerged-sink*`, and **`settle` re-seeds them and settles again**, as `core/retract!` settles twice around its own re-derivation.
+Each given-back spelling also posts its sentence's re-check (`special/recheck-on-sentence`),
+as its arrival does, so the next round asks the guards that read it. A firing drawn
+earlier in the settle asked its guard while the spelling was still superseded
+(`order_independence_test/a-guard-defeat-lands-at-a-reader-hiding-a-merge-as-with-no-merge`).
 Rounds are bounded by `max-unmerge-rounds` (8); two is the structure of every real case,
 and reaching the eighth is logged as a bug rather than looping. Two other designs, moving
 the reconcile into the settle loop and a re-enter signal from `settle-finish`, cost more
@@ -1991,48 +2007,71 @@ the routes of a `disjoint` are enumerated over the stored `genl` edges
 (`related/edge-routes`), and each route's edges are members beside the declaration.
 
 An `(orthogonal a b)` states that the two types are not disjoint and that neither is a
-`genl` of the other. It exempts nothing ([taxonomy.md](taxonomy.md#disjointness)), so it
-is the same family's one-member clash, of the `orthogonal` declaration, wherever a reader
-reads a `genl` edge between the two, the two are one type, or a separation of the two or
-of two supertypes that no `siblingDisjointException` the reader sees exempts. A stored
+`genl` of the other. It exempts nothing ([taxonomy.md](taxonomy.md#disjointness)). The
+same family places a clash of the declaration wherever a reader reads a `genl` edge between
+the two, the two are one type, or a separation of the two or of two supertypes that no
+`siblingDisjointException` the reader sees exempts. A stored
 `(siblingDisjointException a b)` states the orthogonal it entails through
-`(genl siblingDisjointException orthogonal)`, and is the member of that clash.
+`(genl siblingDisjointException orthogonal)`, and is the declaration of that clash. The
+verdict is read by strength (`related/convictions`):
+
+- A `:default` declaration against a `:default` separation, or against a path of `genl`
+  edges between the pair holding a `:default` edge, is a dilemma. The `:default`
+  statements of the separation or the path are members beside the declaration.
+- A `:monotonic` separation, or a path of `:monotonic` edges, defeats a `:default`
+  declaration. The declaration is the one member, and the separation or the path is its
+  grounds.
+- A `:monotonic` declaration is the one member of a hard clash `conflicts` lists,
+  whatever the class of what contradicts it. The separating declarations are under
+  `:grounds`, every member stays believed, and the pair reads both statuses
+  (`:inconsistent`).
 
 ```
-(genl betaw alphaw)  (orthogonal alphaw betaw)                              ; {(orthogonal …)}
-(disjoint upperw otherw)  (genl subw upperw)  (genl subv otherw)  (orthogonal subw subv)
-                                                                            ; {(orthogonal …)}
-(disjoint alphaw betaw)  (orthogonal alphaw betaw)                          ; {(orthogonal …)}
-(sibling_disjoint pw)  (genl alphaw pw)  (genl betaw pw)  (orthogonal alphaw betaw)
-                                                                            ; {(orthogonal …)}
-  + (siblingDisjointException alphaw betaw)                                 ; no clash: exempt
-(disjoint alphaw betaw)  (siblingDisjointException alphaw betaw)            ; {(siblingDisjointException …)}
+(genl betaw alphaw) :default  (orthogonal alphaw betaw) :default    ; {(orthogonal …) (genl …)}, a dilemma
+(genl betaw alphaw) :monotonic  (orthogonal alphaw betaw) :default  ; {(orthogonal …)}, the loser
+(disjoint upperw otherw) :default  (genl subw upperw)  (genl subv otherw)
+  (orthogonal subw subv) :default                                   ; {(orthogonal …) (disjoint …)}, a dilemma
+(disjoint alphaw betaw) :default  (orthogonal alphaw betaw) :monotonic
+                                                                    ; {(orthogonal …)}, a hard clash
+(sibling_disjoint pw)  (genl alphaw pw)  (genl betaw pw)  (orthogonal alphaw betaw) :monotonic
+                                                                    ; {(orthogonal …)}, a hard clash
+  + (siblingDisjointException alphaw betaw)                         ; no clash: exempt
+(disjoint alphaw betaw) :default  (siblingDisjointException alphaw betaw) :default
+                                                                    ; {(siblingDisjointException …) (disjoint …)}
 ```
 
-The `orthogonal` declaration is forced-monotonic, so it is never the
-loser of its nogood at any strength: the clash is a hard one `conflicts` lists, with the separating
-declarations under `:grounds`, every member left believed, and the pair reading both
-statuses (`:inconsistent`). The stored facts whose functor the unscoped `genl` closure
+The `genl` edges a separation's route climbs from the pair to the separated supertypes are
+grounds at any class, so a `:monotonic` `(disjoint upperw otherw)` defeats a `:default`
+`(orthogonal subw subv)` over `:default` climbs. Each choice of the separation's supporters
+and each path between the pair is one conviction, and the convictions with one member set
+are one nogood. A `:monotonic` separation defeats a `:default` declaration whatever dilemma
+the declaration is in beside it, and `contradictions` reports no such dilemma at a reader
+that reads the defeat: it keeps a tie only where the reader believes every member.
+The stored facts whose functor the unscoped `genl` closure
 places under `orthogonal` are read off those functors' extents and argument tries, and
 the candidate index keeps those some reader can read contradicted — over the
 unscoped `genl` closure, or separated by `disjointness-test` with no exemption read
 (`:related-orth`). One is read when it is stored, again with the `disjoint`s when an edge
 moves an argument's ancestor set (`tax/moves-since`) or moves its functor under or out of
 `orthogonal`, and again when the settle relabels a separation declaration over a type at
-or above an argument (`related/reread-separated!`).
+or above an argument (`related/reread-separated!`). A declaration is read again when the
+settle relabels it or a statement its placements rest on, since a class move moves the
+member sets.
 A `siblingDisjointException` stored or removed places again the contradicted ones with an
 argument at or below its own pair, since it moves which of their routes are exempted. Each
-is placed as a nogood once per route: the `genl` edges relating its pair, and the
-declarations and edges of each separation of its pair that no exception its placement
-reads exempts, are the grounds of one route each, with the predicate `genl` edge for an
-exception. A reader whose ancestor set states an exception
-exempting every separation that convicts the declaration does not believe an inherited
-placement of it (`related/exempt-at?`), as for a membership nogood
+nogood is placed once per conviction. A conviction's grounds are the `genl` edges of a path
+relating its pair, or the declarations and climbs of a separation of its pair that no exception its placement
+reads exempts, with the predicate `genl` edge for an exception. A reader whose ancestor
+set states an exception exempting every separation of a nogood's convictions does not
+believe an inherited placement of it (`related/exempt-at?`), as for a membership nogood
 ([A nogood placed as a conclusion](#a-nogood-placed-as-a-conclusion)).
 `reference_test/a-disjoint-over-related-types-is-a-clash-of-the-declaration-and-the-edge-in-every-order`
-holds the `disjoint` over related types in every arrival order, and `orthogonal_test` holds
+holds the `disjoint` over related types in every arrival order. `orthogonal_test` holds
 the `orthogonal` clash of each route in both arrival orders of the declaration and what
 contradicts it.
+`orthogonal_test/an-orthogonal-clash-is-read-by-strength-in-every-order` holds the three
+verdicts over every arrival order of the declaration, a separation and an edge, and each
+retraction.
 
 ### There is no second axis
 
@@ -2583,8 +2622,8 @@ forced-monotonic set keeps the defeat-dependency graph two deep:
    `:monotonic` handle only through a `respell` row, so a defeat loses force through
    another only by way of a ground or of a mark's defeat.
 2. Every ground is forced-monotonic except a `genl` edge between types and a separation.
-   The membership family and the `orthogonal` clash take both for grounds, and the
-   `orthogonal` clash decides no loser; `genlCx` witness edges are forced-monotonic.
+   The membership family and the `orthogonal` clash take both for grounds; `genlCx`
+   witness edges are forced-monotonic.
 3. A stated type `genl` edge or separation loses only in a nogood where it is a member: a
    negation pair, an inherited nogood or a related-types nogood, none of which has a
    ground that can lose.
@@ -3107,7 +3146,7 @@ another. These checks hold invariant 2 end to end:
 | a write on a KB whose marks the fact does not reach | `unrelated-fact-under-marked-kb-fanout`, `constraint-exposure-shared-arg`, `constraint-genl-edge-unmarked` (2.5×) |
 | a membership or a `genl` edge into a `sibling_disjoint` clique, in the clique's size | `disjoint-clique-membership`, `sibling-disjoint-new-spec` |
 | a `genl` or `genlCx` edge, in the graph, the excepted rules, the firings, the readers and the merges it does not reach, the functional facts its `super` already sees, the `genl` edges its `sub` already sees, the stored `genlCx` edges beside an `except` no edge rests on, the functors under an arity conflict it is not above, the rules reading above it when no rule concludes below it, and in the spec closures of the rules its stratification walk reaches | `genl-edge-negation-recheck`, `genl-edge-beside-arity-conflicts`, `edge-stratification-unreached`, `edge-stratification-unconcluded`, `edge-stratification-walk`, `genl-defeat-rejoin` (4.0×), `genl-crossing-many` (3.0×), `genlcx-edge-reader-fan` (3.0×), `genlcx-edge-under-a-seen-taxonomy`, `genlcx-edge-beside-declared-facts`, `genlcx-edge-beside-distant-merges`, `genlcx-edge-beside-seen-functional-facts`, `genlcx-edge-beside-excepted-declarations`, `genlcx-edge-beside-seen-excepts`, `genlcx-edge-revealing-one-except`, `genlcx-edge-beside-stored-context-edges`, `retract-context-cycle-scaling`, `retract-context-cycle-beside-cycle`, `assert-context-edge-beside-cycle` |
-| an un-merge of one class beside standing merges it does not touch, a merging assert in a deferred batch, a merge withdrawing its spelling's firing beside standing merges whose firings were withdrawn, a write beside the subsumed mints the KB withholds, the settle after a `genl` edge beside declarations waiting on a type bound to another length, and an `arg` declaration over stored facts beside a deeper declared type | `unmerge-over-standing-merges` (3.0×), `deferred-merge-batch` (3.0×), `merge-withdrawing-a-firing` (3.0×), `mint-withdrawal-under-busy-term`, `settle-beside-withheld-mints`, `mint-release-after-genl-move`, `arg-declaration-over-facts` |
+| an un-merge of one class beside standing merges it does not touch, a merging assert in a deferred batch, a merge withdrawing its spelling's firing beside standing merges whose firings were withdrawn, a write beside the subsumed mints the KB withholds, the settle after a `genl` edge beside inert mints on a type bound to another length, and an `arg` declaration over stored facts beside a deeper declared type | `unmerge-over-standing-merges` (3.0×), `deferred-merge-batch` (3.0×), `merge-withdrawing-a-firing` (3.0×), `mint-withdrawal-under-busy-term`, `settle-beside-withheld-mints`, `mint-release-after-genl-move`, `arg-declaration-over-facts` |
 | a recover's rebuilds, per claim, declaration, fact or negation pair each re-reads: the inherited discovery's questions and the placements they give, the closing settle's placements, the membership index's first sync over a kept term's types under a deep ancestor set, the discovery's denial probes over a type with many supertypes and its probes that match nothing beside forced-monotonic declarations; and the first write after a recover | `recover-inherited-discovery`, `recover-discovery-own-out`, `recover-discovery-separated-term`, `recover-membership-cover-sync`, `recover-preserved-negated-fan`, `recover-preserved-empty-probes`, `recover-negation-pairs`, `first-write-after-recover` |
 | an `exceptWhen` rule-membership check, a write beside believed `except`s it does not reach ([contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree)), an `except` beside the firings that do not rest on its target, a write beside refused firings ([the refused-firing record](exceptions.md#a-refused-firing-is-remembered-as-bindings)), a retraction releasing a firing beside a guarded rule's firings ([what is re-chained](exceptions.md#re-chaining-what-was-released-not-what-was-touched)), a first read below an `exceptWhen` rule's context ([asked at every reader](naf.md#evaluated-in-the-placement-context-not-the-join)), a scoped read beside what the `except`s hide, an `except` of a guard's blocker beside the guarded rule's other firings, and a second route to an excepted fact beside the `except`s of unrelated facts | `watched-rule-membership`, `assert-over-standing-excepts` (3.0×), `assert-beside-naf-refusals`, `released-refusal-beside-guarded-firings` (4.0×), `guarded-firings-read-below`, `visibility-reading`, `except-beside-unrelated-firings`, `except-of-a-guard-blocker`, `route-gain-beside-unrelated-excepts` |
 | the placed nogoods ([The nogood families](#the-nogood-families)): a mark, a binding or a declaration arriving over its candidates and the first read after it, a metatype edge arriving over its members, a write beside the placed pairs it does not reach, a write beside contexts each holding a placed nogood, a membership joining one of n standing dilemmas or joining a nogood as its loser, a write adding a candidate beside the candidates standing elsewhere, a write beside the candidates of four families stated where its context does not see them, a warm read of a placed loser, a read beside the candidate tuples a binding holds, a vantage below the members' maximum, the join naming a chain's contexts, a brave or cautious ask between writes, an ask of the candidate index after an image install, and the first write after one | `irreflexive-mark-arrival` (3.0×), `arity-binding-arrival` (3.0×), `metatype-edge-arrival`, `membership-declaration-arrival`, `tuple-mark-determinant-write`, `functional-in-arg-empty-determinant-sweep`, `negation-reader-write`, `verdict-published-set-write`, `reader-scoped-write`, `standing-nogood-write`, `standing-loser-write`, `candidate-write`, `reached-reader-family-read`, `decided-warm-read`, `held-shape-first-withdrawal`, `per-reading-vantages`, `chain-join`, `brave-ask-between-writes` (3.0×), `installed-image-reads`, `first-write-after-install` |
@@ -3165,6 +3204,8 @@ pair:
 | the nogoods a `genlCx` edge makes whole, per edge | `context-edge-making-nogoods-whole` | 8× | under 16× |
 | the contexts under each edge of a `genlCx` chain moved in one pass beside a held nogood, per edge | `genlcx-chain-moved-beside-a-nogood` | 8× | under 16× |
 | the postings of the facts a deferred batch stores after its `genlCx` edge, per closing drain | `deferred-facts-after-a-context-edge` | 16× | under 6× |
+| the `natFormula` rows below a `genlCx` edge's lower context, per edge joining one collision | `genlcx-edge-over-formula-rows` | 16× | under 4× |
+| the contexts below a `genlCx` edge's lower context, each holding one `natFormula` row, per edge joining no collision | `genlcx-edge-over-spread-formula-rows` | 8× | under 16× |
 | the guard defeats a reader sees naming one firing, per read of the firing there | `guard-defeats-at-a-reader` | 2× | under 4× |
 | the instants of a metric network, per arriving constraint | `metric-closure-warm-start` | 8× | under 35× |
 | the regions of a containment chain, per arriving fact with a forward rule over the calculus | `qcn-chain-load` | 4× | under 40× |
@@ -3337,8 +3378,9 @@ holds the vocabulary and the page that owns each keyword.
   justification does not name counts, so the answer is the same whichever claim the
   arrival order made the firing name. A justification of no rule, or whose goals the walk
   cannot instantiate, stands where the reader reaches the two ends of every path its
-  hidden edges lie on: the scoped `genl` closure, or the fact relation a
-  `transitiveInArgInverse` claim moves along. A hidden `genlCx` edge is on no path, so a
+  hidden edges lie on: the scoped `genl` closure, the scoped signed closure for a path
+  crossing swap edges ([inference.md](inference.md#genlinverse-the-fan-with-the-arguments-swapped)),
+  or the fact relation a `transitiveInArgInverse` claim moves along. A hidden `genlCx` edge is on no path, so a
   justification resting on one stands nowhere it is hidden ([contexts.md](contexts.md), "An
   except on a `genlCx` edge"). Either answer is memoized for one read, and nothing
   is stored.
@@ -3351,8 +3393,8 @@ holds the vocabulary and the page that owns each keyword.
   met again on one path reads as not reaching. An answer that read false off a question
   still open above it is not kept (`exc/route-answer`). The literal cache and the scoped
   closure caches key on the search's reading, so a read outside a search is never served
-  an answer read inside one. An entry computed inside a search (a scoped closure, a
-  neighbour set, a context's down-set, a literal's matches) whose computation read a route
+  an answer read inside one. An entry computed inside a search (a scoped or signed
+  closure, a neighbour set, a context's down-set, a literal's matches) whose computation read a route
   question still open is answered and not stored (`caches/*open-mark*`), so a later search
   is not served a closure or a match set read while another question was open. The
   justifications of one conclusion that share a goal ask the search once per read.

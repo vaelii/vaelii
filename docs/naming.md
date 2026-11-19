@@ -91,7 +91,7 @@ the literals:
 | `(and X …)` | each conjunct |
 | `(or X …)` | nothing. A disjunctive antecedent is polycanonicalized into one rule per alternative before naming runs, so the walk sees the expansion. Every other connective `or`, `(not (or …))` included, is refused before naming runs ([canonicalization.md](canonicalization.md#where-or-cannot-go)) |
 | `(implies A C)` | each antecedent (`:antecedent`), then `C` (`:consequent`); a rule in consequent position is a generator's generated rule, whose literals read `:generated-antecedent` and `:generated-consequent` at every depth ([generators.md](generators.md)) |
-| `set/forwardRule` · `backwardRule` · `forwardOnlyRule` · `lazyForwardRule` · `inertRule` · `defaultRule` · `solveRule` · `assumptionRule` · `hardConstraint` · `softConstraint` | the rule inside, wrappers nesting in any order |
+| `set/forwardRule` · `backwardRule` · `forwardOnlyRule` · `lazyForwardRule` · `inertRule` · `defaultRule` · `solveRule` · `oneJustificationRule` · `assumptionRule` · `hardConstraint` · `softConstraint` | the rule inside, wrappers nesting in any order |
 | `(exceptWhen Q R)` | `Q`'s conjuncts (`:exception`), then `R` |
 | `(ist Ctx S)` | `S` (and `Ctx` is checked as a context name) |
 | `(unknown S)` · `(thereExists ?v S)` · `(exists ?v C)` | the query / consequent wrapped |
@@ -173,6 +173,14 @@ A reified constant (`nm/reified-constant?`, a `nat/` or `cx/` symbol) is held to
 length, as a binding or as a literal's functor: the engine mints its name, and a mint
 of a function whose `result` is a unary class asserts `(unary_predicate nat/K)`
 ([nat.md](nat.md)).
+
+A minted name states no role to any other reader either. `term-role` answers nil for a
+`nat/` constant, and `nm/predicate-spelled?` answers false. `nm/between-predicates?` reads
+a minted argument's role through a reader its caller passes: `decide/forced-literal?`
+passes the constant's length bindings (`arity/two-or-more-places?`). A `genl` between two
+constants of a `(result F binary_predicate)` function is therefore forced-monotonic
+whatever their minted names, and one between two constants of a `unary_predicate`
+function is not ([nmtms.md](nmtms.md#the-forced-monotonic-set)).
 
 The refusal is `:length-against-spelling`, carrying `:relation`, `:class`
 (`:functor-arity` or `:functor-unary`) and `:binding` (`{:exact n}` or `{:min m}`). It

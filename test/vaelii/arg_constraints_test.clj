@@ -211,8 +211,8 @@
   ;; as (inverse childOf parentOf) and the rules read it through the mirror
   (doseq [n [1 2]]
     (is (= #{#{'(inverse childOf parentOf) '(symmetric inverse)
-               (list 'arg 'parentOf (- 3 n) 'organism)}}
-           (inverse-supports kb (list 'arg 'childOf n 'organism)))
+               (list 'arg 'parentOf (- 3 n) 'causal)}}
+           (inverse-supports kb (list 'arg 'childOf n 'causal)))
         (str "position " n))))
 
 (tu/deftest-kb an-inert-inverse-types-no-argument

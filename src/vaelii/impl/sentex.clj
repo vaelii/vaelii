@@ -211,6 +211,14 @@
   [x]
   (and (symbol? x) (not (variable? x))))
 
+(defn term-head
+  "The plain symbol heading term `t`: `t` when it is one, the first element of a list or
+  vector whose first element is one, and nil otherwise.  Two terms whose heads differ and
+  are both non-nil unify in no argument order (`resolution/unify`, `resolution/unifiers`)."
+  [t]
+  (cond (plain-symbol? t)                               t
+        (and (sequential? t) (plain-symbol? (first t))) (first t)))
+
 (defn form-vars
   "Every variable anywhere in `form`, in order of occurrence and with duplicates, so a
   variable used twice counts twice (locality reads occurrence counts).  Lazy.  The one
@@ -314,6 +322,19 @@
   `set/inertRule` makes it a rule that runs in a solve alone (docs/solving.md)."
   'set/solveRule)
 
+(def one-justification-rule-wrapper
+  "`(set/oneJustificationRule (implies …))`: a forward firing of the rule places nothing
+  where a stored justification of the rule for the same conclusion stands at every reader
+  and outranks it.  Adds `:one-justification` to the record's `:engines`, beside the
+  direction wrapper's engines, and changes only what a forward firing stores
+  (docs/inference.md, \"A rule that stores one justification per conclusion\")."
+  'set/oneJustificationRule)
+
+(def modifier-wrappers
+  "The wrappers that each add one member to a `:derive` rule's `:engines` beside its
+  direction, by wrapper."
+  {solve-rule-wrapper :solve, one-justification-rule-wrapper :one-justification})
+
 ;; ---- the record's two wrapper fields ------------------------------------
 ;; The wrappers state two things, and a rule record holds them as two fields
 ;; (`vaelii.impl.types.sentex`): `:engines`, which engines run the rule, and `:effect`,
@@ -325,8 +346,9 @@
   rather than a set of its own."
   (into {}
         (map (fn [s] [s s]))
-        (for [f [nil :forward] b [nil :backward] l [nil :lazy] v [nil :solve]]
-          (into #{} (remove nil?) [f b l v]))))
+        (for [f [nil :forward] b [nil :backward] l [nil :lazy] v [nil :solve]
+              o [nil :one-justification]]
+          (into #{} (remove nil?) [f b l v o]))))
 
 (defn canonical-engines
   "The shared instance of the engine set `engines`."
@@ -345,16 +367,25 @@
    :lazy-forward (canonical-engines #{:backward :lazy})
    :inert        (canonical-engines #{})})
 
+(defn redirected-engines
+  "`engines` with its direction's members replaced by `direction`'s
+  (`direction-engines`), the `modifier-wrappers` members it holds kept."
+  [engines direction]
+  (canonical-engines (into (direction-engines direction)
+                           (filter (set (vals modifier-wrappers)))
+                           engines)))
+
 (def solve-engines
   "The engines of a choice or constraint rule: a solve alone reads it."
   (canonical-engines #{:solve}))
 
 (defn engines-direction
-  "The direction whose `set/*Rule` wrapper spells the base engines of `engines` (`:solve`
-  aside) — `:backward`, `:forward`, `:forward-only`, `:lazy-forward` or `:inert`.  A
-  forward rule stores its conclusions, so `:lazy` beside `:forward` spells `:forward`."
+  "The direction whose `set/*Rule` wrapper spells the base engines of `engines` (the
+  `modifier-wrappers` members aside) — `:backward`, `:forward`, `:forward-only`,
+  `:lazy-forward` or `:inert`.  A forward rule stores its conclusions, so `:lazy` beside
+  `:forward` spells `:forward`."
   [engines]
-  (let [base (disj (set engines) :solve)
+  (let [base (apply disj (set engines) (vals modifier-wrappers))
         fwd  (disj base :lazy)]
     (cond (= #{:forward :backward} fwd) :forward
           (= #{:forward} fwd)           :forward-only
@@ -380,16 +411,16 @@
 (defn rule-slots
   "The record's `[engines effect]` for a rule written with direction `dir` (nil when no
   direction wrapper was written) under the head wrappers `assumption` / `constraint`, and
-  under `set/solveRule` when `solve?`.  An unwrapped rule runs backward, and an unwrapped
-  generator forward, since no backward goal asks for a rule; `solve?` adds `:solve`.  A
-  choice or constraint rule runs in a solve whatever `dir` says."
+  under the `modifier-wrappers` whose members `mods` holds.  An unwrapped rule runs
+  backward, and an unwrapped generator forward, since no backward goal asks for a rule.
+  A choice or constraint rule runs in a solve whatever `dir` says."
   ([dir assumption constraint generator?]
-   (rule-slots dir assumption constraint false generator?))
-  ([dir assumption constraint solve? generator?]
+   (rule-slots dir assumption constraint nil generator?))
+  ([dir assumption constraint mods generator?]
    (let [effect (wrapper-effect assumption constraint)]
      [(if (= :derive effect)
         (let [base (direction-engines (or dir (if generator? :forward :backward)))]
-          (if solve? (canonical-engines (conj base :solve)) base))
+          (if (seq mods) (canonical-engines (into base mods)) base))
         solve-engines)
       effect])))
 
@@ -399,7 +430,7 @@
   9, a record thawed whole under those keys, and a dump frame keyed by them.  Such a frame
   always carries a direction."
   [direction assumption constraint]
-  (rule-slots (or direction :backward) assumption constraint false))
+  (rule-slots (or direction :backward) assumption constraint nil false))
 
 (def except-wrapper
   "`(exceptWhen <query> <rule>)` — the rule does not conclude for a binding its
@@ -556,7 +587,7 @@
 
         (or (= h default-rule-wrapper)
             (= h assumption-rule-wrapper)
-            (= h solve-rule-wrapper)
+            (contains? modifier-wrappers h)
             (contains? constraint-rule-wrappers h)
             (contains? rule-direction-wrappers h))
         (let [[inner mono? problem] (walk-exception-strength (second form))]
@@ -594,7 +625,7 @@
   (loop [f form, acc []]
     (let [h (when (and (sequential? f) (seq f)) (first f))]
       (cond
-        (or (= h default-rule-wrapper) (= h assumption-rule-wrapper) (= h solve-rule-wrapper)
+        (or (= h default-rule-wrapper) (= h assumption-rule-wrapper) (contains? modifier-wrappers h)
             (contains? rule-direction-wrappers h))
         (recur (second f) (conj acc h))
         (constraint-rule-wrappers h)
@@ -602,10 +633,11 @@
         (and (= h except-wrapper) (= 3 (count f))) (recur (nth f 2) acc)
         :else acc))))
 
-(defn solve-wrapped?
-  "Is `form` a rule written under `set/solveRule`, at any depth of its wrapper stack?"
+(defn modifiers
+  "The `:engines` members of the `modifier-wrappers` written at any depth of `form`'s
+  wrapper stack, as a set, or nil."
   [form]
-  (boolean (some #{solve-rule-wrapper} (wrapper-stack form))))
+  (not-empty (into #{} (keep modifier-wrappers) (wrapper-stack form))))
 
 (defn wrapper-stack-problems
   "What is wrong with the combination of `set/*` wrappers around one rule, as strings.  A
@@ -615,9 +647,9 @@
 
   - two different direction wrappers;
   - two different head wrappers;
-  - a head wrapper with a direction wrapper, `set/defaultRule` or `set/solveRule`, since a
-    choice or constraint head is decided by a solve and never chained or believed
-    (docs/solving.md);
+  - a head wrapper with a direction wrapper, `set/defaultRule` or a `modifier-wrappers`
+    wrapper, since a choice or constraint head is decided by a solve and never chained or
+    believed (docs/solving.md);
   - `set/solveRule` with `set/defaultRule`, since one answer set has no defeat to apply."
   [form]
   (let [stack (wrapper-stack form)
@@ -627,7 +659,7 @@
                              (distinct))
                     stack)
         modes (filterv #(or (contains? rule-direction-wrappers %) (= default-rule-wrapper %)
-                            (= solve-rule-wrapper %))
+                            (contains? modifier-wrappers %))
                        stack)]
     (cond-> []
       (< 1 (count dirs))
@@ -1322,7 +1354,7 @@
   any order — a defeasible forward rule with an exception, an assumption rule, a hard
   constraint — and two `exceptWhen`s conjoin.  `exception` is nil or a vector of
   literals; `assumption` is true or nil; `constraint` is `:hard` / `:soft` or nil.  A
-  `set/solveRule` is stripped too, and `solve-wrapped?` reports it."
+  `modifier-wrappers` wrapper is stripped too, and `modifiers` reports it."
   [form]
   (loop [f form, dir nil, def? nil, exc nil, assum nil, con nil]
     (if (and (sequential? f) (seq f))
@@ -1332,7 +1364,7 @@
           (= h assumption-rule-wrapper) (recur (second f) dir def? exc true con)
           (constraint-rule-wrappers h)  (recur (second f) dir def? exc assum (constraint-rule-wrappers h))
           (rule-direction-wrappers h)   (recur (second f) (rule-direction-wrappers h) def? exc assum con)
-          (= h solve-rule-wrapper)      (recur (second f) dir def? exc assum con)
+          (modifier-wrappers h)         (recur (second f) dir def? exc assum con)
           (and (= h except-wrapper) (= 3 (count f)))
           (recur (nth f 2) dir def? (into (or exc []) (exception-conjuncts (second f))) assum con)
           :else                         [dir def? exc assum con f]))
@@ -1658,6 +1690,11 @@
   "Is `head` one of the `quoting-functors`?"
   [head]
   (contains? quoting-functors head))
+
+(def nat-quoting-predicates
+  "Predicates whose expression argument is a verbatim NAT payload, neither reified nor
+  type-checked as a term."
+  '#{natFormula rewriteOf})
 
 (defn quote-form?
   "Is `form` a `(Quote X)` mention?  `unquoted-free-vars`, `res/unify`, `res/substitute`
@@ -2097,6 +2134,14 @@
                                      (reduce (fn [a [i s]] (assoc a (dec (nth ps s)) (nth args (dec (nth ps i)))))
                                              acc (map-indexed vector slots)))
                                    args (map vector comps choice))))))))
+
+(defn argument-orders
+  "`every-order` of compound `t`, or `[t]` for a non-list or an application
+  `held-as-written?` under `marks`' `:opaque?`."
+  [t {:keys [opaque?] :as marks}]
+  (if (and (seq? t) (seq t) (not (held-as-written? t (or opaque? (constantly false)))))
+    (every-order t marks)
+    [t]))
 
 (defn mention-arrangements
   "Every spelling of literal `form` a fact may be stored under at a mention position
@@ -2658,7 +2703,7 @@
               ;; wrapping a rule never removes a backward use it had — which is what lets a
               ;; rule move to forward by adding the wrapper alone.
               [engines effect]
-              (rule-slots dir assum con (solve-wrapped? sentence)
+              (rule-slots dir assum con (modifiers sentence)
                           (implies? (peek (peel-rule-wrapper conseq0))))]
           ;; A rule record holds its antecedent and consequent and no sign, so a negated
           ;; rule has no representation.  `connective-problems` refuses one at `assert`;

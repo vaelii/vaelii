@@ -83,3 +83,18 @@
       (close!)
       (when end-ns (end-ns m))))
   :installed)
+
+(defonce ^:private repeats (atom nil))
+
+(defn install-repeat!
+  "Wrap `clojure.test/test-ns` so it runs each namespace `n` times in a row, fixtures
+  included, and answers the sum of the runs' counters.  A second install sets `n` and
+  keeps the one wrapper.  Each run reports its own `:begin-test-ns`, so `lein test`
+  prints a `lein test <ns>` line per run and `scripts/lib/ns-timings.sh` reads a row per
+  run."
+  [n]
+  (when-not (first (reset-vals! repeats n))
+    (alter-var-root #'t/test-ns
+                    (fn [test-ns]
+                      (fn [ns] (reduce (fn [acc _] (merge-with + acc (test-ns ns))) {} (range @repeats))))))
+  :installed)

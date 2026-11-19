@@ -380,7 +380,7 @@
         (is (every? (:hidden hidden) eff) (str row " hidden"))
         (is (= raw (:raw hidden)) (str row " raw hidden"))))))
 
-;; ---- 3. chain of 212 excepts --------------------------------------------
+;; ---- 3. chain of 212 excepts, and a derivation chain beside excepts ------
 
 (tu/deftest-kb chain-of-212-excepts
   ;; H0 hidden by E1, E1 hidden by E2, ..., E211 hidden by E212.
@@ -426,6 +426,67 @@
         ;; Clean up the rest of the chain by retracting from deepest to shallowest
         (doseq [eh (reverse (pop (pop chain)))]
           (v/retract! kb eh))))))
+
+(defn- chain-beside-excepts-reading
+  "The writes of `order` into `CxC`, after a forward chain's two rules, its links N0→N1 and
+  N3→N4 and an unrelated fact `(other Q)`.  `:l12` and `:l23` are the middle links, `:s0`
+  the start at N0 and `:s3` a second start at N3.  `:x12` excepts `:l12` at `CxS` below
+  `CxC`, and `:xq` excepts `(other Q)` at `CxC`.  Reads at `CxS` and at `CxC`
+  which of N1..N4 `reach` holds for, and whether every `reach` conclusion is stored in
+  `CxC`, with the except of `:l12` and after its retraction.  `CxS` reads `(reach N3)`
+  through the second start and `(reach N4)` through `(reach N3)`; it does not read
+  `(reach N2)`, which rests only on the excepted link."
+  [kb order]
+  (tu/with-terms [linkTo reach start other N0 N1 N2 N3 N4 Q CxC CxS]
+    (let [M       {:strength :monotonic}
+          hs      (volatile! [])
+          w!      (fn [s c] (let [h (v/assert kb s c M)] (vswap! hs conj h) h))
+          rule!   (fn [ante conseq]
+                    (vswap! hs conj (v/assert-rule kb ante conseq CxC {:direction :forward :strength :monotonic})))
+          _       (w! (list 'genlCx CxC 'CxUniverse) 'CxUniverse)
+          _       (w! (list 'genlCx CxS CxC) 'CxUniverse)
+          _       (rule! [(list linkTo '?x '?y) (list reach '?x)] (list reach '?y))
+          _       (rule! [(list start '?x)] (list reach '?x))
+          _       (w! (list linkTo N0 N1) CxC)
+          _       (w! (list linkTo N3 N4) CxC)
+          q       (w! (list other Q) CxC)
+          l12     (volatile! nil)
+          x12     (volatile! nil)
+          reading (fn []
+                    {:at-CxS (mapv #(boolean (v/ask? kb (list reach %) CxS)) [N1 N2 N3 N4])
+                     :at-CxC (mapv #(boolean (v/ask? kb (list reach %) CxC)) [N1 N2 N3 N4])
+                     :in-CxC? (= #{CxC} (into #{} (map :context) (v/sentexes-matching kb (list reach '?x) '?c)))})]
+      (doseq [op order]
+        (case op
+          :l12 (vreset! l12 (w! (list linkTo N1 N2) CxC))
+          :l23 (w! (list linkTo N2 N3) CxC)
+          :s0  (w! (list start N0) CxC)
+          :s3  (w! (list start N3) CxC)
+          :x12 (vreset! x12 (w! (list 'except (sx/sentex-handle @l12)) CxS))
+          :xq  (w! (list 'except (sx/sentex-handle q)) CxC)))
+      (let [with (reading)]
+        (v/retract! kb @x12)
+        (let [without (reading)]
+          (doseq [h (rseq @hs)] (when (and (not= h @x12) (v/sentex kb h)) (v/retract! kb h)))
+          [with without])))))
+
+(defn- chain-beside-excepts-orders
+  "Every order of the six writes in which the except of `:l12` follows it."
+  []
+  (remove #(< (.indexOf ^java.util.List % :x12) (.indexOf ^java.util.List % :l12))
+          (oi/permutations [:l12 :l23 :s0 :s3 :x12 :xq])))
+
+(def ^:private chain-beside-excepts-expected
+  #{[{:at-CxS [true false true true] :at-CxC [true true true true] :in-CxC? true}
+     {:at-CxS [true true true true] :at-CxC [true true true true] :in-CxC? true}]})
+
+(tu/deftest-kb a-chain-reads-an-except-on-one-link-and-not-an-unrelated-one-in-sampled-orders
+  (is (= chain-beside-excepts-expected
+         (into #{} (map #(chain-beside-excepts-reading kb %)) (take-nth 24 (chain-beside-excepts-orders))))))
+
+(tu/deftest-kb ^:slow a-chain-reads-an-except-on-one-link-and-not-an-unrelated-one-in-every-order
+  (is (= chain-beside-excepts-expected
+         (into #{} (map #(chain-beside-excepts-reading kb %)) (chain-beside-excepts-orders)))))
 
 ;; ---- 4. except a genlCx link -------------------------------------------
 

@@ -30,6 +30,13 @@ name: test
 # the committed weights were four weeks stale and the disk shards took 4m49s to
 # 17m12s; repacked eight ways from that run's times, each shard carries 299s.
 #
+# EVERY SHARD RUNS vaelii.shared-dumps-test FIRST. A shard's JVM builds the starter
+# dump once, about 70 s, and the upper-ontology dump once, in whichever namespace
+# loads each first, and that namespace's time took the build. In vaelii#265
+# vaelii.orthogonal-test read 139 s against 46 s on the disk-log leg for that reason.
+# scripts/ci-shard.sh prints the namespace that builds both first, so the builds are
+# that row's time and no other's.
+#
 # The shard COUNT is the length of each job's matrix, read back as
 # `strategy.job-total`. Both matrices have one dimension, so adding a value to
 # `shard:` is the whole of adding a shard.
@@ -110,14 +117,13 @@ jobs:
     # check that skips reports nothing. deep.yml carries the long form of the argument.
     if: github.event_name != 'schedule' || github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
-    # A balanced shard is predicted at about 6m: 298s of namespace time in run
-    # 38451741321 plus about 80s of setup. The timeout is set from the four-way
-    # packing, where runner speed alone moved a shard by half its predicted 11m:
-    # over two runs the slowest disk shard took 17m15s and the slowest memory
-    # shard 15m51s. 25 minutes is 1.45x the slower of those, so a shard that
-    # reaches it has grown, which is a change to investigate rather than a slow
-    # runner to wait out.
-    timeout-minutes: 25
+    # In run 44140584215 each leg carried about 5900 s of namespace time, and the
+    # shards took 8.6 to 19.5 minutes.  The rerun of the slow namespaces adds up to
+    # 22 minutes: three runs of the heaviest namespace, vaelii.catalog-test at
+    # 401 s, and the 100 s dump build.  45 minutes holds the slowest shard, that
+    # rerun and the 2 minutes the rerun check keeps in hand.  The suite step reads
+    # this figure as SHARD_TIMEOUT_MINUTES.
+    timeout-minutes: 45
     strategy:
       # Run every shard to completion: a bug living in one shard's namespaces
       # should not be hidden by another shard going red first.
@@ -125,6 +131,9 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      # The suite step measures the time the job has left from here.
+      - run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
       # No credentials left in .git/config: nothing here pushes, and a token
       # sitting in the workspace is reachable by anything the build runs.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -132,7 +141,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up JDK 25
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad  # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78  # v6.2.0
         with:
           distribution: temurin
           java-version: '25'
@@ -165,7 +174,7 @@ jobs:
           fail-on-cache-miss: true
 
       # develop's newest weights, which the `weights` job judges this run against
-      # (scripts/ci-weights.sh --check).  A miss reruns nothing.
+      # (scripts/ci-weights.sh --check).  On a miss the committed weights stand in.
       - name: Restore develop's weights
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -196,6 +205,7 @@ jobs:
         id: suite
         env:
           VAELII_TEST_BACKEND: memory
+          SHARD_TIMEOUT_MINUTES: 45  # the job's timeout-minutes
         run: |
           set -o pipefail
           mkdir -p target/ci/timings-memory
@@ -211,13 +221,17 @@ jobs:
           log="target/ci/test-memory-shard-${{ matrix.shard }}.log"
           # shellcheck disable=SC2086
           lein test $nss 2>&1 | ns_timings "$t" | tee "$log"
-          # A namespace slower than this runner's speed accounts for runs once more,
-          # and the smaller of its two times is the one the `weights` job reads
-          # (scripts/lib/ns-timings.sh, `ns_timings_rerun`).
-          if [ -f target/ci-baseline/memory.tsv ]; then
-            slow=$(scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --list target/ci-baseline/memory.tsv) \
-              || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
-            # shellcheck disable=SC2086
+          # The namespaces slower than this runner's speed accounts for run three
+          # more times each in one JVM, and the smallest of a namespace's times is
+          # the one the `weights` job reads (scripts/lib/ns-timings.sh, `ns_timings_rerun`).
+          # The rerun runs when it is predicted to finish 2 minutes before the timeout.
+          base=target/ci-baseline/memory.tsv
+          [ -f "$base" ] || base=scripts/ci-test-weights-memory.tsv
+          slow=$(scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --list "$base") \
+            || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
+          left=$((SHARD_TIMEOUT_MINUTES * 60 - ($(date +%s) - JOB_STARTED) - 120))
+          # shellcheck disable=SC2086
+          if ns_timings_rerun_fits "$base" "$left" $slow; then
             ns_timings_rerun "$t" $slow | tee -a "$log"
           fi
 
@@ -277,18 +291,20 @@ jobs:
     if: github.event_name != 'schedule' || github.repository_owner == 'vaelii'
     runs-on: ubuntu-latest
     # memory-shard's timeout, from the same figures
-    timeout-minutes: 25
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      - run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up JDK 25
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad  # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78  # v6.2.0
         with:
           distribution: temurin
           java-version: '25'
@@ -332,6 +348,7 @@ jobs:
           # (docs/storage.md) — the same end of the axis the retired single
           # `disk` leg ran.
           VAELII_TEST_BACKEND: disk-log
+          SHARD_TIMEOUT_MINUTES: 45  # the job's timeout-minutes
         run: |
           set -o pipefail
           export JVM_OPTS="-Dvaelii.disk.dir=$RUNNER_TEMP/vaelii-disk"
@@ -344,10 +361,13 @@ jobs:
           log="target/ci/test-disk-shard-${{ matrix.shard }}.log"
           # shellcheck disable=SC2086
           lein test $nss 2>&1 | ns_timings "$t" | tee "$log"
-          if [ -f target/ci-baseline/disk.tsv ]; then
-            slow=$(scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --list target/ci-baseline/disk.tsv) \
-              || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
-            # shellcheck disable=SC2086
+          base=target/ci-baseline/disk.tsv
+          [ -f "$base" ] || base=scripts/ci-test-weights-disk.tsv
+          slow=$(scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --list "$base") \
+            || echo "::warning::scripts/ci-weights.sh --list failed, so no namespace runs again"
+          left=$((SHARD_TIMEOUT_MINUTES * 60 - ($(date +%s) - JOB_STARTED) - 120))
+          # shellcheck disable=SC2086
+          if ns_timings_rerun_fits "$base" "$left" $slow; then
             ns_timings_rerun "$t" $slow | tee -a "$log"
           fi
 
@@ -400,17 +420,51 @@ jobs:
   # run of a pull request is judged against develop and not against its own earlier
   # runs, while a push to develop is judged against the push before it. The checks
   # follow both weight saves, so a red check still hands the next run its weights.
-  # Not a required check: a red here names namespaces for a reviewer to read, and
-  # blocks no merge.
+  #
+  # A change accepts a slower time by setting the namespace's row in
+  # scripts/ci-test-weights-<leg>.tsv (scripts/ci-weights.sh, --accept).  The rows it
+  # sets are those that differ from the file at the change's base revision: the merge
+  # commit's first parent on a pull request, the tip before the push on a push.  Each
+  # raises its namespace's figure in the check and in the weights this run saves, so
+  # the push to develop saves the accepted figure as the next baseline.  The shards'
+  # rerun reads no accepted row.
+  #
+  # Branch protection on `develop` requires the bare `weights` context, the job's
+  # `name:`, so a red here blocks the merge.  The weights a run writes and saves set
+  # the next run's packing, and those steps continue on error.  A check with no cached
+  # baseline reads the committed weights.  A leg whose timing set misses a shard's file
+  # fails its check, since that shard would go unjudged; re-running the shard's job
+  # re-runs this one.  When neither leg is green the job is skipped, and the legs'
+  # own required checks block the merge.
   weights:
     name: weights
     needs: [weights-plan, memory-shard, disk-shard]
     if: ${{ always() && (needs.memory-shard.result == 'success' || needs.disk-shard.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
+      # the whole history, which the next step reads the change's base revision from
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read the weights files at the change's base revision
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) base=$(git rev-parse HEAD^1) ;;
+            push) base=$BEFORE ;;
+            *) base= ;;
+          esac
+          mkdir -p target/ci-base
+          if [ -n "$base" ] && git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
+            for leg in memory disk; do
+              git show "$base:scripts/ci-test-weights-$leg.tsv" > "target/ci-base/$leg.tsv" 2>/dev/null \
+                || rm -f "target/ci-base/$leg.tsv"
+            done
+          fi
+          ls target/ci-base
 
       - name: Download the memory timings
         if: needs.memory-shard.result == 'success'
@@ -428,12 +482,15 @@ jobs:
           key: ${{ needs.weights-plan.outputs.memory }}
       - name: Write the memory weights
         if: needs.memory-shard.result == 'success'
+        continue-on-error: true
         run: |
           prev=target/ci-weights/memory.tsv
           [ -f "$prev" ] || prev=scripts/ci-test-weights-memory.tsv
-          scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --prev "$prev" --out target/ci-weights/memory.tsv
+          if [ -f target/ci-base/memory.tsv ]; then set -- --accept target/ci-base/memory.tsv; fi
+          scripts/ci-weights.sh --from target/ci/timings-memory --leg memory --prev "$prev" --out target/ci-weights/memory.tsv "$@"
       - name: Save the memory weights
         if: needs.memory-shard.result == 'success'
+        continue-on-error: true
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: target/ci-weights/memory.tsv
@@ -455,12 +512,15 @@ jobs:
           key: ${{ needs.weights-plan.outputs.disk }}
       - name: Write the disk weights
         if: needs.disk-shard.result == 'success'
+        continue-on-error: true
         run: |
           prev=target/ci-weights/disk.tsv
           [ -f "$prev" ] || prev=scripts/ci-test-weights-disk.tsv
-          scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --prev "$prev" --out target/ci-weights/disk.tsv
+          if [ -f target/ci-base/disk.tsv ]; then set -- --accept target/ci-base/disk.tsv; fi
+          scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --prev "$prev" --out target/ci-weights/disk.tsv "$@"
       - name: Save the disk weights
         if: needs.disk-shard.result == 'success'
+        continue-on-error: true
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: target/ci-weights/disk.tsv
@@ -482,23 +542,35 @@ jobs:
           restore-keys: ci-baseline-
       - name: Check the memory times against develop's
         id: check-memory
-        if: ${{ !cancelled() && needs.memory-shard.result == 'success' && hashFiles('target/ci-baseline/memory.tsv') != '' }}
+        if: ${{ !cancelled() && needs.memory-shard.result == 'success' }}
         run: |
           set -o pipefail
           rc=0
+          base=target/ci-baseline/memory.tsv
+          if [ ! -f "$base" ]; then
+            echo "::notice::no cached baseline for the memory leg, so the committed weights stand in"
+            base=scripts/ci-test-weights-memory.tsv
+          fi
+          if [ -f target/ci-base/memory.tsv ]; then set -- --accept target/ci-base/memory.tsv; fi
           scripts/ci-weights.sh --from target/ci/timings-memory --leg memory \
-            --check target/ci-baseline/memory.tsv | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
+            --check "$base" "$@" | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           [ "$rc" -ne 3 ] || echo "::warning::the memory leg ran slower than its runners' speed accounts for"
           [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
       - name: Check the disk times against develop's
         id: check-disk
-        if: ${{ !cancelled() && needs.disk-shard.result == 'success' && hashFiles('target/ci-baseline/disk.tsv') != '' }}
+        if: ${{ !cancelled() && needs.disk-shard.result == 'success' }}
         run: |
           set -o pipefail
           rc=0
+          base=target/ci-baseline/disk.tsv
+          if [ ! -f "$base" ]; then
+            echo "::notice::no cached baseline for the disk leg, so the committed weights stand in"
+            base=scripts/ci-test-weights-disk.tsv
+          fi
+          if [ -f target/ci-base/disk.tsv ]; then set -- --accept target/ci-base/disk.tsv; fi
           scripts/ci-weights.sh --from target/ci/timings-disk --leg disk \
-            --check target/ci-baseline/disk.tsv | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
+            --check "$base" "$@" | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           [ "$rc" -ne 3 ] || echo "::warning::the disk leg ran slower than its runners' speed accounts for"
           [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
@@ -506,6 +578,7 @@ jobs:
       - name: Record this push's weights as develop's
         id: baseline
         if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
+        continue-on-error: true
         run: |
           mkdir -p target/ci-baseline
           for leg in memory disk; do
@@ -516,6 +589,7 @@ jobs:
           [ -n "$(ls target/ci-baseline)" ]
       - name: Save develop's weights
         if: ${{ !cancelled() && steps.baseline.outcome == 'success' }}
+        continue-on-error: true
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: target/ci-baseline/
@@ -523,7 +597,7 @@ jobs:
       - name: Fail when both legs ran slow
         if: ${{ !cancelled() && steps.check-memory.outputs.rc == '3' && steps.check-disk.outputs.rc == '3' }}
         run: |
-          echo "ci-weights: both legs ran slower than their runners' speed accounts for" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "ci-weights: both legs ran slower than their runners' speed accounts for; CONTRIBUTING.md §7 says how to accept it" | tee -a "$GITHUB_STEP_SUMMARY"
           exit 1
 
   # The suite again, with an ANSWER SET SOLVER on the box. Without one, eight
@@ -585,7 +659,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up JDK 25
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad  # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78  # v6.2.0
         with:
           distribution: temurin
           java-version: '25'

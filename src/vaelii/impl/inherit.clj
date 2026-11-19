@@ -2384,22 +2384,27 @@
     (contains? (witness-terms kb pos x context) t)))
 
 (defn- stated-reached?
-  "Is the ground `goal` stated at `context` of its own functor or of a sub-predicate the
-  edges `context` believes and sees reach it from: the predicates the store holds a fact
-  of with the goal's first argument (`reads/as-stored-predicates-at-arg`), each walked up
-  to the goal's functor, when they number fewer than the functor's sub-predicates counted
-  unscoped, and the matcher's sub-predicate fan otherwise.  The count is unscoped because
-  it only weighs the two seeds, which answer the same; the walk up reads the scoped
-  ancestor set, as `claim-in?` does."
+  "Is the ground `goal` stated at `context` of its own functor or of a predicate the edges
+  `context` believes and sees reach it from?  The seeds are the predicates holding a fact
+  with the goal's first argument first (`reads/as-stored-predicates-at-arg`), and for a
+  binary goal those with its second argument first, read with the two arguments exchanged.
+  Each seed is walked up the scoped signed closure (`tax/signed-closure`) when the seeds
+  number fewer than the functor's sub-predicates counted unscoped, and the matcher's fan
+  answers otherwise.  The count only weighs the two reads, which answer the same."
   [kb goal context]
   (let [pred  (nm/functor goal)
         args  (nm/args goal)
         tx    (reasoning/taxonomy kb)
-        preds (some-> (reads/as-stored-predicates-at-arg (:index kb) 1 (first args)) set)]
-    (if (and preds (nil? (tax/specs-global-within tx pred (count preds))))
-      (boolean (some (fn [l] (and (scoped #(contains? (tax/genls tx l context) pred))
-                                  (seq (res/matches-visible kb (apply list l args) context))))
-                     (sort preds)))
+        seed  #(some-> (reads/as-stored-predicates-at-arg (:index kb) 1 %) set)
+        preds (seed (first args))
+        rev   (when (and preds (= 2 (count args)) (not (tax/swap-free? tx)))
+                (or (seed (second args)) #{}))
+        hit?  (fn [part l as]
+                (and (scoped #(contains? (part (tax/signed-closure tx :up l context)) pred))
+                     (seq (res/matches-visible kb (apply list l as) context))))]
+    (if (and preds (nil? (tax/specs-global-within tx pred (+ (count preds) (count rev)))))
+      (boolean (or (some #(hit? first % args) (sort preds))
+                   (some #(hit? second % (reverse args)) (sort rev))))
       (boolean (seq (res/matches-visible kb goal context))))))
 
 (defn- goal-reached?
@@ -2464,8 +2469,10 @@
   "`[goals stated]` for the rule firing `j`: the antecedent literals of its rule that no
   antecedent of `j` states, instantiated from its conclusion and the stated antecedents,
   and the antecedent handles that state a literal.  nil when `j`'s informant is not a rule
-  or a goal is left open.  An inert rule (no engines) fires nowhere, so a justification
-  under one, an argument-type mint, is not a firing and has no goals."
+  or a goal is left open.  A binary literal read off a stated claim across an odd number
+  of swap edges, in a firing that names a swap edge, takes the claim's two arguments
+  exchanged.  An inert rule (no engines) fires nowhere, so a justification under one, an
+  argument-type mint, is not a firing and has no goals."
   [kb j]
   (let [recs (:records kb)
         rsx  (when (integer? (:informant j)) (p/get-sentex recs (:informant j)))
@@ -2481,11 +2488,23 @@
                         [b (conj open lit) stated]))
                     [(res/unify (:consequent rsx) conc) [] #{}]
                     lits)
+            tax   (reasoning/taxonomy kb)
+            swap? (and (not (tax/swap-free? tax))
+                       (some (fn [[_ s]] (and (seq? s) (#{'genlInverse 'inverse} (nm/functor s)))) antes))
+            swapped (fn [b lit]
+                      (when (and swap? (= 3 (count lit)))
+                        (some (fn [[_ s]]
+                                (when (and (seq? s) (= 3 (count s)) (not= (nth s 1) (nth s 2))
+                                           (contains? (second (tax/signed-closure tax :up (nm/functor s) nil))
+                                                      (nm/functor lit)))
+                                  (res/unify lit (list (nm/functor lit) (nth s 2) (nth s 1)) b)))
+                              antes)))
             ;; a variable only an open literal names takes its term from the claim the
             ;; literal was reached from: a stated antecedent of the literal's functor and
             ;; arity, read position by position past the positions the reach moved
             loose (fn [b lit]
-                    (or (some (fn [[_ s]]
+                    (or (swapped b lit)
+                        (some (fn [[_ s]]
                                 (when (and (seq? s) (= (nm/functor s) (nm/functor lit))
                                            (= (count s) (count lit)))
                                   (reduce (fn [b [l t]]

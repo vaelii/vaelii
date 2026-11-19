@@ -31,8 +31,7 @@
 (metatype origin_type)
 (set/monotonic (genl origin_type type))
 (set/monotonic (typeGenl origin_type tangible))
-;; Each membership is definitional, so origin_type is forced-monotonic and
-;; typeOrthogonal's rule concludes an orthogonal from one alone (docs/nmtms.md).
+;; Each membership is definitional, so origin_type is forced-monotonic.
 (forced_monotonic_predicate origin_type)
 (set/monotonic (time_invariant_relation origin_type))
 (origin_type made)
@@ -78,7 +77,7 @@
 ;; follows from container by a default rule rather than a genl edge, and a stated denial
 ;; overrides it.  The rule-macro suggestion to make it an edge is declined.
 (set/defaultRule (set/forwardRule (implies (and (container ?x)) (hollow ?x))))
-(declined_rule_macro (genl container hollow))
+(declined_rule_macro (Quote (genl container hollow)))
 
 (comment context "A context: the second half of a sentex, and what a sentence holds in.")
 (set/monotonic (time_invariant_relation context))
@@ -520,8 +519,8 @@
 (set/monotonic (intersection acausal_event acausal event))
 
 ;; --- travelling / flying: event kinds an ability names ------------------------
-;; life.txt's hasCapability and capabilityType take an event kind as their second argument:
-;; (hasCapability Tweety flying) says Tweety can be the doer of a flying event.
+;; life.txt's able and abilityType take an event kind as their second argument:
+;; (able Tweety flying) says Tweety can be the doer of a flying event.
 (comment travelling "A causal event of getting from one place to another under the doer's own power. flying is a kind of travelling; another way of travelling is stated as its own event kind below travelling.")
 (unary_predicate travelling)
 (set/monotonic (genl travelling causal_event))

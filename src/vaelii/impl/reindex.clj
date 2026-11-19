@@ -52,6 +52,7 @@
       (rules/index-rule index h
                         (rules/antecedent-keys (:antecedent sx))
                         (rules/consequent-index-pred sx)
+                        (rules/consequent-heads sx)
                         (:context sx)))
     rule?))
 
@@ -68,6 +69,7 @@
     (rules/unindex-rule! index h
                          (rules/antecedent-keys (:antecedent sx))
                          (rules/consequent-index-pred sx)
+                         (rules/consequent-heads sx)
                          (:context sx))
     (when-let [ks (seq (concat (when (rules/rechecked? sx) (rules/recheck-predicates sx))
                                (rules/nonempty-recheck-predicates sx)))]
@@ -103,7 +105,7 @@
         minted  (mint-conclusions records)]
     (p/clear-index! index)
     (kb/forget-mint-rules! kb)
-    (kb/forget-lazy-rules! kb)
+    (kb/forget-engine-rules! kb)
     ;; the index moves wholesale here rather than through the per-sentex choke point, so
     ;; the clock a resident derived structure is keyed by is bumped by hand — as
     ;; `core/clear!` does, and for the same reason

@@ -2051,12 +2051,10 @@
                    t   (get b '?type)
                    arg (arg-at as n)]
             :when (and arg (eligible? arg)
-                       (mintable-type? kb t)
-                       ;; A `genlArg` mints `(genl arg t)`, which is not-well-formed when
-                       ;; `arg` is `t`.  A reflexive `genl` edge is never well-formed for
-                       ;; any `t`, and `arg`/`t` are literal terms, so this is a structural
-                       ;; exclusion like `mintable-type?` above rather than a redundancy
-                       ;; narrowing.
+                       (arity/mint-target? t)
+                       ;; A `genlArg` mints `(genl arg t)`, never well-formed when `arg`
+                       ;; is `t`.  `arg` and `t` are literal terms, so this is a structural
+                       ;; exclusion like `mint-target?` above, not a redundancy narrowing.
                        (not (and (= kind 'genlArg) (= arg t))))]
         {:assert  (mint arg t)
          :because (entailment-support kb pred d context)
@@ -2073,7 +2071,7 @@
     (when (checkable-term? k)
       (for [[h b] (result-arg-rows decls sentence)
             :let  [t (get b '?type)]
-            :when (mintable-type? kb t)]
+            :when (arity/mint-target? t)]
         {:assert  (list t k)
          :because (into [h] (visibility-support kb h context))
          :position 1 :kind 'resultArg}))))
@@ -2107,7 +2105,7 @@
                        (checkable-term? trigger) (checkable-term? target)
                        (symbol? t)
                        (kb/isa-among? (types trigger) t)
-                       (mintable-type? kb u))
+                       (arity/mint-target? u))
             :let  [because (entailment-support kb pred d context)]
             sup   (trigger-supports kb trigger t context)]
         {:assert  (list u target)
@@ -2130,7 +2128,7 @@
         draw (fn [ek rk props eligible? mint]
                (when (covering-declared? kb props)
                  (for [[start t kind d] (covering-triples decls ek rk)
-                       :when (mintable-type? kb t)
+                       :when (arity/mint-target? t)
                        pos   (suffix-positions as start)
                        :let  [x (arg-at as pos)]
                        :when (and (checkable-term? x) (eligible? x t))]
@@ -2162,7 +2160,7 @@
             :let  [b     (nth d 1)
                    start (if (= kind 'interArgs) 1 (get b '?start))
                    t     (get b '?type)]
-            :when (and (integer? start) (pos? start) (mintable-type? kb t))
+            :when (and (integer? start) (pos? start) (arity/mint-target? t))
             :let  [suffix  (suffix-positions as start)
                    because (delay (entailment-support kb pred d context))]
             n     suffix
@@ -2248,8 +2246,8 @@
 (defn declaration-entailments
   "`constraint-entailments` narrowed to the declaration stored at `dh`: the entries whose
   `:because` leads with `dh`, drawn from that declaration's match alone.  Every arm draws
-  one entry per match, so the other declarations on the predicate are not read, and their
-  types are not asked `mintable-type?` once per fact of a sweep over `dh`'s extent.
+  one entry per match, so the other declarations on the predicate are not read once per
+  fact of a sweep over `dh`'s extent.
 
   With `src`, the handle of the fact stored in a context `context` sees, each `:because`
   also names the `genlCx` edges `context` sees the fact through (`visibility-support`):
@@ -3077,7 +3075,7 @@
         body (if neg? (second s) s)
         f    (when (sequential? body) (nm/functor body))]
     (when (and (symbol? f) (not= sx/not-functor f)
-               (or neg? (not (decide/forced-literal? tax s))))
+               (or neg? (not (decide/forced-literal? kb s))))
       (let [cmp   (if neg? body (list sx/not-functor body))
             args  (vec (nm/args body))
             class (res/holding-class kb)
@@ -3165,7 +3163,7 @@
         (when (not= a b)
           (let [tms   (reasoning/tms kb)
                 recs  (:records kb)
-                mono? (or (= :monotonic strength) (decide/forced-literal? tax chk))
+                mono? (or (= :monotonic strength) (decide/forced-literal? kb chk))
                 hits  (->> (antisymmetric-converses kb chk context)
                            (remove (fn [[h]] (tuple/merges? a b mono? (tuple/monotonic-member? tms h))))
                            (nm/sort-by-content-key
@@ -3329,7 +3327,7 @@
                      (nm/print-key (:sentence (p/get-sentex (:records kb) h)))
                      ", and a relation's length stays bound at every context")})
     (when (sequential? chk)
-      (let [mono?  (or (= :monotonic strength) (decide/forced-literal? (reasoning/taxonomy kb) chk))
+      (let [mono?  (or (= :monotonic strength) (decide/forced-literal? kb chk))
             tms    (reasoning/tms kb)
             hid    (exc/own-hidden-fn kb)
             shapes (arity/write-breaks kb (seq chk) mono?
@@ -3610,39 +3608,49 @@
 ;; ---- the forced-monotonic set ------------------------------------------
 
 (def uncleared-forcing
-  "The forced-monotonic declarations whose retraction is refused, each with the semantics the
+  "The forcing declarations whose retraction is refused, each with the semantics the
   declared predicate has no unforced reading of: `[declaration-functor predicate]` ->
-  missing semantics (docs/nmtms.md, \"The forced-monotonic set\")."
+  missing semantics (docs/nmtms.md, \"The forced-monotonic set\").  The
+  `forced_decontextualized_predicate` of an arity binding or an `unbounded_arity` kind is
+  among them: its retraction would leave the records
+  it placed in CxUniverse there (docs/contexts.md)."
   (into {['forced_monotonic_between_predicates 'genl] :unforced-predicate-genl
          ['forced_monotonic_predicate 'genlCx]        :unforced-context-edge
          ['forced_monotonic_predicate 'except]        :unforced-except
          ['forced_monotonic_predicate 'exceptWhen]    :unforced-exception}
-        (for [[missing preds]
-              {:unforced-relation-mark
-               '[irreflexive anti_symmetric asymmetric functional functionalInArg
-                 anti_transitive]
-               :unforced-definitional-declaration
-               '[orthogonal]
-               :unforced-arity-binding
-               '[arity unary binary ternary quaternary quinary unary_predicate
-                 binary_predicate ternary_predicate quaternary_predicate quinary_predicate
-                 unary_function binary_function ternary_function quaternary_function
-                 quinary_function variable_arity variable_arity_predicate variable_arity_function arityMin]
-               :unforced-equality '[rewriteOf sameAs equals]}
-              p preds]
-          [['forced_monotonic_predicate p] missing])))
+        (concat
+         (for [[missing preds]
+               {:unforced-relation-mark
+                '[irreflexive anti_symmetric asymmetric functional functionalInArg
+                  anti_transitive]
+                :unforced-arity-binding
+                '[arity unary binary ternary quaternary quinary unary_predicate
+                  binary_predicate ternary_predicate quaternary_predicate quinary_predicate
+                  unary_function binary_function ternary_function quaternary_function
+                  quinary_function variable_arity variable_arity_predicate variable_arity_function arityMin]
+                :unforced-equality '[rewriteOf sameAs equals]}
+               p preds]
+           [['forced_monotonic_predicate p] missing])
+         (for [p '[arity arityMin unary binary ternary quaternary quinary unary_predicate
+                   binary_predicate ternary_predicate quaternary_predicate quinary_predicate
+                   unary_function binary_function ternary_function quaternary_function
+                   quinary_function variable_arity variable_arity_predicate
+                   variable_arity_function unbounded_arity unbounded_arity_predicate
+                   unbounded_arity_function]]
+           [['forced_decontextualized_predicate p] :unforced-arity-placement]))))
 
 (def ^:private declaration-kind
-  "The taxonomy property each forced-monotonic declaration functor maintains."
+  "The taxonomy property each forcing declaration functor maintains."
   '{forced_monotonic_predicate          :forced-monotonic
-    forced_monotonic_between_predicates :forced-between-predicates})
+    forced_monotonic_between_predicates :forced-between-predicates
+    forced_decontextualized_predicate   :forced-decontextualized})
 
 (defn forced-monotonic?
   "Is `literal` in the forced-monotonic set (`decide/forced-literal?`, docs/nmtms.md,
   \"The forced-monotonic set\"): over every reader, or under the forced-monotonic reading
   `on?`."
-  ([kb literal] (decide/forced-literal? (reasoning/taxonomy kb) literal))
-  ([kb literal on?] (decide/forced-literal? (reasoning/taxonomy kb) literal on?)))
+  ([kb literal] (decide/forced-literal? kb literal))
+  ([kb literal on?] (decide/forced-literal? kb literal on?)))
 
 (defn unforced-antecedents
   "The predicates of the stored rule `rule-sentex`'s antecedents that are not
@@ -3821,7 +3829,8 @@
                            (let [j  (jtms/justification tms jid)
                                  rh (:informant j)
                                  c  (some->> (:consequence j) (p/get-sentex recs))]
-                             (when (and c (integer? rh))
+                             ;; a mint held void is no firing (`special/hold-type-mints!`)
+                             (when (and c (integer? rh) (not (kb/mint-informant? kb rh)))
                                (let [s (sx/sentence-of c)]
                                  (some-> (forced-conclusion-violation kb rh s)
                                          (assoc :sentence s :context (:context c) :rule rh))))))))
@@ -4553,7 +4562,7 @@
       ;; one memo for the pass's reads, the candidates' and the decisions' (`pass-read`)
       (binding [*pass-reads*         (volatile! {})
                 exc/*reader-states* (or exc/*reader-states* (volatile! nil))]
-        (let [{:keys [decls terms kinds defns from owed?]} (argument/queued kb read-under)
+        (let [{:keys [decls terms kinds defns seps from owed?]} (argument/queued kb read-under)
               idx          (:index kb)
               symbols?     (not *assertive-arg-types?*)
               constrained? (constrained-functor tax)
@@ -4568,10 +4577,10 @@
                                              (rules-on kb (constrained-functors tax))
                                              (type-level-rules kb tax)))))
               whole?       (or owed? (nil? from) (not= (first from) (first read-under)))
-              lattice      (when (and (not whole?) (not= from read-under))
+              lattice      (when (and (not whole?) (or (not= from read-under) (seq seps)))
                              (let [[_ g gc sep] from
                                    [_ g' gc' sep'] read-under
-                                   ends (cond-> #{}
+                                   ends (cond-> (set seps)
                                           (not= g g')            (into (tax/moves-since tax :genl g))
                                           (not (identical? sep sep')) (into (tax/separation-moves sep sep')))
                                    cxs  (when (not= gc gc') (tax/moves-since tax :genlCx gc))
@@ -4627,29 +4636,32 @@
                                                     (and sx (constrained? (nm/functor (:sentence sx)))))))
                                       hs)))))))
 
+(def ^:private declaration-functor
+  "The forcing declaration functor of each taxonomy property `declaration-kind` names."
+  (into {} (map (fn [[functor kind]] [kind functor])) declaration-kind))
+
 (defn forcing-retraction-problem
   "The `:uncleared-forcing` refusal of retracting the sentex at `handle`, as a value, or
-  nil: the handle states a forced-monotonic declaration whose predicate has no established unforced
-  semantics (`uncleared-forcing`).  The test reads the declaration properties' supporters,
-  which are what the sentence alone puts there, and fetches no record; a KB storing no
-  `declaration-kind` functor answers nil off one count read per functor.  `where` names
-  the entry point."
+  nil: the handle states a forcing declaration whose predicate has no established unforced
+  semantics (`uncleared-forcing`).  The test reads the taxonomy keys the handle installs,
+  one read through the supporter cache, and fetches no record: a declaration installs the
+  `[:prop kind predicate]` key its sentence names.  A KB storing no `declaration-kind`
+  functor answers nil off one count read per functor.  `where` names the entry point."
   [kb handle where]
-  (let [ix     (:index kb)
-        stated (into #{} (filter #(pos? (long (reads/stored-count-with-functor ix %))))
-                     (keys declaration-kind))]
-    (when (seq stated)
-      (let [tax (reasoning/taxonomy kb)]
-        (some (fn [[[functor pred :as decl] missing]]
-                (when (and (contains? stated functor)
-                           (contains? (tax/prop-supporter-contexts tax (declaration-kind functor) pred)
-                                      handle))
-                  {:type :uncleared-forcing :handle handle :predicate pred :missing missing
-                   :operation where
-                   :message (str (pr-str (apply list decl)) " is not retracted: " pred
-                                 " has no unforced semantics yet (" (name missing)
-                                 "), so its declaration stays")}))
-              uncleared-forcing)))))
+  (let [ix (:index kb)]
+    (when (some #(pos? (long (reads/stored-count-with-functor ix %))) (keys declaration-kind))
+      (some (fn [k]
+              (when (and (vector? k) (= 3 (count k)) (= :prop (first k)))
+                (let [[_ kind pred] k
+                      functor (declaration-functor kind)
+                      missing (when functor (get uncleared-forcing [functor pred]))]
+                  (when missing
+                    {:type :uncleared-forcing :handle handle :predicate pred :missing missing
+                     :operation where
+                     :message (str (pr-str (list functor pred)) " is not retracted: " pred
+                                   " has no unforced semantics yet (" (name missing)
+                                   "), so its declaration stays")}))))
+            (tax/installed-keys (reasoning/taxonomy kb) handle)))))
 
 ;; ---- storable values ----------------------------------------------------
 ;; A sentence's leaves must survive the durable log.  Symbols and keywords (the
@@ -4816,22 +4828,29 @@
       (and (seq? x) (= 'IntervalAfterFn (first x)))
       (boolean (seq (res/matches-visible kb (list 'intervalAfterOf '?t x) context)))))
 
+(def ^:private bounding-starts
+  "Each functor a fact states an exact start, a date or an upper bound with, and the
+  argument positions whose instant it fixes or bounds from above."
+  {'instantEqual [1 2] 'includesInstant [2] 'instantBefore [1] 'instantNotAfter [1]
+   'instantAfter [2] 'instantNotBefore [2]})
+
 (defn- fixed-starts
-  "The instants a fact in `context` states exactly or dates: each argument of an
-  `(instantEqual a b)` over two terms, and the instant of an `(includesInstant x w)` whose
-  `x` has an end (`no-end?`)."
+  "The instants a fact in `context` states exactly, dates or bounds from above: the
+  arguments `bounding-starts` names, over two distinct terms, and the instant of an
+  `(includesInstant x w)` whose `x` has an end (`no-end?`)."
   [kb sentence context]
   (when (and (seq? sentence) (= 3 (count sentence)))
     (let [[f a b] sentence]
       (case f
-        instantEqual    (when (not= a b) [a b])
         includesInstant (when-not (no-end? kb a context) [b])
-        nil))))
+        (when (and (contains? bounding-starts f) (not= a b))
+          (mapv #(nth sentence %) (bounding-starts f)))))))
 
 (defn- exposed-start
-  "For a `(genlCx sub super)` write, `[sentex present]`: the content-least stored fact in a
-  context at or below `sub` that states exactly or dates the start of a present that
-  `super` sees and neither `sub` nor the fact's context sees, or nil."
+  "For a `(genlCx sub super)` write, `[sentex present]`, or nil.  The sentex is the
+  content-least stored fact in a context at or below `sub` that states exactly, dates or
+  bounds from above the start of a present that `super` sees and neither `sub` nor the
+  fact's context sees."
   [kb tax sub super]
   (let [starts #(into #{} (keep (partial present-start kb)) (tax/context-up tax %))
         new    (remove (starts sub) (starts super))]
@@ -4841,7 +4860,8 @@
          (fn [[s _]] (list (:sentence s) (:context s)))
          (for [t     new
                :let  [k (present-slice kb t)]
-               [pred pos] [['instantEqual 1] ['instantEqual 2] ['includesInstant 2]]
+               [pred ps] bounding-starts
+               pos   ps
                h     (reads/as-stored-with-args-in (:index kb) pred {pos t} down)
                :let  [s (p/get-sentex (:records kb) h)]
                :when (and s (some #{t} (fixed-starts kb (:sentence s) (:context s)))
@@ -4849,17 +4869,18 @@
            [s k]))))))
 
 (defn check-exact-present
-  "Throw `:exact-present` when a write states exactly or dates the start `t` of the real
-  world's present, `(CxTimeFn CxRealWorld (IntervalAfterFn t))`, at or below the present: a
-  fact `fixed-starts` names `t` of in a context that sees the present, or a `genlCx` edge
-  that places a context holding such a fact under it.  Any other functor returns nil
-  unread.  `:fact` names the fact and its context, `:present` the slice.  `assert` and
-  `check` read it.  See docs/time.md, \"The real world's present\"."
+  "Throw `:exact-present` when a write states exactly, dates or bounds from above the
+  start `t` of the real world's present, `(CxTimeFn CxRealWorld (IntervalAfterFn t))`, at
+  or below the present.  The write is a fact `fixed-starts` names `t` of in a context that
+  sees the present, or a `genlCx` edge that places a context holding such a fact under
+  it.  Any other functor returns nil unread.  `:fact` names the fact and its context, `:present`
+  the slice.  `assert` and `check` read it.  See docs/time.md, \"The real world's
+  present\"."
   [kb sentence context]
   (when (seq? sentence)
     (let [[fact present]
           (case (first sentence)
-            (instantEqual includesInstant)
+            (instantEqual includesInstant instantBefore instantNotAfter instantAfter instantNotBefore)
             (some (fn [t]
                     (let [k (present-slice kb t)]
                       (when (tax/sees? (reasoning/taxonomy kb) context k)
@@ -4868,7 +4889,7 @@
             genlCx
             (when (and (= 3 (count sentence))
                        (some #(pos? (reads/stored-count-with-functor (:index kb) %))
-                             '[instantEqual includesInstant]))
+                             (keys bounding-starts)))
               (when-let [[s k] (exposed-start kb (reasoning/taxonomy kb)
                                               (second sentence) (nth sentence 2))]
                 [{:sentence (:sentence s) :context (:context s)} k]))
@@ -4876,8 +4897,9 @@
       (when present
         (throw (ex-info (str "the start of the real world's present " present " is read from"
                              " clock readings, and " (pr-str (:sentence fact)) " in "
-                             (:context fact) " states it exactly or dates it: state a clock"
-                             " reading as (instantNotBefore <start> <time>)")
+                             (:context fact) " states it exactly, dates it or bounds it"
+                             " from above: state a clock reading as (instantNotBefore"
+                             " <start> <time>)")
                         {:type :exact-present :sentence sentence :context context
                          :present present :fact fact}))))))
 
@@ -4888,15 +4910,15 @@
 ;; rules, which is the rule index's job — `reads/as-stored-rules-by-consequent-in`
 ;; answers "what could conclude P?" whatever a rule's direction, so no scan is needed.
 ;;
-;; **Two things can close a cycle**, because both kinds of edge fan out over the genl
-;; **spec** closure: a *rule* arriving, and a *taxonomy edge* arriving underneath
-;; rules that are already stored.  An exception on `flightless` is reached by a
-;; stored `(penguin Opus)` the moment `(genl penguin flightless)` holds, whichever of
-;; the two arrived last.  So the walk runs on both paths:
+;; **Three things can close a cycle**: a *rule* arriving, a *taxonomy edge* arriving
+;; underneath stored rules (both kinds of edge fan out over the genl **spec** closure),
+;; and a *closed-extent grant* making a stored rule's closed `(not (P …))` NAF.  An
+;; exception on `flightless` is reached by a stored `(penguin Opus)` the moment
+;; `(genl penguin flightless)` holds, whichever of the two arrived last.  So:
 ;;
-;;   `check-stratified`        a rule is being asserted   -> throw
-;;   `check-edge-stratified`   an edge is being asserted  -> throw
-;;   `edge-stratification-violation`   an edge is being *derived* -> report
+;;   `check-stratified`               a rule is being asserted              -> throw
+;;   `check-fact-stratified`          an edge or a grant is being asserted  -> throw
+;;   `fact-stratification-violation`  an edge or a grant is being *derived* -> report
 ;;
 ;; Only *additions* can close a cycle: `specs` grows monotonically with the edge set,
 ;; so removing an edge only removes graph edges and a retraction needs no check.
@@ -4942,7 +4964,7 @@
   "Does only the backward chainer run this rule sentex, so that no conclusion of it is
   stored?"
   [sentex]
-  (= #{:backward} (:engines sentex)))
+  (= #{:backward} (disj (:engines sentex) :one-justification)))
 
 (defn- negative-edge-rules
   "Handles of every **stored** rule a negative edge leaves: the presence check on walking
@@ -5514,8 +5536,8 @@
   "The functors that grant a closed extent on their first argument's predicate, each with
   the length of its sentence: the whole-predicate grant, the per-argument grant, and the
   per-argument grant's binary spellings, which CxUniverse's forward rules turn into the
-  ternary.  The binary spellings are checked here as well, because a derived ternary
-  reaches no assert-time check."
+  ternary.  A binary spelling is checked as the ternary is, so it is refused or dropped
+  before the forward rule derives the ternary."
   '{closed_extent_predicate 2
     closedExtentForArg      4
     closedExtentForArg1     3
@@ -5524,52 +5546,72 @@
     closedExtentForArg4     3
     closedExtentForArg5     3})
 
-(defn check-closed-extent-stratified
-  "Throw `:not-stratified` unless declaring `(closed_extent_predicate P)`,
-  `(closedExtentForArg P n v)` or a binary spelling of the second leaves the rule set
-  stratified; nil for any other sentence.  The walk starts at each stored rule the grant
-  governs (`provers/closed-extent-rules`: a closed `(not (P …))` antecedent, or one inside
-  an `unknown` antecedent, an aggregate body or an `exceptWhen` query), in content
-  order, so two rules that each close a cycle give one refusal.  It runs before anything
-  is written (docs/naf.md, \"Stratification, from both arrival orders\")."
-  [kb sentence context]
-  (when (and (sequential? sentence)
-             (= (get closed-extent-grant-arities (nm/functor sentence)) (count sentence)))
-    (let [pred (second sentence)]
-      (when-let [[node cycle]
-                 (->> (provers/closed-extent-rules kb pred)
-                      (keep (fn [rh] (some->> (p/get-sentex (:records kb) rh) (vector rh))))
-                      (nm/sort-by-content-key (fn [[_ rsx]] [(sx/sentence-of rsx) (:context rsx)]))
-                      (keep (fn [[rh rsx]]
-                              (let [base    (rule-graph-node kb rh rsx)
-                                    pending (assoc base
-                                                   :label (str "rule#" rh
-                                                               " (under the closed extent)")
-                                                   :exception-preds
-                                                   (concat (:exception-preds base)
-                                                           (negative-predicates
-                                                            (:antecedent-preds base) [pred]))
-                                                   :closure-only
-                                                   (disj (:closure-only base) pred))]
-                                (when-let [c (wff/negation-cycle
-                                              (reasoning/taxonomy kb)
-                                              (stratification-readers kb pending)
-                                              pending)]
-                                  [pending c]))))
-                      first)]
-        (throw (ex-info (str "not stratified: " (pr-str sentence)
-                             " would close a cycle through negation: "
-                             (wff/cycle-description cycle)
-                             " — the grant reads every closed (not …) antecedent on that"
-                             " path as negation as failure, so leave the predicate open,"
-                             " or break the cycle at one of the rules named")
-                        {:type :not-stratified :sentence sentence :context context
-                         :rule (:id node) :cycle cycle}))))))
+(defn cycle-closing-fact?
+  "Is `sentence` a `genl` edge or a closed-extent grant: a fact whose storing can close a
+  cycle through negation (`fact-negation-cycle`)?"
+  [sentence]
+  (and (sequential? sentence)
+       (let [f (nm/functor sentence)]
+         (or (and (= 'genl f) (= 3 (count sentence)))
+             (= (get closed-extent-grant-arities f) (count sentence))))))
+
+(defn grant-closable-predicates
+  "The predicates a closed-extent grant would make a stored rule read as negation as failure
+  (`provers/closed-extent-rules`): each a closed `(not (P …))` antecedent names, and each a
+  rule watched under `not` re-checks.  Read as stored."
+  [kb]
+  (let [idx (:index kb)]
+    (into (into (sorted-set-by nm/compare-form)
+                (keep #(when (and (vector? %) (= :not (first %))) (second %)))
+                (reads/as-stored-rule-keys idx))
+          (comp (mapcat #(provers/negated-recheck-bodies kb %)) (map first))
+          (reads/watched-rules-on idx 'not))))
+
+(defn cycle-possible?
+  "Can storing a `genl` edge or a grant close a cycle through negation among the stored
+  rules: does a stored rule carry a negative edge (`negative-edge-rules`) or a predicate
+  a grant would close (`grant-closable-predicates`)?"
+  [kb]
+  (boolean (or (seq (negative-edge-rules kb)) (seq (grant-closable-predicates kb)))))
+
+(defn cycle-closing-rules
+  "Handles of every **stored** rule concluding a `genl` edge, a closed-extent grant or a
+  sentence whose functor is a variable: the rules a firing of which
+  `fact-stratification-violation` can drop.  Empty where no cycle is possible
+  (`cycle-possible?`).  Reads every context, as `stored-stratification-graph` does: the
+  stratification check reads the stored rule set.  `chain/rerecord-refusals!` re-fires them
+  at `recover`, so their drops re-record."
+  [kb]
+  (if-not (cycle-possible? kb)
+    []
+    (let [index (:index kb)]
+      (into [] (comp (mapcat #(reads/as-stored-rules-by-consequent-global index %)) (distinct))
+            (list* p/var-consequent-key 'genl (sort (keys closed-extent-grant-arities)))))))
+
+(defn- cycle-members
+  "The handles the cycle `cycle` (a `wff/negation-cycle` path) rests on, read over `tax`.
+  These are each stored rule on it, each `exceptWhen` meta-sentex naming one, every
+  supporter of the `genl` edges of one path per climb, and every closed-extent grant on a
+  predicate one of its negative edges reads.  The cycle holds while each of these is stored and believed,
+  so only a removal or a belief move of one can open it."
+  [kb tax cycle]
+  (let [{:keys [rules climbs negatives]} (meta cycle)
+        rhs (filterv integer? rules)]
+    (-> (set rhs)
+        (into (comp (mapcat #(provers/stored-exception-metas kb %)) (map :id)) rhs)
+        (into (comp (mapcat (fn [[c g]] (tax/genl-path-edges tax c g)))
+                    (mapcat (fn [[a b]] (keys (tax/supporters tax [:genl a b]))))
+                    (filter integer?))
+              climbs)
+        (into (comp (mapcat (fn [g] (concat (tax/prop-supporters tax :closed-extent g)
+                                            (tax/prop-supporters tax :closed-extent-arg g))))
+                    (filter integer?))
+              negatives))))
 
 (defn- edge-negation-cycle
   "The cycle through negation that adding this `genl` sentence would create among the
-  **stored** rules, or nil.  Nil for anything else: a `genlCx` edge moves no edge of the
-  graph.
+  **stored** rules, with `:members` (`cycle-members`) in its metadata, or nil.  Nil for
+  anything else: a `genlCx` edge moves no edge of the graph.
 
   `wff/genl-negation-cycle` walks once, from the rules the edge's added graph edges point to,
   over a detached copy of the taxonomy, so a refused edge leaves the cached closures
@@ -5594,50 +5636,82 @@
         (let [probe (tax/detached-copy tax)
               graph (stratification-graph kb)]
           (tax/add-genl probe a b ::probe)
-          (wff/genl-negation-cycle probe (:readers graph) (:starts graph) a b))))))
+          (when-let [cycle (wff/genl-negation-cycle probe (:readers graph) (:starts graph) a b)]
+            (vary-meta cycle assoc :members (cycle-members kb probe cycle))))))))
 
-(defn check-edge-stratified
-  "Throw unless adding this taxonomy edge leaves the stored rule set stratified.
+(defn- fact-negation-cycle
+  "`{:cycle :rule :message :members}` for the cycle through negation that storing the fact
+  `sentence` would close among the stored rules, or nil.  A `genl` edge is walked by
+  `edge-negation-cycle`.  A grant `closed-extent-grant-arities` names is walked from each
+  stored rule it governs (`provers/closed-extent-rules`) in content order, and `:rule` is
+  the handle of the first rule whose walk closes a cycle, so two such rules give one
+  answer.  `:members` is `cycle-members`'.  Nil for any other sentence (docs/naf.md,
+  \"Stratification, from both arrival orders\")."
+  [kb sentence]
+  (let [found (if-let [c (edge-negation-cycle kb sentence)]
+                [c nil (str "the edge fans each rule's negative dependencies over the specs"
+                            " below it, so break the cycle at one of the rules named, or"
+                            " place the edge under a type off that path")]
+                (when (and (sequential? sentence)
+                           (= (get closed-extent-grant-arities (nm/functor sentence))
+                              (count sentence)))
+                  (let [pred (second sentence)]
+                    (->> (provers/closed-extent-rules kb pred)
+                         (keep (fn [rh] (some->> (p/get-sentex (:records kb) rh) (vector rh))))
+                         (nm/sort-by-content-key (fn [[_ rsx]] [(sx/sentence-of rsx) (:context rsx)]))
+                         (keep (fn [[rh rsx]]
+                                 (let [base    (rule-graph-node kb rh rsx)
+                                       pending (assoc base
+                                                      :label (str "rule#" rh " (under the closed extent)")
+                                                      :exception-preds
+                                                      (concat (:exception-preds base)
+                                                              (negative-predicates
+                                                               (:antecedent-preds base) [pred]))
+                                                      :closure-only (disj (:closure-only base) pred))]
+                                   (when-let [c (wff/negation-cycle (reasoning/taxonomy kb)
+                                                                    (stratification-readers kb pending)
+                                                                    pending)]
+                                     [c rh (str "the grant reads every closed (not …) antecedent"
+                                                " on that path as negation as failure, so leave"
+                                                " the predicate open, or break the cycle at one"
+                                                " of the rules named")]))))
+                         first))))]
+    (when-let [[cycle rule remedy] found]
+      {:cycle   cycle
+       :rule    rule
+       :members (or (:members (meta cycle)) (cycle-members kb (reasoning/taxonomy kb) cycle))
+       :message (str "not stratified: " (pr-str sentence) " would close a cycle through"
+                     " negation: " (wff/cycle-description cycle) " — " remedy)})))
 
-  The `genl` assert is the operation at fault, so refusing the *edge* is the
-  consistent answer: it is what `wff` already does to an edge that would make the
-  taxonomy cyclic, and it keeps the invariant that stored state is always stratified
-  — which is what lets `check-stratified` look only for cycles through the rule being
-  added.  Runs before the sentex is created and before the taxonomy is touched."
+(defn check-fact-stratified
+  "Throw `:not-stratified` when storing the fact `sentence` would close a cycle through
+  negation among the stored rules (`fact-negation-cycle`): a `genl` edge or a closed-extent
+  grant.  `:rule` names the governed rule a grant's walk closed at.  The assert entry point
+  runs it before the sentex is created and the taxonomy touched, so a refusal leaves
+  nothing behind.  The refusal keeps stored state stratified, and `check-stratified` relies
+  on that state to look only for cycles through the rule being added."
   [kb sentence context]
-  (when-let [cycle (edge-negation-cycle kb sentence)]
-    (throw (ex-info (str "not stratified: " (pr-str sentence)
-                         " would close a cycle through negation: "
-                         (wff/cycle-description cycle)
-                         " — the edge fans each rule's negative dependencies over the"
-                         " specs below it, so break the cycle at one of the rules named,"
-                         " or place the edge under a type off that path")
-                    {:type :not-stratified :sentence sentence :context context
-                     :cycle cycle}))))
+  (when-let [{:keys [cycle rule message]} (fact-negation-cycle kb sentence)]
+    (throw (ex-info message {:type :not-stratified :sentence sentence :context context
+                             :rule rule :cycle cycle}))))
 
 ;; (`wff-violation` — structural well-formedness as a value, for derived content —
 ;; lives in `vaelii.impl.special` now: the per-functor wff dispatch is a column of
 ;; the special-predicate table, which sits a layer above this namespace.)
 
-(defn edge-stratification-violation
-  "The same check as a **value**, for a `genl` edge a rule *derived*
-  rather than one a caller asserted: nil when the edge is admissible, else a
-  violation map in the shape `constraint-violation` returns.
-
-  A derived edge reaches the taxonomy through `integrate-transitive`, so a rule
-  concluding `(genl a b)` can close a cycle with no caller asserting anything.
-  Throwing there is the wrong shape — chaining is a fixpoint and must not abort
-  halfway through one — so this joins the definitional constraints on the derivation
-  path: the conclusion is dropped and reported in `(core/violations kb)`.  Dropping
-  it is what keeps the invariant intact, since an unstratified edge that was merely
-  *reported* would still be in the taxonomy."
+(defn fact-stratification-violation
+  "`check-fact-stratified` as a value, for an edge or a grant the engine derives: nil when
+  storing `sentence` closes no cycle, else a violation map in `constraint-violation`'s
+  shape, with `:members`, the handles the cycle rests on (`cycle-members`).  The
+  derivation path (`chain/fact-violation`, `special/inadmissible`, `special/store-restatement`)
+  drops such a conclusion and records it as a refusal the members' moves re-decide, so no
+  edge reaches the taxonomy and no grant marks its predicate.  It does not throw, since an
+  exception escaping a firing would leave the fixpoint half-run."
   [kb sentence]
-  (when-let [cycle (edge-negation-cycle kb sentence)]
+  (when-let [{:keys [cycle message members]} (fact-negation-cycle kb sentence)]
     {:violation :not-stratified
-     :detail    {:cycle   cycle
-                 :message (str "not stratified: deriving " (pr-str sentence)
-                               " would give the rule set a cycle through negation: "
-                               (wff/cycle-description cycle))}}))
+     :detail    {:cycle cycle :message message}
+     :members   members}))
 
 ;; Negation is *not* a hard check.  `(not S)` and `S` co-existing is a soft,
 ;; prioritized contradiction resolved at settle time (`vaelii.impl.settle`):

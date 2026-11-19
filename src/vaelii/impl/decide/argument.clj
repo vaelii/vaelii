@@ -31,18 +31,18 @@
 
 ;; ---- the held facts and the queue ---------------------------------------------
 ;;
-;; `::held` is `{h functor}`, the stored sentexes the family holds in `:out`, with a nil
-;; functor for a rule.  A write queues what can move a verdict: an argument declaration
-;; stored or removed queues `[predicate context]` under `::decls`, a membership `(T x)`
-;; stored or removed queues `x` under `::terms`, and under `::kinds` as well when `T` is
-;; `type_relation_predicate`, which constrains a rule's variables at every position of
-;; `x`, and a definition `(defnSufficient T C)`, `(defnNecessary T C)` or
-;; `(defnIff T C)` stored, removed or relabelled queues `T` under `::defns`, since it can
-;; decide a value under a type at or below or above `T` (`provers/value-definition`).  `::read-under` holds the taxonomy generations the last drain read
-;; (`special/conviction-generations` with the `genlCx` generation), and `::owed` marks a
-;; recover, after which the first drain reads every declaration whole.  `::adopt` marks an
-;; installed image that carries no `::read-under`: the first drain takes the generations as read and
-;; reads only what the queue names (`installed!`).
+;; `::held` is `{h functor}`, the facts and rules the family holds in `:out`, a rule's
+;; functor nil.  A write queues what can move a verdict: an argument declaration stored or
+;; removed queues `[predicate context]` under `::decls`; a membership `(T x)` stored or
+;; removed queues `x` under `::terms`, and under `::kinds` too when `T` is
+;; `type_relation_predicate`; a definition of `T` (`defnSufficient`, `defnNecessary`,
+;; `defnIff`) stored, removed or relabelled queues `T` under `::defns`
+;; (`provers/value-definition`); a `defeat` queues its target's move and a separation's
+;; types under `::seps` (`note-defeated!`).  `::read-under` holds the taxonomy generations
+;; the last drain read (`special/conviction-generations` and the `genlCx` generation), and
+;; `::owed` marks a recover, after which the first drain reads every declaration whole.
+;; `::adopt` marks an installed image with no `::read-under`: the first drain takes the
+;; generations as read and reads only what the queue names (`installed!`).
 
 (def declaration-functors
   "The argument declarations, each naming the predicate it constrains at argument 1
@@ -157,6 +157,20 @@
         (.set ^java.util.concurrent.atomic.AtomicReference declares-memo [props b])
         b))))
 
+(defn note-defeated!
+  "Queue what a `defeat` of the stored sentex `target` moves when the defeat is stored,
+  removed or relabelled.  The defeat moves `target`'s belief with no relabel of it, so this
+  queues what `note-relabelled!` queues of `target`, and under `::seps` the types a
+  separation `target` states can separate (`tax/separation-ends`).  Reads nothing while
+  the family holds no fact and no declaration is stored."
+  [kb target]
+  (let [tax (reasoning/taxonomy kb)]
+    (when (or (seq (held kb)) (declares-any? tax))
+      (note-relabelled! kb [target])
+      (when-let [ts (seq (into #{} (comp (keep #(tax/separation-ends tax %)) cat)
+                               (tax/supported-keys tax [(:id target)])))]
+        (swap! (reasoning/nogood-candidates kb) update ::seps (fnil into #{}) ts)))))
+
 (defn installed!
   "Mark the family of a just-installed reasoning image adopted (`::adopt`) when the image
   carries no `::read-under`, as an image written by a build without this family does.  The
@@ -180,7 +194,13 @@
   [c]
   (boolean (or (::owed c) (::adopt c) (seq (::decls c))
                (and (not *assertive-arg-types?*) (seq (::terms c)))
-               (seq (::kinds c)) (seq (::defns c)))))
+               (seq (::kinds c)) (seq (::defns c)) (seq (::seps c)))))
+
+(defn owes-read?
+  "Does the queue hold what the drain reads (`queued?`): a write after the pass's drain
+  queued it, so the settle runs another pass."
+  [kb]
+  (queued? @(reasoning/nogood-candidates kb)))
 
 (defn moved?
   "Does the drain owe a read: `queued?`, or taxonomy generations `read-under` other than
@@ -201,6 +221,7 @@
   "The queue the state `c` holds, as `take!` answers it under `read-under`."
   [c read-under]
   {:decls (::decls c #{}) :terms (::terms c #{}) :kinds (::kinds c #{}) :defns (::defns c #{})
+   :seps  (::seps c #{})
    :from  (if (::adopt c) read-under (::read-under c)) :owed? (boolean (::owed c))})
 
 (defn queued
@@ -211,11 +232,12 @@
 
 (defn take!
   "The queue since the last call, emptied, with the taxonomy generations `read-under` recorded:
-  `{:decls #{[P context]} :terms #{x} :kinds #{P} :defns #{T} :from old-read-under :owed? bool}`.  An
+  `{:decls #{[P context]} :terms #{x} :kinds #{P} :defns #{T} :seps #{t} :from old-read-under
+  :owed? bool}`.  An
   adopted image's first call answers `read-under` itself as `:from` (`installed!`)."
   [kb read-under]
   (let [[old _] (swap-vals! (reasoning/nogood-candidates kb)
-                            #(-> % (dissoc ::decls ::terms ::kinds ::defns ::owed ::adopt) (assoc ::read-under read-under)))]
+                            #(-> % (dissoc ::decls ::terms ::kinds ::defns ::seps ::owed ::adopt) (assoc ::read-under read-under)))]
     (queue-of old read-under)))
 
 (def family

@@ -347,7 +347,7 @@
                          [(sx/sentex (rand-sentence rng) (tu/pick rng ctxs)) (inc i)]))]
           (doseq [[s h] ops] (p/index-sentex mem s h) (p/index-sentex src s h))
           (doseq [store [mem src]]
-            (rules/index-rule store 7001 '[p0 p1] 'p2 'C0)
+            (rules/index-rule store 7001 '[p0 p1] 'p2 '#{T0} 'C0)
             (rules/index-exception store 7001 '[penguin flies]))
 
           ;; write, read into a store that has never seen a sentex, and re-check
@@ -358,6 +358,8 @@
           (is (= (reads/as-stored-rules-by-antecedent-global mem 'p0) (reads/as-stored-rules-by-antecedent-global dst 'p0)))
           (is (= (reads/as-stored-rules-by-consequent-global mem 'p2) (reads/as-stored-rules-by-consequent-global dst 'p2)))
           (is (= #{7001} (reads/as-stored-rules-by-consequent-in dst 'p2 '#{C0}) (reads/as-stored-rules-by-consequent-in mem 'p2 '#{C0})))
+          (is (= #{7001} (set (reads/as-stored-rules-by-consequent-head-in dst 'p2 'T0 '#{C0}))
+                 (set (reads/as-stored-rules-by-consequent-head-in mem 'p2 'T0 '#{C0}))))
           (is (= (reads/watched-rules-on mem 'penguin) (reads/watched-rules-on dst 'penguin)))
           (is (= (reads/watched-rules mem) (reads/watched-rules dst)))
           (is (true? (reads/watched-rule? dst 7001)))
@@ -385,13 +387,15 @@
         col (columnar/columnar-index-store {:space 72})]
     (p/clear-index! mem) (p/clear-index! col)
     (doseq [store [mem col]]
-      (rules/index-rule store 10 '[p0 p1] 'p2 'C0)
-      (rules/index-rule store 11 '[p1] 'p0 'C1)
+      (rules/index-rule store 10 '[p0 p1] 'p2 '#{T0 T1} 'C0)
+      (rules/index-rule store 11 '[p1] 'p0 #{p/var-consequent-key} 'C1)
       (rules/index-exception store 10 '[penguin flies])
       (rules/index-exception store 11 '[t0]))
     (doseq [pr '[p0 p1 p2 penguin flies t0]]
       (both #(reads/as-stored-rules-by-antecedent-global % pr) mem col)
       (both #(reads/as-stored-rules-by-consequent-global % pr) mem col)
+      (doseq [h ['T0 'T1 p/var-consequent-key]]
+        (both #(reads/as-stored-rules-by-consequent-head-global % pr h) mem col))
       (both #(reads/watched-rules-on % pr) mem col)
       ;; the consequent index ends in the context: a scoped read keeps the rules stated there
       (doseq [cs '[#{C0} #{C1} #{C0 C1} #{C2}]]
@@ -402,10 +406,11 @@
     (doseq [h [10 11 12]] (both #(reads/watched-rule? % h) mem col))
     ;; retract one rule + its exception and re-compare
     (doseq [store [mem col]]
-      (rules/unindex-rule! store 10 '[p0 p1] 'p2 'C0)
+      (rules/unindex-rule! store 10 '[p0 p1] 'p2 '#{T0 T1} 'C0)
       (rules/unindex-exception! store 10 '[penguin flies]))
     (doseq [pr '[p0 p1 p2 penguin flies t0]]
       (both #(reads/as-stored-rules-by-antecedent-global % pr) mem col)
+      (both #(reads/as-stored-rules-by-consequent-head-global % pr 'T0) mem col)
       (both #(reads/watched-rules-on % pr) mem col))
     (both reads/watched-rules mem col)))
 

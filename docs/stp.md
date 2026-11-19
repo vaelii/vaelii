@@ -203,7 +203,10 @@ every zone offset, so a wall-clock moment and an absolute one are at most 18 hou
 same reading in the other frame, and a placement that needs a wider offset is the network's
 inconsistency. A network naming one epoch node joins no moment of the other frame. The
 offset is read in the base unit through `Second`'s rows of the unit table, and every
-bound it enters rests on those rows.
+bound it enters rests on those rows. A moment between two seconds, a point of a sub-second
+`DatetimeFn` term, is not placed. Its offset near 2000 is about 9.5·10^8 s, and a `double`
+that large holds steps of 1.2·10^-7 s, so the network cannot hold a millisecond's offset
+exactly.
 
 - **A goal.** `(temporalDistance P Q ?d)` over two moments of one frame answers the
   difference of their offsets, exact, with no constraint stated. Over a moment and an

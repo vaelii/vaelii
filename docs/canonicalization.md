@@ -265,7 +265,9 @@ context:
   the sorted one (`res/raw-match`, `matches-hierarchical`). `has-prop?` of `:symmetric` or
   `:commutative` with a context answers whether that context believes a statement, so the
   symmetric prover reads the mirror only where the mark is believed. `handle-of` looks a
-  sentence up under the marks its context believes.
+  sentence up under the marks its context believes. Which marks a reader believes is read
+  with the placed defeats applied under the network reading as well (`res/entries-at`),
+  since the store spells a fact by those marks.
 - **Several commuting groups.** A reader that believes some of a predicate's groups reads
   a fact sorted by those groups alone. More than one spelling read puts the premise at the
   spelling written, and each other spelling read is a `respell` row.
@@ -487,6 +489,44 @@ held as written holds a compound there sorted, and a lookup by its written order
 it. Retracting the `quotedArg` declaration and stating it again respells those rows from
 the spellings record.
 
+## A rule head matched in every order
+
+A backward rule's head holding a variable keeps its written order, at the literal and in
+each compound below it, so the lookup fan's pruning to a sorted fact does not apply to it.
+The backward match (`res/subsuming-unifiers`) unifies a goal with the head over every
+argument order the head's permuting marks allow, unpruned. `res/unifiers` tries each
+order of the head's compound wherever the goal holds a compound on the same functor, at
+any depth. A variable bound on one side meets a compound on the other in every order. A
+goal variable facing a head compound binds it once, in its written order, so `(paired
+?z)` against the head `(paired (PairFn ?y Bob))` answers once. Each order that unifies
+gives a unifier, deduplicated by content. Under `(symmetric bordersOn)`, `(bordersOn ?x
+Ann)` against the head `(bordersOn ?y Bob)` binds `?x` to `Bob` once the body binds `?y`
+to `Ann`, and `(bordersOn ?a ?b)` answers both ways round, as a stored `(bordersOn Ann
+Bob)` does.
+
+- **The head's marks are read.** The marks are those of the functors the head applies,
+  as the lookup fan reads each fan member's own functor (`res/raw-match-with` under
+  `res/fanned-match`). A goal on `P` that a head on a symmetric spec of `P` answers
+  reads the spec's mark. The marks are read as the asking context believes them
+  (`res/believed-marks`, [A mark a reader does not believe](#a-mark-a-reader-does-not-believe)).
+- **One unifier off a plain head.** A head and goal applying no functor that carries a
+  `symmetric` mark or a commuting group take `res/subsuming-unify`'s one positional
+  unifier, after two map reads on a KB declaring neither.
+- **The callers.** The DFS prover (`res/rule-head-matches`), the node engine's rewrite
+  and the deferred head step (`rewrite-query/head-reader`) take every unifier.
+  `provers/concludes-goal?` and the node engine's `restates-goal?` ask whether one
+  exists, and the consequent clash check (`integrity/consequent-clash`) and
+  `tactics/backchain-estimate` take the first. `quality/subsumes?` keeps
+  `res/subsuming-unify`'s positional unifier, so `kb-quality` reports no rule covered by
+  another whose head matches it only in another argument order.
+- **Cost.** A pair of compounds is unified in up to `g!` orders per component of `g`
+  permuting positions, uncapped, as the lookup fan is. Where the orders are factorial
+  the answer set is too: `(covers ?a ?b ?c)` against a head under `(commutativeInArgAndRest
+  covers 1)` answers six times, as against a stored fact.
+
+`commutative_test/a-backward-rule-head-answers-every-order-its-stored-fact-twin-answers`
+asserts every goal spelling of the three marks against its stored-fact twin.
+
 ## A function's terms reshaped by declaration
 
 Four marks reshape a ground application of a function below the literal, beside the
@@ -510,9 +550,11 @@ from `meetFunctionOf`, so the one declaration gives all four arms.
   each a pure function of the two terms (`subintervalOf` reads the calendar fields, so
   `(MonthFn 2000 3)` and `(DatetimeFn "2000-03")` lie below each other, and a range's
   extent; `subtimeOf` places a moment inside an interval). `TimeIntersectionFn`, the meet
-  over `subtimeOf`, absorbs by both, since `(genl subintervalOf subtimeOf)` holds. A stored `(R a b)` fact is never read, so a stored form does not move with
-  belief: two named times are not absorbed whatever is stated between them, and an order
-  with no registered comparator absorbs nothing.
+  over `subtimeOf`, absorbs by both, since `(genl subintervalOf subtimeOf)` holds. The
+  canonical form reads no stored `(R a b)` fact, so a stored form does not move with
+  belief. Two named times keep their spelling whatever is stated between them, and an
+  order with no registered comparator absorbs nothing at the write. A stated fact
+  rewrites the application instead (below).
 - **The arms keep the walk's limits.** They read the exact functor, unscoped. They
   touch a ground application only, stop at a quoting function, a NAT payload and a
   `reifiable_function` application, and reach the stored rows through
@@ -520,6 +562,32 @@ from `meetFunctionOf`, so the one declaration gives all four arms.
   does. A pattern holding a variable inside such an application keeps its written shape,
   so `(holds (F ?x (F B C)))` matches no stored `(holds (F A B C))`, and a `defeat` of a
   term mark moves no reader's spelling.
+
+### A meet a stated inclusion absorbs
+
+A stored `:monotonic` fact placing one argument of a stored meet application below the
+others derives the application's rewrite to that argument, and the stored spelling stays.
+`chain/sync-meets!` derives `(rewriteOf a E)` for a ground application `E` of a
+`meetFunctionOf` function when its first symbol argument `a` lies below every other
+argument by such a fact. The fact is `(R a b)` for the declared order `R` or an order
+`genl`-below it, or `(includesInstant b a)` for `subtimeOf` (`special/inverse-inclusions`). Each
+justification holds the declaration, one fact per other argument and one literal naming
+`E`, and the rewrite is placed where they meet. The compound `rewriteOf` is a ground
+rewrite rule ([equational.md](equational.md#part-b--schematic-equational-rules)), so the
+equality migration restates each literal naming `E`, a slice's `natFormula` map included,
+as a twin naming `a`. A slice whose map the twin restates to another slice's expression
+merges with that slice, the collision repair a merge owes
+([nat.md](nat.md#rename-and-remove--keeping-the-11-invariant)). Retracting a fact the rewrite rests on takes the
+rewrite, its twins and that merge out (`temporal_capability_test/a-written-cxtimeoffn-of-a-meet-slice-reads-the-same-in-either-order-of-the-inclusion`).
+
+`special/note-meets!` queues `E` when a literal naming it, a fact between two of its
+arguments or the declaration is stored or removed, and the settle drains the queue.
+
+- **The absorbed argument is a symbol.** A `rewriteOf` target is a symbol, so an
+  application whose lowest argument is a compound keeps its spelling, and so does one
+  where the facts leave two or more arguments.
+- **A route is one stored fact.** An inclusion a backward rule concludes, or one reached
+  through a chain of facts, absorbs nothing.
 
 ## Comparison siblings folded
 
@@ -545,7 +613,9 @@ wrappers state two things, and the record holds them as two fields plus `:defeas
   `set/forwardRule`, `#{:forward}` for `set/forwardOnlyRule` (forward-chains and never
   backchains), `#{:backward :lazy}` for `set/lazyForwardRule`
   ([inference.md](inference.md#a-lazy-forward-rule)), `#{}` for `set/inertRule`; `set/solveRule` adds `:solve` to whichever of these the rule has, so a
-  solve runs it as a normal rule ([solving.md](solving.md)).
+  solve runs it as a normal rule ([solving.md](solving.md)), and `set/oneJustificationRule`
+  adds `:one-justification`
+  ([inference.md](inference.md#a-rule-that-stores-one-justification-per-conclusion)).
 - `:effect` — what the head is: `:derive` for a truth, `:choose` for a
   `set/assumptionRule`'s choice, `:forbid` / `:penalize` for a hard / soft constraint's
   marker ([solving.md](solving.md)). Only a `:derive` rule has a choice of engines; the

@@ -97,9 +97,24 @@
   []
   (.incrementAndGet clock))
 
+(defonce ^:private ^AtomicLong respells (AtomicLong. 0))
+
+(defn note-respell
+  "A stored sentex took another spelling under its handle (`kb/respell-sentex!`)."
+  []
+  (.incrementAndGet respells))
+
+(defn respell-count
+  "How many times a stored sentex has taken another spelling under its handle, in any KB
+  of the process (`note-respell`).  A resident copy of stored records compares it: a
+  respell moves no handle into or out of a posting."
+  ^long []
+  (.get respells))
+
 (def ^:dynamic *fired-sink*
   "Nil, or a `java.util.Set` that `jtms/add-justification` adds the consequence of each
-  rule firing's justification to (an integer informant, the rule's handle).
+  rule firing's justification to (an integer informant, the rule's handle), and that
+  `special/derive-merge` adds each equality it derives to.
   `core/undoing-refusal` binds it while `assert-entry/*write-check*` is bound."
   nil)
 

@@ -144,7 +144,7 @@
 (not_assertible cxTimeOf)
 
 (comment DatetimeFn
-         "(DatetimeFn ?iso) means the interval a reduced-precision ISO 8601 string names, so (DatetimeFn \"2000\") is the year 2000, (DatetimeFn \"2000-01\") its January and (DatetimeFn \"2000-01-15T13\") one hour of its fifteenth day, down to the second. A string with a time may end in a UTC offset, Z or ±hh:mm, so (DatetimeFn \"2000-01-15T13:00-07:00\") is the minute that begins at 20:00 UTC; a string with no offset names wall-clock time in no zone, which is not ordered against an absolute time. A time_interval, like YearFn, MonthFn and DayFn. (DatetimeFn \"2000-01\") and (MonthFn 2000 1) name the same interval and order against each other. See docs/context-nat.md and docs/time.md.")
+         "(DatetimeFn ?iso) means the interval a reduced-precision ISO 8601 string names, so (DatetimeFn \"2000\") is the year 2000, (DatetimeFn \"2000-01\") its January and (DatetimeFn \"2000-01-15T13\") one hour of its fifteenth day. A fractional second of one to nine digits, every field zero-padded, is an interval of that many decimal places of a second, so (DatetimeFn \"2000-01-15T13:00:00.123\") is one millisecond; the calendar prover answers no startOf or endOf for it, since an InstantFn moment is a whole second. A string with a time may end in a UTC offset, Z or ±hh:mm, so (DatetimeFn \"2000-01-15T13:00-07:00\") is the minute that begins at 20:00 UTC; a string with no offset names wall-clock time in no zone, which is not ordered against an absolute time. A time_interval, like YearFn, MonthFn and DayFn. (DatetimeFn \"2000-01\") and (MonthFn 2000 1) name the same interval and order against each other. See docs/context-nat.md and docs/time.md.")
 (implementationNote DatetimeFn "An unreifiable_function application: it stays structural, so the string is readable inside the term and a reader can see which intervals contain which.")
 (unreifiable_function DatetimeFn)
 (unary_function DatetimeFn)
@@ -211,6 +211,15 @@
 (arg calendarDay 2 positive_integer)
 (arg calendarDay 3 positive_integer)
 (arg calendarDay 4 time_interval)
+
+(comment diachronicallyDisjoint
+         "(diachronicallyDisjoint ?type1 ?type2) means that nothing is an instance of both types at the same time, though one thing can be an instance of each at different times: caterpillar and butterfly, a child and an adult. disjoint is a genl of it, because never sharing an instance means never sharing one at once. Stated and queryable, not enforced: memberships are checked without time, so the engine cannot yet tell an instance that is both at once from one that is each in turn.")
+(set/monotonic (symmetric diachronicallyDisjoint))
+(set/monotonic (type_relation_predicate diachronicallyDisjoint))
+(set/monotonic (time_agnostic_relation diachronicallyDisjoint))
+(genlArg diachronicallyDisjoint 1 thing)
+(genlArg diachronicallyDisjoint 2 thing)
+(genl disjoint diachronicallyDisjoint)
 
 (comment during
          "(during ?interval1 ?interval2) means that ?interval1 falls wholly inside ?interval2, beginning strictly after it and ending strictly before it.")
@@ -713,13 +722,27 @@
 (genl subintervalOf subtimeOf)
 
 (comment subtimeOf
-         "(subtimeOf ?time1 ?time2) means that the time ?time1 lies within the time ?time2, whatever the two kinds of time: an interval inside an interval, an instant inside an interval, or a piece of an intermittent time inside the whole. A time is a subtime of itself. subintervalOf is the case of two intervals, and an instant a time includes is a subtime of it by the rule beside it. TimeIntersectionFn is the meet over it. See docs/time.md.")
+         "(subtimeOf ?time1 ?time2) means that the time ?time1 lies within the time ?time2, whatever the two kinds of time: an interval inside an interval, an instant inside an interval, or a piece of an intermittent time inside the whole. A time is a subtime of itself. subintervalOf is the case of two intervals, and a time that is part of a time, or an instant a time includes, is a subtime of it by the rules beside it. TimeIntersectionFn is the meet over it. See docs/time.md.")
 (set/monotonic (instance_relation_predicate subtimeOf))
 (set/monotonic (eternal_predicate subtimeOf))
 (arg subtimeOf 1 time)
 (arg subtimeOf 2 time)
 (set/monotonic (reflexive subtimeOf))
 (genl subtimeOf partOf)
+
+;; A part of a time that is itself a time lies within it.
+(set/forwardRule
+ (implies (and (partOf ?part ?time) (time ?part) (time ?time))
+          (subtimeOf ?part ?time)))
+;; kb-integrity pairs the root denial of a proper part's whole being its part
+;; (abstract.txt) with that definition, as a rule clash.  Acknowledged rather than
+;; excepted, for the reason the record gives.
+(acknowledgedFinding :rule-clash
+  (RulePairFn
+   (Quote (implies (properPartOf ?part ?whole) (not (partOf ?whole ?part))))
+   (Quote (implies (and (partOf ?part ?time) (time ?part) (time ?time))
+                    (subtimeOf ?part ?time))))
+  "Left unexcepted on purpose. subtimeOf's definition concludes that a time a part of a time is a subtime of it, so a part, and the root rule denies one. Both fire for one tuple only where the facts already contradict the root rule: a time stated a part of a time that is stated a proper part of it. Both rules are strict definitions, so that clash is the one the facts owe, and an exception would hide it.")
 
 ;; An instant a time includes lies within it.
 (set/backwardRule

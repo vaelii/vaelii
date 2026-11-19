@@ -91,16 +91,16 @@
     (is (tu/holds-genl 'image_viewing 'acausal PCP))
     (is (not (tu/holds-genl 'image_viewing 'acausal_event 'CxUniverse)))))
 
-(tu/deftest-kb a-user-context-under-cxtra-derives-hascapability-of-image-viewing
+(tu/deftest-kb a-user-context-under-cxtra-derives-able-of-image-viewing
   (tu/with-terms [CxRoom Viewer]
     (v/assert kb (list 'genlCx CxRoom 'CxWell) 'CxUniverse)
     (v/assert kb (list 'genlCx CxRoom PCP) 'CxUniverse)
-    (v/assert kb (list 'hasCapability Viewer 'image_viewing) CxRoom)
+    (v/assert kb (list 'able Viewer 'image_viewing) CxRoom)
     (testing "a context under the theory reads the ability and its causal class"
-      (is (tu/holds-ask (list 'hasCapability Viewer 'image_viewing) CxRoom))
-      (is (tu/holds-ask (list 'hasCapability Viewer 'event) CxRoom))
-      (is (tu/holds-ask (list 'hasCapability Viewer 'acausal_event) CxRoom)))
-    (testing "a context that does not see the theory concludes no such capability class"
+      (is (tu/holds-ask (list 'able Viewer 'image_viewing) CxRoom))
+      (is (tu/holds-ask (list 'able Viewer 'event) CxRoom))
+      (is (tu/holds-ask (list 'able Viewer 'acausal_event) CxRoom)))
+    (testing "a context that does not see the theory concludes no such ability class"
       (doseq [ctx ['CxWell 'CxUniverse]]
-        (is (not (tu/holds-ask (list 'hasCapability Viewer 'acausal_event) ctx))
-            (str "Viewer hasCapability acausal_event in " ctx))))))
+        (is (not (tu/holds-ask (list 'able Viewer 'acausal_event) ctx))
+            (str "Viewer able acausal_event in " ctx))))))

@@ -36,6 +36,7 @@
   check
   "[[conn sentence] [conn sentence context] [conn sentence context opts]]",
   check-edit "[[conn batch]]",
+  check-term-edit "[[conn op mapping]]",
   clear-caches "[[conn] [conn opts]]",
   client "[[host port] [host port opts]]",
   common-genls "[[conn types] [conn types context]]",
@@ -129,7 +130,7 @@
   relation? "[[conn term] [conn term context]]",
   replace-facts! "[[conn context facts] [conn context facts opts]]",
   representative "[[conn term] [conn term context]]",
-  retract! "[[conn handle]]",
+  retract! "[[conn handle] [conn handle opts]]",
   same-class? "[[conn a b] [conn a b context]]",
   search-tree
   "[[conn goal] [conn goal context] [conn goal context opts]]",
@@ -152,6 +153,7 @@
   subsumption-statuses "[[conn a b] [conn a b context]]",
   supporting-justifications "[[conn handle]]",
   term-count "[[conn]]",
+  term-edit-plan "[[conn op mapping]]",
   term-expression "[[conn term]]",
   terms "[[conn]]",
   try-assert
@@ -233,6 +235,7 @@
   check
   "[[kb sentence] [kb sentence context] [kb sentence context opts]]",
   check-edit "[[kb batch]]",
+  check-term-edit "[[kb op mapping]]",
   clear! "[[kb]]",
   clear-caches "[[kb] [kb opts]]",
   clear-violations! "[[kb]]",
@@ -250,6 +253,8 @@
   contexts "[[kb]]",
   contexts-of "[[kb sentence]]",
   contradictions "[[kb] [kb context] [kb context opts]]",
+  copy-term "[[kb from to] [kb from to opts]]",
+  copy-terms "[[kb copies] [kb copies opts]]",
   count-in-context "[[kb context]]",
   count-with-arg "[[kb pos term]]",
   count-with-functor "[[kb pred]]",
@@ -325,6 +330,8 @@
   max-common-specs "[[kb types] [kb types context]]",
   max-context-children "[[kb c]]",
   max-specs "[[kb t] [kb t context]]",
+  merge-term! "[[kb from into] [kb from into opts]]",
+  merge-terms! "[[kb merges] [kb merges opts]]",
   metatype-members "[[kb m]]",
   min-common-genls "[[kb types] [kb types context]]",
   min-context-parents "[[kb c]]",
@@ -368,14 +375,20 @@
   relation-arity "[[kb term]]",
   relation? "[[kb term] [kb term context]]",
   release-withheld! "[[kb]]",
+  remove-term! "[[kb term] [kb term opts]]",
+  remove-terms! "[[kb terms] [kb terms opts]]",
   remove-unsupported! "[[kb opts]]",
+  rename-term! "[[kb old new] [kb old new opts]]",
+  rename-terms! "[[kb renames] [kb renames opts]]",
   replace-facts! "[[kb context facts] [kb context facts opts]]",
   representative "[[kb term] [kb term context]]",
   request-stop! "[[kb]]",
   reset-settle-stats! "[[kb]]",
   rests-on "[[j]]",
   resume "[[partial budget]]",
-  retract! "[[kb handle]]",
+  retract! "[[kb handle] [kb handle opts]]",
+  retract-opt-keys
+  [:max-derivations :max-ms :progress-every-ms :stop?],
   same-class? "[[kb a b] [kb a b context]]",
   seal "[[kb]]",
   search-tree "[[kb goal] [kb goal context] [kb goal context opts]]",
@@ -410,6 +423,7 @@
   supporting-justifications "[[kb handle]]",
   switch-value "[[spelling]]",
   term-count "[[kb]]",
+  term-edit-plan "[[kb op mapping]]",
   term-expression "[[kb term]]",
   term-role "[[term]]",
   terms "[[kb]]",
@@ -457,6 +471,7 @@
    :chain-stats
    :check
    :check-edit
+   :check-term-edit
    :clear-caches
    :common-genls
    :common-specs
@@ -563,6 +578,7 @@
    :subsumption-statuses
    :supporting-justifications
    :term-count
+   :term-edit-plan
    :term-expression
    :terms
    :try-assert
@@ -600,6 +616,7 @@
    :chain-stats
    :check
    :check-edit
+   :check-term-edit
    :clear-caches
    :common-genls
    :common-specs
@@ -705,6 +722,7 @@
    :subsumption-statuses
    :supporting-justifications
    :term-count
+   :term-edit-plan
    :term-expression
    :terms
    :try-assert
@@ -723,6 +741,7 @@
   consequences "[[env heading batch]]",
   handler "[[target] [target opts]]",
   local-kb "[[env]]",
+  page "[[req title & body]]",
   read-form "[[s]]",
   register-extension "[[ext-name ext]]",
   render-form "[[env form]]",

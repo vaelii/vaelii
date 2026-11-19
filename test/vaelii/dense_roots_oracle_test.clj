@@ -161,6 +161,8 @@
                 '[:rule-antecedent :children [p0]]
                 '[:rule-consequent :handles [p0 C0]]
                 '[:rule-consequent :children [p0]]
+                '[:rule-consequent-head :handles [p0 A0 C0]]
+                '[:rule-consequent-head :children [p0 A0]]
                 '[:exception-index p0]
                 [:exception-index :rules]]]
     (doseq [k keys]

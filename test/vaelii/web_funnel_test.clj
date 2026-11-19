@@ -14,6 +14,7 @@
             [vaelii.test-util :as tu]))
 
 (def ^:dynamic *app* nil)
+(def ^:dynamic *firing-rule* nil)
 
 ;; Three forward rules, one of each kind the funnel classifies:
 ;;  - fires:   (p ?x) -> (q ?x), with (p A) — asserting it auto-chains and places (q A)
@@ -23,8 +24,8 @@
 (use-fixtures :each
   (fn [f]
     (catalog/reset-registry!)
-    (let [kb (doto (tu/empty-kb) tu/load-core!)]
-      (v/assert-rule kb '[(p ?x)] '(q ?x) 'CxFunnel {:direction :forward})
+    (let [kb (doto (tu/empty-kb) tu/load-core!)
+          firing-rule (v/assert-rule kb '[(p ?x)] '(q ?x) 'CxFunnel {:direction :forward})]
       (v/assert kb '(p A) 'CxFunnel)
       (v/assert-rule kb '[(unfired ?x)] '(never ?x) 'CxFunnel {:direction :forward})
       (v/assert kb '(closed_extent_predicate penguin) 'CxFunnel)
@@ -35,7 +36,7 @@
       (v/assert kb '(bird Opus) 'CxFunnel)
       (v/forward-chain kb)
       (catalog/register! "base" "Base KB" kb {:source (catalog/source "core")})
-      (binding [tu/*kb* kb, *app* (web/app (catalog/holder kb))]
+      (binding [tu/*kb* kb, *app* (web/app (catalog/holder kb)), *firing-rule* firing-rule]
         (try (f)
              (finally
                (doseq [j (jobs/running)] (jobs/cancel! (:id j)))
@@ -49,14 +50,34 @@
 
 (defn- POST [uri params] (*app* {:request-method :post :uri uri :params params :headers {}}))
 
+(defn- funnel-pages
+  "The first body and its actual continuation bodies, bounded against a repeated sentinel."
+  [body]
+  (loop [body body, pages []]
+    (let [pages (conj pages body)
+          href (second (re-find #"hx-get=\"(/funnel/rows\?offset=\d+)\"" body))]
+      (if (and href (< (count pages) 100))
+        (let [[uri qs] (str/split href #"\?")]
+          (recur (:body (GET uri qs)) pages))
+        pages))))
+
 ;; ---- the page ------------------------------------------------------------
 
 (deftest funnel-page-classifies-every-forward-rule
   (let [r (GET "/funnel")
-        b (:body r)]
+        pages (funnel-pages (:body r))
+        b (apply str pages)
+        row (first (filter #(= *firing-rule* (:rule %)) (v/chain-report tu/*kb*)))
+        card (first (filter #(str/includes? % (str "href=\"/sentex/" *firing-rule* "\""))
+                            (mapcat #(str/split % #"<div class=\"funnel-row\">") pages)))]
     (is (= 200 (:status r)))
     (is (re-find #"The chaining funnel" b))
-    (testing "the three states are each on the page as a status tag (not just the legend)"
+    (testing "the authored firing is classified and rendered on its continuation page"
+      (is (true? (v/ask? tu/*kb* '(q A) 'CxFunnel)))
+      (is (= :fires (:status row)))
+      (is (pos? (long (or (:placed row) 0))))
+      (is (re-find #">fires</span>" (or card ""))))
+    (testing "the three states are each on the pages as a status tag (not just the legend)"
       (is (re-find #">fires</span>" b))
       (is (re-find #">blocked</span>" b))
       (is (re-find #">silent</span>" b)))
@@ -99,9 +120,10 @@
     ;; the run settles inside the fast path on an idle box; wait for it either way, then the
     ;; funnel it lands on still classifies the rules
     (jobs/wait (:id (first (jobs/jobs))))
-    (let [b (:body (GET "/funnel"))]
+    (let [b (:body (GET "/funnel"))
+          pages (funnel-pages b)]
       (is (re-find #"The chaining funnel" b))
-      (is (re-find #">fires<" b)))))
+      (is (some #(re-find #">fires<" %) pages)))))
 
 ;; ---- the read behind it --------------------------------------------------
 

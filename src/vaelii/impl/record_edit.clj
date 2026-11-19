@@ -182,7 +182,8 @@
 
 (defn- add-problem
   "Why the `:add` sentence `s` in `ctx` cannot be written at record level, or nil, read
-  off the sentence and the index alone."
+  off the sentence and the index alone.  A `genl` with a minted argument is refused as one
+  between predicates, since a minted constant's role is read off belief."
   [idx s ctx]
   (let [f (nm/functor s)]
     (cond
@@ -198,9 +199,9 @@
                               " compound reifies or resolves against belief, which edit!"
                               " reads"))
 
-      (and (= 'genl f) (nm/between-predicates? s))
-      (add-refusal s ctx (str "relates predicates, a forced-monotonic edge that carries"
-                              " declarations down; edit! adds it"))
+      (and (= 'genl f) (nm/between-predicates? s any?))
+      (add-refusal s ctx (str "relates predicates or minted constants, a forced-monotonic"
+                              " edge that carries declarations down; edit! adds it"))
 
       (some #(seq (reads/as-stored-with-args idx % {1 f})) relocating-marks)
       (add-refusal s ctx (str "names a predicate the store marks "
@@ -318,23 +319,24 @@
                                             "is not removed")))
     (doseq [[h d] directions]
       (throw-problem! (direction-problem h (stored h) d))
-      (when (not= (:engines (stored h)) (sx/direction-engines d))
+      (when (not= (:engines (stored h)) (sx/redirected-engines (:engines (stored h)) d))
         (throw-problem! (kb/mint-rule-refusal (kv/mint-rule-kind (stored h)) h "edit-records!"
                                               "keeps its direction")))
       (when (contains? removals h)
         (throw-problem! {:type :unknown-option :mismatch :conflict :handle h
                          :operation "edit-records!"
                          :message (str "handle " h " is both removed and redirected")})))
-    (let [engines  (into {} (map (fn [[h d]] [h (sx/direction-engines d)])) directions)
+    (let [engines  (into {} (map (fn [[h d]] [h (sx/redirected-engines (:engines (stored h)) d)]))
+                         directions)
           narrowed (into #{} (comp (remove (fn [[_ e]] (contains? e :forward))) (map key)) engines)
           js       (if (or (seq removals) (seq narrowed))
                      (scan-justifications records removals narrowed)
                      {})
           {:keys [delete keep dead]} (plan removals narrowed js)
-          ;; a firing that named a deleted closure edge as its witness may still be
-          ;; licensed by a second route; `recover` leaves it out as `:unrooted`, and
+          ;; a firing that named a deleted witness edge (`special/witness-edge?`) may
+          ;; still be licensed by a second route; `recover` leaves it out as `:unrooted`, and
           ;; `sweep!` reads the facts to re-chain off it before deleting it
-          edges    (into #{} (filter #(special/closure-edge-relation (sx/sentence-of (stored %)))) delete)
+          edges    (into #{} (filter #(special/witness-edge? (sx/sentence-of (stored %)))) delete)
           left     (into #{} (comp (filter (fn [[_ j]] (and (special/firing-informant? kb (:informant j))
                                                             (not (contains? narrowed (:informant j)))
                                                             (some edges (:antecedents j)))))
@@ -455,21 +457,22 @@
     (count seeds)))
 
 (defn sweep!
-  "Delete the unrooted justifications the last `recover` left out (`:unrooted`), sweep
-  the consequence closure of their stored conclusions and of `seeds` as a retraction
-  sweeps it — every record there that is not a premise and is OUT goes, with the
-  justifications touching it (`jtms/sweep!`), through the removal choke point — and settle;
-  chain each forward rule among `seeds` over the stored facts, re-chain the antecedents of
-  the unrooted rule firings (`special/firing-seeds`) and settle; then bring each seed that
-  is a stored premise fact in as `assert` brings a stored fact in (`arrive-all!`), and
-  settle.  Runs over a KB with belief.  Returns `{:unrooted n :removed-sentexes n
-  :removed-justifications n :rules-chained n :rechained n :arrived n}`.
+  "Sweep the consequence closure of `seeds` and of the stored conclusions of the unrooted
+  justifications `recover` left out (`:unrooted`) as a retraction sweeps it (`jtms/sweep!`,
+  through the removal choke point), and settle.  Inside `(phase f)`, chain each forward
+  rule among `seeds` over the stored facts, re-chain the unrooted rule firings' antecedents
+  (`special/firing-seeds`) and settle.  Bring each seed that is a stored premise fact in as
+  `assert` does (`arrive-all!`) and settle, then delete the unrooted justifications, last,
+  so a call `phase` stops leaves them for the next call to read the firings off.  Runs
+  over a KB with belief.  Returns `{:unrooted n :removed-sentexes n :removed-justifications
+  n :rules-chained n :rechained n :arrived n}`.
 
   `report`, when given, is called with `{:phase :sweep :step k :done i :total 8}` as each
   step begins (`sweep-steps`), and with the chain's `:derived` and `:pending` beside while
   it runs."
   ([kb seeds] (sweep! kb seeds nil))
-  ([kb seeds report]
+  ([kb seeds report] (sweep! kb seeds report #(%)))
+  ([kb seeds report phase]
    (let [step!   (fn [k & [extra]]
                    (when report
                      (report (merge {:phase :sweep :step k
@@ -486,8 +489,6 @@
          ;; read off the records before they go, as `edit!` reads its seeds off the
          ;; justifications its sweep removed (`special/resubsumption-seeds`)
          refire  (special/firing-seeds kb js gone? gone?)
-         _       (run! #(p/delete-justification! records %) unrooted)
-         _       (swap! (:unrecovered kb) dissoc :unrooted)
          _       (step! :sweep)
          seeds   (into #{} (filter #(and (integer? %)
                                          (jtms/known-datum? tms %)
@@ -501,19 +502,21 @@
          ;; rule that newly runs forward
          rules   (into [] (filter #(some-> (p/get-sentex records %) rules/forward-sentex?))
                        (cap/hinting (cap/prefetcher records) cap/recovery-hint-chunk (sort seeds)))]
-     (step! :chain {:rules (count rules)})
-     (when (seq rules)
-       (chain/chain-all kb rules (if report
-                                   {:on-progress #(step! :chain (assoc % :rules (count rules)))}
-                                   {})))
-     (step! :rechain {:firings (count refire)})
-     ;; re-asking firings the removal swept, so one that places nothing is not reported
-     ;; (`chain/*report-no-placement?*`)
-     (when (seq refire)
-       (binding [chain/*report-no-placement?* false] (settle/rechain-seeds kb refire)))
-     (when (or (seq rules) (seq refire))
-       (step! :settle-chain)
-       (settle/settle kb))
+     (phase
+      (fn []
+        (step! :chain {:rules (count rules)})
+        (when (seq rules)
+          (chain/chain-all kb rules (if report
+                                      {:on-progress #(step! :chain (assoc % :rules (count rules)))}
+                                      {})))
+        (step! :rechain {:firings (count refire)})
+        ;; re-asking firings the removal swept, so one that places nothing is not reported
+        ;; (`chain/*report-no-placement?*`)
+        (when (seq refire)
+          (binding [chain/*report-no-placement?* false] (settle/rechain-seeds kb refire)))
+        (when (or (seq rules) (seq refire))
+          (step! :settle-chain)
+          (chain/call-unbounded #(settle/settle kb)))))
      (let [arrivals (into [] (filter #(and (jtms/premise? tms %)
                                            (some-> (p/get-sentex records %) sx/positive-fact?)))
                           (sort seeds))]
@@ -525,6 +528,8 @@
                                       {})))
          (step! :settle-arrive)
          (settle/settle kb))
+       (run! #(p/delete-justification! records %) unrooted)
+       (swap! (:unrecovered kb) dissoc :unrooted)
        {:unrooted               (count unrooted)
         :removed-sentexes       (count (:removed-sentexes rm))
         :removed-justifications (count (:removed-justifications rm))

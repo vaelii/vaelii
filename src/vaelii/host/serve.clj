@@ -69,6 +69,7 @@
             [vaelii.host.subscribe :as sub]
             [vaelii.impl.assert-entry :as entry]
             [vaelii.impl.caches :as caches]
+            [vaelii.impl.chain :as chain]
             [vaelii.impl.config :as config]
             [vaelii.impl.context-nat :as context-nat]
             [vaelii.impl.kb :as kb]
@@ -141,12 +142,12 @@
 
   **The table holds the search bounds of reads, and no write's bound.**  A read with no dial
   of its own (`:sentexes-matching`) is not on it, and every read whose `core/<op>-opt-keys`
-  names `:max-ms` is.  **Eight writes name a bound this table does not hold**: `:assert`,
-  `:try-assert`, `:assert-many`, `:assert-rule` and `:forward-chain` read `:max-depth`,
-  `:max-term-depth` and `:max-derivations`, and `:edit`, `:edit-with-consequences` and
-  `:preview` read them off each batch entry's opts.  All three bound the chaining fixpoint
-  (`chain/default-chain-opts`) on the same monitor.  `write-bounds` holds `:max-ms` to the
-  write ceiling for all but `:forward-chain` and `:preview` (no clock).  docs/operations.md."
+  names `:max-ms` is.  **Ten writes name a chaining bound this table does not hold**:
+  `:assert`, `:try-assert`, `:assert-many`, `:assert-rule`, `:replace-facts` and
+  `:forward-chain` read `:max-depth`, `:max-term-depth` and `:max-derivations`
+  (`chain/default-chain-opts`), `:edit`, `:edit-with-consequences` and `:preview` read them
+  off each batch entry's opts, and `:retract` reads `:max-derivations`.  `write-bounds` holds
+  `:max-ms` to the write ceiling for all but `:forward-chain` and `:preview`.  docs/operations.md."
   {:query              #{:max-depth :max-ms}
    :query?             #{:max-depth :max-ms}
    :query-status       #{:max-depth :max-ms}
@@ -285,6 +286,7 @@
    :try-assert             {:fill ['CxUniverse] :option-arity 3}
    :assert-rule            {:fill ['CxUniverse] :option-arity 4}
    :assert-many            {:fill [] :option-arity 3}
+   :retract                {:fill [] :option-arity 2}
    :edit                   {:fill [] :option-arity 2}
    :edit-with-consequences {:fill [] :option-arity 2}
    :replace-facts          {:fill [] :option-arity 3}})
@@ -331,6 +333,19 @@
                     args)))
           (f kb args))))
     f))
+
+(defn- write-bound
+  "The bound the write `op` over `args` runs under (`write-bounded`): its `:max-ms`, the
+  write ceiling when absent and refused (`:over-ceiling`) when larger, and its
+  `:max-derivations`.  An empty map for an op `write-bounds` does not name."
+  [op args]
+  (let [at      (write-bounds op)
+        args    (cond-> (vec args) at (with-write-opts at))
+        opts    (when (and at (= (count args) (:option-arity at))) (peek args))
+        opts    (if (map? opts) opts {})
+        ceiling (config/max-write-ms)]
+    (select-keys (cond->> opts (and at (pos? ceiling)) (under-write-ceiling op ceiling))
+                 [:max-ms :max-derivations])))
 
 (def ^:dynamic *served-kbs*
   "nil, or a fn from a string a request sends to the KB this server serves under that
@@ -398,6 +413,8 @@
     ;; without storing anything.  A remote editor validates before it writes.
     :check        (op v/check)
     :check-edit   (op v/check-edit)
+    :check-term-edit (op v/check-term-edit)
+    :term-edit-plan  (op v/term-edit-plan)
     ;; and the other dry run: not whether the batch would be *admitted* but what it would
     ;; *mean* — the belief it adds and takes away (docs/preview.md).  Served with the
     ;; writes because it applies the batch and rolls it back, so it holds the daemon's
@@ -909,9 +926,10 @@
 (defn- nat-formula-reach
   "The `[context why]` pairs storing `(natFormula k e)` in CxUniverse writes beside it.  The
   structural producer places `k` under each context `context-nat/arg-supers` names, so `k`
-  is one.  The store copies every eternal predicate's literal `k` holds into each context
-  other than `k` that `special/sliced-contexts` reads off `e`, so each of those is one too.
-  Neither reads what `k`
+  is one.  For a `cx/` constant `k` it orders `k` against the other contexts of `e`'s
+  function, so each `context-nat/pair-reach` names is one.  The store copies every eternal
+  predicate's literal `k` holds into each context other than `k` that
+  `special/sliced-contexts` reads off `e`, so each of those is one too.  None reads what `k`
   holds, so the verdict is the same whichever of the map and a fact in `k` is written
   first."
   [kb [_ k e]]
@@ -919,6 +937,9 @@
     (cond-> []
       (seq (context-nat/arg-supers kb k e))
       (conj [k "a natFormula places its constant under its function's argument, which widens the constant's ancestor set"])
+      :always
+      (into (map (fn [c] [c "a natFormula for a cx/ constant orders it against its function's other contexts, which widens the lower context's ancestor set"]))
+            (context-nat/pair-reach kb k e))
       :always
       (into (comp (remove #{k})
                   (map (fn [m] [m "the store copies each eternal predicate's literal the slice a natFormula names holds into the context the slice slices"])))
@@ -1093,6 +1114,26 @@
       (concat (when (reads? up) (met (reach (closure :down sub)) false up))
               (when (reads? down) (met (reach (closure :up super)) true down))))))
 
+(defn- equality-reach
+  "The `[context why]` pairs the equality `lit` stored in `context` writes beside it.  An
+  equality stored in CxUniverse that names a context joins two classes, and the store
+  restates each member context's extent in the context the class elects
+  (`kb/context-home`), so each context of either class is one.  Empty for any other
+  sentence."
+  [kb lit context]
+  (when (and (= sx/root-context context) (kb/equality-sentence? lit) (= 3 (count lit))
+             (some nm/context? (rest lit)))
+    (let [tx  (reasoning/taxonomy kb)
+          vis (res/visible-supporter-fn kb sx/root-context)]
+      (->> (rest lit)
+           (filter symbol?)
+           (mapcat #(if (tax/merged? tx %) (first (tax/scoped-class tx % vis)) [%]))
+           (filter nm/context?)
+           (remove #{sx/root-context})
+           distinct
+           (sort-by nm/name-key)
+           (map (fn [c] [c "an equality between contexts stated in CxUniverse restates each one's extent in the context its class elects"]))))))
+
 ;; literal-reach and rule-placements call each other: a rule's conclusion is a literal,
 ;; and a literal that triggers a generator makes the engine write a rule.  `seen` holds
 ;; the generators already expanded on the path, so the descent ends.
@@ -1103,10 +1144,10 @@
   `assert` stores it in (`entry/storage-context`), CxUniverse or the contexts a slice slices
   beside it for a literal the store also lifts there (`special/lifts-to-universe?`,
   `special/slice-lift-targets`), for a `genlCx` edge its lower context, whose ancestor set the
-  edge widens, for a `natFormula` in CxUniverse its `nat-formula-reach`, and the
-  `rule-placements` of every rule storing it makes the engine write, in the context it is
-  placed in (`generated-rules`, `edge-generated-rules`).  The `admin-only` triple alone for
-  a literal no grant's contexts bound."
+  edge widens, for a `natFormula` in CxUniverse its `nat-formula-reach`, for an equality its
+  `equality-reach`, and the `rule-placements` of every rule storing it makes the engine
+  write, in the context it is placed in (`generated-rules`, `edge-generated-rules`).  The
+  `admin-only` triple alone for a literal no grant's contexts bound."
   [kb lit context seen]
   (let [f (when (sequential? lit) (first lit))
         t (admin-only kb lit)]
@@ -1126,6 +1167,8 @@
           (conj [(second lit) "a genlCx edge widens its lower context's ancestor set"])
           (and (= 'natFormula f) (= 3 (count lit)) (= sx/root-context c))
           (into (nat-formula-reach kb lit))
+          :always
+          (into (equality-reach kb lit c))
           :always
           (into (mapcat (fn [[g r c']]
                           (rule-placements kb (sx/rule-consequent (rules/inner-rule r)) c'
@@ -1179,25 +1222,27 @@
 (defn- check-context!
   "Throw unless `grant` may write the `[c why what]` triple `placements` answers: `c` is
   in its `:writes`, or the grant is an admin's.  `why` says why the write reaches `c`; for
-  `::admin-only`, `what` names what only an admin grant writes."
-  [op {:keys [principal writes admin?]} [c why what]]
-  (cond
-    admin? nil
-    (= ::admin-only c)
-    (forbidden-context! op principal nil what (str why ", and only an admin grant writes it"))
-    (not (contains? writes c))
-    (forbidden-context! op principal c (pr-str c)
-                        (str (some-> why (str ", and ")) "the token's grant does not name it"))))
+  `::admin-only`, `what` names what only an admin grant `verb`s (default \"writes\")."
+  ([op grant t] (check-context! op grant t "writes"))
+  ([op {:keys [principal writes admin?]} [c why what] verb]
+   (cond
+     admin? nil
+     (= ::admin-only c)
+     (forbidden-context! op principal nil what (str why ", and only an admin grant " verb " it"))
+     (not (contains? writes c))
+     (forbidden-context! op principal c (pr-str c)
+                         (str (some-> why (str ", and ")) "the token's grant does not name it")))))
 
 (defn- stored-placements
   "The `[context why what]` triples the stored sentex `s` writes, read as `literal-reach`
-  reads a literal: its context, CxUniverse or the contexts its slice slices beside it for
-  a sentence the store also lifts there, `Sub` for a `(genlCx Sub Super)` edge, the
-  `nat-formula-reach` of a `natFormula` in CxUniverse, and its `admin-only` triple."
-  [kb s]
+  reads a literal.  They are its context, CxUniverse or the contexts its slice slices for a
+  sentence the store also lifts there, and `Sub` for a `(genlCx Sub Super)` edge.  A
+  `natFormula` in CxUniverse adds its `nat-formula-reach`, an equality its `equality-reach`,
+  and every sentence its `admin-only` triple.  Each `why` opens with `why`, which names how
+  the op reaches `s`."
+  [kb s why]
   (let [sentence (sx/sentence-of s)
         f        (when (sequential? sentence) (first sentence))
-        why      (str "a rule the write fires concludes " (pr-str sentence))
         t        (admin-only kb sentence)]
     (cond-> [[(:context s) (str why " there")]]
       (special/lifts-to-universe? kb sentence)
@@ -1209,7 +1254,20 @@
       (conj [(second sentence) (str why ", which widens its lower context's ancestor set")])
       (and (= 'natFormula f) (= 3 (count sentence)) (= sx/root-context (:context s)))
       (into (map (fn [[c w]] [c (str why ", and " w)])) (nat-formula-reach kb sentence))
+      :always
+      (into (map (fn [[c w]] [c (str why ", and " w)])) (equality-reach kb sentence (:context s)))
       t (conj t))))
+
+(defn- first-outside
+  "The first `[sentex triple]`, in content order, over the stored sentexes `ss` and their
+  `stored-placements` (each read with the prefix `(why s)`), whose context is outside
+  `writes`; nil when there is none."
+  [kb writes ss why]
+  (->> (for [s ss
+             t (stored-placements kb s (why s))
+             :when (not (contains? writes (first t)))]
+         [s t])
+       (nm/min-by-content-key (fn [[s [c]]] [(sx/sentence-of s) (:context s) (nm/name-key c)]))))
 
 (defn- write-check
   "The `entry/*write-check*` a write op runs under for `grant`, nil for no grant and for an
@@ -1220,13 +1278,8 @@
   [op {:keys [writes admin?] :as grant}]
   (when (and grant (not admin?))
     (fn [kb handles]
-      (when-let [[_ t] (->> (for [h handles
-                                  :let [s (v/sentex kb h)]
-                                  :when s
-                                  t (stored-placements kb s)
-                                  :when (not (contains? writes (first t)))]
-                              [s t])
-                            (nm/min-by-content-key (fn [[s [c]]] [(sx/sentence-of s) (:context s) (nm/name-key c)])))]
+      (when-let [[_ t] (first-outside kb writes (keep #(v/sentex kb %) handles)
+                                      #(str "the write derives " (pr-str (sx/sentence-of %))))]
         (check-context! op grant t)))))
 
 (defn- check-placement!
@@ -1234,30 +1287,27 @@
   [kb op grant sentence context]
   (run! #(check-context! op grant %) (placements kb sentence context)))
 
-(defn- removal-admin-only
-  "The `admin-only` triple removing the stored sentex `s` reads, or nil: its sentence's, or
-  for a rule the first one a literal its consequent concludes has (`conclusions`).  Removing
-  `s` withdraws what storing it wrote."
-  [kb s]
-  (let [sentence (sx/sentence-of s)
-        rule     (try (rules/inner-rule sentence) (catch Exception _ sentence))]
-    (if (sx/implies? rule)
-      (some (fn [[lit _]] (admin-only kb lit)) (conclusions (sx/rule-consequent rule) (:context s)))
-      (admin-only kb sentence))))
-
-(defn- removal-refused!
-  "Throw `:forbidden-context` for removing the sentex at `handle`, whose
-  `removal-admin-only` triple is `[_ why what]`."
-  [op principal handle [_ why what]]
-  (forbidden-context! op principal nil (str "handle " (pr-str handle) ", " what)
-                      (str why ", and only an admin grant removes it")))
+(defn- check-withdrawn!
+  "Throw unless `principal` may withdraw the `[c why what]` triple `placements` answers for
+  the stored sentex at `handle`: `c` is in `writes`.  An `::admin-only` triple is removed
+  under an admin grant alone."
+  [op principal writes handle [c why what]]
+  (cond
+    (= ::admin-only c)
+    (forbidden-context! op principal nil (str "handle " (pr-str handle) ", " what)
+                        (str why ", and only an admin grant removes it"))
+    (not (contains? writes c))
+    (forbidden-context! op principal c (pr-str c)
+                        (str "removing handle " (pr-str handle) " withdraws what storing it"
+                             " wrote there" (some->> why (format " (%s)"))
+                             ", and the token's grant does not name it"))))
 
 (defn- check-removal!
   "Throw unless `grant` may remove (`removal?`) or annotate the sentex at `handle`: its
-  stored context is in `:writes`, and a sentex with a `removal-admin-only` triple is
-  removed under an admin grant alone.  A handle naming no stored sentex is nothing to
-  remove, and for `:add-provenance` it is refused: provenance written ahead of a sentex
-  would be read as that sentex's own."
+  stored context is in `:writes`.  A removal is held to every triple `placements` answers
+  for storing its sentence there, since removing it withdraws what storing it wrote.  A
+  handle naming no stored sentex is nothing to remove, and for `:add-provenance` it is
+  refused: provenance written ahead of a sentex would be read as that sentex's own."
   [kb op {:keys [principal writes admin?]} handle removal?]
   (let [s (v/sentex kb handle)]
     (cond
@@ -1271,32 +1321,58 @@
                           (str "handle " (pr-str handle) " is stored there, and the token's"
                                " grant does not name it"))
       removal?
-      (some->> (removal-admin-only kb s) (removal-refused! op principal handle)))))
+      (run! #(check-withdrawn! op principal writes handle %)
+            (placements kb (sx/sentence-of s) (:context s))))))
+
+(defn- check-withdrawals!
+  "Throw unless `grant` may withdraw what removing the stored handles `hs` takes out of
+  belief.  A `preview` of the removal names each sentex that loses its support
+  (`:unsupported`), and each one outside `hs` is held to its `stored-placements`, as
+  `write-check` holds a write's conclusions.  The preview runs under `bound`, the write's
+  own (`write-bound`), and a run the bound ends throws `:interrupted` before the write
+  starts."
+  [kb op {:keys [writes admin?] :as grant} hs bound]
+  (when (and grant (not admin?) (seq hs))
+    (let [hs   (set hs)
+          lost (into [] (comp (filter #(= :unsupported (:reason %)))
+                              (remove #(contains? hs (:handle %)))
+                              (keep #(some->> (:handle %) (v/sentex kb))))
+                     (:believed-removed
+                      (chain/call-with-stop
+                       bound #(binding [chain/*rollback-scope* true]
+                                (v/preview kb {:remove (vec (sort hs))})))))]
+      (when-let [[_ t] (first-outside kb writes lost
+                                      #(str "removing it withdraws " (pr-str (sx/sentence-of %))))]
+        (check-context! op grant t "removes")))))
 
 (defn- check-replaced!
-  "Throw unless `grant` may run `replace-facts` over `context`: a replaceable premise stored
-  there (`kb/replaceable-premise?`) with a `removal-admin-only` triple is replaced under an
-  admin grant alone.  Every such premise is read, whether `replace-facts` retracts it or a
-  fact names it, since the fact naming it is refused by its own placement check."
-  [kb op {:keys [principal admin?]} context]
+  "Throw unless `grant` may run `replace-facts` of `facts` over `context`: each replaceable
+  premise stored there (`kb/replaceable-premise?`) that no fact names is removed, and is
+  held as `:retract` holds it.  A premise a fact names is held by that fact's placement
+  check."
+  [kb op {:keys [admin?] :as grant} context facts bound]
   (when-not admin?
-    (some (fn [h]
-            (let [s (v/sentex kb h)]
-              (when (kb/replaceable-premise? kb h s)
-                (some->> (removal-admin-only kb s) (removal-refused! op principal h)))))
-          (reads/as-stored-in-context (:index kb) context))))
+    (let [named (into #{} (keep #(try (v/handle-of kb % context)
+                                      (catch clojure.lang.ExceptionInfo _ nil)))
+                      facts)
+          gone  (filterv #(and (not (contains? named %))
+                               (kb/replaceable-premise? kb % (v/sentex kb %)))
+                         (reads/as-stored-in-context (:index kb) context))]
+      (run! #(check-removal! kb op grant % true) gone)
+      (check-withdrawals! kb op grant gone bound))))
 
 (defn- bounded-batch
   "An `edit` batch held to `grant`: every `:add` entry's placement checked and its opts
-  given the principal (`with-identity`), every `:remove` handle's stored context
-  checked.  A batch or an entry of the wrong shape is passed on as it came, for the op
-  to refuse whole before it applies any of it."
-  [kb op grant batch]
+  given the principal (`with-identity`), every `:remove` handle held as `:retract` holds
+  it.  A batch or an entry of the wrong shape is passed on as it came, for the op to
+  refuse whole before it applies any of it."
+  [kb op grant batch bound]
   (if-not (map? batch)
     batch
     (do (when (and grant (sequential? (:remove batch)))
-          (doseq [h (:remove batch) :when (some? h)]
-            (check-removal! kb op grant h true)))
+          (let [hs (filterv some? (:remove batch))]
+            (run! #(check-removal! kb op grant % true) hs)
+            (check-withdrawals! kb op grant hs bound)))
         (cond-> batch
           (sequential? (:add batch))
           (update :add (fn [adds]
@@ -1321,9 +1397,10 @@
   inside the monitor.  An `args` vector no arity of the op takes is passed on for the op's
   own `:bad-args`."
   [kb grant op args]
-  (let [n   (count args)
-        ctx (fn [i] (if (> n i) (nth args i) 'CxUniverse))
-        put (fn [s c] (when grant (check-placement! kb op grant s c)))]
+  (let [n     (count args)
+        ctx   (fn [i] (if (> n i) (nth args i) 'CxUniverse))
+        put   (fn [s c] (when grant (check-placement! kb op grant s c)))
+        bound (delay (write-bound op args))]
     (case op
       (:assert :try-assert)
       (if (<= 1 n 3)
@@ -1355,7 +1432,8 @@
       (if (<= 2 n 3)
         (do (when grant
               (check-context! op grant [(nth args 0) "it retracts the facts stored there"])
-              (check-replaced! kb op grant (nth args 0))
+              (check-replaced! kb op grant (nth args 0) (when (coll? (nth args 1)) (nth args 1))
+                               @bound)
               (when (coll? (nth args 1))
                 (doseq [s (nth args 1)] (put s (nth args 0)))))
             (if (or grant (= n 3))
@@ -1364,8 +1442,9 @@
         args)
 
       :retract
-      (do (when (and grant (= 1 n) (some? (nth args 0)))
-            (check-removal! kb op grant (nth args 0) true))
+      (do (when (and grant (<= 1 n 2) (some? (nth args 0)))
+            (check-removal! kb op grant (nth args 0) true)
+            (check-withdrawals! kb op grant [(nth args 0)] @bound))
           args)
 
       :add-provenance
@@ -1378,7 +1457,7 @@
 
       (:edit :edit-with-consequences)
       (if (<= 1 n 2)
-        (assoc args 0 (bounded-batch kb op grant (nth args 0)))
+        (assoc args 0 (bounded-batch kb op grant (nth args 0) @bound))
         args)
 
       :export

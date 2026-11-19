@@ -10,8 +10,10 @@
   opacity in the equality congruence: a `rewriteOf` **spelling** rename reaches into the
   mention, but a `sameAs` / `equals` **identity** merge of the referent does not fold the
   quoted term."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
@@ -612,6 +614,52 @@
         (v/assert kb (list 'sameAs Muffet Fluffet) 'CxUniverse)
         (is (empty? (nat/colliding-constant-groups kb)))
         (is (not (v/same-class? kb k1 k2)))))))
+
+(defn- id-drift
+  "The handles `after` gained over `before`, and those it lost, each with its sentence."
+  [kb named before after]
+  (let [gained (set/difference after before)
+        lost   (set/difference before after)]
+    {:gained (into {} (map (fn [h] [h (v/sentence-of (v/sentex kb h))])) (take 8 gained))
+     :lost   (into {} (map (fn [h] [h (get named h)])) (take 8 lost))}))
+
+(deftest recover-keeps-the-handles-of-the-rows-over-a-quoted-term
+  (tu/with-cleared-kb [kb #(tu/load-core! (tu/isolated-fresh))]
+    (tu/with-terms [Muffet Fluffet cycl_expression cycl_constant]
+      (let [quoted (list Quote '(genl container hollow))
+            loaded (tu/baseline kb)]
+        (testing "the load holds the derived rows over the quoted term"
+          (doseq [t '[closed_predication closed_literal sentence]]
+            (is (seq (v/sentexes-matching kb (list t quoted) '?c)) (str t))))
+        (declare-quote! kb Quote cycl_expression cycl_constant)
+        (v/assert kb (list cycl_constant (list Quote Muffet))  'CxUniverse)
+        (v/assert kb (list cycl_constant (list Quote Fluffet)) 'CxUniverse)
+        (testing "the rows moved onto a constant withdraw the expression mint they make redundant"
+          (doseq [q [quoted (list Quote Muffet) (list Quote Fluffet)]
+                  :let [k (nat-read/dedup-constant kb q)]]
+            (is (symbol? k) (pr-str q))
+            (is (not-any? #(= (list 'expression k) (:sentence %)) (kb/find-sentexes kb k))
+                (pr-str q))))
+        (let [sxs   (tu/sentex-ids kb)
+              js    (tu/justification-ids kb)
+              ps    (tu/premise-ids kb)
+              blk   (set (jtms/blocked (reasoning/tms kb)))
+              named (into {} (map (fn [h] [h (v/sentence-of (v/sentex kb h))])) sxs)]
+          (v/recover kb)
+          (testing "recover mints no sentex and drops none"
+            (is (= sxs (tu/sentex-ids kb))
+                (pr-str (id-drift kb named sxs (tu/sentex-ids kb)))))
+          (testing "nor any justification"
+            (is (= js (tu/justification-ids kb))
+                (pr-str {:gained (count (set/difference (tu/justification-ids kb) js))
+                         :lost   (count (set/difference js (tu/justification-ids kb)))})))
+          (testing "and every premise mark stays where it was"
+            (is (= ps (tu/premise-ids kb))))
+          (testing "nor does it block a firing the running KB believed"
+            (is (empty? (set/difference (set (jtms/blocked (reasoning/tms kb))) blk)))))
+        (testing "a write after the recover, then the declarations leaving, give the load's rows back at their handles"
+          (v/assert kb (list 'sameAs Muffet Fluffet) 'CxUniverse)
+          (tu/assert-neutral! kb loaded))))))
 
 ;; ---- opacity reaches the REIFY pass, not only congruence ------------------
 ;; A compound mention whose payload contains a reifiable_function must not have that inner

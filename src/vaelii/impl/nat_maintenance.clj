@@ -3,7 +3,7 @@
 (ns vaelii.impl.nat-maintenance
   "The reified-NAT maintenance the write paths run once their own work is done:
   `reconcile-assert` after a sentence is stored, `reconcile-revivals!`,
-  `collect-orphans!` and `reconcile-formula-positions` after a teardown.  Requires `nat`, `context-nat`, `chain`, `resolution`, `settle` and `special`; the
+  `collect-orphans!` and `reconcile-formula-positions` after a teardown.  Requires `nat`, `context-nat`, `chain`, `settle` and `special`; the
   teardown entry point `retract!` is an argument, since the engine never requires
   `vaelii.core`.  See docs/nat.md and docs/context-nat.md."
   (:require [taoensso.trove :as trove]
@@ -11,7 +11,6 @@
             [vaelii.impl.context-nat :as context-nat]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
-            [vaelii.impl.resolution :as res]
             [vaelii.impl.settle :as settle]
             [vaelii.impl.special :as special]))
 
@@ -25,11 +24,14 @@
 (defn- settle-computed-edges
   "Settle once when a computed `genlCx` edge was built (`built?`), seeding no chaining
   when `opts` holds `{:chain? false}`: the producer runs after the write that entails the
-  edge has settled.  The belief moves that settle makes are reconciled and settled in turn
-  (`context-nat/reconcile-moves`), for at most `max-producer-rounds` settles."
+  edge has settled.  The restatements a merge the producer derived stored are re-chained
+  first (`special/take-producer-seeds!`).  The belief moves that settle makes are
+  reconciled and settled in turn (`context-nat/reconcile-moves`), for at most
+  `max-producer-rounds` settles."
   [kb built? opts]
   (loop [built? built? n 0]
     (when built?
+      (settle/rechain-seeds kb (special/take-producer-seeds!))
       (settle/settle-write kb (:chain? opts true))
       (if (< n max-producer-rounds)
         (recur (context-nat/reconcile-moves kb (special/take-producer-moves!)) (inc n))
@@ -40,23 +42,6 @@
   nil)
 
 ;; ---- the assert path ------------------------------------------------------
-
-(defn- respell-corresponded!
-  "Re-spell the rules naming an open application of each function a correspondence
-  declaration among `sentences` names, as the declarations believed now read them
-  (`chain/reconcile-reified!`, docs/nat.md, The corresponding predicate), then re-chain
-  what that made and settle.  `departed?` says the declarations left, so their
-  predicates' rules are read too."
-  [kb sentences departed?]
-  (let [decls (into [] (comp (filter #(and (seq? %) (= res/correspondence-predicate (first %))
-                                           (symbol? (second %)) (symbol? (nth % 2 nil))))
-                             (distinct))
-                    sentences)]
-    (when (and (seq decls) (nat-read/any-reifiable-functions? kb))
-      (let [new (chain/reconcile-reified! kb (sort (distinct (map second decls)))
-                                          (when departed? (map #(nth % 2) decls)))]
-        (when (seq new) (settle/rechain-seeds kb new))
-        (settle/settle kb)))))
 
 (defn- reconcile-values!
   "Queue the constants whose correspondence derivations the stored or removed
@@ -81,23 +66,40 @@
       (when (nat/any-reified-constants? kb)
         (settle-computed-edges kb (context-nat/reconcile-moves kb (special/take-producer-moves!)) nil)))))
 
+(defn- derive-collision-merges
+  "Derive each merge `nat/collision-merges` finds for `sentence`
+  (`special/place-collision-merges!`), then re-chain what that stored and settle.  Returns
+  the merge sentences stored new."
+  [kb sentence seed?]
+  (let [{:keys [merges new eqs]} (special/place-collision-merges! kb sentence)]
+    (when (pos? merges)
+      (settle/rechain-seeds kb new)
+      (settle/settle-write kb seed?))
+    (distinct eqs)))
+
+(defn- reconcile-reified
+  "The reified-constant maintenance of `reconcile-assert` for `sentence`, and in turn for
+  each merge its collision repair stored."
+  [kb sentence opts]
+  (doseq [eq (derive-collision-merges kb sentence (:chain? opts true))]
+    (reconcile-reified kb eq opts))
+  (nat/reconcile-nats! kb sentence)
+  (reconcile-values! kb [sentence] true (:chain? opts true))
+  (settle-computed-edges kb (context-nat/reconcile-genlCx kb sentence (special/take-producer-moves!))
+                         opts))
+
 (defn reconcile-assert
   "The reified-NAT maintenance a just-stored `sentence` calls for, run after its own
-  chaining has settled: `nat/reconcile-nats!`, the correspondence derivations it moves
-  (`reconcile-values!`), the rules a correspondence declaration respells
-  (`respell-corresponded!`), then the structural `genlCx` edges
-  `context-nat/reconcile-genlCx` builds, settled, behind `nat/any-reified-constants?`;
-  and on every KB the rules a `formula` position it moves holds or releases
-  (`reconcile-formula-positions`).  `opts` is the assert's; the stored context is not
-  read."
+  chaining has settled: the collision repair (`derive-collision-merges`),
+  `nat/reconcile-nats!`, the correspondence derivations it moves (`reconcile-values!`),
+  then the structural `genlCx` edges `context-nat/reconcile-genlCx` builds, settled, when
+  constants or rewrite rows are stored; and on every KB the rules a `formula` position it
+  moves holds or releases (`reconcile-formula-positions`).  `opts` is the assert's; the
+  stored context is not read."
   [kb sentence _context opts]
   (when (sequential? sentence)
-    (when (nat/any-reified-constants? kb)
-      (nat/reconcile-nats! kb sentence)
-      (reconcile-values! kb [sentence] true (:chain? opts true))
-      (respell-corresponded! kb [sentence] false)
-      (settle-computed-edges kb (context-nat/reconcile-genlCx kb sentence (special/take-producer-moves!))
-                             opts))
+    (when (or (nat/any-reified-constants? kb) (nat-read/named-values-reachable? kb))
+      (reconcile-reified kb sentence opts))
     (reconcile-formula-positions kb [sentence])))
 
 ;; ---- the teardown path ----------------------------------------------------
@@ -155,8 +157,7 @@
 
 (defn collect-orphans!
   "Re-spell the uses a removed `natFormula` map left naming its constant
-  (`respell-stranded!`) and the rules a removed correspondence declaration respelled
-  (`respell-corresponded!`), re-derive the values a removed declaration or corresponding
+  (`respell-stranded!`), re-derive the values a removed declaration or corresponding
   fact moves (`reconcile-values!`), then collect the reified constants a teardown orphaned
   (docs/nat.md, Rename and remove).  `retract!` and `edit!`, and the rollback of a single
   refused `assert`, pass their removal record `sink`; `rollback-batch!` passes none, and
@@ -167,7 +168,6 @@
    (when-not *in-orphan-removal?*
      (when sink
        (respell-stranded! kb sink)
-       (respell-corresponded! kb (map :sentence @sink) true)
        (reconcile-values! kb (map :sentence @sink) false true))
      (when (nat/any-reified-constants? kb)
        (remove-orphaned-nats! kb sink retract!)))))

@@ -11,6 +11,7 @@
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.strength :as strength]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
 
@@ -29,19 +30,19 @@
 ;; members are queued when either side arrives or leaves.
 ;;
 ;; An `(orthogonal a b)` says the two types are not disjoint and neither is a `genl` of the
-;; other.  It exempts nothing, so what contradicts it is a `genl` edge between the two, one
-;; type named twice, or a separation of the two or of two supertypes: a one-member clash of
-;; the declaration, as a `disjoint` over related types is.  A fact whose functor the
-;; unscoped `genl` closure places under `orthogonal` states one too
-;; (`(genl siblingDisjointException orthogonal)`), and its own exemption from the
-;; separation marks (`tax/exemption`) is the one a reader reads.  The stored ones are read
-;; off the extents and the argument trie of those functors (`orthogonal-functors`), and
-;; `:related-orth` keeps those whose pair some reader can read contradicted — related over
-;; the unscoped `genl` closure, or separated by `disjointness-test` with no exemption
-;; read.  One is read when it is stored, again with the `disjoint`s when an edge moves its
-;; argument's ancestor set or its functor's place under `orthogonal`, and again when the
-;; settle relabels a separation declaration over a type at or above an argument
-;; (`reread-separated!`).
+;; other.  It exempts nothing, so a `genl` edge between the two, one type named twice, or a
+;; separation of the two or of two supertypes contradicts it.  The declaration is a member
+;; of each clash, and beside a `:default` one so is each `:default` statement of the
+;; separation or the edges (`convictions`).  A fact whose functor the unscoped `genl`
+;; closure places under `orthogonal` states one too (`(genl siblingDisjointException
+;; orthogonal)`), and its own exemption from the separation marks (`tax/exemption`) is the
+;; one a reader reads.  The stored ones are read off the extents and the argument trie of
+;; those functors (`orthogonal-functors`), and `:related-orth` keeps those whose pair some
+;; reader can read contradicted — related over the unscoped `genl` closure, or separated by
+;; `disjointness-test` with no exemption read.  One is read when it is stored, again with
+;; the `disjoint`s when an edge moves its argument's ancestor set or its functor's place
+;; under `orthogonal`, and again when the settle relabels a separation declaration over a
+;; type at or above an argument (`reread-separated!`).
 
 (def ^:private cover-functors
   "The functors of a whole-and-parts declaration (`tax/installed-edges`)."
@@ -232,14 +233,24 @@
         (and (= 1 (count others)) (cover-args (first others))) :cover
         (every? edge-fact? others)                             :disjoint))))
 
+(defn- orthogonal-member
+  "The one fact of `sxs` stating an `orthogonal` (`orthogonal-args`) when every other is a
+  `genl` edge, a cover or a supporter of a flat-cache key (`tax/supported-keys`): the
+  members of an `orthogonal`'s clash (`convictions`).  Else nil."
+  [w sxs]
+  (let [[os others] ((juxt filter remove) #(orthogonal-args w %) sxs)]
+    (when (and (= 1 (count os))
+               (every? #(or (edge-fact? %) (seq (tax/supported-keys (:tax w) [(:id %)]))) others))
+      (first os))))
+
 (defn kind-of
   "The kind of the related-types nogood over the member handles `ms`, read off their
-  sentences through the unscoped closures `w`: `:orthogonal` for one fact stating an
-  `orthogonal` (`orthogonal-args`), else `sxs-kind`'s, else nil."
+  sentences through the unscoped closures `w`: `:orthogonal` for an `orthogonal`'s clash
+  (`orthogonal-member`), else `sxs-kind`'s, else nil."
   [w recs ms]
   (let [sxs (keep #(p/get-sentex recs %) ms)]
     (when (= (count sxs) (count ms))
-      (or (when (= 1 (count sxs)) (when (orthogonal-args w (first sxs)) :orthogonal))
+      (or (when (orthogonal-member w sxs) :orthogonal)
           (sxs-kind sxs)))))
 
 (defn- edge-routes
@@ -449,63 +460,112 @@
   [kb c]
   (boolean (or (seq (:related-dj c)) (seq (:related-orth c)) (pairs-possible? kb))))
 
+(defn- orthogonal-routes
+  "Each way the unscoped taxonomy convicts the fact `sx` stating an `orthogonal` over `[a
+  b]`, in `tax/separation-routes`' shape.  The one route is `{:links []}` when `a` and `b`
+  are one type.  Otherwise the routes are the subsumption between the two in each
+  direction the closure holds, as `{:links [[s t]] :edge [s t]}`, and each separation of
+  the two (`tax/separation-routes-held`).  A fact whose functor `f` is a `genl` of
+  `orthogonal` adds the subsumption `f` to `orthogonal` to each route."
+  [w sx [a b]]
+  (let [genl? (:genl?-global w)
+        f     (nm/functor (:sentence sx))
+        rs    (if (= a b)
+                [{:links []}]
+                (concat (for [e [[a b] [b a]] :when (apply genl? e)] {:links [e] :edge e})
+                        (tax/separation-routes-held (:tax w) a b)))]
+    (if (= 'orthogonal f) rs (map #(update % :links (fnil conj []) [f 'orthogonal]) rs))))
+
+(defn- supporter-choices
+  "Each choice of one supporter `cls` reads IN per flat-cache key of `ks`, as a vector of
+  `[handle context]`, in handle order key by key: the choices `chain/route-placements`
+  reads off a route with no `:choices`."
+  [tax recs cls ks]
+  (reduce (fn [acc k]
+            (let [ws (into [] (comp (filter cls) (map (fn [h] [h (:context (p/get-sentex recs h))])))
+                           (sort (tax/visible-supporters tax k nil)))]
+              (for [xs acc, x ws] (conj xs x))))
+          [[]] ks))
+
+(defn- convictions
+  "Each conviction of the fact `h` stating an `orthogonal` (`orthogonal-routes`), as
+  `[members route]`, a separation's route with its supporter choices under `:choices`;
+  `cls` reads a handle's class (`decide/holding-class`).  A declaration that is not
+  `:default` is the one member of each.  A `:default` one takes beside itself the
+  `:default` handles of a choice of a separation's supporters, or of a path of `genl`
+  edges between its pair (`edge-routes`).  Each such set is one conviction, holding the
+  choices that give it.  The climbs to the separated supertypes are never members
+  (docs/nmtms.md, \"Declarations over related types\")."
+  [kb w cls h]
+  (let [recs (:records kb)
+        sx   (p/get-sentex recs h)
+        ab   (some->> sx (orthogonal-args w))
+        dflt (comp strength/defeasible? cls)
+        ctx  #(:context (p/get-sentex recs %))
+        sups #(supporter-choices (:tax w) recs cls %)]
+    (when ab
+      (for [{:keys [edge keys links] :as r} (orthogonal-routes w sx ab)
+            conv (cond
+                   (not (dflt h)) [[#{h} (cond-> r keys (assoc :choices (vec (sups keys))))]]
+                   edge (let [paths (for [p (edge-routes w (first edge) (second edge))
+                                          :when (every? cls p)]
+                                      (mapv (fn [e] [e (ctx e)]) (sort p)))]
+                          (for [[ds cs] (group-by #(into #{} (comp (map first) (filter dflt)) %) paths)]
+                            [(conj ds h) (assoc r :links (into [] (remove #{edge}) links) :choices (vec cs))]))
+                   keys (for [[ds cs] (group-by #(into #{} (comp (map first) (filter dflt)) %) (sups keys))]
+                          [(conj ds h) (assoc r :choices (vec cs))])
+                   :else [[#{h} r]])]
+        conv))))
+
 (defn nogoods-holding
   "The related-types nogoods with the declaration `h` among their members, each
   `{:members ms :kind k}`: for a `disjoint` of `:related-dj` in the candidate index `c`,
   one per route relating its arguments (`edge-sets`), kind `sxs-kind`'s; each cover pair
-  holding `h`, read off the index (`pairs-holding`), kind `:cover`; and an `orthogonal`
-  of `:related-orth`, kind `:orthogonal`.  `w` is the unscoped closures map
-  (`decide/unscoped-closures`)."
-  [kb w c h]
+  holding `h`, read off the index (`pairs-holding`), kind `:cover`; and for an
+  `orthogonal` of `:related-orth`, one per member set of its convictions (`convictions`,
+  `cls` a handle's class), kind `:orthogonal`, their routes under `:routes`.  `w` is the
+  unscoped closures map (`decide/unscoped-closures`)."
+  [kb w c cls h]
   (let [recs (:records kb)]
     (cond-> (mapv (fn [pr] {:members pr :kind :cover}) (pairs-holding kb h))
       (contains? (:related-dj c) h)
       (into (keep (fn [ms] (when-let [k (sxs-kind (keep #(p/get-sentex recs %) ms))]
                              {:members ms :kind k})))
             (some->> (p/get-sentex recs h) disjoint-args (edge-sets w h)))
-      (contains? (:related-orth c) h) (conj {:members #{h} :kind :orthogonal}))))
+      (contains? (:related-orth c) h)
+      (into (map (fn [[ms cs]] {:members ms :kind :orthogonal :routes (mapv second cs)}))
+            (group-by first (convictions kb w cls h))))))
 
 (defn routes
   "Each way the unscoped taxonomy convicts the related-types nogood `ng`, as
   `{:links [[sub super]] :keys #{k} :pair [x y]}` (`tax/separation-routes`' shape): a
   `disjoint` and the edges of a route, or a cover pair, none, since every fact it reads
-  is a member; an `orthogonal` over one type twice, none, and
-  otherwise the subsumption between the two in each direction the closure holds and
-  each separation of the two (`tax/separation-routes`).  A fact whose functor `f` is a
-  `genl` of `orthogonal` adds the subsumption `f` to `orthogonal` to each route.  `w` is
-  `decide/unscoped-closures`'s."
-  [w recs {:keys [members kind]}]
-  (let [sx    (p/get-sentex recs (first members))
-        genl? (:genl?-global w)
-        links (fn [[a b]] (cond-> []
-                            (genl? a b) (conj {:links [[a b]]})
-                            (genl? b a) (conj {:links [[b a]]})))]
-    (case kind
-      (:disjoint :cover) [{:links []}]
-      :orthogonal (when-let [[a b :as ab] (orthogonal-args w sx)]
-                    (let [f  (nm/functor (:sentence sx))
-                          rs (if (= a b)
-                               [{:links []}]
-                               (concat (links ab) (tax/separation-routes (:tax w) a b)))]
-                      (if (= 'orthogonal f)
-                        rs
-                        (map #(update % :links (fnil conj []) [f 'orthogonal]) rs))))
-      nil)))
+  is a member; an `orthogonal`'s clash, the routes `nogoods-holding` gave it."
+  [{:keys [kind] :as ng}]
+  (case kind
+    (:disjoint :cover) [{:links []}]
+    :orthogonal        (:routes ng)
+    nil))
 
 (defn exempt-at?
   "Does a reader with ancestor set `up` read no conviction of the `orthogonal` nogood
-  `members`: one declaration over two distinct types no `genl` edge relates over the
-  unscoped closure (`w`, `decide/unscoped-closures`) and `tax/disjoint?` over `up` does not
-  separate.  A `siblingDisjointException` the reader sees removes a mark separation its
-  placement reads, as for a membership nogood (`membership/exempt-at?`).  False for any
-  other nogood."
-  [w recs members up]
-  (boolean
-   (when (= 1 (count members))
-     (when-let [[a b :as ab] (some->> (p/get-sentex recs (first members)) (orthogonal-args w))]
-       (let [tax (:tax w)]
-         (and (not= a b) (not (related? w ab))
-              (not (tax/disjoint? tax a b up)) (not (tax/disjoint? tax b a up))))))))
+  `members` (`convictions`, `cls` a handle's class)?  It reads none when each conviction
+  is a separation that a `siblingDisjointException` the reader sees exempts
+  (`tax/route-exempted?`, as `membership/exempt-at?` reads), or whose supporters or climbs
+  the reader does not see.  A `genl` edge between the pair, or one type named twice, is
+  exempt nowhere.  False for any other nogood, and while no exception is stored."
+  [kb w cls members up]
+  (let [tax (:tax w)]
+    (boolean
+     (when (tax/sib-exceptions? tax)
+       (when-let [h (let [os (:related-orth @(reasoning/nogood-candidates kb))]
+                      (some #(when (contains? os %) %) members))]
+         (let [rs    (keep (fn [[ms r]] (when (= ms members) r)) (convictions kb w cls h))
+               seen? (fn [{:keys [links choices]}]
+                       (and (every? (fn [[s t]] (contains? (tax/genls-asserted-in tax s up) t)) links)
+                            (some (fn [ch] (every? #(contains? up (second %)) ch)) choices)))]
+           (and (seq rs)
+                (every? #(and (:keys %) (or (tax/route-exempted? tax % up) (not (seen? %)))) rs))))))))
 
 (def family
   "The related-types family's entry in `decide/registry`.  It keeps no stored declaration

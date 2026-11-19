@@ -18,6 +18,7 @@
             [vaelii.impl.special :as special]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.impl.violations :as viol]
+            [vaelii.intersection-test :as intersection]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -47,6 +48,48 @@
       (testing "and nothing the batch would have stored is findable"
         (is (nil? (v/handle-of kb (list dog Rex) CxStory)))
         (is (nil? (v/handle-of kb (list friendly Rex) CxStory)))))))
+
+(defn- records-and-belief
+  "Each live sentex's and justification's record by handle, and the believed sentexes."
+  [kb]
+  (let [recs (:records kb)
+        hs   (tu/sentex-ids kb)]
+    [(into {} (map (fn [h] [h (p/get-sentex recs h)])) hs)
+     (into {} (map (fn [j] [j (p/get-justification recs j)])) (tu/justification-ids kb))
+     (set (filter #(jtms/in? (reasoning/tms kb) %) hs))]))
+
+(tu/deftest-kb a-preview-whose-settle-makes-a-tagged-rule-s-drop-leaves-the-kb-byte-identical
+  ;; each kind of `intersection/drop-world`, each arrival order, each index: the facts
+  ;; before the index asserted and the rest previewed.  At indexes 2 and 3 one order of
+  ;; each kind previews the cover, or the :monotonic firing, over a stored firing it
+  ;; outranks.
+  (doseq [kind [:below :at] o [0 1] i (range 5)]
+    (let [{:keys [facts orders]} (intersection/drop-world kb kind)
+          order  (nth orders o)
+          _      (run! #(apply v/assert kb (facts %)) (take i order))
+          before (records-and-belief kb)
+          r      (v/preview kb {:add (mapv facts (drop i order))})]
+      (is (= before (records-and-belief kb)) (str kind " " order " previewed from " i))
+      (is (= [] (:believed-removed r)) (str kind " " order " previewed from " i)))))
+
+(tu/deftest-kb a-preview-keeps-a-justification-an-ended-except-left-beside-its-cover
+  (tu/with-terms [B C]
+    (let [{:keys [facts c cxs]} (intersection/cover-world kb :positive)
+          [[marker] cx] (facts :d1)
+          [[relTo]]     (facts :d2)
+          r1 (apply v/assert kb (facts :d2))
+          ex (v/assert kb (list 'except (list 'sentexHandle r1)) (:G cxs))
+          _  (apply v/assert kb (facts :d1))
+          _  (doseq [s [(list marker B) (list relTo 'Item B)]] (v/assert kb s cx))
+          _  (v/retract! kb ex)
+          h  (v/handle-of kb c cx)
+          before (records-and-belief kb)
+          mono {:strength :monotonic}]
+      (is (= 2 (count (v/supporting-justifications kb h)))
+          "the firing over A1 covers nothing while the except hides its relTo at CxG, and the except's end drops nothing")
+      (v/preview kb {:add [[(list marker C) cx mono] [(list relTo 'Item C) cx mono]]})
+      (is (= before (records-and-belief kb))
+          "the rollback's settle makes no drop the batch owed at the conclusion"))))
 
 ;; ---- 2. what a batch would derive ----------------------------------------
 
@@ -586,6 +629,17 @@
     (v/assert kb (list bird Opus) CxStory)
     (let [batch {:add [[(list penguin Opus) CxStory]]}]
       (is (= (preview-diff (v/preview kb batch)) (edit-diff kb batch))))))
+
+(tu/deftest-kb a-preview-predicts-the-edit-when-the-batch-makes-a-tagged-rule-s-drop-below-a-cover
+  (let [{:keys [facts c cxs]} (intersection/drop-world kb :below)
+        _     (run! #(apply v/assert kb (facts %)) [:d3 :f])
+        batch {:add (mapv facts [:d1 :d2])}
+        r     (v/preview kb batch)]
+    (is (some? (v/handle-of kb c (:G cxs))))
+    (is (= (preview-diff r) (preview-diff (v/edit-with-consequences! kb batch))))
+    (is (= [] (:believed-removed r)))
+    (is (nil? (v/handle-of kb c (:G cxs))) "the edit's drop deletes the conclusion at CxG")
+    (is (v/ask? kb c (:G cxs)) "CxG believes the conclusion through CxD")))
 
 (tu/deftest-kb a-preview-predicts-the-edit-when-the-batch-removes-a-premise
   (tu/with-terms [dog friendly Rex CxStory]

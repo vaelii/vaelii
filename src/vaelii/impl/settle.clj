@@ -10,6 +10,7 @@
             [vaelii.impl.chain :as chain]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.decide :as decide]
+            [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.decide.arity :as arity]
             [vaelii.impl.discovery :as discovery]
             [vaelii.impl.disk.durability :as dur]
@@ -91,8 +92,8 @@
 
 (def ^:dynamic *touched-in-sink*
   "An atom holding a set, or nil: the companion of `*touched-sink*`, collecting which
-  handles of that region were believed before the settle (`jtms/touched-in`).
-  `core/edit-with-consequences!` binds both."
+  handles of that region were believed when the first settle to file them began
+  (`jtms/touched-in`).  `core/edit-with-consequences!` binds both."
   nil)
 
 (def ^:dynamic *sweep?*
@@ -114,11 +115,11 @@
 (def ^:dynamic *rebuilding?*
   "True while `recover`'s settles restore a KB rather than react to a change.  The passes
   that report or re-derive what a change moved read it and stand aside, among them the
-  cut notices, the revival and un-merge re-seeds, the refusal re-asks
-  and the second-route re-derivations.  A rebuild relabels the whole graph, so its region
-  is every stored sentex, and the replayed justifications already carry every
-  derivation.  The definitional nogood sweep does not read it (docs/taxonomy.md, \"What a
-  declaration reaches back over\")."
+  cut notices, the revival and un-merge re-seeds, the refusal re-asks, the re-chain of the
+  released rules and the second-route re-derivations.  A rebuild relabels the whole graph,
+  so its region is every stored sentex, and the replayed justifications already carry
+  every derivation.  The definitional nogood sweep does not read it (docs/taxonomy.md,
+  \"What a declaration reaches back over\")."
   false)
 
 (def ^:dynamic ^:private *unmerged-sink*
@@ -282,6 +283,22 @@
     (let [r (special/triggered-mints kb moved was-in asked believed?)]
       (violations/report kb (:violations r))
       (special/minted-seeds kb (:new r)))))
+
+(defn- stratified-seeds
+  "The derivations a cycle through negation refused that rest on a handle of `region` (the
+  touched set, a delay), re-decided and the released ones derived again, as new handles to
+  chain from (`chain/release-stratified!`).  Reads only the handles the refusals index
+  (`special/cycle-moved`).  `asked` is the settle's volatile set of `[handle believed?]`
+  moves read already.  Empty during a rebuild, which derives nothing."
+  [kb region asked]
+  (let [tms   (reasoning/tms kb)
+        moves (when-not *rebuilding?*
+                (into [] (comp (map #(vector % (jtms/in? tms %))) (remove @asked))
+                      (special/cycle-moved kb @region)))]
+    (if (empty? moves)
+      []
+      (do (vswap! asked into moves)
+          (chain/release-stratified! kb (map first moves))))))
 
 (defn- drop-surplus-placements!
   "Drop the mint justifications `jids` (`special/surplus-placements`, read by
@@ -603,6 +620,44 @@
     (lost-derivation-seeds kb (special/lost-descended-derivations kb out true))
     []))
 
+(defn- run-reasks!
+  "Run the re-asks `entries` (`special/reask-entries`), in the content order of their
+  conclusions and then of their rules (`chain/reask!`), and answer the new handles."
+  [kb entries]
+  (let [recs (:records kb)]
+    (into [] (mapcat (fn [[rh s]] (chain/reask! kb rh s)))
+          (nm/sort-by-content-key (fn [[rh s]] (let [r (p/get-sentex recs rh)]
+                                                 [s (some-> r sx/sentence-of) (:context r)]))
+                                  entries))))
+
+(defn- reask-seeds
+  "Run the re-asks the rules storing one justification per conclusion owe this pass, and
+  answer the new handles (docs/inference.md, \"A rule that stores one justification per
+  conclusion\").  The firings asked again rest on a handle `jtms/touched-down` names or a
+  placed defeat moved (`dmoves`' `:gone`), or were queued (`special/take-reasks!`).  A
+  datum `jtms/touched-up` names fires the rules over it again (`chain/reask-raised!`).
+  `asked` is the settle's volatile set of `[handle class]` moves read already.  The owed
+  drops run first (`chain/run-owed-drops!`).  Answers nothing during a rebuild, which
+  replays every justification."
+  [kb dmoves asked]
+  (let [_      (when-not *rebuilding?* (chain/run-owed-drops! kb))
+        queued (special/take-reasks! kb)
+        rhs    (when-not *rebuilding?* (special/one-justification-rules kb))]
+    (if-not rhs
+      []
+      (let [tms   (reasoning/tms kb)
+            fresh (fn [hs] (into [] (remove #(contains? @asked [% (jtms/defeat-class tms %)])) hs))
+            down  (fresh (jtms/touched-down tms))
+            up    (fresh (jtms/touched-up tms))
+            _     (vswap! asked into (map #(vector % (jtms/defeat-class tms %))) (concat down up))
+            under (cond-> down
+                    (seq (:gone dmoves)) (into (jtms/consequence-closure tms (:gone dmoves))))
+            asks  (into (set queued)
+                        (special/reask-entries kb rhs (into #{} (mapcat #(jtms/dependents tms %)) under)))]
+        (-> (run-reasks! kb asks)
+            (into (mapcat #(chain/reask-raised! kb rhs %))
+                  (kb/antecedent-order kb (filter #(p/get-sentex (:records kb) %) up))))))))
+
 (defn- narrow-marker?
   "Is `t` a withdrawal marker whose re-derivations a settle chains narrowly rather than
   over the rule's extent: an `except`'s move, chained from the moved target's consequence
@@ -735,6 +790,7 @@
       (special/reconcile-belief-change kb @region)
       ;; the reconcile can open or close a cycle (docs/taxonomy.md)
       (tax/restore-depths (reasoning/taxonomy kb)))
+    (when-not *rebuilding?* (special/note-relabelled-correspondences! kb region))
     ;; an equality supporter a reconcile found believed again restates its class, as its
     ;; arrival does; `settle` re-seeds the supporter and its twins
     (when-let [hs (tax/take-believed-again! (reasoning/taxonomy kb))]
@@ -762,7 +818,8 @@
               hs (cond-> (-> #{} (into gone) (into back))
                    belief-moved? (into @region))
               sentences #(keep (fn [h] (:sentence (p/get-sentex (:records kb) h))) %)]
-          (when (and (or (seq hs) (seq (:moved ex))) (nat-read/values-reachable? kb))
+          (when (and (or (seq hs) (seq (:moved ex)))
+                     (or (nat-read/values-reachable? kb) (nat-read/named-values-reachable? kb)))
             (nat-read/note-values kb (sentences hs) false)
             (nat-read/note-values kb (sentences (:moved ex)) true)))))
     ;; `moved` is every datum whose supersession entry changed since the last settle
@@ -776,12 +833,14 @@
       ;; a merge supersedes a declaration with no label moving, after the reconcile above
       (when (seq moved)
         (special/reconcile-belief-change kb (into @region moved)))
-      ;; the spellings an un-merge gave back, for `settle` to re-seed
+      ;; the spellings an un-merge gave back, for `settle` to re-seed, each re-checked as on arrival
       (when-let [sink (and (not *rebuilding?*) *unmerged-sink*)]
-        (vswap! sink into
-                (filter #(and (contains? before %) (not (contains? after %))
-                              (jtms/in? (reasoning/tms kb) %)))
-                moved))
+        (let [back (filterv #(and (contains? before %) (not (contains? after %))
+                                  (jtms/in? (reasoning/tms kb) %))
+                            moved)]
+          (vswap! sink into back)
+          (doseq [h back]
+            (some->> (p/get-sentex (:records kb) h) sx/sentence-of (special/recheck-on-sentence kb)))))
       ;; ...and the spellings a merge retired, for `settle` to withdraw the firings over;
       ;; a rebuild's first settle reads every superseded spelling, since a store written
       ;; before the withdrawal holds firings over them
@@ -820,8 +879,9 @@
                        (reading-prior (if-let [hid (exc/own-hidden-fn pk)] (into #{} (filter hid) cands) #{}))
                        (if-let [hid (exc/own-hidden-fn kb)] (into #{} (filter hid) cands) #{}))
               was-in (into #{} (remove hidden) cands)]
-          (when sink    (swap! sink into moved))
-          (when in-sink (swap! in-sink into was-in))
+          (let [filed (some-> sink deref)]
+            (when sink    (swap! sink into moved))
+            (when in-sink (swap! in-sink into (remove #(contains? filed %)) was-in)))
           (when fed?    (feed/note-region! kb moved was-in)))))
     (discovery/note-touched! kb @extra)
     (kb/note-reach-touched! kb)
@@ -893,8 +953,8 @@
         ;; the inherited clashes found and placed, before the other families place
         inh     (phases/with-phase :discovery (chain/place-inherited! kb region moves))
         ;; the nogoods whose placement can have moved, placed again; a defeat stored
-        ;; there posts its target's re-check before the drain.  The types a declaration
-        ;; could not mint until its type lost another length mint there too (`:minted`)
+        ;; there posts its target's re-check before the drain.  The mints a type's length
+        ;; admitting one released are chained there too (`:minted`)
         placed  (when-not *rebuilding?* (chain/place-nogoods! kb region (:negations checked) moves))
         negs    (into inh (:made placed))
         ;; a defeat stored or relabelled moves its target's belief with no relabel of the
@@ -915,6 +975,7 @@
         ;; the facts under an edge a firing named that this settle defeated, whose second
         ;; route nothing else re-joins (`departed-seeds`)
         out      (departed-handles kb region)
+        _        (special/note-producer-moves! :departed (into out (:gone dmoves)))
         departed (departed-seeds kb reseeded out)
         ;; the merges and lifts a revived mark owes the facts that arrived while it was
         ;; OUT, the twins an `except` that began or stopped hiding an equality or a merge
@@ -926,6 +987,8 @@
                     (into (except-move-seeds kb))
                     (into (context-move-seeds kb moves))
                     (into (defeated-derivation-seeds kb out))
+                    (into (reask-seeds kb dmoves (:reask asked)))
+                    (into (stratified-seeds kb region (:cycle asked)))
                     (into remerge)
                     (into negs))
         ;; the relabelled records and the targets a defeat moved, read once for both
@@ -998,6 +1061,8 @@
                    (not-empty (special/withdrawn-edge-seeds kb (:withdrawn wdrawn))))]
     (vswap! (:withdrawn asked) into (:withdrawn wdrawn))
     (jtms/set-blocked (reasoning/tms kb) new)
+    (when-let [rhs (when-not *rebuilding?* (special/one-justification-rules kb))]
+      (special/note-reasks! kb (special/reask-entries kb rhs (remove #(contains? was %) new))))
     (sweep-excepted! kb (into #{} (remove was) new))
     ;; the rules the sweep queued; what the re-chains below queue the next pass drains
     ;; and re-decides narrowly
@@ -1015,10 +1080,11 @@
         (binding [chain/*report-no-placement?* false] (rechain-seeds kb wseeds)))
       ;; only the rules this pass released, never every rule it touched: a rule seed
       ;; joins over the whole extent, except a rule a separation move alone queued, which
-      ;; joins over the types it moved
-      (let [full (into (set released) (concat (blanket-recheck-rules queued) aggs over swept))]
-        (binding [chain/*moved-types* (apply dissoc sep full)]
-          (rechain-exception-rules kb (into full (keys sep))))))))
+      ;; joins over the types it moved; a rebuild re-chains none (`*rebuilding?*`)
+      (when-not *rebuilding?*
+        (let [full (into (set released) (concat (blanket-recheck-rules queued) aggs over swept))]
+          (binding [chain/*moved-types* (apply dissoc sep full)]
+            (rechain-exception-rules kb (into full (keys sep)))))))))
 
 ;; ---- a settle that owes nothing -------------------------------------------------
 ;; docs/nmtms.md, "A settle that owes nothing"
@@ -1037,7 +1103,7 @@
   {:recheck   {:atom reasoning/recheck :drained-by #{#'drain-recheck!}}
    :except    {:atom reasoning/except-moves :sparse true
                :drained-by #{#'except-move-seeds #'special/recheck-route-gains!
-                             #'special/drain-context-moves!}}
+                             #'special/drain-context-moves! #'reask-seeds}}
    :mints     {:atom reasoning/mint-queues :sparse true
                :drained-by #{#'released-subsumed #'subsumed-blocks #'special/drain-context-moves!}}
    :preserved {:atom reasoning/preserved-clashes :drained-by #{#'chain/place-inherited!}}
@@ -1095,6 +1161,12 @@
        :arms #{#'revived-seeds #'revived-mark-seeds #'revived-edge-seeds #'arity-class-seeds}
        :idle? (fn [kb r] (let [tms (reasoning/tms kb) new (jtms/touched-new tms)]
                            (not-any? #(and (not (contains? new %)) (jtms/known-datum? tms %)) @r)))}
+      {:id :no-cycle-member-moved :cost :region :arms #{#'stratified-seeds}
+       :idle? (fn [kb r] (empty? (special/cycle-moved kb @r)))}
+      {:id :no-class-move :cost :region :arms #{#'reask-seeds}
+       :idle? (fn [kb _] (let [tms (reasoning/tms kb)]
+                           (or (and (empty? (jtms/touched-down tms)) (empty? (jtms/touched-up tms)))
+                               (not (kb/stores-engine-rule? kb :one-justification)))))}
       {:id :no-departure-with-dependents :cost :region
        :arms #{#'departed-handles #'departed-seeds #'defeated-derivation-seeds}
        :idle? (fn [kb r] (let [tms (reasoning/tms kb) was (jtms/touched-in tms)]
@@ -1137,13 +1209,16 @@
   false)
 
 (defn- pass-state
-  "The settle's state across its passes, fresh: the records `:asked` each question in
-  each direction (`subsumed-blocks`, `released-subsumed`), the merges asked, the mints
-  withdrawn and the records asked what they trigger (`triggered-seeds`); and the handles
-  `:checked` by `chain/place-nogoods!`, by the defeat posts and by the context-move drain."
+  "The settle's state across its passes, fresh.  `:asked` records each question in each
+  direction (`subsumed-blocks`, `released-subsumed`), the merges asked, the mints
+  withdrawn, the records asked what they trigger (`triggered-seeds`) and the class moves
+  read for a re-ask (`reask-seeds`).  It also records the moves read for the refusals a
+  cycle through negation recorded (`stratified-seeds`).  `:checked` holds the handles checked by
+  `chain/place-nogoods!`, by the defeat posts and by the context-move drain."
   []
   {:asked   {:subsumption (volatile! #{}) :release (volatile! #{})
-             :merge (volatile! #{}) :withdrawn (volatile! #{}) :trigger (volatile! #{})}
+             :merge (volatile! #{}) :withdrawn (volatile! #{}) :trigger (volatile! #{})
+             :reask (volatile! #{}) :cycle (volatile! #{})}
    :checked {:negations (volatile! #{}) :defeats (volatile! #{}) :genlcx (volatile! #{})}})
 
 (defn- queue-state
@@ -1180,7 +1255,8 @@
   triggers queued, to a joint fixpoint of at most `max-settle-passes` passes.  A pass
   that leaves the blocked set as it was (`set-blocked` replaces), queues, revives and
   releases nothing, and leaves the arity family no refresh owed (`arity/moved?`) ends the
-  loop; every other pass counts in `settle-stats`' `:iterations`.  A settle that owes
+  loop, unless the argument holds owe a queued read (`argument/owes-read?`).  Every other
+  pass counts in `settle-stats`' `:iterations`.  A settle that owes
   nothing up front (`owes-nothing-up-front?`) runs no pass.  Returns the spellings
   superseded since the last settle (`settle-finish`)."
   [kb]
@@ -1199,6 +1275,7 @@
                    ;; the depth repair a `with-deferred-settle` batch owes, before the
                    ;; passes read `genl?`, which walks a loose relation unpruned
                    (tax/restore-depths (reasoning/taxonomy kb)))
+          _      (when-not *rebuilding?* (chain/run-owed-drops! kb))
           {:keys [asked checked]} (pass-state)]
       (if (owes-nothing-up-front? kb region)
         (do (when *check-skip?* (check-skip! kb region))
@@ -1212,7 +1289,8 @@
                 ;; `(unary_predicate T)` the refresh withdrew) owes the next pass's refresh,
                 ;; which holds the tuples it breaks inert
                 arity? (and (not *rebuilding?*)
-                            (arity/moved? (reasoning/taxonomy kb) @(reasoning/nogood-candidates kb)))]
+                            (or (arity/moved? (reasoning/taxonomy kb) @(reasoning/nogood-candidates kb))
+                                (argument/owes-read? kb)))]
             (if (and (not arity?) (empty? (:queued w)) (empty? (:blocked (:wdrawn w))) (owes-nothing? w owed))
               (finish-settle kb pass moved (moved? moved) (:dmoves w))
               (let [w (block-work kb w)]
@@ -1288,40 +1366,50 @@
     (boolean (seq jids))))
 
 (defn- respelled-seeds
-  "Drain the `:respell` queue, the predicates whose permuting marks moved in the settle just
-  run, the `[:row h]` rows a write stored while their readers disagree on a mark, the
-  `[:mention p]` predicates whose mention mark moved, the `[:reifiable f]` functions whose
-  reifiable or permuting mark moved, the `[:reifiable-use f]` functions used while their
-  readers disagree, the `[:corresponded f]` functions a `genlCx` move can re-spell rules
-  through, and the `[:valued k]`, `[:valued-fn f]` and `[:valued-facts f]` constants whose
-  correspondence derivations moved (`nat-read/note-values`), through the reconciles of
-  `vaelii.impl.chain` and `chain/sync-values!`, and return `[respelled valued]`, the handles
-  each made.  A rebuild clears the queue and respells nothing, since a recovered store was
-  spelled when written.  With `*sweep?*` off the queue is kept, so `core/preview`'s rollback
-  settle drains it against the restored KB and the handles stay the same."
+  "Drain the `:respell` queue through `chain`'s reconciles, value syncs and `sync-meets!`,
+  and return the handles each made as `[respelled valued]`.  The queue holds predicates
+  whose permuting marks moved, `[:row h]` rows a write stored while their readers disagree
+  on a mark, `[:mention p]` predicates whose mention mark moved, `[:reifiable f]` functions
+  whose reifiable or permuting mark moved, `[:correspondence f p]` declarations stored or
+  removed and `[:excepted-correspondence …]` ones an `except` moved, `[:reifiable-use f]`
+  functions used while their readers disagree, `[:corresponded f]` functions a `genlCx` move
+  can re-spell rules through, `[:named-valued t]` and `[:named-valued t s]` targets,
+  `[:valued k]`, `[:valued-fn f]` and `[:valued-facts f]` constants
+  (`nat-read/note-values`), and `[:meet E]` meet applications.  A rebuild clears the queue.  With `*sweep?*` off the queue waits for
+  `core/preview`'s rollback settle at the same handles."
   [kb]
   (let [q (reasoning/respell kb)]
     (when (seq @q)
       (cond
         *rebuilding?*    (do (reset! q #{}) nil)
         (not *sweep?*)   nil
-        :else            (let [[moved] (swap-vals! q (constantly #{}))
+        :else            (let [[taken] (swap-vals! q (constantly #{}))
+                               moved   (into taken (chain/proof-value-events
+                                                    kb (filter #(and (vector? %) (= :named-proof (first %))) taken)))
                                tagged (fn [k] (into [] (comp (filter #(and (vector? %) (= k (first %))))
                                                              (map second))
                                                     moved))
-                               fns    (tagged :reifiable)
+                               decls  (filterv #(and (vector? %) (= :correspondence (first %))) moved)
+                               fns    (distinct (into (tagged :reifiable) (map second) decls))
                                ufns   (remove (set fns) (tagged :reifiable-use))
-                               cfs    (remove (set fns) (tagged :corresponded))]
+                               cfs    (remove (set fns) (tagged :corresponded))
+                               excs   (remove #(contains? (into (set fns) cfs) (first %))
+                                              (tagged :excepted-correspondence))]
                            [(-> (chain/reconcile-spellings!
                                  kb (remove vector? moved)
                                  (distinct (into (tagged :row)
                                                  (mapcat #(integrate/rows-a-mention-spells kb %))
                                                  (tagged :mention))))
-                                (into (when (seq fns) (chain/reconcile-reified! kb fns)))
+                                (into (when (seq fns)
+                                        (chain/reconcile-reified! kb fns (distinct (map #(nth % 2) decls)))))
                                 (into (when (seq ufns) (chain/reconcile-reified! kb ufns nil false)))
-                                (into (when (seq cfs) (chain/reconcile-corresponded! kb cfs))))
-                            (chain/sync-values! kb (tagged :valued) (tagged :valued-fn)
-                                                (tagged :valued-facts))])))))
+                                (into (when (seq cfs) (chain/reconcile-corresponded! kb cfs)))
+                                (into (when (seq excs) (chain/reconcile-excepted! kb excs))))
+                            (-> (chain/sync-values! kb (tagged :valued) (tagged :valued-fn)
+                                                    (tagged :valued-facts))
+                                (into (chain/sync-named-values!
+                                       kb (filter #(and (vector? %) (= :named-valued (first %))) moved) nil))
+                                (into (chain/sync-meets! kb (tagged :meet))))])))))
 
 (defn- hold-belief!
   "Hold the belief `kb` holds now for every other thread until `publish-belief!`, and
@@ -1385,7 +1473,8 @@
                   back    (into (vec @seeds) respelled)
                   dropped (withdraw-retired-firings! kb retired)]
               (cond
-                (and (empty? back) (empty? valued) (not dropped)) nil
+                (and (empty? back) (empty? valued) (not dropped)
+                     (not (and *sweep?* (chain/queued-values? kb)))) nil
                 (>= round max-unmerge-rounds)
                 (trove/log! {:level :warn :id ::unmerge-fixpoint
                              :msg  (str "un-merge re-seeding did not converge in "

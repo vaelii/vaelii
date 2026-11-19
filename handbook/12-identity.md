@@ -121,7 +121,7 @@ it. organism.txt states the stages as `diachronicallyDisjoint`, not `disjoint`.
   the same member over time. An anti-rigid type is a phase or a role a member of some
   rigid kind passes through. A type defined by structure is rigid (**no teleology**,
   [ch. 9](09-differentia.md)); a type defined by a shape, a state or a stage is anti-rigid.
-- **Engine.** A membership is checked without time. core.txt's comment on
+- **Engine.** A membership is checked without time. time.txt's comment on
   `diachronicallyDisjoint` says the relation is "Stated and queryable, not enforced:
   memberships are checked without time", so the engine does not tell an instance that is
   in both types at once from one that is in each in turn. A `disjoint` between two anti-rigid stages

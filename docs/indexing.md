@@ -54,12 +54,19 @@ ints and keywords keep their type. The whole layout:
 | `[:nat-argument :count [f pos term]]` | integer | how many positive `(natFormula K (f …))` maps hold `term` at argument `pos`, in every context |
 | `[:nat-argument :children [f pos term]]` | set | the contexts that state such a map |
 | `[:nat-argument :handles [f pos term ctx]]` | set | the handles of those maps stated in `ctx` |
+| `[:application-argument :count [f pos t]]` | integer | how many facts use an application of `f` holding the symbol `t` at argument `pos`, in every context |
+| `[:application-argument :children [f pos t]]` | set | the contexts that state such a fact |
+| `[:application-argument :handles [f pos t ctx]]` | set | the handles of those facts stated in `ctx` |
+| `[:application-symbols [f pos]]` | set | the `t` of every `:application-argument` node `[f pos t]` (names, not handles) |
 | `[:rule-antecedent :count [key]]` | integer | how many rules take an antecedent on `key` (a predicate, or `[:not pred]`) |
 | `[:rule-antecedent :children [key]]` | set | the contexts that state such a rule |
 | `[:rule-antecedent :handles [key ctx]]` | set | the handles of those rules stated in `ctx` |
 | `[:rule-consequent :count [key]]` | integer | how many rules conclude `key` |
 | `[:rule-consequent :children [key]]` | set | the contexts that state such a rule |
 | `[:rule-consequent :handles [key ctx]]` | set | the handles of those rules stated in `ctx` |
+| `[:rule-consequent-head :count [key head]]` | integer | how many rules concluding `key` have a consequent argument whose term head is `head`, `:var-pred` for one no head excludes |
+| `[:rule-consequent-head :children [key head]]` | set | the contexts that state such a rule |
+| `[:rule-consequent-head :handles [key head ctx]]` | set | the handles of those rules stated in `ctx` |
 | `[:rule-antecedent-keys]` | set | every antecedent key some stored rule takes (keys, not handles) |
 | `[:rule-extent :count [kind]]` | integer | how many rules of `kind` are stored: `:rule` every rule, `:solve` the rules a solve reads, `:lazy` the lazy-forward rules |
 | `[:rule-extent :children [kind]]` | set | the contexts that state such a rule |
@@ -68,7 +75,7 @@ ints and keywords keep their type. The whole layout:
 | `[:opposed :children [body]]` | set | the contexts that state such a fact |
 | `[:opposed :handles [body ctx]]` | set | the handles of those facts stated in `ctx` |
 | `[:opposed-bodies]` | set | every body stored in both polarities (bodies, not handles) |
-| `[:opposed-between f]` | set | the bodies of `[:opposed-bodies]` of functor `f` whose arguments are all predicate-spelled (`nm/between-predicates?`) |
+| `[:opposed-between f]` | set | the bodies of `[:opposed-bodies]` of functor `f` whose arguments are all predicate-spelled or minted (`nm/between-predicates?`, every minted argument read as a predicate) |
 | `[:opposed-functor f]` | set | the other bodies of `[:opposed-bodies]` of functor `f` |
 | `[:self-tuple :count [pred]]` | integer | how many ground positive binary self tuples `(pred a a)` are stored |
 | `[:self-tuple :children [pred]]` | set | the contexts that state such a tuple |
@@ -188,6 +195,8 @@ that case).
   extent's and the two slot predicate sets' is the term index, filtered by the record
   (`arg_root_retrieval_test/the-families-agree-with-the-term-index`), and so is the
   `natFormula` arguments' (`index_test/the-nat-argument-family-agrees-with-the-term-index`).
+  The application arguments' other path is the term index too
+  (`index_test/the-application-argument-family-agrees-with-the-term-index`).
 - **`:scan-recoverable`**: a scan of the whole store returns the identical answer, at a
   cost linear in the KB. `:class-evidence` names the writes that read the family
   (`:writes`). A write's cost is bounded whatever the content, so only a family no write
@@ -654,6 +663,7 @@ methods" below).
 | `family-children :predicate-extent [pred] ctxs` (`reads/stores-in?`) | predicate extent, its children only: no leaf read | `exc/sees-defeat?`, `exc/exempting-at?` |
 | `family-handles :rule-extent [:rule] ctxs` (`reads/as-stored-rules-in`) | rule extent | `concluding-rule-handles` for an open functor |
 | `family-handles :rule-consequent [pred] ctxs` (`reads/as-stored-rules-by-consequent-in`) | consequent index | `concluding-rule-handles`, from `provers/candidate-rules` |
+| `family-handles :rule-consequent-head [pred head] ctxs` (`reads/as-stored-rules-by-consequent-head-in`) | consequent head trie | `concluding-rule-handles` for a goal with a headed argument |
 
 `lein perf`'s `scoped-defeat-read` asks "is a `defeat` stated where `CxPerf` sees" with
 1,000 and 16,000 placed defeats in sixteen contexts `CxPerf` does not see, and
@@ -721,8 +731,11 @@ the positives. `[:opposed-bodies]`'s size answers whether any body is opposed in
 which every settle asks before placing a pair (`reads/stores-opposed?`).
 
 `[:opposed-between f]` and `[:opposed-functor f]` split the opposed bodies of a symbol
-functor `f` by `nm/between-predicates?`, the test `decide/forced-literal?` applies to a
-`:forced-between-predicates` functor. A body joins and leaves its set with
+functor `f` by `nm/between-predicates?` with every minted argument read as a predicate.
+`decide/forced-literal?` applies the same test to a `:forced-between-predicates`
+functor, and reads a minted argument's role off its length bindings. `[:opposed-between
+f]` therefore holds a superset of those forced literals, filed without a belief read. A
+body joins and leaves its set with
 `[:opposed-bodies]`. `exc/yielding-reads?` asks whether a forced-monotonic literal is
 opposed with one count of each per `:forced-monotonic` predicate and one of
 `[:opposed-between f]` per `:forced-between-predicates` predicate
@@ -783,8 +796,8 @@ A fact naming a time the calendar places (`datetime/time-term?`) enters the coun
 that time (`datetime/month-buckets`): an `InstantFn` moment's own, and the start and end
 of any other term's extent, in frame `:local` for a time in no zone and `:utc` for one
 with an offset or a zone. `[:calendar-buckets f]`, the trie's root level, lists `f`'s
-months, so a month leaves it with its node's last fact (`kv/calendar-adds`,
-`calendar-retires`). A rule names no node. The index write posts both from the sentence
+months, so a month leaves it with its node's last fact (`kv/root-level-adds`,
+`root-level-retires`). A rule names no node. The index write posts both from the sentence
 in hand, so `reindex` and a layout rebuild rebuild them.
 
 The reader is the context-NAT producer's link arm ([context-nat.md](context-nat.md)). It
@@ -803,11 +816,34 @@ symbol or a ground compound, canonical and whole at any size. A number, a string
 negated map enter no node. The index write posts the nodes from the sentence in hand
 (`kv/fact-nodes`), so `reindex` and a layout rebuild rebuild them.
 
-The reader is the context-NAT producer ([context-nat.md](context-nat.md)). It reads the
+Two readers use it. The context-NAT producer ([context-nat.md](context-nat.md)) reads the
 CxUniverse maps holding a term at a declared position (`reads/as-stored-nat-formulas-at`)
-and counts them with one leaf count (`stored-count-nat-formulas-at`). A read costs one
-node per position and term, whatever the size of the term's own posting in the term index
-(`lein perf`'s `context-nat-read-unwritten-slice-beside-monads`).
+and counts them with one leaf count (`stored-count-nat-formulas-at`). A `genlCx` move reads
+the slices of each context `c` it shows off the node `[CxTimeFn 1 c]` in every context
+(`special/sweep-slices-under`). A read costs one node per position and term, whatever the
+size of the term's own posting in the term index, which for a context holds every sentex
+stated in it (`lein perf`'s `context-nat-read-unwritten-slice-beside-monads` and
+`genlcx-edge-over-a-small-context-under-a-large-one`).
+
+### The application arguments
+
+A fact enters the count trie `:application-argument` under the node `[f pos t]` of each
+symbol `t` at argument `pos` of each ground application of a symbol `f` it uses
+(`nm/used-applications`). A use descends nested applications and skips two mentions: a
+`natFormula` or `rewriteOf` payload and a quoting function's arguments. A rule enters no
+node.
+`[:application-symbols [f pos]]`, the trie's root level, lists the symbols at `pos` of `f`'s
+applications, so a symbol leaves it with its node's last fact (`kv/root-level-adds`,
+`root-level-retires`). A number,
+a string and a compound argument enter no node. The index reads no `modal_predicate` mark,
+so an attitude's payload counts as a use. The index write posts the nodes from the sentence
+in hand (`kv/fact-nodes`), so `reindex` and a layout rebuild rebuild them.
+
+The reader is `chain/result-type-uppers`, the types a declaration gives an application
+([inference.md](inference.md)). It reads the symbols at each position a `(resultArg F n)`
+declares (`reads/as-stored-application-symbols`). A read costs one name-set read per
+declaration, whatever the count of facts using the function's applications (`lein perf`'s
+`result-arg-re-mention`).
 
 ## 3. The rule index
 
@@ -820,6 +856,7 @@ keyed by each distinct antecedent key or by the consequent's key:
 [:rule-antecedent :children [<key>]]       -> #{ctxs}    the contexts stating one
 [:rule-antecedent :handles  [<key> <ctx>]] -> #{handles} those stated in ctx
 [:rule-consequent …]                       -> the same, by consequent key
+[:rule-consequent-head … [<key> <head>]]   -> the same, by consequent key and argument head
 [:rule-antecedent-keys]                    -> #{keys}    every key some rule takes
 [:rule-extent :count    [<kind>]]          -> n          every rule (:rule), solve rules (:solve), lazy (:lazy)
 [:rule-extent :children [<kind>]]          -> #{ctxs}    the contexts stating one
@@ -837,6 +874,20 @@ not already hold the handle, and `rules/unindex-rule!` retires one only where it
 registered twice, or one whose antecedents repeat a key, leaves every count right. A
 backward read from a context passes the reader's ancestor set (`provers/candidate-rules`),
 so it reads no rule the visibility filter after it would drop.
+
+The **consequent head trie** narrows the consequent key by the consequent's arguments.
+`rules/consequent-heads` files a rule under `[key head]` for the term head of each argument
+of its consequent ([glossary](glossary.md)): the argument when it is a plain symbol, its
+functor when it is an application of one. A consequent with an argument no head excludes (a
+variable, an application of a variable, a dotted tail) is filed under the head `:var-pred`
+alone, as is one with no headed argument. A goal reads, per spec, the `:var-pred` head and
+the intersection of its argument heads' nodes (`resolution/goal-heads`). Two terms whose
+heads differ unify in no argument order, so a rule outside both sets cannot conclude the
+goal. A negated goal reads the whole key, since a rule answers its body through a genl of
+the body's functor. So do a dotted goal, a goal with no headed argument, and the `rewriteOf`
+spec, whose head `rewrite-query/head-reader` matches by its endpoints. A goal pages the same
+rules beside 10 and 100 rules its heads exclude
+(`record_fetch_cost_test/a-backward-goal-pages-no-rule-its-argument-heads-exclude`).
 
 **Both indexes are complete** — every rule is registered under all of its antecedent
 keys *and* its consequent key, whatever its direction — so "what could conclude P?" is
@@ -1124,7 +1175,7 @@ disagree with the trie it describes.
 matters because an index in an unrecognized layout reads as **empty** rather than as
 wrong: the log replays cleanly and then every lookup whose key shape moved finds no key
 and answers nothing — populated-looking counts over queries that answer nothing. Bump it
-whenever a key shape changes.
+whenever a key shape changes, or the test that files a body under one of two families.
 
 Four places check it, and none of them leaves the repair to a person. A **durable KV
 index** is checked at `open-kb` before anything reads it: `disk/files.clj`'s

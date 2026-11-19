@@ -107,8 +107,6 @@
   ;; a type's members off the index, and whether one is believed: the whole-KB list of
   ;; types without a genl reads every member of `unary_predicate`'s subtypes this way
   stored-first-args isa?
-  ;; whether two types are disjoint, which a rename into an existing term is checked for
-  disjoint?
   ;; the cover declarations over a whole, which the concept graph groups a type's
   ;; subtypes by
   covers-of
@@ -146,6 +144,8 @@
   ;; the dry run of the write path: `check` writes nothing, so it is a read like any
   ;; other and the editor validates a line before it is saved
   check check-edit
+  ;; a term operation's two dry runs: what it refuses, and the `edit` batch it runs
+  check-term-edit term-edit-plan
   ;; what the process is holding beside the store — the caches, their bounds and the
   ;; hit rate.  O(1) per row by construction, so the page that renders it can poll
   caches
@@ -189,6 +189,20 @@
   crosses the wire like any read."
   ([target batch] (dispatch :preview target [batch]))
   ([target batch opts] (dispatch :preview target [batch opts])))
+
+(defn term-edit!
+  "Run term operation `op` (`:rename`, `:merge`, `:copy` or `:remove`) over `mapping` on
+  the in-process KB `kb`, bounded by `opts` (`vaelii.core/edit-opt-keys`, a `:stop?`
+  function included), and answer the operation's result (`vaelii.core/rename-terms!`, …).
+  It takes a KB, not a target: the daemon serves an operation's batch (`term-edit-plan`)
+  and not the operation (docs/operations.md), so a caller reaches this through `local-kb`."
+  [kb op mapping opts]
+  ((case op
+     :rename core/rename-terms!
+     :merge  core/merge-terms!
+     :copy   core/copy-terms
+     :remove core/remove-terms!)
+   kb mapping opts))
 
 (defn clear-caches
   "Drop the target's derived caches and say what went (`vaelii.core/clear-caches`).

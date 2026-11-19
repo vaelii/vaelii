@@ -90,6 +90,36 @@
     (is (dt/subinterval? (dtf "2000-1") (dtf "2000-01")))
     (is (dt/subinterval? (dtf "2000-01") (dtf "2000-1")))))
 
+(deftest a-fractional-second-is-one-more-field-per-digit
+  (testing "one to nine digits behind a zero-padded second"
+    (is (dt/datetime-term? (dtf "2000-01-15T13:00:00.1")))
+    (is (dt/datetime-term? (dtf "2000-01-15T13:00:00.123456789")))
+    (is (not (dt/datetime-term? (dtf "2000-01-15T13:00:00.1234567890"))))
+    (is (not (dt/datetime-term? (dtf "2000-01-15T13:00:00."))))
+    (is (not (dt/datetime-term? (dtf "2000-1-15T13:0:0.5"))) "the zero-padded spelling alone")
+    (is (not (dt/datetime-term? (dtf "2000-01-15T13:00.5"))) "behind a whole second only"))
+  (testing "each digit nests inside the digits before it and inside the second"
+    (is (dt/subinterval? (dtf "2000-01-15T13:00:00.123") (dtf "2000-01-15T13:00:00.12")))
+    (is (dt/subinterval? (dtf "2000-01-15T13:00:00.123") (dtf "2000-01-15T13:00:00")))
+    (is (not (dt/subinterval? (dtf "2000-01-15T13:00:00.12") (dtf "2000-01-15T13:00:00.123"))))
+    (is (not (dt/subinterval? (dtf "2000-01-15T13:00:00.123") (dtf "2000-01-15T13:00:00.124")))))
+  (testing "k digits name an interval of 10^-k s, the last field nanoseconds"
+    (is (= [[2000 1 15 13 0 0 123000000] [2000 1 15 13 0 0 124000000]]
+           (dt/extent (dtf "2000-01-15T13:00:00.123"))))
+    (is (= [[2000 1 15 13 0 0 120000000] [2000 1 15 13 0 0 130000000]]
+           (dt/extent (dtf "2000-01-15T13:00:00.12"))))
+    (is (= [[2000 1 15 13 0 0 999999999] [2000 1 15 13 0 1 0]]
+           (dt/extent (dtf "2000-01-15T13:00:00.999999999"))))
+    (is (= [[2000 1 15 12 0 0 500000000] [2000 1 15 12 0 0 600000000]]
+           (dt/utc-extent (dtf "2000-01-15T13:00:00.5+01:00")))))
+  (testing "a whole-second moment lies inside each zero fraction of its second"
+    (is (dt/instant-within? '(InstantFn 2000 1 15 13 0 0) (dtf "2000-01-15T13:00:00.0")))
+    (is (not (dt/instant-within? '(InstantFn 2000 1 15 13 0 0) (dtf "2000-01-15T13:00:00.1"))))
+    (is (contains? (dt/containing-terms '(InstantFn 2000 1 15 13 0 0))
+                   (dtf "2000-01-15T13:00:00.000000000")))
+    (is (= #{(dtf "2000-01-15T13:00:00.1") (dtf "2000-01-15T13:00:00.12")}
+           (set (filter #(re-find #"\." (str %)) (dt/containing-terms (dtf "2000-01-15T13:00:00.12"))))))))
+
 (deftest non-containment
   (testing "a coarser interval is not inside a finer one"
     (is (not (dt/subinterval? (dtf "2000") (dtf "2000-01")))))
@@ -176,12 +206,12 @@
   (let [zoned (fn [local zone] (dt/utc-extent (list 'ZonedDatetimeFn local zone)))]
     (doseq [[local zone clock extent]
             [["2018-11-04" "America/Sao_Paulo" "00:00 skips to 01:00: 23 hours"
-              [[2018 11 4 3 0 0] [2018 11 5 2 0 0]]]
+              [[2018 11 4 3 0 0 0] [2018 11 5 2 0 0 0]]]
              ["2019-02-16" "America/Sao_Paulo" "24:00 goes back to 23:00: 25 hours"
-              [[2019 2 16 2 0 0] [2019 2 17 3 0 0]]]
-             ["2018-11-05" "America/Sao_Paulo" "no change" [[2018 11 5 2 0 0] [2018 11 6 2 0 0]]]
+              [[2019 2 16 2 0 0 0] [2019 2 17 3 0 0 0]]]
+             ["2018-11-05" "America/Sao_Paulo" "no change" [[2018 11 5 2 0 0 0] [2018 11 6 2 0 0 0]]]
              ["2000-03-26" "Europe/London" "01:00 skips to 02:00: 23 hours"
-              [[2000 3 26 0 0 0] [2000 3 26 23 0 0]]]
+              [[2000 3 26 0 0 0 0] [2000 3 26 23 0 0 0]]]
              ["2000-03-26T01" "Europe/London" "the hour is skipped" nil]
              ["2000-03-26T01:30" "Europe/London" "the minute is skipped" nil]
              ["2000-10-29T01" "Europe/London" "the hour repeats" nil]

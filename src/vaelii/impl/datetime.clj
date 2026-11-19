@@ -4,9 +4,9 @@
   "Reads the time terms — a `DatetimeFn` reduced-precision ISO string, the calendar
   constructors `YearFn` / `MonthFn` / `DayFn`, a `DatetimeRangeFn` range and the
   `InstantFn` moment — to integer field vectors.  Field nesting is calendar containment
-  (`subinterval?`, docs/context-nat.md); `bounds` is the half-open `[start end)` the
-  calendar clock reads, `extent` adds a range's, and `utc-extent` reads a time with a UTC
-  offset or a `ZonedDatetimeFn` zone (docs/time.md).  Every reader is pure and total,
+  (`subinterval?`, docs/context-nat.md); `extent` is a term's half-open `[start end)` of
+  seven-field moments, `bounds` the one the calendar clock names, and `utc-extent` reads a
+  UTC offset or a `ZonedDatetimeFn` zone (docs/time.md).  Every reader is pure and total,
   returning nil rather than throwing, because the structural genlCx producer calls it
   inside the settle/relabel loop."
   (:require [clojure.string :as str])
@@ -38,27 +38,36 @@
   one month, `\"2000-001\"` is nothing, and the read stays inside a `Long`."
   #"\d{1,2}")
 
+(def ^:private fraction-pattern
+  "A fractional second: a full date and time, the year four digits and every later field
+  two, then `.` and one to nine digits.  One spelling per sub-second interval keeps
+  `containing-terms` to one term for each digit count."
+  #"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{1,9})")
+
 (defn- parse
   "The ISO string as a vector of integer fields `[year month day hour minute second]`,
-  truncated at the string's own precision, or nil when it is not well formed: one to three
-  `-`-separated date fields, then optionally `T` and one to three `:`-separated time
-  fields behind a full date, each field of its own width and in range.  Each half is
+  truncated at the string's own precision and followed by one field per digit of a
+  fractional second, or nil when it is not well formed: one to three `-`-separated date
+  fields, then optionally `T` and one to three `:`-separated time fields behind a full
+  date, each field of its own width and in range, or `fraction-pattern`.  Each half is
   bounded on its own, so `\"2000T13:00\"` and `\"2000-01-15-12\"` are refused."
   [s]
   (when (string? s)
-    (let [[date time] (str/split s #"T" 2)
-          date-parts (str/split date #"-" -1)
-          time-parts (when time (str/split time #":" -1))
-          parts      (concat date-parts time-parts)]
-      (when (and (<= 1 (count date-parts) 3)
-                 (or (nil? time)
-                     (and (= 3 (count date-parts)) (<= 1 (count time-parts) 3)))
-                 (re-matches year-pattern (first parts))
-                 (every? #(re-matches field-pattern %) (rest parts)))
-        (let [fields (mapv #(Long/parseLong ^String %) parts)]
-          (when (every? (fn [[v [lo hi]]] (<= lo v hi))
-                        (map vector (rest fields) field-ranges))
-            fields))))))
+    (if-let [[_ whole digits] (when (str/index-of s ".") (re-matches fraction-pattern s))]
+      (some-> (parse whole) (into (map #(long (Character/digit (char %) 10))) digits))
+      (let [[date time] (str/split s #"T" 2)
+            date-parts (str/split date #"-" -1)
+            time-parts (when time (str/split time #":" -1))
+            parts      (concat date-parts time-parts)]
+        (when (and (<= 1 (count date-parts) 3)
+                   (or (nil? time)
+                       (and (= 3 (count date-parts)) (<= 1 (count time-parts) 3)))
+                   (re-matches year-pattern (first parts))
+                   (every? #(re-matches field-pattern %) (rest parts)))
+          (let [fields (mapv #(Long/parseLong ^String %) parts)]
+            (when (every? (fn [[v [lo hi]]] (<= lo v hi))
+                          (map vector (rest fields) field-ranges))
+              fields)))))))
 
 (def ^:private year-range
   "The inclusive bounds of a numeric year: the range `year-pattern`'s width denotes, so a
@@ -108,33 +117,43 @@
 ;; ---- the moments a calendar term lies between ----------------------------
 
 (def instant-function
-  "The structural constructor for a moment, six integer fields always:
+  "The structural constructor for a moment on a whole second, six integer fields always:
   `(InstantFn 2000 1 1 0 0 0)` is midnight at the start of 2000."
   'InstantFn)
 
 (def ^:private instant-field-count 6)
 
+(def ^:private digit-nanos
+  "The nanoseconds in one unit of each digit of a fractional second, first digit first."
+  [100000000 10000000 1000000 100000 10000 1000 100 10 1])
+
+(def ^:private finest-field-count
+  "The most fields a term reads to: six to the second, then nine digits of a fraction."
+  (+ instant-field-count (count digit-nanos)))
+
 (def ^:private field-defaults
   "Each field after the year at the first moment of a coarser term: month and day 1, the
-  clock fields 0."
-  [1 1 0 0 0])
+  clock fields and the nanoseconds 0."
+  [1 1 0 0 0 0])
 
 (defn- at
-  "The `LocalDateTime` six fields name, or nil when the calendar has no such moment."
-  ^LocalDateTime [[y mo d h mi s]]
-  (try (LocalDateTime/of (int y) (int mo) (int d) (int h) (int mi) (int s))
+  "The `LocalDateTime` a moment's seven fields name, the last nanoseconds, or nil when the
+  calendar has no such moment."
+  ^LocalDateTime [[y mo d h mi s ns]]
+  (try (LocalDateTime/of (int y) (int mo) (int d) (int h) (int mi) (int s) (int ns))
        (catch DateTimeException _ nil)))
 
 (defn- from
-  "A `LocalDateTime` back as a six-field vector."
+  "A `LocalDateTime` back as a seven-field moment."
   [^LocalDateTime t]
   [(long (.getYear t)) (long (.getMonthValue t)) (long (.getDayOfMonth t))
-   (long (.getHour t)) (long (.getMinute t)) (long (.getSecond t))])
+   (long (.getHour t)) (long (.getMinute t)) (long (.getSecond t)) (long (.getNano t))])
 
 (defn- one-later
   "The moment one unit of `n`-field precision after `t` — the next year, month, day, hour,
-  minute or second — or nil when it falls outside `year-range`.  `java.time` supplies
-  month lengths and leap years."
+  minute or second, or for a field past the sixth the next tenth, hundredth … of a second —
+  or nil when it falls outside `year-range`.  `java.time` supplies month lengths and leap
+  years."
   [^LocalDateTime t n]
   (let [^LocalDateTime u (case (long n)
                            1 (.plusYears t 1)
@@ -142,55 +161,84 @@
                            3 (.plusDays t 1)
                            4 (.plusHours t 1)
                            5 (.plusMinutes t 1)
-                           (.plusSeconds t 1))
+                           6 (.plusSeconds t 1)
+                           (.plusNanos t (long (nth digit-nanos (- (long n) 7)))))
         v (from u)]
     (when (<= (first year-range) (long (first v)) (second year-range)) v)))
 
 (defn epoch-second
-  "The seconds from 1970-01-01T00:00:00 to the moment six fields name, both read on one
-  clock, or nil when the calendar has no such moment."
+  "The seconds from 1970-01-01T00:00:00 to the moment seven fields name, both read on one
+  clock, exact: a long on a whole second and a ratio between two.  Nil when the calendar
+  has no such moment."
   [fields]
-  (when-let [^LocalDateTime t (at fields)] (.toEpochSecond t ZoneOffset/UTC)))
+  (when-let [^LocalDateTime t (at fields)]
+    (let [s (.toEpochSecond t ZoneOffset/UTC)
+          n (.getNano t)]
+      (if (zero? n) s (+ s (/ n 1000000000))))))
 
 (defn instant-fields
-  "The six fields of an `(InstantFn Y M D h m s)` term, or nil for anything that is not
-  one — a term of the wrong arity, a field out of range, or a date the calendar does not
-  have."
+  "The moment of an `(InstantFn Y M D h m s)` term, its six fields and a nanosecond field
+  of 0, or nil for anything that is not one — a term of the wrong arity, a field out of
+  range, or a date the calendar does not have."
   [form]
   (when (sequential? form)
     (when (= instant-function (first form))
       (let [args (vec (rest form))]
         (when (and (= instant-field-count (count args))
-                   (fields-in-range? args)
-                   (some? (at args)))
-          (mapv long args))))))
+                   (fields-in-range? args))
+          (let [[y mo d h mi s] args
+                m [(long y) (long mo) (long d) (long h) (long mi) (long s) 0]]
+            (when (some? (at m)) m)))))))
 
 (defn instant-term
-  "The `(InstantFn …)` term six fields name, a `PersistentList` as `sentex/canon`
-  normalizes a typed one to."
-  [fields]
-  (apply list instant-function fields))
+  "The `(InstantFn …)` term of the moment `m`, six fields or seven, a `PersistentList` as
+  `sentex/canon` normalizes a typed one to; nil when the nanosecond field is not 0."
+  [m]
+  (when (zero? (long (nth m instant-field-count 0)))
+    (apply list instant-function (take instant-field-count m))))
 
 (defn instant-term?
   "True iff `form` is a well-formed `(InstantFn …)` term."
   [form]
   (some? (instant-fields form)))
 
+(defn- start-of-fields
+  "The first moment of the interval term fields `fs` name: the coarser fields at their
+  defaults, and the digits of a fractional second read as nanoseconds."
+  [fs]
+  (let [n (count fs)]
+    (if (<= n instant-field-count)
+      (into fs (subvec field-defaults (dec n)))
+      (conj (subvec fs 0 instant-field-count)
+            (reduce + (map * (subvec fs instant-field-count) digit-nanos))))))
+
+(defn- moment-fields
+  "The moment `m` as fifteen term fields: its six, then one per digit of its nanoseconds."
+  [m]
+  (let [ns (long (peek m))]
+    (into (subvec m 0 instant-field-count) (map #(mod (quot ns (long %)) 10)) digit-nanos)))
+
 (defn- fields-bounds
   "The half-open `[start end)` of the wall-clock interval `fields` name, or nil."
   [fields]
-  (let [n     (count fields)
-        start (into fields (subvec field-defaults (dec n)))]
+  (let [start (start-of-fields fields)]
     (when-let [^LocalDateTime t (at start)]
-      (when-let [end (one-later t n)]
+      (when-let [end (one-later t (count fields))]
         [start end]))))
 
-(defn bounds
-  "The half-open `[start end)` a calendar term lies between, each a six-field vector: the
-  end is the first moment of the next term at the same precision.  Nil for a term that is
-  not a calendar one or names no moment."
+(defn- term-bounds
+  "The half-open `[start end)` a calendar term lies between, at any precision, or nil."
   [form]
   (some-> (term-fields form) fields-bounds))
+
+(defn bounds
+  "The half-open `[start end)` a calendar term to the second or coarser lies between, each
+  a seven-field moment: the end is the first moment of the next term at the same precision.
+  Nil for a sub-second term, whose bounds no `InstantFn` term names, and for a term that is
+  not a calendar one or names no moment."
+  [form]
+  (let [fs (term-fields form)]
+    (when (<= (count fs) instant-field-count) (some-> fs fields-bounds))))
 
 ;; ---- absolute time: a UTC offset or a named zone ---------------------------
 
@@ -217,14 +265,14 @@
               [fields (* (if (= "-" sign) -1 1) (+ (* 3600 h) (* 60 m)))])))))))
 
 (defn- to-utc
-  "The six fields `v`, a wall-clock moment at `offset-seconds`, as UTC fields, or nil."
+  "The moment `v`, wall-clock time at `offset-seconds`, as a UTC moment, or nil."
   [v offset-seconds]
   (when-let [^LocalDateTime t (at v)]
     (let [u (from (.minusSeconds t (long offset-seconds)))]
       (when (<= (first year-range) (long (first u)) (second year-range)) u))))
 
 (defn- utc-fields
-  "The UTC six fields of `instant`, or nil outside `year-range`."
+  "The UTC moment of `instant`, or nil outside `year-range`."
   [^Instant instant]
   (let [u (from (LocalDateTime/ofInstant instant ZoneOffset/UTC))]
     (when (<= (first year-range) (long (first u)) (second year-range)) u)))
@@ -233,14 +281,14 @@
   "The UTC half-open bounds of the wall-clock span `[s e)` in the zone named `zone`, from
   the first instant the zone's clock reads inside it to the end of the last: a start in a
   daylight-saving gap is the transition, a repeated start its first occurrence and a
-  repeated last second its second.  Nil when the span lies inside one gap or one repeated
-  hour, or the zone database holds no `zone`."
+  repeated last nanosecond its second.  Nil when the span lies inside one gap or one
+  repeated hour, or the zone database holds no `zone`."
   [zone s e]
   (when-let [ls (at s)]
     (when-let [le (at e)]
       (try
         (let [^ZoneRules rules (.getRules (ZoneId/of ^String zone))
-              ll   (.minusSeconds le 1)
+              ll   (.minusNanos le 1)
               ts   (.getTransition rules ls)
               tl   (.getTransition rules ll)
               one  (fn [^LocalDateTime t] (.toInstant t (.getOffset rules t)))
@@ -249,9 +297,9 @@
             (when-let [s' (utc-fields (cond (nil? ts) (one ls)
                                             (.isGap ts) (.getInstant ts)
                                             :else (.toInstant ls (.getOffsetBefore ts))))]
-              (when-let [e' (utc-fields (cond (nil? tl) (.plusSeconds ^Instant (one ll) 1)
+              (when-let [e' (utc-fields (cond (nil? tl) (.plusNanos ^Instant (one ll) 1)
                                               (.isGap tl) (.getInstant tl)
-                                              :else (.plusSeconds (.toInstant ll (.getOffsetAfter tl)) 1)))]
+                                              :else (.plusNanos (.toInstant ll (.getOffsetAfter tl)) 1)))]
                 [s' e']))))
         (catch DateTimeException _ nil)))))
 
@@ -292,9 +340,10 @@
 
 (defn extent
   "The half-open wall-clock `[start end)` a time interval term in no zone lies between: a
-  calendar term's `bounds`, or a `DatetimeRangeFn` range's.  Nil for any other term."
+  calendar term's bounds at any precision, or a `DatetimeRangeFn` range's.  Nil for any
+  other term."
   [form]
-  (extent-by bounds form))
+  (extent-by term-bounds form))
 
 (defn utc-extent
   "The half-open UTC `[start end)` of a term with a UTC offset or a named zone, a range of
@@ -310,13 +359,13 @@
       (when-let [ea (utc-extent a)] (some->> (utc-extent b) (vector ea)))))
 
 (defn within?
-  "True iff the half-open extent `[as ae)` lies inside `[bs be)`, each bound a six-field
-  vector."
+  "True iff the half-open extent `[as ae)` lies inside `[bs be)`, each bound a seven-field
+  moment."
   [[as ae] [bs be]]
   (and (<= (compare bs as) 0) (<= (compare ae be) 0)))
 
 (defn at-or-inside?
-  "True iff the moment `t`, six fields, lies in the half-open extent `[bs be)`."
+  "True iff the moment `t`, seven fields, lies in the half-open extent `[bs be)`."
   [t [bs be]]
   (and (<= (compare bs t) 0) (neg? (compare t be))))
 
@@ -359,30 +408,61 @@
        (at-or-inside? t e)
        (= t (instant-fields b))))))
 
-(defn- spellings
-  "Every ISO string `parse` returns the fields `fs` for: each field zero-padded to every
-  width its pattern admits."
+(defn- zero-pad
+  "The decimal digits of `v` behind enough zeros to fill `w` places."
+  [v w]
+  (let [s (str v)] (str (subs "0000" 0 (max 0 (- (long w) (count s)))) s)))
+
+(defn- iso
+  "The ISO string of term fields `fs`, the year four digits wide, every later clock field
+  two, and the digits of a fractional second after a `.`."
   [fs]
-  (let [pad (fn [v w] (let [s (str v)] (when (<= (count s) w) (str (str/join (repeat (- w (count s)) \0)) s))))
-        iso (fn [ps] (let [[d t] (split-at 3 ps)] (cond-> (str/join "-" d) (seq t) (str "T" (str/join ":" t)))))]
-    (map iso (reduce (fn [acc opts] (for [a acc o opts] (conj a o)))
-                     [[]] (map-indexed (fn [i v] (keep #(pad v %) (if (zero? i) [1 2 3 4] [1 2]))) fs)))))
+  (let [[clock digits] (split-at instant-field-count fs)
+        [d t] (split-at 3 (map-indexed #(zero-pad %2 (if (zero? %1) 4 2)) clock))]
+    (cond-> (str/join "-" d)
+      (seq t)      (str "T" (str/join ":" t))
+      (seq digits) (str "." (str/join digits)))))
+
+(defn- spellings
+  "Every ISO string `parse` returns the fields `fs`, six or fewer, for: each field
+  zero-padded to every width its pattern admits."
+  [fs]
+  (let [pad (fn [v w] (when (<= (count (str v)) w) (zero-pad v w)))
+        spell (fn [ps] (let [[d t] (split-at 3 ps)] (cond-> (str/join "-" d) (seq t) (str "T" (str/join ":" t)))))]
+    (map spell (reduce (fn [acc opts] (for [a acc o opts] (conj a o)))
+                       [[]] (map-indexed (fn [i v] (keep #(pad v %) (if (zero? i) [1 2 3 4] [1 2]))) fs)))))
+
+(defn- range-precision
+  "The most term fields either string of the range `r` reads to.  The range's bounds lie on
+  that precision's grid, so no finer unit contains it."
+  [[_ from to]]
+  (max (count (term-fields (list datetime-function from)))
+       (count (term-fields (list datetime-function to)))))
 
 (defn containing-terms
   "The terms in no zone that `subinterval?` or `instant-within?` can answer contain the
   time `t` in no zone, `t` among them and a `DatetimeRangeFn` range excepted: for each
-  prefix of a calendar term's own fields, or of the start of an `InstantFn` moment or a
-  range, the `DatetimeFn` term in every spelling (`spellings`) and the calendar term of
-  as many fields.  Nil for any other term."
+  prefix of a calendar term's own fields, of an `InstantFn` moment's `moment-fields`, or of
+  a range's start's to the range's precision (`range-precision`), the `DatetimeFn` term in
+  every spelling (`spellings`, and the one `iso` gives past the sixth field) and the
+  calendar term of as many fields.  Nil for any other term."
   [t]
-  (when-let [fs (or (term-fields t) (instant-fields t)
-                    (when (and (sequential? t) (= range-function (first t))) (first (extent t))))]
-    (into #{t}
-          (mapcat (fn [k]
-                    (let [p (subvec fs 0 k)]
-                      (concat (map #(list datetime-function %) (spellings p))
-                              (for [[f n] calendar-functions :when (= n k)] (apply list f p))))))
-          (range 1 (inc (count fs))))))
+  (when-let [fs (or (term-fields t)
+                    (some-> (instant-fields t) moment-fields)
+                    (when (and (sequential? t) (= range-function (first t)))
+                      (some-> (extent t) first moment-fields
+                              (subvec 0 (max instant-field-count (range-precision t))))))]
+    (let [n      (count fs)
+          clock  (subvec fs 0 (min n instant-field-count))
+          whole  (when (< instant-field-count n) (str (iso clock) "."))]
+      (-> #{t}
+          (into (mapcat (fn [k]
+                          (let [p (subvec clock 0 k)]
+                            (concat (map #(list datetime-function %) (spellings p))
+                                    (for [[f c] calendar-functions :when (= c k)] (apply list f p))))))
+                (range 1 (inc (count clock))))
+          (into (map #(list datetime-function (str whole (str/join (subvec fs instant-field-count %)))))
+                (range (inc instant-field-count) (inc n)))))))
 
 ;; ---- one spelling per time --------------------------------------------------
 
@@ -394,37 +474,48 @@
   "The moment functions `calendar-spelling` reads off an extent: which half of it each names."
   '{StartFn 0, EndFn 1})
 
-(defn- iso
-  "The ISO string of `fields`, the year four digits wide and every later field two."
-  [fields]
-  (let [[d t] (split-at 3 (map-indexed #(format (if (zero? %1) "%04d" "%02d") %2) fields))]
-    (cond-> (str/join "-" d) (seq t) (str "T" (str/join ":" t)))))
-
 (defn- coarsest-unit
-  "The fields of the coarsest calendar unit holding the moment `t` whose bounds satisfy
-  `ok?`, or nil."
-  [t ok?]
-  (some #(let [fs (subvec t 0 %)] (when (some-> (fields-bounds fs) ok?) fs))
-        (range 1 (inc instant-field-count))))
+  "The term fields of the coarsest calendar unit holding the moment `m` whose bounds
+  satisfy `ok?`, read to at most `limit` fields, or nil."
+  [m ok? limit]
+  (let [unit (fn [fs k] (let [u (subvec fs 0 k)] (when (some-> (fields-bounds u) ok?) u)))]
+    (or (some #(unit m %) (range 1 (inc instant-field-count)))
+        (when (< instant-field-count (long limit))
+          (let [fs (moment-fields m)]
+            (some #(unit fs %) (range (inc instant-field-count) (inc (long limit)))))))))
+
+(defn- unit-term
+  "The calendar term or the zero-padded `DatetimeFn` term of the unit term fields `fs`."
+  [fs]
+  (if-let [f (calendar-constructors (count fs))]
+    (apply list f fs)
+    (list datetime-function (iso fs))))
 
 (defn- extent-spelling
-  "The one term of the extent `[s e)`: the calendar term or the zero-padded `DatetimeFn`
-  term of the one unit with those bounds, else the `DatetimeRangeFn` range from the
-  coarsest unit starting at `s` to the coarsest unit ending at `e`."
+  "The one term of the extent `[s e)`: the term (`unit-term`) of the one unit with those
+  bounds, else the `DatetimeRangeFn` range from the coarsest unit starting at `s` to the
+  coarsest unit ending at `e`.  A unit with both bounds on a whole second is one second or
+  longer, so the unit search reads past the sixth field only when a bound is not."
   [[s e :as ext]]
-  (if-let [fs (coarsest-unit s #(= ext %))]
-    (if-let [f (calendar-constructors (count fs))]
-      (apply list f fs)
-      (list datetime-function (iso fs)))
-    (let [last-second (from (.minusSeconds ^LocalDateTime (at e) 1))]
+  (if-let [fs (coarsest-unit s #(= ext %)
+                             (if (every? #(zero? (long (peek %))) ext) instant-field-count finest-field-count))]
+    (unit-term fs)
+    (let [last-tick (from (.minusNanos ^LocalDateTime (at e) 1))]
       (list range-function
-            (iso (coarsest-unit s (fn [[bs be]] (and (= s bs) (<= (compare be e) 0)))))
-            (iso (coarsest-unit last-second (fn [[bs be]] (and (= e be) (<= (compare s bs) 0)))))))))
+            (iso (coarsest-unit s (fn [[bs be]] (and (= s bs) (<= (compare be e) 0))) finest-field-count))
+            (iso (coarsest-unit last-tick (fn [[bs be]] (and (= e be) (<= (compare s bs) 0))) finest-field-count))))))
+
+(defn- moment-spelling
+  "The one term of the moment `m`: its `InstantFn` term on a whole second, else `(StartFn
+  T)` of the coarsest unit `T` starting at `m`."
+  [m]
+  (or (instant-term m)
+      (list 'StartFn (unit-term (coarsest-unit m #(= m (first %)) finest-field-count)))))
 
 (defn calendar-spelling
   "`t` with each time term in no zone inside it, innermost first, in the one spelling read
   off its extent: an `InstantFn` moment, and `(StartFn T)` / `(EndFn T)` of a term `T` with
-  an `extent`, as the `InstantFn` term; any other term with an `extent` as
+  an `extent`, as `moment-spelling` gives the moment; any other term with an `extent` as
   `extent-spelling` gives it.  A time with a UTC offset or a zone, a named time and any
   other term keep their spelling (docs/context-nat.md, \"Two spellings of one calendar time
   name one context\")."
@@ -435,7 +526,7 @@
       (if-let [fs (instant-fields t)]
         (instant-term fs)
         (or (when-let [half (and (= 2 (count t)) (endpoint-functions (first t)))]
-              (some-> (extent (second t)) (nth half) instant-term))
+              (some-> (extent (second t)) (nth half) moment-spelling))
             (some-> (extent t) extent-spelling)
             t)))))
 

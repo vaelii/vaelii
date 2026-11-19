@@ -309,20 +309,20 @@
 (tu/deftest-kb a-declaration-below-the-root-reads-the-same-after-a-restart
   ;; CxA sees the declaration and CxB does not: the rival loses, the definitional firing
   ;; stands and the denial loses to its literal at CxA alone, either side of a restart
-  (tu/with-terms [CxU CxA CxB trigger_kind rival_kind made_kind species_kind kind_two]
+  (tu/with-terms [CxU CxA CxB trigger_kind rival_kind madeRel speciesRel kind_two]
     (doseq [[sub super] [[CxU 'CxUniverse] [CxA CxU] [CxB CxU]]]
       (v/assert kb (list 'genlCx sub super) 'CxUniverse {:strength :monotonic}))
     (v/assert kb (list 'forced_monotonic_predicate trigger_kind) CxA)
     (v/assert kb (list 'disjoint trigger_kind rival_kind) CxU {:strength :monotonic})
     (v/assert kb (list 'set/forwardRule (list 'implies (list trigger_kind '?s)
-                                              (list 'orthogonal '?s made_kind)))
+                                              (list 'negates '?s madeRel)))
               CxU)
-    (doseq [s [(list trigger_kind species_kind) (list rival_kind species_kind)
+    (doseq [s [(list trigger_kind speciesRel) (list rival_kind speciesRel)
                (list trigger_kind kind_two)]]
       (v/assert kb s CxU))
     (v/assert kb (list 'not (list trigger_kind kind_two)) CxU {:strength :monotonic})
-    (let [asked   [(list trigger_kind species_kind) (list rival_kind species_kind)
-                   (list 'orthogonal species_kind made_kind)
+    (let [asked   [(list trigger_kind speciesRel) (list rival_kind speciesRel)
+                   (list 'negates speciesRel madeRel)
                    (list trigger_kind kind_two) (list 'not (list trigger_kind kind_two))]
           observe (fn [k] (into {} (for [c [CxA CxB CxU]] [c (mapv #(v/ask? k % c) asked)])))]
       (is (= {CxA [true false true true false]

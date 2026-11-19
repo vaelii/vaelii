@@ -104,22 +104,21 @@
   ;; `person`, disjoint from what the other rule states or concludes about the same term,
   ;; so `arg-type-conflicted?` drops every such pair as unreachable (vaelii#95).
   ;;
-  ;; Eight pairs are left unexcepted on purpose.  A proper reading's definition concludes
-  ;; a proper tangible part or a proper sub-situation, so a part; `Forever`'s definition
-  ;; concludes that every time interval is a subinterval of it, so a part;
-  ;; `TimeIntersectionFn`'s four definitions conclude that an intersection is a subtime of
-  ;; each argument, and a subinterval of each where both are intervals, so a part; and
-  ;; `subtimeOf`'s definition concludes that an instant a time includes is a subtime of
-  ;; it, so a part.  The root rule `(properPartOf x y) → (not (partOf y x))` denies each.
-  ;; Each fires for one tuple only where the facts already contradict the root rule: a
-  ;; part whose whole is stated a proper part of it, a time stated a proper part of its
-  ;; intersection with another, or a time stated a proper part of an instant it includes.
-  ;; All seven rules are strict definitions, so that clash is the one the facts owe, and an
+  ;; Eight pairs are left unexcepted on purpose.  A proper reading's definition concludes a
+  ;; proper tangible part or a proper sub-situation, so a part; `TimeIntersectionFn`'s four
+  ;; definitions conclude that an intersection is a subtime of each argument, and a
+  ;; subinterval of each where both are intervals, so a part; and `subtimeOf`'s two
+  ;; definitions conclude that an instant a time includes, and a time part of a time, is a
+  ;; subtime of it, so a part.  The root rule `(properPartOf x y) → (not (partOf y x))`
+  ;; denies each.  Each fires for one tuple only where the facts already contradict the
+  ;; root rule: a part whose whole is stated a proper part of it, or a time stated a proper
+  ;; part of its intersection with another, of an instant it includes or of its part.  All
+  ;; eight rules are strict definitions, so that clash is the one the facts owe, and an
   ;; exception would hide it.  abstract.txt acknowledges the two proper readings' pairs and
-  ;; time.txt the other five with `acknowledgedFinding`, so they are `:rule-clash-review`
+  ;; time.txt the other six with `acknowledgedFinding`, so they are `:rule-clash-review`
   ;; findings carrying that reason and no live `:rule-clash` finding is left.
   ;;
-  ;; Eight `:disjoint` pairs are review findings too.  Seven pair two rules concluding
+  ;; The rigidity-kind transfer pairs are review findings too.  Seven pair two rules concluding
   ;; disjoint rigidity kinds of one relation, which fire together only where the facts
   ;; already give it two kinds, and core.txt acknowledges them.  The eighth pairs
   ;; CxNormalPhysicalConditions' metal-is-solid and mercury-is-liquid defaults, and the
@@ -128,24 +127,62 @@
         pairs       (rule-clashes-everywhere kb #{:rule-clash-review})
         kinds       (frequencies (map :kind (concat live pairs)))
         root-denial '(implies (properPartOf ?part ?whole) (not (partOf ?whole ?part)))
-        definition? #(some #{root-denial} (:sentences %))
+        no-flight   '(implies (penguin ?x) (not (able ?x flying)))
+        can-rule?   #(and (seq? %) (= 'implies (first %)) (= 'can (first (nth % 2))))
+        definition? #(or (some #{root-denial} (:sentences %))
+                         (and (some #{no-flight} (:sentences %)) (some can-rule? (:sentences %))))
         rigidity    '#{time_invariant_relation time_agnostic_relation time_varying_relation
-                       eternal_predicate situation_predicate}
+                       eternal_predicate situation_predicate blood_kinship_predicate chosen_kinship_predicate}
         rigidity?   (fn [pair] (every? #(contains? rigidity (first (nth % 2))) (:sentences pair)))
-        acked       (filter :acknowledged pairs)]
+        copy-rule   (fn [pair]
+                      (some (fn [sentence]
+                              (let [consequence (nth sentence 2)
+                                    target (second consequence)]
+                                (when (and (#{'arity 'variable_arity_predicate} (first consequence))
+                                           (sequential? target)
+                                           (#{'BloodKinFn 'ChosenKinFn} (first target)))
+                                  {:sentence sentence :constructor (first target)
+                                   :kind (first consequence)})))
+                            (:sentences pair)))
+        arity-copy? #(= 'arity (:kind (copy-rule %)))
+        policy-copy? #(= 'variable_arity_predicate (:kind (copy-rule %)))
+        signature   (fn [pair]
+                      (let [{:keys [sentence constructor kind]} (copy-rule pair)
+                            other (first (remove #{sentence} (:sentences pair)))]
+                        [constructor (first (second other))
+                         (if (= kind 'arity) (nth (nth other 2) 2) (first (nth other 2)))]))
+        acked       (filter :acknowledged pairs)
+        definitions (remove #(or (rigidity? %) (arity-copy? %) (policy-copy? %)) acked)]
     (is (empty? live)
         (str "live clashes: " (pr-str (mapv (juxt :kind :sentences) live))))
-    (is (= {:negation 11 :disjoint 8} kinds)
+    (is (= {:negation 13 :disjoint 33 :functional 10} kinds)
         (str "clashes: " (pr-str (mapv (juxt :kind :sentences) (concat live pairs)))))
     (is (every? #(or (:excepted %) (:acknowledged %)) (filter #(= :negation (:kind %)) pairs))
         "negation clashes are excepted or acknowledged")
-    (is (every? :excepted (remove rigidity? (filter #(= :disjoint (:kind %)) pairs)))
+    (is (every? :excepted (remove #(or (rigidity? %) (policy-copy? %)) (filter #(= :disjoint (:kind %)) pairs)))
         "the one other disjoint pair, a metal solid and mercury liquid, is excepted")
-    (is (= 7 (count (filter rigidity? acked)))
-        "the three rigidity-correspondence and four properCounterpart-transfer pairs are acknowledged")
-    (is (= 7 (count (remove rigidity? acked)))
-        "the root denial meets the two proper readings', TimeIntersectionFn's four and subtimeOf's definitions, unexcepted")
-    (is (every? definition? (remove rigidity? acked)) "and those are the seven other acknowledged pairs")
+    (is (= 14 (count (filter rigidity? acked)))
+        "the seven existing transfers and seven kinship branch contracts are acknowledged")
+    (is (= 9 (count definitions))
+        "the root denial meets the two proper readings', TimeIntersectionFn's four and subtimeOf's two definitions, unexcepted, and CxBiology's penguin flight denial meets the strict membership rule (intersection can able may) generates, since can is a spec of able; it fires only for a penguin stated able to fly, so CxBiology acknowledges it as the other eight are")
+    (is (every? definition? definitions) "and those are the nine other acknowledged pairs")
+    (is (= (set (for [constructor '[BloodKinFn ChosenKinFn]
+                      [kind n] '[[unary 1] [binary 2] [ternary 3] [quaternary 4] [quinary 5]]]
+                  [constructor kind n]))
+           (set (map signature (filter arity-copy? acked))))
+        "exactly the two arity-preserving constructors meet the five exact classes")
+    (is (= 10 (count (filter arity-copy? acked))))
+    (is (= (set (for [constructor '[BloodKinFn ChosenKinFn]
+                      [antecedent consequence] '[[and equivalence_relation] [and empty]
+                                                 [bijection injection] [bijection surjection]
+                                                 [equivalence_relation reflexive]
+                                                 [equivalence_relation symmetric]
+                                                 [equivalence_relation transitive]
+                                                 [injection functional] [surjection functional]]]
+                  [constructor antecedent consequence]))
+           (set (map signature (filter policy-copy? acked))))
+        "the variable-policy reviews name only the fixed unary/binary metadata contracts")
+    (is (= 18 (count (filter policy-copy? acked))))
     (is (every? #(not (:excepted %)) acked))))
 
 (tu/deftest-kb a-type-relation-predicate-relates-predicates
@@ -163,8 +200,11 @@
     ;; the same term under function.  predicate and function are disjoint, so the pair is
     ;; unreachable and arg-type-conflicted? drops it.
     (let [pairs (:pairs (:clashes (v/kb-quality kb {:limit 100})))]
-      (is (not-any? (fn [p] (some #(some #{'empty} (flatten %)) (:sentences p))) pairs)
-          (str "the emptiness rule pairs with nothing: " (pr-str (mapv :sentences pairs)))))))
+      (is (not-any? (fn [pair]
+                      (let [symbols (set (mapcat flatten (:sentences pair)))]
+                        (and (contains? symbols 'empty) (contains? symbols 'unary_function))))
+                    pairs)
+          "the empty/unary_function pair is excluded by the predicate/function argument contract"))))
 
 (tu/deftest-kb the-arity-rules-clash-with-each-other-in-neither-direction
   ;; The rule-clash pairing's own half of the arity separation.  The generator generates one rule per
@@ -179,14 +219,19 @@
   ;; antecedents' `arg` declarations too: `(arg arity 1 relation)` types the arity rule's
   ;; variable a `relation`, disjoint from the `person` the paired rule concludes, so
   ;; `arg-type-conflicted?` drops the pair as unreachable (vaelii#95).  The arity table
-  ;; therefore pairs with nothing.  An arity floor beside an exact class binds one relation
+  ;; has only the constructor-copy review pairs inventoried above. An arity floor binds one relation
   ;; above and at or below one length, and `functional-slot-conflicted?` drops that pair, so
   ;; the floors pair with nothing either.
   (let [pairs   (rule-clashes-everywhere kb #{:rule-clash :rule-clash-review})
         about   (fn [f] (filter (fn [p] (some #(some #{f} (flatten %)) (:sentences p)))
                                 pairs))]
-    (is (empty? (about 'arity))
-        (str "the arity table pairs with nothing: " (pr-str (mapv :sentences (about 'arity)))))
+    (let [copies '#{(implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity))
+                             (arity (BloodKinFn ?predicate) ?arity))
+                    (implies (and (generic_kinship_predicate ?predicate) (arity ?predicate ?arity))
+                             (arity (ChosenKinFn ?predicate) ?arity))}
+          other-pairs (remove #(some copies (:sentences %)) (about 'arity))]
+      (is (empty? other-pairs)
+          (str "the arity table has no other pairs: " (pr-str (mapv :sentences other-pairs)))))
     (is (empty? (about 'unary_predicate))
         (str "nor do the classes: " (pr-str (mapv :sentences (about 'unary_predicate)))))
     ;; A floor read as a guard in an antecedent constrains which relations a rule reaches,

@@ -89,7 +89,8 @@
       (mix (hash (vec (:antecedents j))))
       (mix (hash (:consequence j)))
       (mix (hash (:strength j)))
-      (cond-> (:subsumptions j) (mix (hash (:subsumptions j))))))
+      (cond-> (:subsumptions j) (mix (hash (:subsumptions j))))
+      (cond-> (:reading j) (mix (hash (:reading j))))))
 
 (defn accumulator
   "A mutable fingerprint accumulator: `(acc h record)` folds one record in, `(acc)` reads

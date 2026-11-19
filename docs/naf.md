@@ -512,12 +512,34 @@ A closed-extent negative is a **negative edge** on `P`, as an antecedent and ins
 rule concluding `P` whose body reads `(not (P …))` under the grant is a cycle through
 negation and is refused (`:type :not-stratified`). Inside a query the edge is on `P` as well as on `not`
 (`rules/closed-extent-query-predicates`, the keys the re-check index posts it under). The
-edge is conditional on the grant, so the *grant* can close a cycle too:
-`checks/check-closed-extent-stratified` walks from each stored rule the grant governs
-(`provers/closed-extent-rules`: the `[:not P]` antecedent-index lookup and the rules
-posted under `not`, no scan) and **refuses the declaration**, as `check-edge-stratified`
-refuses a `genl` edge that closes one, so stored state is always stratified. A refused
-grant leaves no mark and no posting.
+edge is conditional on the grant, so the *grant* can close a cycle too.
+`checks/check-fact-stratified`, the check a `genl` edge takes, walks from each stored rule
+the grant governs (`provers/closed-extent-rules`: the `[:not P]` antecedent-index lookup
+and the rules posted under `not`, no scan). It **refuses the declaration** when a walk
+closes a cycle. A grant a forward rule concludes, an argument-type mint entails or an equality restatement
+stores (`special/store-restatement`) takes the same walk as a value
+(`checks/fact-stratification-violation`). A grant that closes a cycle is dropped, as a
+derived `genl` edge is ([exceptions.md](exceptions.md#a-derived-edge-is-dropped-not-thrown)),
+and leaves no sentex, no mark and no posting. A rule arriving after a derived grant it would
+close a cycle with is refused, so whichever of the two arrives second goes
+(`naf_test/a-derived-closed-extent-grant-keeps-the-rule-set-stratified-in-both-arrival-orders`).
+
+The refusal record holds each drop with the cycle's **members** (`checks/cycle-members`):
+the rules on the cycle, their `exceptWhen` metas, the `genl` edges its climbs read, the
+grants behind its negative edges, and the derivation's own antecedents. A firing's entry
+sits under its rule's handle, a mint's under `[:mint src]` and a restatement's under
+`[:restatement id]`, and the record indexes each entry under its members
+(`special/index-cycle!`). The settle reads the touched set against that index
+(`settle/stratified-seeds`). A member retracted or gone OUT re-decides the entry. A cycle
+still closed records the drop again under its new members. A broken cycle releases the
+derivation, which stores what a KB built without that member stores
+(`naf_test/a-dropped-derived-grant-or-edge-is-stored-once-the-rule-closing-its-cycle-is-retracted`,
+`naf_test/an-equality-twin-of-a-grant-or-edge-keeps-the-rule-set-stratified-in-every-arrival-order`).
+`violations` lists each recorded drop as `:not-stratified`, read off the record at each
+call (`chain/stratification-entries`).
+
+Only a stored grant marks its predicate, so a backward or lazy-forward rule concluding a
+grant closes no extent.
 
 A per-argument grant adds the same negative edge on `P`, whatever value it names, so
 `(closedExtentForArg P n v)` and its binary spellings are refused where
@@ -683,8 +705,8 @@ deferred antecedent (`unknown`, `different`, `evaluate`) through the registry
 - **Belief maintenance:** `justification-excepted?`; `index-rule-sentex` /
   `disintegrate-sentex!` with `rules/recheck-predicates`; a closed-extent refusal in the
   refusal record ([exceptions.md](exceptions.md#a-refused-firing-is-remembered-as-bindings)).
-- **Stratification:** `checks/negative-predicates`, `check-stratified` and
-  `check-closed-extent-stratified`.
+- **Stratification:** `checks/negative-predicates`, `check-stratified`,
+  `check-fact-stratified` and `fact-stratification-violation`.
 - **The closed extent:** `rules/closed-negative-antecedents` /
   `closed-extent-antecedents` / `closed-extent-predicates-of` /
   `closed-extent-query-predicates` / `closed-extent-recheck-predicates-of`,

@@ -16,6 +16,7 @@
   starter's (see vaelii.host.starter)."
   (:require [vaelii.core :as v]
             [vaelii.host.seed :as seed]
+            [vaelii.impl.io.shipped :as shipped]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.progress :as progress]
             [vaelii.impl.sentex :as sx]))
@@ -24,7 +25,7 @@
   "The file names under `kb/upper/`, `core.txt` first and every other file after it
   (`interface-rules.txt` and the domain files) in sorted order."
   []
-  (let [fs (seed/layer-files "upper")]
+  (let [fs (shipped/layer-files "upper")]
     (into ["core.txt"] (remove #{"core.txt"}) fs)))
 
 (defn load-into

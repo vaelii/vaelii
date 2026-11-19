@@ -388,34 +388,36 @@
     :damaged-frame :definitional-clash :derived-only :disallowed-class
     :disjoint :disjunction-too-wide :disk-locked :duplicate-handle :duplicate-tokens :error
     :exact-present :exception-not-closed :export-busy :forbidden-context :fork-base-overlap :frozen-base :functional
-    :handle-ceiling
+    :handle-ceiling :incompatible-terms
     :incomplete-defining-contexts :incomplete-racer :inter-arg-type :internal-error :interrupted :irreflexive :job-busy
     :labeling-inconsistent :labeling-run-blocked :length-against-shape
-    :length-against-spelling :lock-unsupported
+    :length-against-spelling :lock-unsupported :lost-belief
     :malformed-entry :malformed-manifest :malformed-record :manifest-too-large
     :mint-rule :missing-adapter :missing-resource :naf-justification
     :naf-not-closed
-    :naming :nippy-version-moved :nippy-version-unreadable
+    :naming :nat-map-outside-universe :nippy-version-moved :nippy-version-unreadable
     :no-base :no-depth-bound :no-destination
     :no-dump :no-foreign-reader :no-records-location :not-a-directory :not-assertible
     :not-checkable :not-edn :not-empty :not-encodable :not-indexable
     :not-a-report :not-found :not-ground :not-in-process :not-pg-snapshot :not-range-restricted :not-sealed :not-stratified
     :not-watchable :not-well-formed :not-writable :over-ceiling :owed-record-ahead :path-not-served :pattern-too-costly
     :quantifier-not-local :quoted-arg-type
-    :reasoner-mismatch :record-edit-unsupported :reset :shape :short-transfer :shutdown-abort :solver-failed
+    :reasoner-mismatch :record-edit-unsupported :reserved-term :reset :role-change :shape
+    :shipped-term :short-transfer :shutdown-abort :solver-failed
     :solver-unavailable
     :stacked-batch
     :stacked-fork :stale-index-layout :stale-index-records :still-exporting :still-loading :still-stopping
     :still-writing :stopping
-    :store-unusable :too-many-kbs :too-many-kept :too-many-subscriptions :too-many-waiters
+    :store-unusable :term-exists :too-many-kbs :too-many-kept :too-many-subscriptions :too-many-waiters
     :torn-snapshot :truncated-dump :unauthorized :unbound-deferred :uncleared-forcing
     :unforkable-index :unknown-backend
     :unknown-command :unknown-entry :unknown-frame :unknown-framing :unknown-handle
     :unknown-owed-record
     :unknown-op :unknown-option :unknown-source :unknown-subscription :unknown-tactician
+    :unknown-term
     :unminted-nat
     :unreadable :unreadable-store :unrecovered-kb :unrecovered-premise
-    :unreleased :unresolved-reference :unsupported-compression :unsupported-context
+    :unreleased :unresolved-reference :unrestatable-sentex :unsupported-compression :unsupported-context
     :unsupported-format :unsupported-platform :unsupported-unattested
     :unsupported-variant :unsupported-version})
 
@@ -432,11 +434,11 @@
   `ty` is `serve`'s `(:type (ex-data e))` put back on the wire — a **pass-through** of
   whatever the caught refusal already carried, so it mints no vocabulary of its own and
   every keyword it can hold is in `known-types` by way of the throw it came from.  The same
-  name is used by the two throws that pass through a refusal decided elsewhere: `serve`'s
-  `admit!`, which throws the `:type` an `admit` fn answered, and `vaelii.browser.web`'s
-  `writing-job`, which throws `late-refusal-type`'s.  The browser's `admit` fn and
-  `writing-job` both read `late-refusal-type`, whose two answers are the keyword literals
-  `:not-found` and `:still-exporting`, both raised as literals in `op-post` as well."
+  name passes through `serve`'s `admit!` (an `admit` fn's answer), `vaelii.browser.web`'s
+  `writing-job` (`late-refusal-type`'s) and `vaelii.core`'s `term-batch` (a
+  `check-term-edit` problem, each a map literal in `vaelii.impl.term-edit`).  The browser's
+  `admit` fn and `writing-job` read `late-refusal-type`, whose two answers, `:not-found` and
+  `:still-exporting`, are raised as literals in `op-post` as well."
   #{"cancelled" "ty"})
 
 (def ^:private carried
@@ -496,6 +498,7 @@
    :frozen-base             #{:op}
    ;; the conditional refusal, raised by interArg's arm (inter-args-problem) and by the
    ;; homogeneity arm (inter-args-homogeneity-problem) — the same payload at both
+   :incompatible-terms      #{:message :term}
    :inter-arg-type          #{:message :sentence :arg :expected :position
                               :trigger :trigger-type :trigger-position :disjoint-with}
    :irreflexive             #{:clashes-with :message :pred :sentence}
@@ -530,6 +533,7 @@
    ;; exception's carries `:exception` instead
    :quantifier-not-local    #{:antecedents :leaked}
    :record-edit-unsupported #{:functor :message :operation}
+   :reserved-term           #{:message :term}
    :shape                   #{}
    :solver-failed           #{}
    ;; clasp's missing binary and its process killed at the deadline
@@ -549,6 +553,7 @@
    :unknown-source          #{}
    :unknown-subscription    #{:token}
    :unknown-tactician       #{:known :tactician}
+   :unknown-term            #{:message :term}
    ;; `assert-inert`'s refusal of a sentence NAT and of a context slot with no constant
    :unminted-nat            #{:context :sentence}
    ;; the browser editor's problem map and the text KB reader's refusal, each placing the

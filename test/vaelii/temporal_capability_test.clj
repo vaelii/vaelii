@@ -82,6 +82,16 @@
   (doseq [t points] (v/assert kb (list 'time_point t) U))
   (doseq [r relations] (v/assert kb (apply list r) U)))
 
+(def ^:private M
+  "The options of a `:monotonic` write: definitional evidence, the only kind a merge rests
+  on (docs/reference.md, invariant 8)."
+  {:strength :monotonic})
+
+(defn- stated!
+  "State each of `relations`, a vector `[R a b]`, in CxUniverse at `:monotonic` (`M`)."
+  [kb & relations]
+  (doseq [r relations] (v/assert kb (apply list r) U M)))
+
 (defn- chain!
   "Make each of `points` a time_point and order each one before the next."
   [kb & points]
@@ -239,15 +249,17 @@
 ;; predicate is not eternal.
 
 (tu/deftest-kb an-eternal-fact-in-one-year-slice-holds-in-an-unrelated-year
-  ;; parentOf carries (set/monotonic (eternal_predicate parentOf)) in life.txt. 1800 is
+  ;; Blood-qualified parentOf is eternal. The generic predicate is agnostic. 1800 is
   ;; a sibling of 2040 under CxMonad, and sees the copy the store puts in CxMonad.
   (declare-cxtimefn! kb)
   (tu/with-terms [Ann Bob]
     (let [y2040 (slice '(DatetimeFn "2040"))
           y1800 (slice '(DatetimeFn "1800"))]
-      (v/assert kb (list 'parentOf Ann Bob) y2040)
+      (v/assert kb (list 'birthYearOf Ann 2000) 'CxUniverse)
+      (v/assert kb (list 'birthYearOf Bob 2030) 'CxUniverse)
+      (v/assert kb (list (list 'BloodKinFn 'parentOf) Ann Bob) y2040)
       (testing "an eternal fact asserted only in 2040 is seen from the unrelated 1800 slice"
-        (is (true? (v/ask? kb (list 'parentOf Ann Bob) y1800)))))))
+        (is (true? (v/ask? kb (list (list 'BloodKinFn 'parentOf) Ann Bob) y1800)))))))
 
 (defn- clashes-naming
   "The contradictions and conflicts whose sentence names `term`."
@@ -282,9 +294,11 @@
   ;; eternal_predicate mark — core.txt says a rigid type need not be eternal. 1800 is a
   ;; sibling of 2040 with no genlCx path, so the fact is unknown there, not false.
   (declare-cxtimefn! kb)
-  (tu/with-terms [Bob]
+  (tu/with-terms [Ann Bob]
     (let [y2040 (slice '(DatetimeFn "2040"))
           y1800 (slice '(DatetimeFn "1800"))]
+      (v/assert kb (list 'birthYearOf Ann 2000) 'CxUniverse)
+      (v/assert kb (list 'birthYearOf Bob 2030) 'CxUniverse)
       (v/assert kb (list 'person Bob) y2040)
       (testing "a rigid but non-eternal fact is unknown, not false, from the unrelated 1800 slice"
         (is (not (v/ask? kb (list 'person Bob) y1800)))
@@ -500,16 +514,28 @@
         (is (not (v/ask? kb (list p) feb)))
         (is (not (v/ask? kb (list q) jan)))))))
 
-(defn- two-spellings
-  "Write one fact into the `first` spelling of January 2000, then one into the `second`,
-  and report which sees the other's fact."
+(defn- written-twice
+  "Write one fact into the context `first`, then one into `second`: `[k1 k2 seen]`, the
+  `cx/` constants the two writes reified to, and which context sees the other's fact."
   [kb first second]
   (tu/with-terms [p q]
     (let [k1 (cx-of kb (v/assert kb (list p) first))
           k2 (cx-of kb (v/assert kb (list q) second))]
-      {:distinct?           (not= k1 k2)
-       :first-sees-second?  (boolean (v/ask? kb (list q) first))
-       :second-sees-first?  (boolean (v/ask? kb (list p) second))})))
+      [k1 k2 {:first-sees-second?  (boolean (v/ask? kb (list q) first))
+              :second-sees-first?  (boolean (v/ask? kb (list p) second))}])))
+
+(defn- two-spellings
+  "Write one fact into the `first` spelling of January 2000, then one into the `second`,
+  and report which sees the other's fact (`written-twice`)."
+  [kb first second]
+  (let [[k1 k2 seen] (written-twice kb first second)]
+    (assoc seen :distinct? (not= k1 k2))))
+
+(defn- one-class?
+  "Are the `cx/` constants `k1` and `k2` one class: is `k2` among the answers to
+  `(equals k1 ?k)` in CxUniverse?"
+  [kb k1 k2]
+  (contains? (set (map #(get % '?k) (v/query kb (list 'equals k1 '?k) U))) k2))
 
 (tu/deftest-kb two-spellings-of-one-month-see-each-others-facts
   ;; (MonthFn 2000 1) and (DatetimeFn "2000-01") name one interval, and time.txt's
@@ -529,14 +555,14 @@
                                     (slice CxOther '(MonthFn 2000 1)))
                      :distinct?))))))
 
-(tu/deftest-kb ^:red two-names-of-one-interval-see-each-others-facts
+(tu/deftest-kb two-names-of-one-interval-see-each-others-facts
   ;; The reified twin of two-spellings-of-one-month-see-each-others-facts.  The two names
-  ;; are stated intervalEqual and each a subintervalOf the other, so the second computed
-  ;; edge would close a genlCx cycle.  No spelling is read off a named time's fields.
+  ;; are stated intervalEqual and subintervalOf both ways at :monotonic, so the producer
+  ;; derives the slices' equality (docs/context-nat.md).  No spelling reads a name's fields.
   (declare-cxtimefn! kb)
   (tu/with-terms [JanA JanB]
-    (times! kb [JanA JanB] []
-            ['intervalEqual JanA JanB] ['subintervalOf JanA JanB] ['subintervalOf JanB JanA])
+    (times! kb [JanA JanB] [])
+    (stated! kb ['intervalEqual JanA JanB] ['subintervalOf JanA JanB] ['subintervalOf JanB JanA])
     (testing "JanA written first: each name sees the other's fact"
       (is (= {:first-sees-second? true :second-sees-first? true}
              (dissoc (two-spellings kb (slice JanA) (slice JanB)) :distinct?))))
@@ -546,6 +572,25 @@
         (is (= {:first-sees-second? true :second-sees-first? true}
                (dissoc (two-spellings kb (slice CxOther JanB) (slice CxOther JanA))
                        :distinct?)))))))
+
+(tu/deftest-kb two-names-stated-equal-of-one-interval-see-each-others-facts
+  (declare-cxtimefn! kb)
+  (doseq [eq-first? [false true]]
+    (tu/with-terms [JanA JanB p q]
+      (times! kb [JanA JanB] [])
+      (let [eq   #(v/assert kb (list 'equals JanA JanB) U)
+            h    (when eq-first? (eq))
+            _    (v/assert kb (list p) (slice JanA))
+            _    (v/assert kb (list q) (slice JanB))
+            h    (or h (eq))
+            seen (fn [] (vec (for [s [p q] n [JanA JanB]] (boolean (v/ask? kb (list s) (slice n))))))]
+        (testing (if eq-first?
+                   "the equality first; a write through the slot it rewrites lands in the home's slice"
+                   "the equality last, and retracted")
+          (is (= [true true true true] (seen)))
+          (when-not eq-first?
+            (v/retract! kb h)
+            (is (= [true false false true] (seen)))))))))
 
 (tu/deftest-kb two-spellings-of-one-moment-see-each-others-facts
   ;; The point twin of two-spellings-of-one-month-see-each-others-facts.  An InstantFn term
@@ -566,16 +611,15 @@
                (dissoc (two-spellings kb (slice CxOther start) (slice CxOther instant))
                        :distinct?)))))))
 
-(tu/deftest-kb ^:red two-names-of-one-monad-see-each-others-facts
-  ;; The monad-dimension twin of two-spellings-of-one-month-see-each-others-facts: two
-  ;; monads each genlMonad-below the other are one monad by two names, as two spellings
-  ;; each a subinterval of the other are one month.  The second arrival order uses a
-  ;; fresh year, so both slices are new, where the original uses a fresh monad.
+(tu/deftest-kb two-names-of-one-monad-see-each-others-facts
+  ;; The monad-dimension twin of two-spellings-of-one-month-see-each-others-facts.  The
+  ;; second arrival order uses a fresh year, so both slices are new, where the original
+  ;; uses a fresh monad.  The third states the equality after a fact in each name's slice
+  ;; (docs/equality.md, "Two names of one context").
   (declare-cxtimefn! kb)
   (tu/with-terms [CxA CxB]
     (monads! kb CxA CxB)
-    (v/assert kb (list 'genlCx CxA CxB) U)
-    (v/assert kb (list 'genlCx CxB CxA) U)
+    (v/assert kb (list 'equals CxA CxB) U)
     (testing "CxA written first: each name's slice sees the other's fact"
       (is (= {:first-sees-second? true :second-sees-first? true}
              (dissoc (two-spellings kb (slice CxA '(YearFn 2000)) (slice CxB '(YearFn 2000)))
@@ -583,7 +627,15 @@
     (testing "CxB written first, at a fresh year: the same"
       (is (= {:first-sees-second? true :second-sees-first? true}
              (dissoc (two-spellings kb (slice CxB '(YearFn 2001)) (slice CxA '(YearFn 2001)))
-                     :distinct?))))))
+                     :distinct?)))))
+  (tu/with-terms [CxA CxB p q]
+    (monads! kb CxA CxB)
+    (v/assert kb (list p) (slice CxA '(YearFn 2000)))
+    (v/assert kb (list q) (slice CxB '(YearFn 2000)))
+    (v/assert kb (list 'equals CxA CxB) U)
+    (testing "the equality stated last: each name's slice sees both facts"
+      (is (= [true true true true]
+             (for [m [CxA CxB] f [p q]] (boolean (v/ask? kb (list f) (slice m '(YearFn 2000))))))))))
 
 (tu/deftest-kb a-slice-sees-its-monad-and-the-monad-does-not-see-the-slice
   ;; `CxStory` in `(CxTimeFn CxStory T)` is the dimension (docs/context-nat.md). A monad
@@ -1438,20 +1490,75 @@
       (is (true? (v/query? kb (list 'subtimeOf Jan2000 Y2000) U slice-query)))
       (is (true? (v/query? kb (list 'partOf Jan2000 Y2000) U slice-query))))))
 
-(tu/deftest-kb ^:red the-intersection-of-a-time-and-an-instant-inside-it-is-the-instant
-  ;; TimeIntersectionFn is the meet over subtimeOf, so the intersection of a year and a
-  ;; moment of that year is the moment, and a slice of the year slice at the moment
-  ;; covers the moment.  Red: the meet's absorption is the engine's, and the slice rules
-  ;; answer the intersection term itself.
+(tu/deftest-kb the-intersection-of-a-time-and-an-instant-inside-it-is-the-instant
+  ;; The `:monotonic` includesInstant rewrites the meet of the year and the moment to the
+  ;; moment, which restates the slice's natFormula map.
   (declare-cxtimefn! kb)
   (tu/with-terms [p q CxStory Y2000 Noon]
     (monads! kb CxStory)
     (v/assert kb (list 'context CxStory) U)
-    (times! kb [Y2000] [Noon] ['includesInstant Y2000 Noon])
+    (times! kb [Y2000] [Noon])
+    (stated! kb ['includesInstant Y2000 Noon])
     (let [s  (cx-of kb (v/assert kb (list p) (slice CxStory Y2000)))
           ss (cx-of kb (v/assert kb (list q) (slice s Noon)))]
       (testing "the slice of the year slice at the moment covers the moment"
         (is (= [{'?t Noon}] (v/query kb (list 'cxTimeOf ss '?t) U slice-query)))))))
+
+(tu/deftest-kb a-written-cxtimeoffn-of-a-meet-slice-reads-the-same-in-either-order-of-the-inclusion
+  ;; A write reads K's stated natFormula map, and the rewrite restates what it stored.
+  (declare-cxtimefn! kb)
+  (doseq [first? [true false]]
+    (tu/with-terms [p q CxStory Y2000 Noon X locatedAt]
+      (monads! kb CxStory)
+      (v/assert kb (list 'context CxStory) U)
+      (times! kb [Y2000] [Noon])
+      (let [incl! #(v/assert kb (list 'includesInstant Y2000 Noon) U M)
+            ih    (when first? (incl!))
+            s     (cx-of kb (v/assert kb (list p) (slice CxStory Y2000)))
+            ss    (cx-of kb (v/assert kb (list q) (slice s Noon)))
+            h     (v/assert kb (list locatedAt X (list 'CxTimeOfFn ss)) U)
+            ih    (or ih (incl!))
+            meet  (list 'TimeIntersectionFn Noon Y2000)
+            read  #(set (map (fn [b] (get b '?t)) (v/query kb (list locatedAt X '?t) U)))
+            held  [(:sentence (v/sentex kb h)) (read)]]
+        (v/retract! kb ih)
+        (is (= [[(list locatedAt X meet) #{Noon}] #{meet}] [held (read)])
+            (str "inclusion " (if first? "first" "last")))))))
+
+(defn- meet-and-moment-reading
+  "Whether CxStory's Noon slice sees `(q)`, written through the Noon slice of its year
+  slice, and whether that slice sees `(r)`, written through the Noon slice.  The
+  `:monotonic` `(includesInstant Y2000 Noon)` is stated `:first` or `:last` relative to
+  the writes, which reads `[while-stated retracted]`, or never (`:never`), which reads one."
+  [kb inclusion]
+  (tu/with-terms [p q r CxStory Y2000 Noon]
+    (monads! kb CxStory)
+    (v/assert kb (list 'context CxStory) U)
+    (times! kb [Y2000] [Noon])
+    (let [incl (list 'includesInstant Y2000 Noon)
+          _    (when (= :first inclusion) (v/assert kb incl U M))
+          s    (cx-of kb (v/assert kb (list p) (slice CxStory Y2000)))
+          ss   (cx-of kb (v/assert kb (list q) (slice s Noon)))
+          k    (cx-of kb (v/assert kb (list r) (slice CxStory Noon)))
+          _    (when (= :last inclusion) (v/assert kb incl U M))
+          read #(vector (v/query? kb (list q) k) (v/query? kb (list r) ss))]
+      (if (= :never inclusion)
+        (read)
+        (let [held (read)]
+          (v/retract! kb (v/handle-of kb incl U))
+          [held (read)])))))
+
+(tu/deftest-kb a-meet-slice-and-the-slice-at-its-absorbing-argument-read-as-one-in-either-order
+  ;; The rewrite restates the meet slice's map to the moment slice's expression.
+  (declare-cxtimefn! kb)
+  (doseq [inclusion [:first :last]]
+    (is (= [true true] (first (meet-and-moment-reading kb inclusion)))
+        (str "inclusion " (name inclusion)))))
+
+(tu/deftest-kb a-meet-slice-and-the-slice-at-its-absorbing-argument-read-as-never-joined-once-the-inclusion-goes
+  (declare-cxtimefn! kb)
+  (is (= #{(meet-and-moment-reading kb :never)}
+         (into #{} (map #(second (meet-and-moment-reading kb %))) [:first :last]))))
 
 (tu/deftest-kb a-slice-at-an-empty-intersection-is-refused
   ;; January and February 2000 share no time, so a write into the slice at their
@@ -1651,6 +1758,33 @@
     (testing "\"today is the named Saturday\" is refused"
       (is (not= :answered
                 (refusal-type #(v/assert kb (list 'includesInstant Saturday W) present)))))))
+
+(tu/deftest-kb an-upper-bound-on-the-present-s-start-is-refused-in-the-present
+  (tu/with-terms [p CxPresentSpec ReadAt]
+    (let [at345 '(InstantFn 2026 10 21 3 45 0)]
+      (v/assert kb (list 'genlCx CxPresentSpec (cx-of kb (v/assert kb (list p) (present! kb)))) U)
+      (times! kb [] [ReadAt])
+      (doseq [ctx [present CxPresentSpec]
+              s   [(list 'instantNotBefore W at345) (list 'instantAfter W ReadAt)
+                   (list 'instantBefore at345 W)]]
+        (testing (str "control: the lower bound " (pr-str s) " is stored in " ctx)
+          (is (= :answered (refusal-type #(v/assert kb s ctx))))))
+      (doseq [ctx [present CxPresentSpec]
+              s   [(list 'instantBefore W at345) (list 'instantNotAfter W ReadAt)
+                   (list 'instantAfter at345 W) (list 'instantNotBefore ReadAt W)]]
+        (testing (str "the upper bound " (pr-str s) " is refused in " ctx)
+          (is (= [:exact-present] (mapv :type (v/check kb s ctx))))
+          (is (= :exact-present (tu/refusal-type #(v/assert kb s ctx)))))))))
+
+(tu/deftest-kb a-genlcx-edge-placing-an-upper-bound-on-the-present-under-the-present-is-refused
+  (tu/with-terms [p CxBound CxRead]
+    (let [k (cx-of kb (v/assert kb (list p) (present! kb)))]
+      (v/assert kb (list 'instantBefore W '(InstantFn 2026 10 21 3 45 0)) CxBound)
+      (v/assert kb (list 'instantBefore '(InstantFn 2026 10 21 3 41 0) W) CxRead)
+      (testing "control: an edge placing a context that holds a lower bound under the present is stored"
+        (is (= :answered (refusal-type #(v/assert kb (list 'genlCx CxRead k) U)))))
+      (testing "an edge placing a context that holds an upper bound under the present is refused"
+        (is (= :exact-present (tu/refusal-type #(v/assert kb (list 'genlCx CxBound k) U))))))))
 
 (tu/deftest-kb a-genlcx-edge-placing-an-exact-present-under-the-present-is-refused
   (tu/with-terms [p CxExact CxRead]
@@ -2115,15 +2249,16 @@
     (is (false? (:distinct? (two-spellings kb (slice '(MonthFn 2000 1))
                                            (slice '(DatetimeFn "2000-01"))))))))
 
-(tu/deftest-kb ^:red two-names-of-one-interval-name-one-context
-  ;; The reified twin of two-spellings-of-one-month-name-one-context: two names stated
-  ;; intervalEqual denote one interval, so a write through either lands in one cx/ context.
+(tu/deftest-kb two-names-of-one-interval-name-one-context
+  ;; The reified twin of two-spellings-of-one-month-name-one-context: each write keeps the
+  ;; cx/ constant its slot reifies to, and the stated identity makes the two one class.
   (declare-cxtimefn! kb)
   (tu/with-terms [JanA JanB]
-    (times! kb [JanA JanB] []
-            ['intervalEqual JanA JanB] ['subintervalOf JanA JanB] ['subintervalOf JanB JanA])
-    (testing "two names stated intervalEqual reify to one cx/ context"
-      (is (false? (:distinct? (two-spellings kb (slice JanA) (slice JanB))))))))
+    (times! kb [JanA JanB] [])
+    (stated! kb ['intervalEqual JanA JanB] ['subintervalOf JanA JanB] ['subintervalOf JanB JanA])
+    (testing "two names stated intervalEqual reify to two cx/ constants of one class"
+      (let [[k1 k2] (written-twice kb (slice JanA) (slice JanB))]
+        (is (true? (one-class? kb k1 k2)))))))
 
 (tu/deftest-kb two-spellings-of-one-moment-name-one-context
   ;; The point twin of two-spellings-of-one-month-name-one-context.
@@ -2135,16 +2270,19 @@
     (v/add-reasoner kb :point)
     (is (true? (v/ask? kb '(instantEqual (InstantFn 2000 1 1 0 0 0) (StartFn (MonthFn 2000 1))) U)))))
 
-(tu/deftest-kb ^:red two-names-of-one-monad-name-one-context
-  ;; The monad-dimension twin of two-spellings-of-one-month-name-one-context.
+(tu/deftest-kb two-names-of-one-monad-name-two-cx-constants-of-one-class
+  ;; The monad-dimension twin of two-names-of-one-interval-name-one-context.
   (declare-cxtimefn! kb)
   (tu/with-terms [CxA CxB]
     (monads! kb CxA CxB)
-    (v/assert kb (list 'genlCx CxA CxB) U)
-    (v/assert kb (list 'genlCx CxB CxA) U)
-    (testing "the year 2000 along two names of one monad reifies to one cx/ context"
-      (is (false? (:distinct? (two-spellings kb (slice CxA '(YearFn 2000))
-                                             (slice CxB '(YearFn 2000)))))))))
+    (v/assert kb (list 'equals CxA CxB) U)
+    (let [[k1 k2 {:keys [first-sees-second? second-sees-first?]}]
+          (written-twice kb (slice CxA '(YearFn 2000)) (slice CxB '(YearFn 2000)))]
+      (testing "a write through either name lands in a cx/ constant of one class"
+        (is (true? (one-class? kb k1 k2))))
+      (testing "and each sees the other's fact"
+        (is (true? first-sees-second?))
+        (is (true? second-sees-first?))))))
 
 (tu/deftest-kb a-fact-in-a-year-slice-holds-in-a-slice-keyed-by-an-instant-inside-it
   ;; Homogeneity, downward: a fact true throughout 2000 is true at each moment of 2000.
@@ -2186,7 +2324,7 @@
       (testing "the moment's own fact is not lifted to the year"
         (is (not (v/ask? kb (list q) y2000)))))))
 
-(tu/deftest-kb ^:red a-slice-keyed-by-an-intermittent-time-sits-between-its-pieces-and-its-whole
+(tu/deftest-kb a-slice-keyed-by-an-intermittent-time-sits-between-its-pieces-and-its-whole
   ;; An intermittent_time has gaps, so it is not a time_interval and subintervalOf, the
   ;; ordering CxTimeFn is declared over, does not apply to it.  The weekends of 2000 are
   ;; part of 2000, and 1 January 2000, a Saturday, is part of the weekends.  A slice keyed
@@ -2214,7 +2352,7 @@
         (is (true? (v/ask? kb (list p) monday)))
         (is (not (v/ask? kb (list q) monday)))))))
 
-(tu/deftest-kb ^:red a-slice-keyed-by-an-intermittent-time-sits-between-its-named-pieces-and-its-named-whole
+(tu/deftest-kb a-slice-keyed-by-an-intermittent-time-sits-between-its-named-pieces-and-its-named-whole
   ;; The reified twin of a-slice-keyed-by-an-intermittent-time-sits-between-its-pieces-and-its-whole:
   ;; the year, the Saturday and the Monday are named intervals, and what the calendar
   ;; fields say of them (both days inside the year, the Saturday before the Monday) is
@@ -2243,7 +2381,7 @@
         (is (true? (v/ask? kb (list p) monday)))
         (is (not (v/ask? kb (list q) monday)))))))
 
-(tu/deftest-kb ^:red an-instant-on-a-weekend-day-sees-the-weekends-and-an-instant-in-a-gap-does-not
+(tu/deftest-kb an-instant-on-a-weekend-day-sees-the-weekends-and-an-instant-in-a-gap-does-not
   ;; The point twin of a-slice-keyed-by-an-intermittent-time-sits-between-its-pieces-and-its-whole:
   ;; noon on the Saturday and noon on the Monday in place of the two days.  A moment inside
   ;; a piece of an intermittent time is inside it, and a moment in a gap is not.
@@ -2267,6 +2405,111 @@
         (is (true? (v/ask? kb (list p) monday)))
         (is (not (v/ask? kb (list q) monday)))))))
 
+(tu/deftest-kb a-moment-in-a-stated-piece-of-a-time-with-gaps-is-inside-it-and-one-in-a-gap-is-not
+  (declare-cxtimefn! kb)
+  (doseq [[written? hour] [[true 13] [false 12]]]
+    (tu/with-terms [p q Weekends2000 Sat]
+      (let [sat-noon (slice (list 'InstantFn 2000 1 1 hour 0 0))
+            mon-noon (slice (list 'InstantFn 2000 1 3 hour 0 0))]
+        (v/assert kb (list p) (slice Weekends2000))
+        (when written?
+          (v/assert kb (list q) sat-noon)
+          (v/assert kb (list q) mon-noon))
+        (v/assert kb (list 'intermittent_time Weekends2000) U)
+        (v/assert kb (list 'startOf Weekends2000 '(InstantFn 2000 1 1 0 0 0)) U)
+        (v/assert kb (list 'endOf Weekends2000 '(InstantFn 2001 1 1 0 0 0)) U)
+        (times! kb [Sat] []
+                ['startOf Sat '(InstantFn 2000 1 1 0 0 0)] ['endOf Sat '(InstantFn 2000 1 2 0 0 0)]
+                ['partOf Sat Weekends2000])
+        (testing (str "written " written? ": with the piece stated last, noon on the Saturday sees the weekends' fact")
+          (is (true? (v/ask? kb (list p) sat-noon))))
+        (testing (str "written " written? ": noon on the Monday, between the bounds and in no piece, does not see it")
+          (is (not (v/ask? kb (list p) mon-noon))))))))
+
+(tu/deftest-kb a-moment-between-a-time-s-bounds-is-inside-it-while-the-time-is-believed-unbroken
+  (declare-cxtimefn! kb)
+  (doseq [way [:membership :edge]]
+    (tu/with-terms [p q Span span_kind]
+      (v/assert kb (list 'startOf Span '(InstantFn 2000 1 1 0 0 0)) U)
+      (v/assert kb (list 'endOf Span '(InstantFn 2000 2 1 0 0 0)) U)
+      (let [noon (slice '(InstantFn 2000 1 3 12 0 0))]
+        (v/assert kb (list p) (slice Span))
+        (v/assert kb (list q) noon)
+        (testing (str way ": a time of no stated type holds no moment by its bounds")
+          (is (not (v/ask? kb (list p) noon))))
+        (let [h (if (= :membership way)
+                  (v/assert kb (list 'time_interval Span) U)
+                  (do (v/assert kb (list span_kind Span) U)
+                      (v/assert kb (list 'genl span_kind 'time_interval) U)))]
+          (testing (str way ": typing the time unbroken after the moment's slice is written orders the slice under it")
+            (is (true? (v/ask? kb (list p) noon))))
+          (v/retract! kb h)
+          (testing (str way ": retracting the typing withdraws the order")
+            (is (not (v/ask? kb (list p) noon)))))))))
+
+(def ^:private unbroken-years
+  "The count `unbroken-row` takes a fresh year from."
+  (atom 0))
+
+(defn- unbroken-typing
+  "The sentences typing the time `t` unbroken the way `way` names: `(time_interval t)` for
+  `:membership`, `(kind t)` and `(genl kind time_interval)` for `:edge`."
+  [way t kind]
+  (if (= :membership way)
+    [(list 'time_interval t)]
+    [(list kind t) (list 'genl kind 'time_interval)]))
+
+(tu/deftest-kb a-time-is-read-unbroken-only-by-a-typing-cxuniverse-believes
+  (declare-cxtimefn! kb)
+  (doseq [way [:membership :edge], elsewhere [:monad :other]]
+    (tu/with-terms [p q Span span_kind CxElse]
+      (let [noon   (slice '(InstantFn 2000 1 3 12 0 0))
+            typing (unbroken-typing way Span span_kind)
+            row    [way elsewhere]]
+        (v/assert kb (list 'startOf Span '(InstantFn 2000 1 1 0 0 0)) U)
+        (v/assert kb (list 'endOf Span '(InstantFn 2000 2 1 0 0 0)) U)
+        (v/assert kb (list p) (slice Span))
+        (v/assert kb (list q) noon)
+        (doseq [s typing] (v/assert kb s (if (= :monad elsewhere) 'CxMonad CxElse)))
+        (is (not (v/ask? kb (list p) noon)) (str row " the typing outside CxUniverse orders nothing"))
+        (let [hs (mapv #(v/assert kb % U) typing)]
+          (is (true? (v/ask? kb (list p) noon)) (str row " the typing in CxUniverse orders the slice"))
+          (run! #(v/retract! kb %) hs)
+          (is (not (v/ask? kb (list p) noon)) (str row " retracting it leaves the typing outside")))))))
+
+(defn- unbroken-row
+  "Whether noon's slice sees the fact at a time's slice, as `[before after]`: once every
+  premise is stated in the arrival `order` (of `:start`, `:end`, `:typing` and
+  `:slices`), and once the typing sentence at index `drop` is retracted.  With
+  `without?`, the typing step leaves that sentence out and nothing is retracted.  Each
+  row bounds its time in a year of its own, so no two rows share a point-order link.  The
+  `:default` twin of the order sweep is
+  a-moment-between-a-time-s-bounds-is-inside-it-while-the-time-is-believed-unbroken."
+  [kb way order drop without?]
+  (tu/with-terms [p Span span_kind]
+    (let [y      (+ 3000 (swap! unbroken-years inc))
+          noon   (slice (list 'InstantFn y 1 3 12 0 0))
+          typing (cond->> (map-indexed vector (unbroken-typing way Span span_kind))
+                   without? (remove #(= drop (first %))))
+          steps  {:start  #(v/assert kb (list 'startOf Span (list 'InstantFn y 1 1 0 0 0)) U)
+                  :end    #(v/assert kb (list 'endOf Span (list 'InstantFn y 2 1 0 0 0)) U)
+                  :typing #(into {} (map (fn [[i s]] [i (v/assert kb s U)])) typing)
+                  :slices #(v/assert kb (list p) (slice Span))}
+          hs     (into {} (map (fn [k] [k ((steps k))])) order)
+          sees?  #(boolean (v/ask? kb (list p) noon))
+          before (sees?)]
+      (when-not without? (v/retract! kb (get (:typing hs) drop)))
+      [before (sees?)])))
+
+(tu/deftest-kb ^:slow a-moment-between-a-time-s-bounds-is-inside-it-in-every-order-of-its-premises
+  (declare-cxtimefn! kb)
+  (let [rows (for [way   [:membership :edge]
+                   drop  (range (count (unbroken-typing way 'T 'k)))
+                   :let  [without (peek (unbroken-row kb way [:start :end :typing :slices] drop true))]
+                   order (tu/orders [:start :end :typing :slices])]
+               [[way drop order] [true without] (unbroken-row kb way order drop false)])]
+    (is (= (mapv second rows) (mapv peek rows)) (pr-str (mapv first rows)))))
+
 ;; =========================================================================
 ;; Ranges — a slice keyed by a time_interval given by its bounds
 ;; =========================================================================
@@ -2278,18 +2521,22 @@
 ;; with no subintervalOf and no Allen relation stated.
 
 (defn- range!
-  "Make `name` the time_interval from `start` to `end`, two InstantFn field vectors."
-  [kb name start end]
-  (v/assert kb (list 'time_interval name) U)
-  (v/assert kb (list 'startOf name (cons 'InstantFn start)) U)
-  (v/assert kb (list 'endOf name (cons 'InstantFn end)) U))
+  "Make `name` the time_interval from `start` to `end`, two InstantFn field vectors, its
+  bounds written with the assert options `opts`."
+  ([kb name start end] (range! kb name start end {}))
+  ([kb name start end opts]
+   (v/assert kb (list 'time_interval name) U)
+   (v/assert kb (list 'startOf name (cons 'InstantFn start)) U opts)
+   (v/assert kb (list 'endOf name (cons 'InstantFn end)) U opts)))
 
 (defn- bounded!
-  "Make `name` the time_interval from the moment `start` to the moment `end`, two terms."
-  [kb name start end]
-  (v/assert kb (list 'time_interval name) U)
-  (v/assert kb (list 'startOf name start) U)
-  (v/assert kb (list 'endOf name end) U))
+  "Make `name` the time_interval from the moment `start` to the moment `end`, two terms,
+  its bounds written with the assert options `opts`."
+  ([kb name start end] (bounded! kb name start end {}))
+  ([kb name start end opts]
+   (v/assert kb (list 'time_interval name) U)
+   (v/assert kb (list 'startOf name start) U opts)
+   (v/assert kb (list 'endOf name end) U opts)))
 
 (defn- range-bounds
   "The startOf and endOf the defining rules answer for the DatetimeRangeFn term `r`, as
@@ -2575,39 +2822,39 @@
         (is (true? (v/ask? kb (list q) aug)))
         (is (not (v/ask? kb (list p) aug)))))))
 
-(tu/deftest-kb ^:red a-range-and-a-calendar-term-with-the-same-bounds-name-one-context
-  ;; A range from the start of 2000 to the start of 2001 is the year 2000, as
-  ;; (MonthFn 2000 1) and (DatetimeFn "2000-01") are one month
-  ;; (two-spellings-of-one-month-name-one-context).
+(tu/deftest-kb a-range-and-a-calendar-term-with-the-same-bounds-name-one-context
+  ;; A range from the start of 2000 to the start of 2001, its bounds stated :monotonic, is
+  ;; the year 2000: the two slices' cx/ constants are one class, as (MonthFn 2000 1) and
+  ;; (DatetimeFn "2000-01") are one context (two-spellings-of-one-month-name-one-context).
   (declare-cxtimefn! kb)
   (v/add-reasoner kb :calendar)
   (tu/with-terms [Y2000]
-    (range! kb Y2000 [2000 1 1 0 0 0] [2001 1 1 0 0 0])
+    (range! kb Y2000 [2000 1 1 0 0 0] [2001 1 1 0 0 0] M)
     (testing "the bounds entail that the range and the year are one interval"
       (is (true? (v/ask? kb (list 'intervalEqual Y2000 '(YearFn 2000)) U))))
-    (let [{:keys [distinct? first-sees-second? second-sees-first?]}
-          (two-spellings kb (slice Y2000) (slice '(YearFn 2000)))]
-      (testing "a write through either lands in one cx/ context"
-        (is (false? distinct?)))
+    (let [[k1 k2 {:keys [first-sees-second? second-sees-first?]}]
+          (written-twice kb (slice Y2000) (slice '(YearFn 2000)))]
+      (testing "a write through either lands in a cx/ constant of one class"
+        (is (true? (one-class? kb k1 k2))))
       (testing "and each sees the other's fact"
         (is (true? first-sees-second?))
         (is (true? second-sees-first?))))))
 
-(tu/deftest-kb ^:red two-ranges-with-the-same-named-bounds-name-one-context
+(tu/deftest-kb two-ranges-with-the-same-named-bounds-name-one-context
   ;; The reified twin of a-range-and-a-calendar-term-with-the-same-bounds-name-one-context:
-  ;; both ranges run between the same two named moments.
+  ;; both ranges run between the same two named moments, their bounds stated :monotonic.
   (declare-cxtimefn! kb)
   (v/add-reasoner kb :allen :point)
   (tu/with-terms [Start End RangeA RangeB]
     (chain! kb Start End)
-    (bounded! kb RangeA Start End)
-    (bounded! kb RangeB Start End)
+    (bounded! kb RangeA Start End M)
+    (bounded! kb RangeB Start End M)
     (testing "the bounds entail that the two ranges are one interval"
       (is (true? (v/ask? kb (list 'intervalEqual RangeA RangeB) U))))
-    (let [{:keys [distinct? first-sees-second? second-sees-first?]}
-          (two-spellings kb (slice RangeA) (slice RangeB))]
-      (testing "a write through either lands in one cx/ context"
-        (is (false? distinct?)))
+    (let [[k1 k2 {:keys [first-sees-second? second-sees-first?]}]
+          (written-twice kb (slice RangeA) (slice RangeB))]
+      (testing "a write through either lands in a cx/ constant of one class"
+        (is (true? (one-class? kb k1 k2))))
       (testing "and each sees the other's fact"
         (is (true? first-sees-second?))
         (is (true? second-sees-first?))))))
@@ -3181,25 +3428,25 @@
 ;; =========================================================================
 ;; Resolution — the shortest time a term can name
 ;; =========================================================================
-;; The finest calendar term is one second: DatetimeFn admits at most three time fields and
-;; InstantFn ends in the second, so two moments a calendar term can tell apart are at least
-;; a second apart. A named interval with stated bounds can be shorter only by bounds the
-;; metric layer states, which no calendar term reads. The first test asserts that one second
-;; is the finest unit, and the red tests after it ask for the millisecond and the microsecond.
+;; A DatetimeFn string names an interval down to a nanosecond: a fractional second of k
+;; digits is an interval of 10^-k s. InstantFn names a whole second, so the clock gives a
+;; sub-second term no InstantFn bound, and a moment between two seconds is a point of a
+;; sub-second term. The first test asserts where InstantFn stops, and the tests after it
+;; order the millisecond and the microsecond.
 
-(tu/deftest-kb the-shortest-calendar-interval-is-one-second
-  ;; One second is the finest resolution today; the red tests after this one ask for finer.
+(tu/deftest-kb an-instantfn-moment-is-a-whole-second-and-bounds-no-sub-second-term
+  ;; InstantFn takes six fields, so the clock names no bound of a sub-second term.
   (v/add-reasoner kb :calendar)
   (testing "a DatetimeFn to the second begins at that second and ends at the next"
     (is (= [{'?i '(InstantFn 2000 1 15 13 0 0)}] (v/ask kb '(startOf (DatetimeFn "2000-01-15T13:00:00") ?i) U)))
     (is (= [{'?i '(InstantFn 2000 1 15 13 0 1)}] (v/ask kb '(endOf (DatetimeFn "2000-01-15T13:00:00") ?i) U))))
-  (testing "a string with a fraction of a second names no interval the clock reads"
+  (testing "a string with a fraction of a second has no InstantFn bound"
     (is (empty? (v/ask kb '(startOf (DatetimeFn "2000-01-15T13:00:00.123") ?i) U))))
   (testing "and an InstantFn with a seventh field or a fractional second is no moment the clock orders"
     (is (not (v/ask? kb '(instantBefore (InstantFn 2000 1 15 13 0 0) (InstantFn 2000 1 15 13 0 0 500)) U)))
     (is (not (v/ask? kb '(instantBefore (InstantFn 2000 1 15 13 0 0) (InstantFn 2000 1 15 13 0 0.5)) U)))))
 
-(tu/deftest-kb ^:red a-millisecond-is-an-interval-inside-its-second
+(tu/deftest-kb a-millisecond-is-an-interval-inside-its-second
   ;; "2000-01-15T13:00:00.123" names one millisecond, inside the second 13:00:00 and not
   ;; the next, and a slice keyed by it sees a slice keyed by its second.
   (declare-cxtimefn! kb)
@@ -3219,7 +3466,7 @@
       (testing "a fact in the second's slice is visible from the millisecond's"
         (is (true? (v/ask? kb (list p) (slice ms))))))))
 
-(tu/deftest-kb ^:red two-moments-a-millisecond-apart-are-ordered
+(tu/deftest-kb two-moments-a-millisecond-apart-are-ordered
   ;; The starts of two consecutive milliseconds are two moments, the first before the
   ;; second.
   (v/add-reasoner kb :point :calendar)
@@ -3232,7 +3479,7 @@
     (is (= :false (verdict kb '(instantEqual (StartFn (DatetimeFn "2000-01-15T13:00:00.123"))
                                              (StartFn (DatetimeFn "2000-01-15T13:00:00.124"))) U)))))
 
-(tu/deftest-kb ^:red a-microsecond-is-an-interval-inside-its-millisecond
+(tu/deftest-kb a-microsecond-is-an-interval-inside-its-millisecond
   ;; "2000-01-15T13:00:00.123456" names one microsecond, inside the millisecond .123 and
   ;; so inside the second.
   (declare-cxtimefn! kb)
@@ -3250,7 +3497,7 @@
       (testing "a fact in the millisecond's slice is visible from the microsecond's"
         (is (true? (v/ask? kb (list p) (slice us))))))))
 
-(tu/deftest-kb ^:red two-moments-a-microsecond-apart-are-ordered
+(tu/deftest-kb two-moments-a-microsecond-apart-are-ordered
   ;; The starts of two consecutive microseconds are two moments, the first before the
   ;; second.
   (v/add-reasoner kb :point :calendar)

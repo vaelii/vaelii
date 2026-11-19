@@ -473,14 +473,16 @@
     [k f sup]))
 
 (defn- anchor
-  "`[node offset]` for a metric term `x`: a node term at offset 0, or a calendar moment at
-  its frame's epoch node, its seconds after the epoch (`dt/epoch-second`) times `factor`;
-  nil for any other term."
+  "`[node offset]` for a metric term `x`: a node term at offset 0, or a calendar moment on
+  a whole second at its frame's epoch node, its seconds after the epoch (`dt/epoch-second`)
+  times `factor`.  Any other term, a moment between two seconds included, gives nil."
   [factor x]
   (if (sx/plain-symbol? x)
     [x 0]
     (when-let [[frame fields] (tp/moment x)]
-      (some->> (dt/epoch-second fields) (* factor) provers/round-magnitude (vector (epochs frame))))))
+      (let [s (dt/epoch-second fields)]
+        (when (integer? s)
+          [(epochs frame) (provers/round-magnitude (* factor s))])))))
 
 (defn- stated-constraints
   "Every believed, visible `(temporalDistance P Q M)` over two metric terms as `[[dimension

@@ -79,6 +79,12 @@
   stores, and a read looks up, the spelling that reader reads (`chain/reconcile-reified!`)."
   #{})
 
+(def ^:dynamic *application-read*
+  "Optional internal observer of the actual application lookup branch.
+  Receives a decision map, not a proof or authority to change the lookup. A semantic
+  prover may use it to retain the selected sources; ordinary reads bind nothing."
+  nil)
+
 (defn reifiable-function?
   "True iff `head` reifies its ground applications in argument position: a believed
   `(reifiable_function head)`, and `head` not in `*withheld*`.  The mark is read
@@ -234,14 +240,36 @@
   (let [tax (reasoning/taxonomy kb)
         f   (first E)]
     (if (or (tax/has-prop? tax :symmetric f) (seq (tax/commuting-groups tax f)))
-      (sx/permute-args E (permuting-marks tax))
+      (let [sorted (sx/permute-args E (permuting-marks tax))]
+        (when (and *application-read* (not= E sorted))
+          (*application-read* {:operation :stored-order :expression E :value sorted}))
+        sorted)
       E)))
+
+(defn stated-map-expression
+  "The expression of the `natFormula` row at handle `h` when it is a stated row of the
+  constant `k` in CxUniverse: a premise the network holds IN, superseded or not, as
+  `map-rows` admits one.  Else nil."
+  [kb k h]
+  (let [tms (reasoning/tms kb)
+        sx  (p/get-sentex (:records kb) h)
+        [f c e] (:sentence sx)]
+    (when (and (= 'natFormula f) (= k c) (= universal-context (:context sx))
+               (jtms/premise? tms h) (jtms/network-in? tms h))
+      e)))
+
+(defn rows-naming
+  "The stored `pred` rows whose argument 2 is the expression `S` as spelled."
+  [kb pred S]
+  (->> (reads/as-stored-with-args (:index kb) pred {2 S})
+       (keep #(p/get-sentex (:records kb) %))
+       (filter #(= S (nth (:sentence %) 2 nil)))))
 
 (defn- map-rows
   "The `pred` rows (`natFormula` or a compound `rewriteOf`) a reader in `context` reads
   as naming the ground NAT expression `E` at argument 2: a row whose expression,
   normalized under `context`'s merges, is `E`'s normal form, stated (a premise,
-  superseded or not) or seen and believed from `context`.  A stated `natFormula` row
+  superseded or not) or visible from `context` (`res/visible-supporter-fn`).  A stated `natFormula` row
   answers in every context, a stated `rewriteOf` row where `context` sees its context or
   `context` is a `?var`, and a migration twin where its merge is visible (docs/nat.md, A
   NAT resolves under the reader's merges).  Stated rows are probed for each
@@ -255,20 +283,27 @@
         norm     #(cond->> (res/normal-form kb % visible?) rw? (sorted-expression kb))
         orders   (if rw? #(sx/every-order % (permuting-marks tx)) vector)
         N        (norm E)
-        rows     (fn [S] (->> (reads/as-stored-with-args (:index kb) pred {2 S})
-                              (keep #(p/get-sentex (:records kb) %))
-                              (filter #(= S (nth (:sentence %) 2 nil)))))
+        rows     #(rows-naming kb pred %)
         stated?  #(and (jtms/premise? tms (:id %)) (jtms/network-in? tms (:id %))
                        (or (= 'natFormula pred) (nil? visible?) (tax/sees? tx ctx (:context %))))
-        seen?    #(and (tax/sees? tx ctx (:context %)) (jtms/in? tms (:id %)))]
-    (distinct
-     (concat (filter #(or (stated? %) (seen? %)) (mapcat rows (orders N)))
-             (for [C     (class-spellings kb E visible?)
-                   S     (orders C)
-                   :when (not= S N)
-                   sx    (rows S)
-                   :when (and (stated? sx) (= N (norm S)))]
-               sx)))))
+        seen?    #(if visible?
+                    (visible? (:id %))
+                    (and (tax/sees? tx ctx (:context %)) (jtms/in? tms (:id %))))]
+    (let [admitted (distinct
+                    (concat (filter #(or (stated? %) (seen? %)) (mapcat rows (orders N)))
+                            (for [C     (class-spellings kb E visible?)
+                                  S     (orders C)
+                                  :when (not= S N)
+                                  sx    (rows S)
+                                  :when (and (stated? sx) (= N (norm S)))]
+                              sx)))]
+      (if-let [observe res/*correspondence-read*]
+        (map (fn [record]
+               (observe {:operation :application-row :predicate pred :expression E
+                         :context ctx :record record :stated? (stated? record)})
+               record)
+             admitted)
+        admitted))))
 
 (defn dedup-constant
   "The existing reified constant for the ground NAT expression `E` in reify namespace `ns`
@@ -276,17 +311,20 @@
   `natFormula` rows `map-rows` reads.  Where several constants map `E` in one namespace
   (an import restores what the dump held, or a merge the reader sees joins two
   expressions), the lexicographically smallest, the survivor `group-collisions` elects.
-  With `write?`, a `nat/` expression answers only a reified constant, never a term a
-  merge's twin of the map names: a write names the application's own constant."
+  With `write?`, only a stated map of `E` as written names the constant, never a merge's
+  twin of another spelling's map (docs/nat.md, A NAT resolves under the reader's merges)."
   ([kb E] (dedup-constant kb E nat-namespace nil))
   ([kb E ns context] (dedup-constant kb E ns context false))
   ([kb E ns context write?]
-   (->> (map-rows kb 'natFormula E context)
-        (map #(second (:sentence %)))
-        (filter #(and (in-namespace? ns %)
-                      (or (not write?) (= context-namespace ns) (reified-object-symbol? %))))
-        sort
-        first)))
+   (let [tms (reasoning/tms kb)]
+     (->> (if write?
+            (filter #(and (jtms/premise? tms (:id %)) (jtms/network-in? tms (:id %)))
+                    (rows-naming kb 'natFormula E))
+            (map-rows kb 'natFormula E context))
+          (map #(second (:sentence %)))
+          (filter #(in-namespace? ns %))
+          sort
+          first))))
 
 (defn rewrite-target
   "The real term `T` a `(rewriteOf T E)` a reader in `context` (CxUniverse when nil)
@@ -296,15 +334,19 @@
   (`in-namespace?`).  Every row `map-rows` reads is a stored `rewriteOf`, so a KB storing
   none answers nil off one functor count, before `E` is normalized and spelled."
   [kb E ns context]
-  (when (pos? (reads/stored-count-with-functor (:index kb) 'rewriteOf))
-    (let [ts (into #{} (comp (map #(second (:sentence %)))
+  (let [ts (if (pos? (reads/stored-count-with-functor (:index kb) 'rewriteOf))
+             (into #{} (comp (map #(second (:sentence %)))
                              (map #(res/normal-form kb % (res/visible-supporter-fn kb (reader-of context))))
                              (distinct)
                              (take 2))
-                   (map-rows kb 'rewriteOf E context))]
-      (when (= 1 (count ts))
-        (let [t (first ts)]
-          (when (in-namespace? ns t) t))))))
+                   (map-rows kb 'rewriteOf E context))
+             #{})]
+    (when *application-read*
+      (*application-read* {:operation :alias-decision :expression E :namespace ns
+                           :targets ts}))
+    (when (= 1 (count ts))
+      (let [t (first ts)]
+        (when (in-namespace? ns t) t)))))
 
 (defn- sole-value
   "`[value facts]` when the corresponding facts visible from `context` name exactly one
@@ -313,15 +355,26 @@
   ([kb E context] (sole-value kb E nil context))
   ([kb E cor context]
    (let [vs (if cor (res/corresponding-values kb E cor context) (res/corresponding-values kb E context))]
+     (when *application-read*
+       (*application-read* {:operation :correspondence-decision :expression E :values vs}))
      (when (= 1 (count vs)) (first vs)))))
+
+(def ^:dynamic *stated-maps?*
+  "True while a write resolves a `not_assertible` correspondence (`computed-value`).  A
+  prover reading a constant's `natFormula` map then reads its stated rows and never a
+  merge's twin, so the value a write stores does not move with the merge (docs/nat.md,
+  The corresponding predicate)."
+  false)
 
 (defn- computed-value
   "The one ground value the prover registry binds at position `pos` of `(pr a… ?v)` for
-  the ground NAT expression `E` = `(F a…)`, solved in `context`, or nil."
-  [kb E [pr pos] context]
+  the ground NAT expression `E` = `(F a…)`, solved in `context`, or nil.  With `write?`,
+  solved under `*stated-maps?*`."
+  [kb E [pr pos] context write?]
   (let [ctx (if (sx/variable? context) universal-context context)
-        vs  (into [] (comp (map #(get % '?v)) (filter sx/ground-term?) (distinct) (take 2))
-                  (wiring/solve-goal kb (apply list pr (res/insert-at (rest E) pos '?v)) ctx))]
+        vs  (binding [*stated-maps?* (boolean write?)]
+              (into [] (comp (map #(get % '?v)) (filter sx/ground-term?) (distinct) (take 2))
+                    (wiring/solve-goal kb (apply list pr (res/insert-at (rest E) pos '?v)) ctx)))]
     (when (= 1 (count vs)) (first vs))))
 
 (defn correspondence-value
@@ -330,14 +383,15 @@
   when the visible facts name that one value and no other, or nil.  Where the
   corresponding predicate is `not_assertible`, a mark read KB-wide as `assert`'s refusal
   reads it, the value is the prover registry's (`computed-value`).  With `write?`, only
-  that prover value: a write names the application's own constant, which a stored value
-  reaches through `chain/sync-values!`'s merge (docs/nat.md, The corresponding predicate)."
+  that prover value, read off stated maps: a write names the application's own constant,
+  which a stored value reaches through `chain/sync-values!`'s merge (docs/nat.md, The
+  corresponding predicate)."
   ([kb E context] (correspondence-value kb E context false))
   ([kb E context write?]
    (let [ctx (reader-of context)]
      (when-let [[pr :as cor] (res/correspondence-of kb (first E) (count (rest E)) ctx)]
        (cond
-         (tax/has-prop? (reasoning/taxonomy kb) :not-assertible pr) (computed-value kb E cor ctx)
+         (tax/has-prop? (reasoning/taxonomy kb) :not-assertible pr) (computed-value kb E cor ctx write?)
          write? nil
          :else (when-let [[v hs] (sole-value kb E cor ctx)]
                  (let [tms (reasoning/tms kb)]
@@ -355,32 +409,104 @@
   ([kb s nat-fn] (reify-in kb s nat-fn nat-fn))
   ([kb s nat-fn head-fn]
    (let [modal (:modal (tax/mention-marks (reasoning/taxonomy kb)))]
-     (letfn [(walk [s]
+     (letfn [(read-nat [f s]
+               (when *application-read*
+                 (*application-read* {:operation :reifiable-use :function (first s)}))
+               (f kb s))
+             (walk [s]
                (cond
-                 (reifiable-ground-nat? kb s) (nat-fn kb s)
+                 (reifiable-ground-nat? kb s) (read-nat nat-fn s)
                  (vector? s) (mapv walk s)
                  (and (seq? s) (seq s))
                  (cond
                    (contains? res/nat-quoting-predicates (first s)) s
-                   (res/attitude-application? modal s) (list (first s) (walk (second s)) (nth s 2))
+                   (res/attitude-application? modal s)
+                   (do (when *application-read*
+                         (*application-read* {:operation :modal-use :predicate (first s)}))
+                       (list (first s) (walk (second s)) (nth s 2)))
                    :else (apply list (head (first s)) (map walk (rest s))))
                  :else s))
-             (head [h] (if (reifiable-ground-nat? kb h) (head-fn kb h) h))]
+             (head [h] (if (reifiable-ground-nat? kb h) (read-nat head-fn h) h))]
        (walk s)))))
 
-(defn existing-term
+(defn- lookup-existing-term
   "The term ground NAT expression `E` already resolves to in reify namespace `ns` for a
-  reader in `context`, or nil: a `rewriteOf` target, the value its corresponding
-  predicate names where `context` reads it (`correspondence-value`), else the constant
-  `dedup-constant` finds.  With `write?`, the term a write in `context` stores: the
-  value and the constant as `correspondence-value` and `dedup-constant` read them for a
-  write.  A context slot (`cx/`) takes no correspondence value, which names an object."
+  reader in `context`, or nil: a `rewriteOf` target, the value its
+  corresponding predicate names where `context` reads it (`correspondence-value`), else
+  the constant `dedup-constant` finds. With `write?`, a write names the application's
+  own constant rather than its corresponding value. A context slot (`cx/`) takes no correspondence
+  value, which names an object."
+  [kb E ns context write? unminted?]
+  (if-not *application-read*
+    (if (= context-namespace ns)
+      (or (rewrite-target kb E ns context) (dedup-constant kb E ns context write?))
+      (or (rewrite-target kb E ns context) (correspondence-value kb E context write?)
+          (dedup-constant kb E ns context write?)
+          (when unminted? (first (sole-value kb E context)))))
+    (let [read-branch (fn [branch lookup]
+                        (let [events (atom [])
+                              observe (fn [outer]
+                                        (fn [event]
+                                          (swap! events conj event)
+                                          (when outer
+                                            (outer (assoc event :application-attempt
+                                                          [E ns context branch])))))
+                              value (binding [res/*normalization-read*
+                                              (observe res/*normalization-read*)
+                                              res/*correspondence-read*
+                                              (observe res/*correspondence-read*)
+                                              *application-read* (observe *application-read*)]
+                                      (lookup))]
+                          [value @events]))
+          [alias alias-reads] (read-branch :rewrite #(rewrite-target kb E ns context))
+          [value value-reads] (when (and (nil? alias) (not= context-namespace ns))
+                                (read-branch :correspondence #(correspondence-value kb E context write?)))
+          [mapped map-reads] (when (and (nil? alias) (nil? value))
+                               (read-branch :map #(dedup-constant kb E ns context write?)))
+          [unminted unminted-reads] (when (and unminted? (nil? alias) (nil? value) (nil? mapped))
+                                      (read-branch :unminted-correspondence
+                                                   #(first (sole-value kb E context))))
+          result (or alias value mapped unminted)]
+      (*application-read* {:expression E :namespace ns :context context
+                           :source (cond alias :rewrite value :correspondence
+                                         mapped :map unminted :unminted-correspondence
+                                         :else :unresolved)
+                           :readings (cond alias alias-reads value value-reads
+                                           mapped map-reads unminted unminted-reads :else [])
+                           :attempt-readings (cond-> {:rewrite alias-reads}
+                                               value-reads (assoc :correspondence value-reads)
+                                               map-reads (assoc :map map-reads)
+                                               unminted-reads (assoc :unminted-correspondence unminted-reads))
+                           :value result})
+      result)))
+
+(defn existing-term
+  "The existing application term, with monotonic correspondence before the stored map.
+  With `write?`, preserve the application's own constant. Never uses the no-map default
+  fallback of a public endpoint reading."
   ([kb E ns context] (existing-term kb E ns context false))
-  ([kb E ns context write?]
-   (if (= context-namespace ns)
-     (or (rewrite-target kb E ns context) (dedup-constant kb E ns context))
-     (or (rewrite-target kb E ns context) (correspondence-value kb E context write?)
-         (dedup-constant kb E ns context write?)))))
+  ([kb E ns context write?] (lookup-existing-term kb E ns context write? false)))
+
+(defn endpoint-term
+  "Read an application endpoint without minting or replacing unknown nested syntax.
+  A unique corresponding value of any class answers only after alias and stored-map
+  lookup fail. Ordinary strict reads and write identity keep their existing rules."
+  [kb sentence context]
+  (if (any-reifiable-functions? kb)
+    (letfn [(read-application [kb form]
+              (let [E (if (sx/quoting-functor? (first form))
+                        (apply list form)
+                        (sorted-expression
+                         kb (apply list (first form)
+                                   (map #(if (reifiable-ground-nat? kb %)
+                                           (do (when *application-read*
+                                                 (*application-read* {:operation :reifiable-use
+                                                                      :function (first %)}))
+                                               (read-application kb %)) %)
+                                        (rest form)))))]
+                (or (lookup-existing-term kb E nat-namespace context false true) E)))]
+      (reify-in kb sentence read-application))
+    sentence))
 
 (defn reify-nat-for-read
   "Read-mode leaf: reify nested NAT arguments, then resolve the expression, in its
@@ -535,16 +661,72 @@
                                         nat-namespace nil)))))
             (reads/as-stored-with-args (:index kb) res/correspondence-predicate {2 (first sentence)})))))
 
-(defn- declared-predicates
-  "The predicates the stored correspondence declarations name."
+(defn named-values-reachable?
+  "Can an active compound rewrite name a value: a coarse, zero-index-read presence guard."
   [kb]
-  (let [recs (:records kb)]
-    (into #{} (comp (keep #(p/get-sentex recs %)) (keep #(nth (:sentence %) 2 nil)) (filter symbol?))
-          (reads/as-stored-with-args (:index kb) res/correspondence-predicate {}))))
+  (tax/compound-rewrites? (reasoning/taxonomy kb)))
+
+(defn- own-use?
+  "Is `s` a ground literal no other row's use reads: not a rule, a `genlCx` edge or a
+  reified constant's map?"
+  [s]
+  (and (seq? s) (symbol? (first s)) (nil? (namespace (first s)))
+       (not (sx/implies? s)) (not= 'genlCx (first s))
+       (not (and (= 'natFormula (first s)) (reified-nat-symbol? (second s))))
+       (not-any? sx/variable? (tree-seq sequential? seq s))))
+
+(defn named-value-events
+  "The named targets affected by these uses, compound rewrites or function declarations:
+  `[:named-valued t s]` for a target an `own-use?` sentence `s` names, which syncs the
+  rows storing `s`, and `[:named-valued t]` for every other, which syncs every row naming
+  `t` (`named-application/sync!`)."
+  [kb sentences]
+  (when (or (named-values-reachable? kb)
+            (some #(and (seq? %) (= 'rewriteOf (first %)) (seq? (nth % 2 nil))) sentences))
+    (let [idx (:index kb)
+          recs (:records kb)
+          use-terms (fn [form]
+                      (loop [todo (vec (filter symbol? (tree-seq sequential? seq form))), seen #{}]
+                        (if-let [term (peek todo)]
+                          (if (contains? seen term)
+                            (recur (pop todo) seen)
+                            (let [expressions (keep #(some-> (p/get-sentex recs %) :sentence (nth 2 nil))
+                                                    (reads/as-stored-with-args idx 'natFormula {1 term}))]
+                              (recur (into (pop todo) (filter symbol? (mapcat #(tree-seq sequential? seq %) expressions)))
+                                     (conj seen term))))
+                          seen)))
+          of-function (fn [f]
+                        (into #{} (comp (keep #(p/get-sentex recs %))
+                                        (keep #(let [[p t e] (:sentence %)]
+                                                 (when (and (= 'rewriteOf p) (symbol? t) (seq? e)) t))))
+                              (mapcat #(reads/as-stored-with-term idx %)
+                                      (tax/equiv-class (reasoning/taxonomy kb) f))))]
+      (into #{}
+            (mapcat (fn [s]
+                      (let [direct (when (and (seq? s) (= 'rewriteOf (first s))
+                                              (symbol? (second s)) (seq? (nth s 2 nil)))
+                                     (cons (second s)
+                                           (of-function (first (nth s 2)))))
+                            declared (when (and (seq? s)
+                                                (contains? '#{result genlResult reifiable_function functionCorrespondingPredicate
+                                                              symmetric commutative commutativeInArgs commutativeInArgAndRest} (first s)))
+                                       (of-function (second s)))
+                            merged (when (and (seq? s) (contains? '#{equals sameAs rewriteOf} (first s)))
+                                     (into #{} (comp (mapcat #(reads/as-stored-with-term idx %))
+                                                     (keep #(p/get-sentex recs %))
+                                                     (keep #(let [[p t e] (:sentence %)]
+                                                              (when (and (= 'rewriteOf p) (symbol? t) (seq? e)) t))))
+                                           (filter symbol? (rest s))))
+                            used (filter #(seq (reads/as-stored-with-args idx 'rewriteOf {1 %}))
+                                         (use-terms s))]
+                        (concat (map #(vector :named-valued %) (concat direct declared merged))
+                                (map (if (own-use? s) #(vector :named-valued % s) #(vector :named-valued %))
+                                     used)))))
+            sentences))))
 
 (defn note-values
-  "Queue on `:respell` what the stored, removed or relabelled `sentences` move the
-  values of: `[:valued-fn f]` for a correspondence declaration of `f`, `[:valued k]` for
+  "Queue affected named targets (`:named-valued`) and minted constants on `:respell`:
+  `[:valued-fn f]` for a correspondence declaration of `f`, `[:valued k]` for
   each constant a corresponding fact names a value of (`fact-constants`) and for each
   constant minted for the expression of a compound `rewriteOf`, and with `uses?` for each
   constant a sentence names whose function is declared or whose expression a compound
@@ -556,8 +738,8 @@
   (when-not *minting?*
     (let [corr? (values-reachable? kb)
           rw?   (delay (rewrites-reachable? kb))
-          preds (delay (declared-predicates kb))
-          es    (into #{}
+          preds (delay (:predicates (res/stored-correspondences kb)))
+          es    (into (or (named-value-events kb sentences) #{})
                       (mapcat (fn [s]
                                 (cond
                                   (not (seq? s)) nil

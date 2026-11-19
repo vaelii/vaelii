@@ -758,15 +758,15 @@
 
 ;; ---- a reifiable_function mark moving -------------------------------------
 
-(def ^:private skill-use '(hasCapability Rex (SkillFn Rex)))
+(def ^:private skill-use '(able Rex (SkillFn Rex)))
 
 (defn- skill-reading
   "What a KB told some of vaelii#100's forms holds and answers about `(SkillFn Rex)`."
   [kb]
-  {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'hasCapability)))
+  {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'able)))
    :minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) 'CxUniverse))
    :compound (v/ask? kb skill-use 'CxUniverse)
-   :genl     (v/ask? kb '(genl (SkillFn Rex) capability) 'CxUniverse)})
+   :genl     (v/ask? kb '(genl (SkillFn Rex) ability) 'CxUniverse)})
 
 (defn- assert-op [s & [opts]] #(v/assert % s 'CxUniverse opts))
 
@@ -777,10 +777,10 @@
   (let [ops    [[(assert-op skill-use) (assert-op skill-use)]
                 [(assert-op '(unary_function SkillFn))]
                 [(assert-op '(reifiable_function SkillFn))]
-                [(assert-op '(genlResult SkillFn capability))]]
+                [(assert-op '(genlResult SkillFn ability))]]
         result (one-outcome-under! "vaelii#100's forms" ops skill-reading)]
     (is (= {:minted 1 :compound true :genl true} (dissoc result :rows)))
-    (is (= [(list 'hasCapability 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))] (:rows result))))
+    (is (= [(list 'able 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))] (:rows result))))
   (tu/clear-kb! (tu/test-kb)))
 
 (deftest a-late-reifiable-declaration-re-spells-an-application-in-the-head
@@ -828,10 +828,10 @@
                               (assert-op '(likes Bob (SkillFn Rex)))
                               (assert-op '(reifiable_function SkillFn))]
                              #(v/ask? % '(fan Bob) 'CxUniverse))
-        fire   [(rule '[(dog ?x)] '(hasCapability ?x (SkillFn ?x)))
+        fire   [(rule '[(dog ?x)] '(able ?x (SkillFn ?x)))
                 (assert-op '(dog Rex))
                 (assert-op '(reifiable_function SkillFn))]
-        minted {:rows     [(list 'hasCapability 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))]
+        minted {:rows     [(list 'able 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex)))]
                 :minted   1
                 :compound true}
         bare   (one-outcome! "a firing with no correspondence" fire #(dissoc (skill-reading %) :genl))
@@ -848,11 +848,11 @@
   ;; the mark, and the KB reads as one told the declaration first.
   (let [decl     (assert-op '(reifiable_function SkillFn))
         h        (atom nil)
-        never    (run-ops [(assert-op '(genlResult SkillFn capability)) (assert-op skill-use)]
+        never    (run-ops [(assert-op '(genlResult SkillFn ability)) (assert-op skill-use)]
                           skill-reading)
-        first-in (run-ops [decl (assert-op '(genlResult SkillFn capability)) (assert-op skill-use)]
+        first-in (run-ops [decl (assert-op '(genlResult SkillFn ability)) (assert-op skill-use)]
                           skill-reading)
-        rest-ops [[(assert-op '(genlResult SkillFn capability))] [(assert-op skill-use)]]
+        rest-ops [[(assert-op '(genlResult SkillFn ability))] [(assert-op skill-use)]]
         leaving  (fn [label ops] (one-outcome-under! label (into [ops] rest-ops) skill-reading))]
     (is (= {:minted 0 :compound true :genl false} (dissoc never :rows)))
     (is (= never (leaving "retracted"
@@ -895,10 +895,10 @@
   #(doto (tu/empty-kb) (tu/load-core!)))
 
 (defn- core-skill-reading
-  "`skill-reading`, for a KB that loads core.txt: `hasCapability`'s arg 2 constraint
+  "`skill-reading`, for a KB that loads core.txt: `able`'s arg 2 constraint
   (resources/kb/upper/life.txt) names a `happening` kind, so the result type is `happening`."
   [kb]
-  {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'hasCapability)))
+  {:rows     (sort-by pr-str (map :sentence (v/sentexes-with-functor kb 'able)))
    :minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) 'CxUniverse))
    :compound (v/ask? kb skill-use 'CxUniverse)
    :genl     (v/ask? kb '(genl (SkillFn Rex) happening) 'CxUniverse)})
@@ -930,11 +930,11 @@
                   (into {} (for [r '[CxUniverse CxSkillD]]
                              [r {:minted   (count (v/sentexes-matching kb '(natFormula ?k (SkillFn Rex)) r))
                                  :compound (v/ask? kb skill-use r)
-                                 :genl     (v/ask? kb '(genl (SkillFn Rex) capability) r)}])))
+                                 :genl     (v/ask? kb '(genl (SkillFn Rex) ability) r)}])))
         result  (one-outcome! "a declaration denied below the use"
                               [(assert-op '(genlCx CxSkillD CxUniverse) {:strength :monotonic})
                                (assert-op '(reifiable_function SkillFn))
-                               (assert-op '(genlResult SkillFn capability))
+                               (assert-op '(genlResult SkillFn ability))
                                (assert-op skill-use)
                                #(v/assert % '(not (reifiable_function SkillFn)) 'CxSkillD
                                           {:strength :monotonic})]
@@ -973,12 +973,12 @@
     (try
       (spit (java.io.File. dir "CxAlpha.txt") (str (pr-str skill-use) "\n"))
       (spit (java.io.File. dir "CxBeta.txt")
-            "(reifiable_function SkillFn)\n(genlResult SkillFn capability)\n")
+            "(reifiable_function SkillFn)\n(genlResult SkillFn ability)\n")
       (let [kb (tu/fresh)]
         (v/load-text! kb (.getPath dir))
-        (is (= [[(list 'hasCapability 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex))) 'CxAlpha]]
-               (mapv (juxt :sentence :context) (v/sentexes-with-functor kb 'hasCapability))))
-        (is (v/ask? kb '(genl (SkillFn Rex) capability) 'CxUniverse)))
+        (is (= [[(list 'able 'Rex (nat/constant-for nat-read/nat-namespace '(SkillFn Rex))) 'CxAlpha]]
+               (mapv (juxt :sentence :context) (v/sentexes-with-functor kb 'able))))
+        (is (v/ask? kb '(genl (SkillFn Rex) ability) 'CxUniverse)))
       (finally
         (run! #(.delete ^java.io.File %) (reverse (file-seq dir))))))
   (tu/clear-kb! (tu/test-kb)))
@@ -3048,6 +3048,50 @@
     (is (= (second never) (second split)) "the context below it reads the application"))
   (tu/clear-kb! (tu/test-kb)))
 
+(deftest a-guard-defeat-lands-at-a-reader-hiding-a-reifiable-mark-as-with-no-mark
+  (let [h        (atom nil)
+        base     [#(v/assert % '(genlCx CxGd CxGa) 'CxUniverse {:strength :monotonic})
+                  #(v/assert % '(exceptWhen (gd_blocked ?q)
+                                            (set/forwardRule (implies (gdSaid ?a ?q) (gd_asserter ?a))))
+                             'CxGa)
+                  #(v/assert % '(gdSaid Tom (Quote Muffet)) 'CxGa)
+                  #(v/assert % '(gd_blocked (Quote Muffet)) 'CxGd)]
+        mark     #(reset! h (v/assert % '(reifiable_function Quote) 'CxGa))
+        read2    (fn [kb] (mapv #(v/ask? kb '(gd_asserter Tom) %) '[CxGa CxGd]))
+        never    (one-outcome! "never stated" base read2)
+        denied   (one-outcome! "denied below"
+                               (conj base mark #(v/assert % '(not (reifiable_function Quote)) 'CxGd
+                                                          {:strength :monotonic}))
+                               read2 ordering-sample)
+        excepted (one-outcome-under! "excepted below"
+                                     (conj (mapv vector base)
+                                           [mark #(v/assert % (list 'except (list 'sentexHandle @h)) 'CxGd)])
+                                     read2 ordering-sample)]
+    (testing "CxGa binds the constant and CxGd reads the blocker as written"
+      (is (= [true false] never) "the blocker at CxGd defeats the firing there")
+      (is (= never denied) "a denial of the mark at CxGd leaves the defeat there")
+      (is (= never excepted) "an except of the mark at CxGd leaves the defeat there")))
+  (tu/clear-kb! (tu/test-kb)))
+
+(deftest a-guard-defeat-lands-at-a-reader-hiding-a-merge-as-with-no-merge
+  (let [h      (atom nil)
+        base   [#(v/assert % '(genlCx CxGm CxGk) 'CxUniverse {:strength :monotonic})
+                #(v/assert % '(exceptWhen (gm_blocked ?q)
+                                          (set/forwardRule (implies (gmSaid ?a ?q) (gm_asserter ?a))))
+                           'CxGk)
+                #(v/assert % '(gmSaid Tom Robert) 'CxGk)
+                #(v/assert % '(gm_blocked Robert) 'CxGm)]
+        merge  #(reset! h (v/assert % '(sameAs Robert Bob) 'CxGk))
+        read2  (fn [kb] (mapv #(v/ask? kb '(gm_asserter Tom) %) '[CxGk CxGm]))
+        never  (one-outcome! "never merged" base read2)
+        hidden (one-outcome-under! "merged, hidden below"
+                                   (conj (mapv vector base)
+                                         [merge #(v/assert % (list 'except (list 'sentexHandle @h)) 'CxGm)])
+                                   read2 ordering-sample)]
+    (is (= [true false] never) "the blocker at CxGm defeats the firing there")
+    (is (= never hidden) "an except of the merge at CxGm leaves the defeat there"))
+  (tu/clear-kb! (tu/test-kb)))
+
 (deftest a-genlcx-edge-bringing-a-defeat-under-the-facts-splits-their-spellings
   ;; The denial and its defeat sit in CxSwD, the fact in CxSwF, both under CxUniverse
   ;; where the mark is: CxSwD reads the fact only once `(genlCx CxSwD CxSwF)` arrives, and
@@ -3919,4 +3963,40 @@
                  (one-outcome! (str label ": no membership denies, so the rule fires")
                                (mapv assert-op [rule (list 'disjoint qc qb) (list qa Xy)])
                                observe)))))))
+  (tu/clear-kb! (tu/test-kb)))
+
+(defn- retractions-read-as-never-stated
+  "Each premise of `stated`, a map of a key to a fn that asserts it and returns its handle,
+  retracted at any point of `cap` of the orderings, reads by `read` as the KB that never
+  stated it."
+  [stated read cap]
+  (doseq [k (keys stated)]
+    (let [h         (atom nil)
+          others    (vals (dissoc stated k))
+          without   (one-outcome-under! (str "without " k) (mapv vector others) read cap)
+          retracted (one-outcome-under! (str k " retracted")
+                                        (conj (mapv vector others)
+                                              [#(reset! h ((stated k) %)) #(v/retract! % @h)])
+                                        read cap)]
+      (is (= without retracted) (str k " retracted, against a KB without it")))))
+
+(defn- stored-naming
+  "Every stored sentex naming one of `terms`, as `[context sentence premise?]`."
+  [kb terms]
+  (let [tms (reasoning/tms kb)]
+    (into #{} (comp (mapcat #(v/find-sentexes kb %))
+                    (map (fn [sx] [(:context sx) (v/sentence-of sx) (jtms/premise? tms (:id sx))])))
+          terms)))
+
+(defn- assert-in-universe [s] #(v/assert % s 'CxUniverse))
+
+(deftest a-retracted-result-declaration-reads-as-never-declared
+  (let [K      (nat/constant-for nat-read/nat-namespace '(RjFn RjX))
+        stated {:mark   (assert-in-universe '(reifiable_function RjFn))
+                :result (assert-in-universe '(result RjFn rjgadget))
+                :use1   (assert-in-universe '(rjpRel RjA (RjFn RjX)))
+                :use2   (assert-in-universe '(rjqRel RjB (RjFn RjX)))}
+        read   (fn [kb] {:rows  (stored-naming kb [K 'rjgadget])
+                         :asked (mapv #(v/ask? kb % 'CxUniverse) [(list 'rjgadget K) '(rjgadget (RjFn RjX))])})]
+    (retractions-read-as-never-stated stated read ordering-sample))
   (tu/clear-kb! (tu/test-kb)))

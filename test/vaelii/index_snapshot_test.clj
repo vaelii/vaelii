@@ -333,7 +333,7 @@
         (let [[kb2 _] (opening dir)
               idx     (:index kb2)]
           (is (snapshot-types/snapshot-mapped? (:trie idx)) "the trie opened mapped")
-          (rules/index-rule idx 987654 '[snapAnte] 'snapConsq 'CxSnapRule)
+          (rules/index-rule idx 987654 '[snapAnte] 'snapConsq '#{SnapHead} 'CxSnapRule)
           (is (snapshot-types/snapshot-mapped? (:trie idx)) "and the rule index left it so — only the roots thawed")
           (is (= :saved (:index (snap/save! dir idx #(drs/slot-fingerprint (:records kb2))))))
           (let [want (answers kb2)]
@@ -343,7 +343,8 @@
               (is (= want (answers kb3)) "the mapped-through sections read back unchanged")
               ;; the rule entry is not derivable from the records (no such sentex), so its
               ;; survival is proof the image carried it rather than a rebuild recreating it
-              (is (= #{987654} (reads/as-stored-rules-by-consequent-global (:index kb3) 'snapConsq))))))))))
+              (is (= #{987654} (reads/as-stored-rules-by-consequent-global (:index kb3) 'snapConsq)))
+              (is (= #{987654} (reads/as-stored-rules-by-consequent-head-global (:index kb3) 'snapConsq 'SnapHead))))))))))
 
 ;; ---- staleness: an image about a KB that has moved ----------------------
 

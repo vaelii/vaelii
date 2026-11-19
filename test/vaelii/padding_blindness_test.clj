@@ -60,7 +60,7 @@
                        (in! (list 'disjoint (t "da") (t "db")) cx mono)
                        (in! (list (t "da") (i "D")))
                        (in! (list (t "db") (i "D")) cx mono))
-      ;; a declaration whose type is bound to two arguments, which mints nothing
+      ;; a declaration whose type is bound to two arguments, which stores its mint inert
       :mint        (do (in! (list 'binary_predicate (sym "pad%dfloating" k)) 'CxUniverse mono)
                        (in! (list (r "MintRel") (i "Ma") (i "Mb")))
                        (in! (list 'arg (r "MintRel") 1 (sym "pad%dfloating" k))))
@@ -283,6 +283,11 @@
    {:frame "vaelii.impl.special$excepted_edges"
     :reads "every `except` and every placement an except write could reach"
     :world {:pad [:contradicts] :ops except-fact}}
+   :mint-members-in
+   {:frame "vaelii.impl.special$mint_members_in"
+    :reads "every mint term's memberships, on a `genl` edge whose lower end holds more stored members than there are mint terms (the smaller side)"
+    :world {:pad [:mint] :ops [[:assert '(st_d StAnn) 'CxStA {}] [:assert '(st_d StBob) 'CxStA {}]
+                               [:assert '(genl st_d st_a) 'CxStA {}]]}}
    :move-except-contexts
    {:frame "vaelii.impl.special$move_except_contexts"
     :reads "every `except`, on a `genlCx` edge under a context an except is stated in"

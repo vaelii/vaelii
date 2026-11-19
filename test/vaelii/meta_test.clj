@@ -149,15 +149,24 @@
     (is (v/ask? kb '(functional birthYearOf)))
     (is (not (v/ask? kb '(symmetric parentOf)))))
   (testing "and enumerated"
-    ;; the domain relations, orthogonal, negates, inverse and diachronicallyDisjoint are the
-    ;; symmetric marks, decontextualized like the other algebraic marks, so they answer the
-    ;; enumeration wherever CxUniverse is seen.  seeAlso is NOT among them — it is a directional cross-reference, not
+    ;; the domain relations, orthogonal, negates, inverse, disjoint, diachronicallyDisjoint and
+    ;; contextsOrderedBothWays are the symmetric marks.  They are decontextualized like the other algebraic marks, so
+    ;; they answer the enumeration wherever CxUniverse is seen.  seeAlso is NOT among them — it is a directional cross-reference, not
     ;; symmetric.  The social relations (CxSocial's and CxTra's) are among them:
     ;; their marks are stated in CxUniverse like the rest, and ?ctx is open.
-    (is (= '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
-              relativeOf romanticPartnerOf coworkerOf roommateOf
-              nestingPartnerOf chosenSiblingOf headmateOf diachronicallyDisjoint negates inverse}
-           (set (map #(get % '?p) (v/ask kb '(symmetric ?p) '?ctx)))))
+    (let [qualified (set (mapcat (fn [constructor]
+                                   (map #(get % '?predicate)
+                                        (v/query kb (list 'natFormula '?predicate
+                                                          (list constructor 'siblingOf)) 'CxUniverse)))
+                                 '[BloodKinFn ChosenKinFn]))]
+      (is (= 2 (count qualified)))
+      (is (= (into '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
+                      kinOf bloodRelativeOf chosenKinOf sharesGenesWith
+                      romanticPartnerOf coworkerOf roommateOf nestingPartnerOf chosenSiblingOf
+                      headmateOf disjoint diachronicallyDisjoint negates inverse
+                      contextsOrderedBothWays}
+                   qualified)
+             (set (map #(get % '?p) (v/ask kb '(symmetric ?p) '?ctx))))))
     ;; `genl` and `genlCx` are in the enumeration because core.txt asserts (transitive genl)
     ;; / (transitive genlCx) outright.  They *are* transitive; answering them from cached
     ;; closures instead of the generic prover is an implementation choice, not a difference
@@ -227,13 +236,13 @@
 
 (tu/deftest-kb a-denial-of-a-forced-monotonic-literal-loses-to-it-in-either-order
   (doseq [denial-first? [false true] strength [:default :monotonic]]
-    (tu/with-terms [CxLow parentOf dog_kind cat_kind Ann Bob]
+    (tu/with-terms [CxLow parentOf likesRel scornsRel Ann Bob]
       (let [fatherOf (predicate-spelled "FatherOf")
             kinOf    (predicate-spelled "KinOf")]
         (doseq [s [(list 'genlCx CxLow 'CxUniverse)
                    (list 'functional parentOf)
                    (list 'genl fatherOf kinOf)
-                   (list 'orthogonal dog_kind cat_kind)
+                   (list 'negates likesRel scornsRel)
                    (list 'sameAs Ann Bob)]]
           (let [why   (str (pr-str s) ", denial first " denial-first? ", " strength)
                 deny! #(v/assert kb (list 'not s) 'CxUniverse {:strength strength})
@@ -268,8 +277,8 @@
             "retracting the declaration gives back the reading of a KB that never held it")))))
 
 (tu/deftest-kb why-not-of-a-denial-a-forced-monotonic-literal-defeats-names-the-literal
-  (tu/with-terms [dog_kind cat_kind likes Cal Dan]
-    (doseq [[s decl] [[(list 'orthogonal dog_kind cat_kind) nil]
+  (tu/with-terms [likesRel scornsRel likes Cal Dan]
+    (doseq [[s decl] [[(list 'negates likesRel scornsRel) nil]
                       [(list likes Cal Dan) (list 'forced_monotonic_predicate likes)]]]
       (when decl (v/assert kb decl 'CxUniverse))
       (let [h (v/assert kb s 'CxUniverse)
@@ -319,42 +328,42 @@
       (is (= [false true] (concluded? kb (list flies_kind Tweety)))))))
 
 (defn- definitional-rule
-  "A forward rule concluding `(orthogonal ?s made)` from the membership `(trigger ?s)`
-  and the further antecedents `more`, each over `?s`."
+  "A forward rule concluding `(negates ?s made)`, a literal in the baseline forced-monotonic
+  set, from the membership `(trigger ?s)` and the further antecedents `more`, each over `?s`."
   [trigger made & more]
   (list 'set/forwardRule
-        (list 'implies (apply list 'and (list trigger '?s) more) (list 'orthogonal '?s made))))
+        (list 'implies (apply list 'and (list trigger '?s) more) (list 'negates '?s made))))
 
 (tu/deftest-kb why-not-names-the-conviction-of-a-void-firing
-  (tu/with-terms [trigger_kind made_kind species_kind]
-    (let [r (v/assert kb (definitional-rule trigger_kind made_kind) 'CxUniverse)]
-      (v/assert kb (list trigger_kind species_kind) 'CxUniverse)
-      (let [h (v/handle-of kb (list 'orthogonal species_kind made_kind) 'CxUniverse)
+  (tu/with-terms [trigger_kind madeRel speciesRel]
+    (let [r (v/assert kb (definitional-rule trigger_kind madeRel) 'CxUniverse)]
+      (v/assert kb (list trigger_kind speciesRel) 'CxUniverse)
+      (let [h (v/handle-of kb (list 'negates speciesRel madeRel) 'CxUniverse)
             w (v/why-not kb h)]
         (is (some? h) "the firing is stored")
         (is (= :forced-conclusion (:reason w)))
         (is (= [[r [trigger_kind]]] (mapv (juxt :informant :not-forced-monotonic) (:convicted w))))))))
 
 (tu/deftest-kb the-forced-conclusion-report-names-the-antecedents-not-forced-monotonic
-  (tu/with-terms [trigger_kind other_kind made_kind rival_kind species_kind]
-    (v/assert kb (definitional-rule trigger_kind made_kind (list other_kind '?s)
-                   (list 'orthogonal '?s rival_kind))
+  (tu/with-terms [trigger_kind other_kind madeRel rivalRel speciesRel]
+    (v/assert kb (definitional-rule trigger_kind madeRel (list other_kind '?s)
+                   (list 'negates '?s rivalRel))
               'CxUniverse)
-    (doseq [s [(list trigger_kind species_kind) (list other_kind species_kind)
-               (list 'orthogonal species_kind rival_kind)]]
+    (doseq [s [(list trigger_kind speciesRel) (list other_kind speciesRel)
+               (list 'negates speciesRel rivalRel)]]
       (v/assert kb s 'CxUniverse))
-    (let [vs (forced-entries kb (list 'orthogonal species_kind made_kind) 'CxUniverse)]
+    (let [vs (forced-entries kb (list 'negates speciesRel madeRel) 'CxUniverse)]
       (is (= [#{trigger_kind other_kind}] (mapv (comp set :not-forced-monotonic :detail) vs))
-          "orthogonal is forced-monotonic and is not named")
+          "negates is forced-monotonic and is not named")
       (is (every? #(and (str/includes? % (str trigger_kind)) (str/includes? % (str other_kind)))
                   (map (comp :message :detail) vs))))))
 
 (tu/deftest-kb a-forced-trigger-keeps-its-strength-and-its-conclusion-takes-it
-  (tu/with-terms [trigger_kind made_kind species_kind]
+  (tu/with-terms [trigger_kind madeRel speciesRel]
     (v/assert kb (list 'forced_monotonic_predicate trigger_kind) 'CxUniverse)
-    (v/assert kb (definitional-rule trigger_kind made_kind) 'CxUniverse)
-    (let [t (v/assert kb (list trigger_kind species_kind) 'CxUniverse)
-          c (list 'orthogonal species_kind made_kind)]
+    (v/assert kb (definitional-rule trigger_kind madeRel) 'CxUniverse)
+    (let [t (v/assert kb (list trigger_kind speciesRel) 'CxUniverse)
+          c (list 'negates speciesRel madeRel)]
       (is (= :default (v/defeat-class kb t)))
       (is (= [true false] (concluded? kb c)))
       (is (= :default (v/defeat-class kb (v/handle-of kb c 'CxUniverse))))
@@ -369,33 +378,33 @@
            [false :monotonic [false true  false false]]   ; the trigger loses
            [true  :default   [true  false true  false]]   ; the rival loses
            [true  :monotonic [true  true  true  true]]]]  ; a hard clash
-    (tu/with-terms [trigger_kind rival_kind made_kind species_kind]
+    (tu/with-terms [trigger_kind rival_kind madeRel speciesRel]
       (let [why (str "forced " forced? ", rival " rival-strength)
-            c   (list 'orthogonal species_kind made_kind)]
+            c   (list 'negates speciesRel madeRel)]
         (when forced? (v/assert kb (list 'forced_monotonic_predicate trigger_kind) 'CxUniverse))
         (v/assert kb (list 'disjoint trigger_kind rival_kind) 'CxUniverse {:strength :monotonic})
-        (v/assert kb (definitional-rule trigger_kind made_kind) 'CxUniverse)
-        (let [t (v/assert kb (list trigger_kind species_kind) 'CxUniverse)
-              v (v/assert kb (list rival_kind species_kind) 'CxUniverse {:strength rival-strength})]
-          (is (= expected [(v/ask? kb (list trigger_kind species_kind) 'CxUniverse)
-                           (v/ask? kb (list rival_kind species_kind) 'CxUniverse)
+        (v/assert kb (definitional-rule trigger_kind madeRel) 'CxUniverse)
+        (let [t (v/assert kb (list trigger_kind speciesRel) 'CxUniverse)
+              v (v/assert kb (list rival_kind speciesRel) 'CxUniverse {:strength rival-strength})]
+          (is (= expected [(v/ask? kb (list trigger_kind speciesRel) 'CxUniverse)
+                           (v/ask? kb (list rival_kind speciesRel) 'CxUniverse)
                            (v/ask? kb c 'CxUniverse)
                            (boolean (some #(= #{t v} (set (:nogood %))) (v/conflicts kb)))])
               why)
           (is (= :default (v/defeat-class kb t)) why)))))
   (testing "a denial of a forced trigger loses to it, and the trigger and its consequences stand"
     (doseq [forced? [false true]]
-      (tu/with-terms [trigger_kind made_kind species_kind qq]
+      (tu/with-terms [trigger_kind madeRel speciesRel qq]
         (when forced? (v/assert kb (list 'forced_monotonic_predicate trigger_kind) 'CxUniverse))
-        (v/assert kb (definitional-rule trigger_kind made_kind) 'CxUniverse)
+        (v/assert kb (definitional-rule trigger_kind madeRel) 'CxUniverse)
         (v/assert kb (list 'set/forwardRule (list 'implies (list trigger_kind '?s) (list qq '?s)))
                   'CxUniverse)
-        (let [t (list trigger_kind species_kind)
+        (let [t (list trigger_kind speciesRel)
               d (v/assert kb (list 'not t) 'CxUniverse {:strength :monotonic})]
           (v/assert kb t 'CxUniverse)
           (is (= [forced? forced? forced? forced?]
-                 [(defeated? kb d) (v/ask? kb t 'CxUniverse) (v/ask? kb (list qq species_kind) 'CxUniverse)
-                  (v/ask? kb (list 'orthogonal species_kind made_kind) 'CxUniverse)])
+                 [(defeated? kb d) (v/ask? kb t 'CxUniverse) (v/ask? kb (list qq speciesRel) 'CxUniverse)
+                  (v/ask? kb (list 'negates speciesRel madeRel) 'CxUniverse)])
               (str "forced " forced?)))))))
 
 ;; ---- a declaration forces its predicate where it is seen ----------------------------
@@ -431,16 +440,16 @@
   [kb pick]
   (doseq [order   (pick (tu/orders [:decl :trigger :rival :rule]))
           retract [nil :decl]]
-    (tu/with-terms [CxU CxA CxB trigger_kind rival_kind made_kind species_kind]
+    (tu/with-terms [CxU CxA CxB trigger_kind rival_kind madeRel speciesRel]
       (let [world {:fixed  (concat (scoped-contexts CxU CxA CxB)
                                    [[(list 'disjoint trigger_kind rival_kind) CxU :monotonic]])
                    :writes {:decl    [(list 'forced_monotonic_predicate trigger_kind) CxA]
-                            :trigger [(list trigger_kind species_kind) CxU]
-                            :rival   [(list rival_kind species_kind) CxU]
-                            :rule    [(definitional-rule trigger_kind made_kind) CxU]}
+                            :trigger [(list trigger_kind speciesRel) CxU]
+                            :rival   [(list rival_kind speciesRel) CxU]
+                            :rule    [(definitional-rule trigger_kind madeRel) CxU]}
                    :order  order :retract retract
-                   :asked  [(list trigger_kind species_kind) (list rival_kind species_kind)
-                            (list 'orthogonal species_kind made_kind)]}]
+                   :asked  [(list trigger_kind speciesRel) (list rival_kind speciesRel)
+                            (list 'negates speciesRel madeRel)]}]
         (is (= (if retract
                  {:a [true true false] :b [true true false] :u [true true false]}
                  {:a [true false true] :b [true true false] :u [true true false]})
@@ -691,28 +700,27 @@
   ;; one firing per row: the entry is read once, names the conclusion as stored, leaves
   ;; when the antecedent's retraction removes the firing, and is read once again when the
   ;; firing is derived again.  The symmetric rows conclude a spelling the store reorders.
-  (doseq [row [:declared-unary :declared-symmetric :network-orthogonal :network-orthogonal-swapped]]
-    (tu/with-terms [CxU CxFoo kind_s kind_t made_kind symRel amy_kind zed_kind]
+  (doseq [row [:declared-unary :declared-symmetric :network-negates :network-negates-swapped]]
+    (tu/with-terms [CxU CxFoo kind_s kind_t madeRel symRel amy_kind zedRel]
       (foo-under-u kb CxU CxFoo)
       (let [[conseq c]
             (case row
-              :declared-unary     [(list kind_t '?x) (list kind_t zed_kind)]
-              :declared-symmetric [(list symRel '?x amy_kind) (list symRel zed_kind amy_kind)]
-              :network-orthogonal [(list 'orthogonal '?x made_kind) (list 'orthogonal zed_kind made_kind)]
-              :network-orthogonal-swapped [(list 'orthogonal made_kind '?x)
-                                           (list 'orthogonal made_kind zed_kind)])]
+              :declared-unary     [(list kind_t '?x) (list kind_t zedRel)]
+              :declared-symmetric [(list symRel '?x amy_kind) (list symRel zedRel amy_kind)]
+              :network-negates    [(list 'negates '?x madeRel) (list 'negates zedRel madeRel)]
+              :network-negates-swapped [(list 'negates madeRel '?x) (list 'negates madeRel zedRel)])]
         (case row
           :declared-unary (v/assert kb (list 'forced_monotonic_predicate kind_t) CxFoo)
           :declared-symmetric (do (v/assert kb (list 'symmetric symRel) 'CxUniverse {:strength :monotonic})
                                   (v/assert kb (list 'forced_monotonic_predicate symRel) CxFoo))
           nil)
         (v/assert kb (list 'set/forwardRule (list 'implies (list kind_s '?x) conseq)) CxU)
-        (let [f       (v/assert kb (list kind_s zed_kind) CxU)
+        (let [f       (v/assert kb (list kind_s zedRel) CxU)
               stored  (:sentence (v/sentex kb (v/handle-of kb c CxU)))
               first-n (mapv :sentence (forced-entries kb CxU))
               _       (v/retract! kb f)
               gone    [(some? (v/handle-of kb c CxU)) (count (forced-entries kb CxU))]]
-          (v/assert kb (list kind_s zed_kind) CxU)
+          (v/assert kb (list kind_s zedRel) CxU)
           (is (= [[stored] [false 0] [stored]]
                  [first-n gone (mapv :sentence (forced-entries kb CxU))])
               (str row)))))))
@@ -744,32 +752,32 @@
       (is (empty? (filter (set ps) @read)) (str "premise records read: " (vec (filter (set ps) @read)))))))
 
 (tu/deftest-kb the-forced-conclusion-entries-are-the-same-in-every-arrival-order
-  ;; a network-void firing (orthogonal, in the baseline forced-monotonic set) and a reader-only void
+  ;; a network-void firing (negates, in the baseline forced-monotonic set) and a reader-only void
   ;; firing (kind_t, declared at CxFoo); a second trigger arrives and is retracted last
   (let [shapes (doall
                 (for [order (tu/orders [:decl :rule :fact :gone])]
-                  (tu/with-terms [CxU CxFoo kind_s kind_t made_kind spa_kind spb_kind]
+                  (tu/with-terms [CxU CxFoo kind_s kind_t madeRel spaRel spbRel]
                     (foo-under-u kb CxU CxFoo)
-                    (v/assert kb (definitional-rule kind_s made_kind) CxU)
+                    (v/assert kb (definitional-rule kind_s madeRel) CxU)
                     (let [writes {:decl [(list 'forced_monotonic_predicate kind_t) CxFoo]
                                   :rule [(list 'set/forwardRule
                                                (list 'implies (list kind_s '?x) (list kind_t '?x)))
                                          CxU]
-                                  :fact [(list kind_s spa_kind) CxU]
-                                  :gone [(list kind_s spb_kind) CxU]}]
+                                  :fact [(list kind_s spaRel) CxU]
+                                  :gone [(list kind_s spbRel) CxU]}]
                       (doseq [k order] (apply v/assert kb (writes k)))
                       (v/retract! kb (apply v/handle-of kb (writes :gone)))
-                      (entry-shape kb {'U CxU 'S kind_s 'T kind_t 'M made_kind 'A spa_kind 'B spb_kind} CxU)))))]
+                      (entry-shape kb {'U CxU 'S kind_s 'T kind_t 'M madeRel 'A spaRel 'B spbRel} CxU)))))]
     (is (= 1 (count (distinct shapes))) (pr-str (distinct shapes)))
-    (is (= #{'[(T A) U [S]] '[(orthogonal M A) U [S]]} (set (first shapes))))))
+    (is (= #{'[(T A) U [S]] '[(negates M A) U [S]]} (set (first shapes))))))
 
 (tu/deftest-kb the-forced-conclusion-entries-survive-recover-and-clear-violations
-  (tu/with-terms [CxU CxFoo kind_s kind_t made_kind spa_kind spb_kind]
+  (tu/with-terms [CxU CxFoo kind_s kind_t madeRel spaRel spbRel]
     (foo-under-u kb CxU CxFoo)
-    (v/assert kb (definitional-rule kind_s made_kind) CxU)
+    (v/assert kb (definitional-rule kind_s madeRel) CxU)
     (v/assert kb (list 'forced_monotonic_predicate kind_t) CxFoo)
     (v/assert kb (list 'set/forwardRule (list 'implies (list kind_s '?x) (list kind_t '?x))) CxU)
-    (doseq [sp [spa_kind spb_kind]] (v/assert kb (list kind_s sp) CxU))
+    (doseq [sp [spaRel spbRel]] (v/assert kb (list kind_s sp) CxU))
     (let [live (forced-entries kb CxU)]
       (v/clear-violations! kb)
       (let [cleared (forced-entries kb CxU)]
@@ -793,7 +801,7 @@
                                  (when (= :vaelii.impl.violations/dropped-conclusion id)
                                    (swap! logs inc)))]
         (v/assert kb (list kind_s Sp) CxU)
-        (let [x      (v/assert kb (list 'exceptWhen (list 'orthogonal '?x 'zz_none) rule) CxU)
+        (let [x      (v/assert kb (list 'exceptWhen (list 'negates '?x 'zz_none) rule) CxU)
               during (n)
               _      (v/retract! kb x)
               after  (n)]
@@ -889,12 +897,12 @@
               (str "order " (vec order))))))))
 
 (tu/deftest-kb why-not-names-the-conviction-at-a-reader-that-misses-the-declaration
-  (tu/with-terms [CxU CxA CxB trigger_kind made_kind species_kind]
+  (tu/with-terms [CxU CxA CxB trigger_kind madeRel speciesRel]
     (doseq [[s c st] (scoped-contexts CxU CxA CxB)] (v/assert kb s c {:strength st}))
     (v/assert kb (list 'forced_monotonic_predicate trigger_kind) CxA)
-    (let [r (v/assert kb (definitional-rule trigger_kind made_kind) CxU)
-          c (list 'orthogonal species_kind made_kind)]
-      (v/assert kb (list trigger_kind species_kind) CxU)
+    (let [r (v/assert kb (definitional-rule trigger_kind madeRel) CxU)
+          c (list 'negates speciesRel madeRel)]
+      (v/assert kb (list trigger_kind speciesRel) CxU)
       (is (v/ask? kb c CxA))
       (let [w (v/why-not kb c CxB)]
         (is (= :forced-conclusion (:reason w)))
@@ -1196,8 +1204,7 @@
              ((juxt :type :predicate :missing) e)))
       (is (v/in? kb h))))
   (testing "a declaration whose predicate has no unforced semantics stays"
-    (doseq [[s missing] [['(forced_monotonic_predicate orthogonal) :unforced-definitional-declaration]
-                         ['(forced_monotonic_predicate sameAs) :unforced-equality]
+    (doseq [[s missing] [['(forced_monotonic_predicate sameAs) :unforced-equality]
                          ['(forced_monotonic_predicate except) :unforced-except]
                          ['(forced_monotonic_between_predicates genl) :unforced-predicate-genl]]]
       (let [h (v/handle-of kb s 'CxUniverse)]
@@ -1212,11 +1219,32 @@
              ((juxt :type :missing)
               (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e))))))
       (is (v/in? kb h))))
+  (testing "an arity binding's forced-decontextualization stays: a retraction would leave
+           the records it placed in CxUniverse"
+    (doseq [p '[arity arityMin unary binary ternary quaternary quinary unary_predicate
+                binary_predicate ternary_predicate quaternary_predicate quinary_predicate
+                unary_function binary_function ternary_function quaternary_function
+                quinary_function variable_arity variable_arity_predicate
+                variable_arity_function unbounded_arity unbounded_arity_predicate
+                unbounded_arity_function]]
+      (let [s (list 'forced_decontextualized_predicate p)
+            h (v/handle-of kb s 'CxUniverse)]
+        (is (= [:uncleared-forcing p :unforced-arity-placement]
+               ((juxt :type :predicate :missing)
+                (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))))
+            (pr-str s))
+        (is (v/in? kb h) (pr-str s)))))
   (testing "injection, surjection, bijection and an author's own predicate are cleared"
     (tu/with-terms [likes]
       (doseq [p ['injection 'surjection 'bijection likes]]
         (is (not (contains? checks/uncleared-forcing ['forced_monotonic_predicate p]))
-            (str p))))))
+            (str p)))))
+  (testing "an author's own forced_decontextualized_predicate is retracted"
+    (tu/with-terms [tagOf]
+      (let [s (list 'forced_decontextualized_predicate tagOf)
+            h (v/assert kb s 'CxUniverse)]
+        (is (nil? (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))))
+        (is (nil? (v/handle-of kb s 'CxUniverse)))))))
 
 ;; ---- decontextualized_predicate: a fact that belongs to the KB, not to one theory --
 ;;
@@ -1257,12 +1285,12 @@
       (is (contains? (v/props kb :decontextualized) rulesOver)))))
 
 (tu/deftest-kb the-shipped-ontology-decontextualizes-predicate-metadata-and-nothing-else
-  ;; What carries the mark is a claim about a *predicate* — its algebra — plus genlCx and
-  ;; not_assertible by force.  A domain relation carrying it would make one theory's fact
-  ;; a claim of the whole KB, and would take a rule's conclusions out with it: a
-  ;; decontextualized marriage lifts (knows ?x ?y) through CxSocial's rule into a
+  ;; What carries the mark is a claim about a *predicate* — its algebra — plus genlCx,
+  ;; not_assertible and the length bindings by force.  A domain relation carrying it would
+  ;; make one theory's fact a claim of the whole KB, and would take a rule's conclusions out
+  ;; with it: a decontextualized marriage lifts (knows ?x ?y) through CxSocial's rule into a
   ;; context every data context sees, decontextualizing a predicate nothing declared.
-  (testing "the marked predicates are the algebraic marks, the inverse declaration, the length bindings, genlCx and not_assertible"
+  (testing "the marked predicates are the algebraic marks, the inverse declaration and the length bindings, and the forced ones genlCx, not_assertible and the length bindings"
     ;; The three commutativity marks are here for `symmetric`'s reason and one of its
     ;; own: they are predicate algebra, and `res/kb-sentex` reads them **globally** —
     ;; a sentex has one key, so whether a predicate sorts its arguments cannot vary by
@@ -1279,7 +1307,10 @@
                     associative idempotent meetFunctionOf distinctInArgAndRest}
                  sx/arity-binding-functors)
            (v/props kb :decontextualized)))
-    (is (= '#{genlCx not_assertible} (v/props kb :forced-decontextualized))))
+    (is (= (into '#{genlCx not_assertible unbounded_arity unbounded_arity_predicate
+                    unbounded_arity_function}
+                 sx/arity-binding-functors)
+           (v/props kb :forced-decontextualized))))
   (testing "so a social fact stays in the theory that states it"
     (is (not (v/has-prop? kb :decontextualized 'marriedTo)))
     (is (empty? (v/sentexes-matching kb '(marriedTo Bob Nancy) 'CxUniverse)))
@@ -1592,6 +1623,56 @@
         (is (= [true true] (sees? kb (list tookPlace Ann Bob) inner CxStory))
             (str "membership first: " membership-first?))))))
 
+(tu/deftest-kb a-decontextualized-slice-fact-is-copied-into-the-sliced-context-only-under-another-membership
+  (doseq [declared-first? [true false]]
+    (tu/with-terms [tookPlace Ann Bob CxStory]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (let [declare #(v/assert kb (list 'decontextualized_predicate tookPlace) 'CxUniverse)
+            _       (when declared-first? (declare))
+            slice   (:context (v/sentex kb (v/assert kb (list tookPlace Ann Bob) (year-slice CxStory 2000))))
+            _       (when-not declared-first? (declare))
+            stored  #(set (map :context (v/sentexes-matching kb (list tookPlace Ann Bob) '?ctx)))]
+        (testing (str "declaration first: " declared-first?)
+          (is (= #{slice 'CxUniverse} (stored)))
+          (let [m (v/assert kb (list 'eternal_predicate tookPlace) 'CxUniverse)]
+            (is (= #{slice 'CxUniverse CxStory} (stored)) "an eternal membership copies it into CxStory")
+            (v/retract! kb m)
+            (is (= #{slice 'CxUniverse} (stored)) "retracting that membership withdraws the CxStory copy")))))))
+
+(tu/deftest-kb an-eternal-fact-answers-throughout-its-monad-and-nowhere-else-until-retracted
+  (tu/with-terms [CxStory CxOther]
+    (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxOther 'CxWell) 'CxUniverse)
+    (doseq [{:keys [label at member]}
+            [{:label  "stated in a year slice, the predicate a member"
+              :at     (year-slice CxStory 2000)
+              :member (fn [P _] [(list 'eternal_predicate P)])}
+             {:label  "stated in a year slice, the predicate a member of a type below eternal_predicate"
+              :at     (year-slice CxStory 2000)
+              :member (fn [P k] [(list 'genl k 'eternal_predicate) (list k P)])}
+             {:label  "stated in a slice of a slice"
+              :at     (year-slice (year-slice CxStory 2000) 2000)
+              :member (fn [P _] [(list 'eternal_predicate P)])}
+             {:label  "stated in the monad"
+              :at     CxStory
+              :member (fn [P _] [(list 'eternal_predicate P)])}]
+            membership-first? [true false]]
+      (tu/with-terms [tookPlace Ann Bob review_kind]
+        (let [member! #(doseq [s (member tookPlace review_kind)] (v/assert kb s 'CxUniverse))
+              _       (when membership-first? (member!))
+              h       (v/assert kb (list tookPlace Ann Bob) at)
+              _       (when-not membership-first? (member!))
+              inside  [at CxStory (year-slice CxStory 1900) (year-slice CxStory 2100)]
+              outside ['CxUniverse CxOther (year-slice CxOther 2000)]
+              answers (fn [contexts]
+                        (mapv #(set (map (fn [b] (get b '?x)) (v/ask kb (list tookPlace Ann '?x) %)))
+                              contexts))]
+          (testing (str label ", membership first: " membership-first?)
+            (is (= [[#{Bob} #{Bob} #{Bob} #{Bob}] [#{} #{} #{}]] [(answers inside) (answers outside)]))
+            (v/retract! kb h)
+            (is (= [[#{} #{} #{} #{}] [#{} #{} #{}]] [(answers inside) (answers outside)])
+                "retracting the fact withdraws every answer")))))))
+
 (tu/deftest-kb a-slice-of-a-named-slice-copies-up-each-step-in-either-order
   (doseq [natformula-first? [true false]]
     (tu/with-terms [tookPlace Ann Bob CxStory CxNamed]
@@ -1647,28 +1728,103 @@
           (v/retract! kb d)
           (is (= [true true true] (reads)) "retracting the denial believes both"))))))
 
-(tu/deftest-kb a-membership-makes-a-slice-fact-eternal-only-where-the-slice-sees-it
-  (doseq [edge-first? [true false]]
-    (tu/with-terms [tookPlace stayedIn Ann Bob review_kind CxStory CxOther]
+(tu/deftest-kb a-membership-makes-a-slice-fact-eternal-only-where-the-sliced-context-sees-it
+  (doseq [[from held] [[:monad [true true]] [:slice [false false]]]
+          edge-first? [true false]]
+    (tu/with-terms [tookPlace stayedIn Ann Bob review_kind CxStory CxOther CxSlice]
       (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
       (v/assert kb (list 'genlCx CxOther 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'natFormula CxSlice (year-slice CxStory 2000)) 'CxUniverse)
       (v/assert kb (list 'eternal_predicate tookPlace) CxOther)
       (v/assert kb (list 'genl review_kind 'eternal_predicate) CxOther)
       (v/assert kb (list review_kind stayedIn) 'CxUniverse)
-      (let [edge   #(v/assert kb (list 'genlCx CxStory CxOther) 'CxUniverse)
+      (let [edge   #(v/assert kb (list 'genlCx (if (= :monad from) CxStory CxSlice) CxOther)
+                              'CxUniverse)
             e      (when edge-first? (edge))
-            _      (v/assert kb (list tookPlace Ann Bob) (year-slice CxStory 2000))
-            _      (v/assert kb (list stayedIn Ann Bob) (year-slice CxStory 2000))
+            _      (v/assert kb (list tookPlace Ann Bob) CxSlice)
+            _      (v/assert kb (list stayedIn Ann Bob) CxSlice)
             copies #(into (sees? kb (list tookPlace Ann Bob) CxStory)
                           (sees? kb (list stayedIn Ann Bob) CxStory))]
-        (testing (str "the genlCx edge first: " edge-first?)
+        (testing (str "the genlCx edge from the " (name from) ", first: " edge-first?)
           (when-not edge-first?
-            (is (= [false false] (copies)) "a slice that does not see CxOther copies nothing"))
+            (is (= [false false] (copies))
+                "a sliced context that does not see CxOther copies nothing"))
           (let [e (or e (edge))]
-            (is (= [true true] (copies))
-                "the edge shows the membership and the genl edge, stated in CxOther, to the slice")
+            (is (= held (copies))
+                (str "an edge from CxStory shows the membership and the genl edge to CxStory;"
+                     " one from the slice does not"))
             (v/retract! kb e)
-            (is (= [false false] (copies)) "retracting the edge withdraws both copies")))))))
+            (is (= [false false] (copies)) "retracting the edge leaves no copy")))))))
+
+(deftest a-genlcx-edge-showing-a-sliced-context-a-membership-copies-the-slice-fact-in-either-order
+  (doseq [edge-last? [true false]]
+    (tu/with-neutral-kb [kb #(tu/load-interface! (tu/isolated-fresh))]
+      (tu/with-terms [tookPlace Ann Bob CxStory CxMid CxOther]
+        (testing "without the upper ontology, the edge's move does not reach the slice itself"
+          (let [U    'CxUniverse
+                fact (list tookPlace Ann Bob)
+                edge #(v/assert kb (list 'genlCx CxMid CxOther) U)]
+            (v/assert kb (list 'genlCx CxStory CxMid) U)
+            (v/assert kb (list 'eternal_predicate tookPlace) CxOther)
+            (let [e    (when-not edge-last? (edge))
+                  _    (v/assert kb fact (year-slice CxStory 2000))
+                  e    (or e (edge))
+                  held (v/ask? kb fact CxStory)]
+              (v/retract! kb e)
+              (is (= [true false] [held (v/ask? kb fact CxStory)])
+                  (str "the copy, then after retracting the edge; edge last: " edge-last?)))))))))
+
+(tu/deftest-kb a-denial-only-the-slice-sees-leaves-the-copy-believed-in-the-sliced-context
+  (doseq [denial-first? [true false]]
+    (tu/with-terms [tookPlace Ann Bob CxStory CxSlice CxOther]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'natFormula CxSlice (year-slice CxStory 2000)) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxSlice CxOther) 'CxUniverse)
+      (v/assert kb (list 'eternal_predicate tookPlace) 'CxUniverse)
+      (let [deny #(v/assert kb (list 'not (list 'eternal_predicate tookPlace)) CxOther
+                            {:strength :monotonic})
+            d    (when denial-first? (deny))
+            _    (v/assert kb (list tookPlace Ann Bob) CxSlice)
+            _    (or d (deny))]
+        (testing "the denial is in CxOther: one stated in the slice is copied into CxStory"
+          (is (= [false true true]
+                 (into (sees? kb (list 'eternal_predicate tookPlace) CxSlice)
+                       (sees? kb (list tookPlace Ann Bob) CxStory (year-slice CxStory 2025))))
+              (str "the slice reads tookPlace as not eternal, and CxStory and its other slices"
+                   " believe the copy; denial first: " denial-first?)))))))
+
+(tu/deftest-kb a-membership-stated-in-a-slice-makes-its-facts-eternal-in-the-sliced-context
+  (doseq [membership-first? [true false]]
+    (tu/with-terms [tookPlace Ann Bob CxStory CxSlice]
+      (v/assert kb (list 'genlCx CxStory 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'natFormula CxSlice (year-slice CxStory 2000)) 'CxUniverse)
+      (let [member #(v/assert kb (list 'eternal_predicate tookPlace) CxSlice)
+            m      (when membership-first? (member))
+            _      (v/assert kb (list tookPlace Ann Bob) CxSlice)
+            _      (or m (member))]
+        (is (= [true true]
+               [(v/ask? kb (list 'eternal_predicate tookPlace) CxStory)
+                (v/ask? kb (list tookPlace Ann Bob) CxStory)])
+            (str "the membership's copy and the fact's copy in CxStory; membership first: "
+                 membership-first?))))))
+
+(tu/deftest-kb each-step-of-a-nested-slice-reads-eternality-at-the-context-it-copies-into
+  (doseq [[from held] [[:outer-slice [true false]] [:monad [true true]]]
+          edge-first? [true false]]
+    (tu/with-terms [tookPlace Ann Bob CxStory CxOuter CxInner CxOther]
+      (let [U    'CxUniverse
+            fact (list tookPlace Ann Bob)
+            edge #(v/assert kb (list 'genlCx (if (= :monad from) CxStory CxOuter) CxOther) U)]
+        (v/assert kb (list 'genlCx CxStory 'CxWell) U)
+        (v/assert kb (list 'natFormula CxOuter (year-slice CxStory 2000)) U)
+        (v/assert kb (list 'natFormula CxInner (list 'CxTimeFn CxOuter '(MonthFn 2000 7))) U)
+        (v/assert kb (list 'eternal_predicate tookPlace) CxOther)
+        (let [e (when edge-first? (edge))
+              _ (v/assert kb fact CxInner)
+              _ (or e (edge))]
+          (is (= held (sees? kb fact CxOuter CxStory))
+              (str "the copies in the outer slice and in CxStory, the edge from the "
+                   (name from) "; edge first: " edge-first?)))))))
 
 (tu/deftest-kb a-withdrawn-eternal-reading-withdraws-the-copy-and-its-return-restores-it
   (let [U    'CxUniverse

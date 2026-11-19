@@ -38,7 +38,7 @@
   (let [ix (:index kb)]
     (dotimes [i n]
       (let [[antes conc] (gen-rule rng preds pred-cum)]
-        (rules/index-rule ix (+ 1000000000 i) antes conc (quote CxBench))))))
+        (rules/index-rule ix (+ 1000000000 i) antes conc #{p/var-consequent-key} (quote CxBench))))))
 
 (defn- ridx-postings [state]
   ;; the consequent index's leaves (`[:rule-consequent :handles [pred ctx]] -> #{rule-handles}`)

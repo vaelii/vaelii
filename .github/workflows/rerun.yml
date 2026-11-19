@@ -48,4 +48,4 @@ jobs:
       actions: write  # reRunWorkflowFailedJobs
       pull-requests: read  # pulls.get, for the head commit
     steps:
-      - uses: int128/rerun-workflows-action@cc8ff032980fe32e2c8d84c600de1fa0deeef7e0  # v1.18.0
+      - uses: int128/rerun-workflows-action@f691f1b4f203ad1b3f41ec95c81f2a2308220edd  # v1.19.0
