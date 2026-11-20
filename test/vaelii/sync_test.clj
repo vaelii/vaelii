@@ -437,6 +437,28 @@
         (is (not-any? (fn [s] (some #(names? s %) (keys kinship-0-34-renames))) (held)))
         (finally (tu/clear-kb! kb))))))
 
+(deftest a-0-34-birth-fact-under-the-old-genetic-reading-is-reported-ill-typed-after-the-renames
+  ;; 0.34.0 shipped a qualified reading of birthDate, birthYearOf and olderThan; this
+  ;; release ships them as eternal predicates, which no unqualified kinship predicate is.
+  ;; The renames rewrite the stored application's expression and refuse nothing, so the
+  ;; premise sweep is what reports the rewritten fact.
+  (tu/with-terms [Tom CxStore]
+    (let [kb (open-kb :kinship-0-34-birth tu/load-core!)]
+      (try
+        (v/assert kb '(unary_function BloodKinFn) 'CxUniverse)
+        (v/assert kb '(reifiable_function BloodKinFn) 'CxUniverse)
+        (v/assert kb (list '(BloodKinFn birthDate) Tom '(YearFn 1970)) CxStore {:strength :monotonic})
+        (is (empty? (filter #(= CxStore (:context %)) (tu/premise-wff-problems kb)))
+            "under the 0.34.0 spelling the sweep reads an application no declaration types")
+        (is (empty? (:refused (sync/rename! kb))))
+        (let [ps (filter #(= CxStore (:context %)) (tu/premise-wff-problems kb))]
+          (is (= [(list 'set/monotonic (list '(GeneticKinFn birthDate) Tom '(YearFn 1970)))]
+                 (map :form ps)))
+          (is (= [[[:arg-type 'eternal_predicate]]]
+                 (map (fn [p] (mapv (juxt :type :disjoint-with) (:problems p))) ps))
+              "birthDate is an eternal_predicate, disjoint from unqualified_kinship_predicate"))
+        (finally (tu/clear-kb! kb))))))
+
 (deftest write-back-edits-one-line-per-premise
   (let [dir   (io/file (System/getProperty "java.io.tmpdir") (str "vaelii-write-back-" (System/nanoTime)))
         core  (io/file dir "core.txt")

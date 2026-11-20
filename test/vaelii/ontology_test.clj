@@ -22,6 +22,7 @@
             [vaelii.impl.io.text :as text]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.predicates :as pr]
+            [vaelii.impl.protocols :as p]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
@@ -317,6 +318,16 @@
         (str "shipped facts their own declarations convict: " (vec guilty)))
     (is (empty? (filter #(= :inert-argument (:violation %)) (v/violations kb)))
         "and none is held inert")))
+
+(tu/deftest-kb every-premise-the-starter-ships-is-consistent-with-the-declarations-it-ships
+  (testing "every premise, rules included, under the constraint-only reading (tu/premise-wff-problems)"
+    (let [before (count (p/premise-ids (:records kb)))
+          guilty (tu/premise-wff-problems kb)]
+      (is (empty? guilty)
+          (str "shipped premises their own declarations convict: "
+               (vec (for [{:keys [context form problems]} guilty]
+                      [form context (mapv :message problems)]))))
+      (is (= before (count (p/premise-ids (:records kb)))) "and the sweep stores nothing"))))
 
 (def ^:private undeclared-positions
   "The argument positions of arity **2 and up** that the shipped text contexts declare with

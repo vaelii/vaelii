@@ -36,7 +36,10 @@ it — `git show v0.16.0:CHANGELOG.md`.
   queries. State gestational-only parenthood or surrogacy with `gestationalOnlyParentOf`
   or `surrogateMotherOf`. State `motherOf` or `fatherOf` facts directly where a KB wrote
   `(MotherFn ?x)` or `(FatherFn ?x)`. Write a `((BloodKinFn birthDate) ?x ?t)`,
-  `birthYearOf` or `olderThan` fact as the unqualified fact.
+  `birthYearOf` or `olderThan` fact as the unqualified fact. `upgrade --sync` rewrites a
+  stored one to a `GeneticKinFn` application and refuses none: the three are eternal
+  predicates, which no `unqualified_kinship_predicate` is, so the rewritten premise is
+  ill-typed. Restate each one as the unqualified fact or retract it.
   *Breaks:* `BloodKinFn`, `blood_kinship_predicate`, `generic_kinship_predicate`,
   `bloodRelativeOf`, `bloodKinPredicateOf`, `chosenKinPredicateOf`, `parentOf`,
   `motherOf`, `fatherOf`, `MotherFn`, `FatherFn`, `birthDate`, `birthYearOf`, `olderThan`
