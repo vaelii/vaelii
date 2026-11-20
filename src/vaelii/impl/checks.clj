@@ -5390,10 +5390,12 @@
   "Can the generated conclusion `concl` arrive as one of the read `literals` of a generator
   whose typed reads are `types`?  True for a read literal of its functor where no argument
   position is `unsatisfiable-argument?`, or where the lengths differ.  A type read of
-  `concl`'s own functor cuts nothing: `concl` is such a read, and it arrives."
+  `concl`'s functor or of a genl of it in any context (`tax/genls-global`, since the
+  generator fires everywhere) cuts nothing: `concl` arrives as that read."
   [kb concl [literals types]]
   (let [f     (nm/functor concl)
-        types (update-vals types #(disj % f))]
+        up    (set (tax/genls-global (reasoning/taxonomy kb) f))
+        types (update-vals types #(into #{} (remove up) %))]
     (boolean
      (some (fn [l]
              (and (= f (nm/functor l))

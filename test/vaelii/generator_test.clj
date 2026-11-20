@@ -421,6 +421,16 @@
              (refusal kb (list 'implies (list marker '?y)
                                (list 'implies (list trigger '?x) (list marker (list QualifyFn '?y))))))))))
 
+(tu/deftest-kb a-type-read-the-conclusion-s-predicate-is-a-genl-of-cuts-no-feed
+  (testing "a conclusion of a predicate below a typed read's predicate arrives as that read too"
+    (tu/with-terms [qualified_kind marker sub trigger QualifyFn]
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (v/assert kb (list 'disjoint qualified_kind marker) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl sub marker) 'CxUniverse {:strength :monotonic})
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list 'and (list sub '?y) (list marker '?y))
+                               (list 'implies (list trigger '?x) (list sub (list QualifyFn '?y))))))))))
+
 (tu/deftest-kb only-a-separation-every-reader-reads-at-monotonic-cuts-a-feed
   (testing "a default separation, or one stated below CxUniverse, can be overridden or unseen by a reader"
     (doseq [[strength context] [[:default 'CxUniverse] [:monotonic :below]]]

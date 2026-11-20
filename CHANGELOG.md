@@ -31,9 +31,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   reader types the variable `(T ?v)`. The cut needs a `(result F R)` visible at CxUniverse,
   and a separation of `R` from `T` that every reader reads. That separation is read at
   CxUniverse, at `:monotonic`, and spared by no stored `siblingDisjointException`. A type
-  read of the conclusion's own predicate cuts nothing. A generator lifting `genl` edges
-  between generic inputs to edges between their readings is accepted where such a
-  separation holds the readings' result type apart from the inputs' type.
+  read of the conclusion's predicate or of a `genl` of it cuts nothing. A generator
+  lifting `genl` edges between generic inputs to edges between their readings is accepted
+  where such a separation holds the readings' result type apart from the inputs' type.
   [generators.md](docs/generators.md#what-is-refused)
   *Migration:* none; a generator this admits was refused `:not-stratified`.
 

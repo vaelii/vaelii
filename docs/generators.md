@@ -250,8 +250,8 @@ application `(F …)`, at a position where the read has a variable `?v` that ano
 gives an `R` that a separation denies `T` of at every reader. The separation is read at
 CxUniverse, at `:monotonic`, and no stored `siblingDisjointException` spares the pair. An
 application denotes an instance of each result type of its function, and every reader
-denies it `T`. A type read of the conclusion's own predicate cuts nothing, because the
-conclusion is such a read. Take a hypothetical generator that reads
+denies it `T`. A type read of the conclusion's predicate, or of a type the predicate is a
+`genl` of through any edge, cuts nothing, because the conclusion arrives as that read. Take a hypothetical generator that reads
 `(generic_kinship_predicate ?p)` and the edge `(genl ?p ?g)` on its generating level, and
 generates the rule concluding `(genl (BloodKinFn ?p) (BloodKinFn ?g))`. It would not feed
 itself: `BloodKinFn`'s result `blood_kinship_predicate` is time-invariant, and the
@@ -267,8 +267,9 @@ Each generator's assert walks the feeds from the arriving generator over every s
 Every stored generator passed the same walk, so a cycle the arrival closes runs through the
 arrival, and the refusal falls on whichever member of the loop arrives last. The exception
 is a feed a `result` or a separation cut. A cycle through it opens, with no arrival to
-refuse, when a fact the cut read is retracted or weakened, or when a
-`siblingDisjointException` over the separated pair is stated.
+refuse, when a fact the cut read is retracted or weakened. Stating a
+`siblingDisjointException` over the separated pair opens it too. So does stating a `genl`
+from the conclusion's predicate to a type read.
 
 ## What this is not
 
