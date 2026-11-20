@@ -552,7 +552,11 @@ not block (`nat_test/a-rival-in-an-overlapping-slice-blocks-the-merge`, `^:red`)
 
 **An indeterminate filler forms no nogood.** The unique-name assumption is suspended for
 it, so a functional collision between it and another symbol that does not merge is no
-clash. `tuple/routes` gives the pair no route. So a `:monotonic` skolem beside two
+clash. `tuple/routes` excludes the pair's route at each context that reads either
+filler as indeterminate, so a membership stated in one context keeps the nogood where it
+is unseen
+(`nat_test/an-indeterminate-membership-in-one-context-keeps-the-nogood-where-it-is-unseen`).
+So a `:monotonic` skolem beside two
 `:default` constants defeats neither, and the two clash with each other alone, in every
 order (`nat_test/an-indeterminate-filler-collides-with-no-constant-in-every-order`). A
 membership that moves a filler's level re-places the nogoods of the facts naming it

@@ -788,13 +788,13 @@
   chain the `anti_transitive` ones, and a converse pair the `asymmetric` ones and the
   `anti_symmetric` ones unless it merges (`merges?`,
   `special/derive-antisymmetric-equalities`), and a `negates` set the declarations over
-  its functors (`negates-routes`).  A determinant pair reads the
-  determinant's own `functional` and `functionalInArg` marks; two symbols both
-  `:monotonic` merge and give no route, nor do two one of which is `indeterminate?`, the
-  unique-name assumption suspended for it.  Two symbols one class at a reader form no
-  nogood there (`exempt-at?`).  A determinant pair's routes carry `:excluded-at`, the
-  contexts at which `agree?`, `(fn [v1 v2 context])`, reads its two fillers as one value
-  (`chain/route-placements`).  `w` is `decide/unscoped-closures`'s."
+  its functors (`negates-routes`).  A determinant pair reads the determinant's own
+  `functional` and `functionalInArg` marks; two symbols both `:monotonic` merge and give
+  no route.  Two symbols one class at a reader form no nogood there (`exempt-at?`).  A
+  determinant pair's routes carry `:excluded-at` (`chain/route-placements`).  For two
+  symbols it holds where `indeterminate?`, `(fn [v context])`, reads either as not
+  determinate.  For another pair it holds where `agree?`, `(fn [v1 v2 context])`, reads
+  the two fillers as one value.  `w` is `decide/unscoped-closures`'s."
   [kb w c {:keys [members specs]} agree? indeterminate?]
   (let [tax   (:tax w)
         tms   (reasoning/tms kb)
@@ -819,11 +819,13 @@
                  :det   (let [[q k n] key
                               [v1 v2] (map #(first (get-in c [::det key %])) members)
                               sym?    (mergeable-values? v1 v2)]
-                          (when-not (and sym? (or (every? #(monotonic-member? tms %) members)
-                                                  (indeterminate? v1) (indeterminate? v2)))
+                          (when-not (and sym? (every? #(monotonic-member? tms %) members))
                             (for [mk (cond-> [[:functional-in-arg q n]] (= 2 k n) (conj [:prop :functional q]))]
-                              (cond-> {:keys #{mk} :links (links q)}
-                                (not sym?) (assoc :excluded-at #(agree? v1 v2 %)))))))))
+                              {:keys        #{mk}
+                               :links       (links q)
+                               :excluded-at (if sym?
+                                              #(or (indeterminate? v1 %) (indeterminate? v2 %))
+                                              #(agree? v1 v2 %))}))))))
             (sort-by nm/print-key specs)))))
 
 (defn kind-of

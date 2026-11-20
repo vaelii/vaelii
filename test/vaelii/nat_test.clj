@@ -2591,6 +2591,16 @@
         (v/retract! kb h)
         (is (= #{#{Someone Mary} #{Someone Jane} #{Mary Jane}} (clashing-fillers kb bestFriendOf)))))))
 
+(tu/deftest-kb an-indeterminate-membership-in-one-context-keeps-the-nogood-where-it-is-unseen
+  ;; Someone is indeterminate in CxStory alone, so CxUniverse, which holds both facts,
+  ;; reads two determinate names on default evidence and keeps their nogood
+  (tu/with-terms [bestFriendOf Ann Mary Jane Someone CxStory]
+    (v/assert kb (list 'genlCx CxStory 'CxUniverse) 'CxUniverse {:strength :monotonic})
+    (someone-kb kb [bestFriendOf Ann Mary Jane Someone] [:someone :mary])
+    (v/assert kb (list 'indeterminate_term Someone) CxStory {:strength :monotonic})
+    (is (= :determinate (provers/determinateness kb Someone 'CxUniverse)))
+    (is (= #{#{Someone Mary}} (clashing-fillers kb bestFriendOf)))))
+
 (deftest retracting-a-default-value-or-its-declaration-is-net-neutral
   (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
     (let [terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]]
