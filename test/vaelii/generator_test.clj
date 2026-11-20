@@ -432,6 +432,25 @@
         (is (= :not-stratified (refusal kb (lift-generator generic_kind QualifyFn)))
             (str strength " in " context))))))
 
+(tu/deftest-kb a-partition-route-cuts-a-feed-only-when-every-reader-reads-it
+  (testing "every climb monotonic, no exception and the result at CxUniverse cut; each weakening restores the feed"
+    (doseq [weaken [nil :default-climb :exception-below :result-below]]
+      (tu/with-terms [whole part_a part_b generic_kind qualified_kind QualifyFn CxBelow]
+        (let [mono #(v/assert kb %1 %2 {:strength :monotonic})]
+          (mono (list 'genlCx CxBelow 'CxUniverse) 'CxUniverse)
+          (mono (list 'partition whole part_a part_b) 'CxUniverse)
+          (if (= :default-climb weaken)
+            (v/assert kb (list 'genl qualified_kind part_a) 'CxUniverse {:strength :default})
+            (mono (list 'genl qualified_kind part_a) 'CxUniverse))
+          (mono (list 'genl generic_kind part_b) 'CxUniverse)
+          (mono (list 'result QualifyFn qualified_kind)
+                (if (= :result-below weaken) CxBelow 'CxUniverse))
+          (when (= :exception-below weaken)
+            (v/assert kb (list 'siblingDisjointException part_a part_b) CxBelow))
+          (is (= (if weaken :not-stratified :accepted)
+                 (refusal kb (lift-generator generic_kind QualifyFn)))
+              (str (or weaken "no weakening"))))))))
+
 (tu/deftest-kb the-cycle-check-sees-a-wrapped-generator-too
   ;; every generator is filed under the one key `implies`, which means peeling the
   ;; wrapper off the generated rule first — it is the generated rule's, not the
