@@ -443,7 +443,7 @@
             (str strength " in " context))))))
 
 (tu/deftest-kb a-partition-route-cuts-a-feed-only-when-every-reader-reads-it
-  (testing "every climb monotonic, no exception and the result at CxUniverse cut; each weakening restores the feed"
+  (testing "every climb monotonic, no exception and the result at CxUniverse cut; each weakening restores the feed, each case alone"
     (doseq [weaken [nil :default-climb :exception-below :result-below]]
       (tu/with-terms [whole part_a part_b generic_kind qualified_kind QualifyFn CxBelow]
         (let [mono #(v/assert kb %1 %2 {:strength :monotonic})]
@@ -457,9 +457,10 @@
                 (if (= :result-below weaken) CxBelow 'CxUniverse))
           (when (= :exception-below weaken)
             (v/assert kb (list 'siblingDisjointException part_a part_b) CxBelow))
-          (is (= (if weaken :not-stratified :accepted)
-                 (refusal kb (lift-generator generic_kind QualifyFn)))
-              (str (or weaken "no weakening"))))))))
+          (let [gen (lift-generator generic_kind QualifyFn)]
+            (is (= (if weaken :not-stratified :accepted) (refusal kb gen))
+                (str (or weaken "no weakening")))
+            (some->> (v/handle-of kb gen 'CxUniverse) (v/retract! kb))))))))
 
 (tu/deftest-kb the-cycle-check-sees-a-wrapped-generator-too
   ;; every generator is filed under the one key `implies`, which means peeling the
