@@ -2159,18 +2159,23 @@
       (is (= start (believed-content kb))))))
 
 ;; ---- the determinateness levels -------------------------------------------
-;; A placeholder_term is an indeterminate_term (core.txt): a skolem, a `nat/` handle and
-;; a `cx/` handle are built-in placeholders, and a declared indeterminate_term member is
-;; indeterminate and no placeholder.
+;; placeholder_term and indeterminate_term partition proxy_term (core.txt): a `nat/` and a
+;; `cx/` handle are built-in placeholders the unique-name assumption holds for, and a
+;; skolem and a declared indeterminate_term member are indeterminate terms it is suspended
+;; for.  The functional merge reads either part as no determinate filler.
 
-(tu/deftest-kb a-placeholder-term-is-an-indeterminate-term
+(tu/deftest-kb the-proxy-terms-partition-into-placeholder-and-indeterminate-terms
   (tu/with-terms [FriendFn bestFriendOf pal Ann Sketch Someone Mary CxM]
-    (is (v/ask? kb '(genl placeholder_term indeterminate_term) 'CxUniverse))
-    (is (not (v/ask? kb '(disjoint placeholder_term indeterminate_term) 'CxUniverse)))
+    (is (v/ask? kb '(genl placeholder_term proxy_term) 'CxUniverse))
+    (is (v/ask? kb '(genl indeterminate_term proxy_term) 'CxUniverse))
+    (is (not (v/ask? kb '(genl placeholder_term indeterminate_term) 'CxUniverse)))
+    (is (v/ask? kb '(disjoint placeholder_term indeterminate_term) 'CxUniverse))
     (v/assert kb (list 'placeholder_term Sketch) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})
-    (is (v/ask? kb (list 'indeterminate_term Sketch) 'CxUniverse)
-        "a declared placeholder is an indeterminate term")
+    (is (v/ask? kb (list 'proxy_term Sketch) 'CxUniverse))
+    (is (v/ask? kb (list 'proxy_term Someone) 'CxUniverse))
+    (is (not (v/ask? kb (list 'indeterminate_term Sketch) 'CxUniverse))
+        "a declared placeholder is no indeterminate term")
     (v/assert kb (list 'reifiable_function FriendFn) 'CxUniverse {:strength :monotonic})
     (v/assert-rule kb [(list pal '?x)] (list 'exists '?y (list bestFriendOf '?x '?y)) 'CxUniverse
                    {:direction :forward})
@@ -2181,16 +2186,21 @@
                                                          'CxUniverse)))
                    2)
           cx  (:context (v/sentex kb (v/assert kb (list pal Mary) (list 'CxTimeFn CxM '(YearFn 2000)))))
-          lvl #(provers/determinateness kb % 'CxUniverse)]
+          lvl #(provers/determinateness kb % 'CxUniverse)
+          una #(provers/indeterminate-term? kb % 'CxUniverse)]
       (is (= 'SkolemFn (first (nat/nat-expression kb sk))))
       (is (nat-read/reified-context-symbol? cx))
-      (is (= {:skolem :placeholder :nat :placeholder :cx :placeholder :declared :placeholder
+      (is (= {:skolem :indeterminate :nat :placeholder :cx :placeholder :declared :placeholder
               :someone :indeterminate :mary :determinate}
              {:skolem (lvl sk) :nat (lvl nat) :cx (lvl cx) :declared (lvl Sketch)
-              :someone (lvl Someone) :mary (lvl Mary)})))))
+              :someone (lvl Someone) :mary (lvl Mary)}))
+      (testing "only an indeterminate term suspends the unique-name assumption"
+        (is (= {:skolem true :nat false :declared false :someone true :mary false}
+               {:skolem (una sk) :nat (una nat) :declared (una Sketch) :someone (una Someone)
+                :mary (una Mary)}))))))
 
 (tu/deftest-kb a-skolem-merges-onto-the-one-constant-of-its-slot-and-never-onto-two
-  ;; the skolem witness of (exists ?y (bestFriendOf Ann ?y)) is a placeholder: with Mary
+  ;; the skolem witness of (exists ?y (bestFriendOf Ann ?y)) is a proxy term: with Mary
   ;; alone in the slot it merges with her, and with Jane beside her it merges with neither,
   ;; so no merge chains Mary to Jane
   (tu/with-terms [bestFriendOf pal Ann Mary Jane]

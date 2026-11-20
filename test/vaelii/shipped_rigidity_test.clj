@@ -306,8 +306,8 @@
   ;; Each tracks a store or a mind that changes.  An implementation note is about a term,
   ;; as a comment is.
   (all-of-kind kb 'time_varying_relation
-               '[empty nonempty believes indeterminate_term placeholder_term agg/avg
-                 agg/count agg/max agg/min
+               '[empty nonempty believes indeterminate_term placeholder_term proxy_term
+                 agg/avg agg/count agg/max agg/min
                  agg/sum]
                'CxUniverse)
   (all-of-kind kb 'time_varying_relation '[toolName] 'CxTra)

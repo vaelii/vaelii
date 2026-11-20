@@ -442,7 +442,7 @@
 (defn- drop-det-member
   "`c` with `h` gone from determinant `key`: the determinant goes when one filler is
   left, and a partner left with none is no longer live.  The members left are queued
-  under `::slot-moved`, since a rival leaving can leave a placeholder filler one
+  under `::slot-moved`, since a rival leaving can leave a proxy filler one
   constant to merge onto (`take-slot-moves!`)."
   [w c key h]
   (let [[_ cx] (get-in c [::det key h])
@@ -478,12 +478,13 @@
           (get-in c [::member-of h])))
 
 (defn- determinacy-term
-  "The term `sx` makes a member of `indeterminate_term` or a subkind (unscoped), else nil."
+  "The term `sx` makes a member of `proxy_term` or a subkind, either part among them
+  (unscoped), else nil."
   [w sx]
   (let [s (:sentence sx)]
     (when (and (nil? (:antecedent sx)) (seq? s) (= 2 (count s)) (symbol? (first s)))
-      (when (or (= 'indeterminate_term (first s))
-                (contains? ((:specs-global w) 'indeterminate_term) (first s)))
+      (when (or (= 'proxy_term (first s))
+                (contains? ((:specs-global w) 'proxy_term) (first s)))
         (second s)))))
 
 (defn- note-tuple!

@@ -1412,21 +1412,30 @@
   [kb term context]
   (class-indeterminate? kb (res/visible-supporter-fn kb context) term context))
 
+(defn- proxy-term?
+  "Is `term` a believed member of `proxy_term` at `context`, a member of either part or
+  of a subkind?  A reified constant is one without a stored membership.  One indexed
+  point-read, as `category-indeterminate?` reads: `res/matches-visible` fans the functor
+  over its genl-spec closure."
+  [kb term context]
+  (or (nat-read/reified-nat-symbol? term)
+      (boolean (seq (res/matches-visible kb (list 'proxy_term term) context)))))
+
 (defn determinateness
   "The determinateness level of `term` as mentioned at `context`, read off the term and
-  not its equality class (core.txt, \"three levels of determinateness\").
-  `:placeholder` is a reified constant, a skolem constant or one such as
-  `(<MomFn Muffet>)` for `(MomFn Muffet)`, or a believed member of `placeholder_term` or a
-  subkind.  `:indeterminate` is any other believed member of `indeterminate_term` or a
-  subkind, of which `placeholder_term` is one.  `:determinate` is every other term.
-  `checks/functional-merges?` reads it."
+  not its equality class (core.txt, \"three levels of determinateness\").  A term that is
+  no `proxy_term` is `:determinate`.  A `proxy_term` is `:indeterminate` when it is a
+  skolem constant or a believed member of `indeterminate_term` or a subkind, and
+  `:placeholder` otherwise: a reified constant such as `(<MomFn Muffet>)` for
+  `(MomFn Muffet)`, or a believed member of `placeholder_term` or a subkind.
+  `checks/functional-merges?` merges a filler that is not `:determinate`."
   [kb term context]
   (cond
     (not (symbol? term)) :determinate
-    (or (nat-read/reified-nat-symbol? term)
-        (seq (res/matches-visible kb (list 'placeholder_term term) context))) :placeholder
-    (category-indeterminate? kb term context) :indeterminate
-    :else :determinate))
+    (not (proxy-term? kb term context)) :determinate
+    (or (skolem-indeterminate? kb term context)
+        (category-indeterminate? kb term context)) :indeterminate
+    :else :placeholder))
 
 (defn indeterminacy-supports
   "The handles of the stored sentexes, in any context, that make `term` an indeterminate

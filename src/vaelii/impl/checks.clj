@@ -1665,7 +1665,7 @@
 (defn- names-determinate-terms-only?
   "Does the equality supporter `h` name only terms `provers/determinateness` reads as
   `:determinate` at `context`?  `sole-constant?` reads two constants as one only through
-  such a merge, so an indeterminate filler's own merges never make two rivals one."
+  such a merge, so a proxy filler's own merges never make two rivals one."
   [kb context h]
   (every? #(= :determinate (provers/determinateness kb % context))
           (some-> (p/get-sentex (:records kb) h) :sentence nm/args)))
@@ -1674,7 +1674,7 @@
   "Is no determinate filler of the functional slot `via` at position `n` under `args`
   that `context` reaches outside the class of the constant `c` (`slot-candidates`)?  The
   class is read over the merges `context` sees that name determinate terms only
-  (`names-determinate-terms-only?`).  The guard on an indeterminate filler's merge
+  (`names-determinate-terms-only?`).  The guard on a proxy filler's merge
   (`functional-merges?`): with Mary and Jane in the slot, neither merges with it."
   [kb c via n args context]
   (let [admit? #(names-determinate-terms-only? kb context %)]

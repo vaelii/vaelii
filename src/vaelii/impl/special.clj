@@ -5578,7 +5578,7 @@
   "Does the collision justification `j` over the members `ms`, all IN, still license its
   merge?  An `anti_symmetric` one does when every member is `:monotonic`.  A `functional`
   one does when its fillers merge at the merge's context (`checks/functional-merges?`),
-  so a rival's arrival withdraws a placeholder filler's merge."
+  so a rival's arrival withdraws a proxy filler's merge."
   [kb recs j ms]
   (let [tms (reasoning/tms kb)]
     (if (and (= 'functional (:informant j)) (= 2 (count ms)))

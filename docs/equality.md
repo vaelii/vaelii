@@ -484,23 +484,27 @@ functional declaration]`. Whether two symbols merge on weaker evidence depends o
 **determinateness**, one of three levels core.txt declares and
 `provers/determinateness` reads off each symbol as written, not off its equality class:
 
-| Level | Members | A functional collision with a `:default` fact |
-|---|---|---|
-| determinate | every term no category below names | merges with no other filler, and is a nogood |
-| `indeterminate_term` | a declared member or subkind member | merges with a determinate constant that is the one candidate of its slot, and is no nogood |
-| `placeholder_term`, a spec of `indeterminate_term` | a skolem constant, a `nat/` or `cx/` reified constant, a declared member or subkind member | as `indeterminate_term` |
+| Level | Members | Unique-name assumption | A functional collision with a `:default` fact |
+|---|---|---|---|
+| determinate | every term that is no `proxy_term` | holds | merges with no other filler, and is a nogood |
+| `placeholder_term` | a `nat/` or `cx/` reified constant that is no skolem, a declared member or subkind member | holds | merges with a determinate constant that is the one candidate of its slot, and is no nogood |
+| `indeterminate_term` | a skolem constant, a declared member or subkind member | suspended | as `placeholder_term` |
 
-`checks/functional-merges?` decides each pair. The skolem constant of `(exists ?y
-(bestFriendOf Ann ?y))` is a placeholder term: its name records its rule and bindings,
-and not which object it is. So is the reified constant `(<FriendFn Ann>)` of the
-application `(FriendFn Ann)`. A `:default` `(bestFriendOf Ann Mary)` beside it merges the
-two (`nat_test/a-default-constant-merges-with-the-placeholder-and-places-no-nogood`). Two
-fillers that are not determinate merge on `:monotonic` evidence alone, so a placeholder
-merges with no other reified constant on `:default` evidence
+`(partition proxy_term placeholder_term indeterminate_term)` names the two lower levels
+together, and the merge reads `proxy_term`. `checks/functional-merges?` decides each
+pair. The reified constant `(<FriendFn Ann>)` of the application `(FriendFn Ann)` is a
+placeholder term: its name records how its value is reached, and not which object it is.
+A `:default` `(bestFriendOf Ann Mary)` beside it merges the two
+(`nat_test/a-default-constant-merges-with-the-placeholder-and-places-no-nogood`). The
+skolem constant of `(exists ?y (bestFriendOf Ann ?y))` merges the same way. Its name
+records its rule and bindings too, but the unique-name assumption is suspended for it, so
+it is an indeterminate term. Two fillers that are not determinate merge on `:monotonic`
+evidence alone, so a placeholder merges with no other reified constant on `:default`
+evidence
 (`nat_test/a-placeholder-merges-with-no-other-reified-constant-on-default-evidence`,
 `nat_test/two-indeterminate-fillers-do-not-merge-on-default-evidence`). The `different`
-prover and the `predAllSpecified` audit read a declared member as indeterminate, and a
-reified constant that is no skolem as determinate.
+prover and the `predAllSpecified` audit read a placeholder term as determinate and an
+indeterminate term as indeterminate (`nat_test/the-proxy-terms-partition-into-placeholder-and-indeterminate-terms`).
 
 **A `:default` corresponding value is no collision.** The placeholder `(<MomFn Muffet>)`
 and a `:default` `(momOf Muffet Mary)` fill the slot the correspondence's
@@ -510,13 +514,13 @@ joins the two (`checks/corresponding-default-pair?`,
 `nat_test/a-default-value-merges-nothing-with-the-placeholder-and-places-no-nogood`). Only
 a `:monotonic` value derives `(rewriteOf V K)`.
 
-**An indeterminate filler merges only onto the one candidate of its slot.** A slot's
+**A proxy filler merges only onto the one candidate of its slot.** A slot's
 candidates are its determinate fillers that a merge stored at the reader reaches
 (`checks/sole-constant?`). They are the fillers of the stored facts the reader sees. They
 are also the fillers of the stored facts in a context some context sees together with the
 reader, since that context reads the merge and the filler at once. A filler stands for
 every name of its class. Two constants count as one candidate only through a merge that
-names determinate terms only, so an indeterminate filler's own merges never make two
+names determinate terms only, so a proxy filler's own merges never make two
 rivals one. The candidates are read off the store, as the collision sweep reads it. A
 filler an `except` or a placed `defeat` hides at the reader is no candidate. With a
 `:default` `(bestFriendOf Ann Mary)` and a `:default` `(bestFriendOf Ann Jane)` in one
@@ -550,11 +554,10 @@ intervals overlap should block each other's merges too. The engine mints no slic
 their intersection until a write names one, so no context sees both, and the rival does
 not block (`nat_test/a-rival-in-an-overlapping-slice-blocks-the-merge`, `^:red`).
 
-**An indeterminate filler forms no nogood.** The unique-name assumption is suspended for
-it, so a functional collision between it and another symbol that does not merge is no
-clash. `tuple/routes` excludes the pair's route at each context that reads either
-filler as indeterminate, so a membership stated in one context keeps the nogood where it
-is unseen
+**A proxy filler forms no nogood.** A functional collision between a `proxy_term` and
+another symbol that does not merge is no clash. `tuple/routes` excludes the pair's route
+at each context that reads either filler as not determinate, so a membership stated in
+one context keeps the nogood where it is unseen
 (`nat_test/an-indeterminate-membership-in-one-context-keeps-the-nogood-where-it-is-unseen`).
 So a `:monotonic` skolem beside two
 `:default` constants defeats neither, and the two clash with each other alone, in every
@@ -582,7 +585,7 @@ one the member would have met arriving at that class. A collision justification 
 member IN at `:default` is dropped when its merge no longer holds, as retracting that
 member drops it, and an equality with another justification stands on it. A member IN at
 `:default` in a slot holding a filler that is not determinate goes back through the
-derivation as well, so the merge an indeterminate filler holds does not depend
+derivation as well, so the merge a proxy filler holds does not depend
 on which value arrived first. A settle whose own defeats stand when a merge
 moves settles again from no defeat (`settle/*unmerged-sink*`). `core/preview` keeps every
 handle, so it leaves a dropped merge standing.
