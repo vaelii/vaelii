@@ -59,26 +59,29 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 - **A functional collision reads three levels of determinateness.** A `functional` or
   `functionalInArg` collision between two symbols merged only when both facts were
-  `:monotonic`. core.txt now declares `placeholder_term` with
-  `(genl placeholder_term indeterminate_term)`, and `provers/determinateness` reads each
-  filler's level off the symbol as written. A skolem constant and a `nat/` or `cx/`
-  reified constant are placeholders. An indeterminate filler, a placeholder or not,
-  merges whatever the facts' strength with a determinate constant that is the one
-  candidate of its slot. So a `:default` `(bestFriendOf Ann Mary)` merges a placeholder
-  in Ann's slot with Mary, and a `:default` `(bestFriendOf Ann Jane)` beside it withdraws
-  the merge, so Mary and Jane never merge on `:default` evidence. The merge comes back
-  when the rival leaves, in every arrival order. A collision with an indeterminate filler
-  that does not merge places no nogood. A placeholder against a `:default` value of its
-  own correspondence is no collision, and the value's copies carry it. The `different`
-  prover and the `predAllSpecified` audit read a declared placeholder as indeterminate,
-  and a reified constant that is no skolem as determinate. A late `indeterminate_term`
-  membership reaches a collision stored before it.
+  `:monotonic`. core.txt now declares `proxy_term` and `placeholder_term`, reflection.txt
+  states `(partition proxy_term placeholder_term indeterminate_term)`, and
+  `provers/determinateness` reads each filler's level off the symbol as written. A `nat/`
+  or `cx/` reified constant that is no skolem is a `placeholder_term`, and the
+  unique-name assumption holds for it. A skolem constant is an `indeterminate_term`. A
+  proxy filler merges whatever the facts' strength with a determinate constant that is
+  the one candidate of its slot. So a `:default` `(bestFriendOf Ann Mary)` merges a
+  placeholder in Ann's slot with Mary, and a `:default` `(bestFriendOf Ann Jane)` beside
+  it withdraws the merge, so Mary and Jane never merge on `:default` evidence. The merge
+  comes back when the rival leaves, in every arrival order. A collision with a proxy
+  filler that does not merge places no nogood in a context that reads the filler as a
+  proxy, and keeps its nogood in a context that does not. A placeholder against a
+  `:default` value of its own correspondence is no collision, and the value's copies
+  carry it. The `different` prover and the `predAllSpecified` audit read a placeholder
+  term as determinate and an indeterminate term as indeterminate. A late membership of
+  either part reaches a collision stored before it.
   [equality.md](docs/equality.md#functional-infers-equality-instead-of-throwing)
   *Breaks:* `equals`, `contradictions`
 - **An equality class prefers a constant over a reified constant.** Its representative
   was the smallest member by name, so `(<VerFn basePred>)` stood for a class holding
   `namedPred`. A `nat/` or `cx/` constant now stands for a class only when every
-  candidate is one. [equality.md](docs/equality.md#choosing-the-representative)
+  candidate is one. The spelling a quoted position reads breaks a tie among `rewriteOf`
+  heads the same way. [equality.md](docs/equality.md#choosing-the-representative)
   *Breaks:* `representative`, `ask`
 
 ### Additive: shipped ontology
