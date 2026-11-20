@@ -329,6 +329,24 @@
                       [form context (mapv :message problems)]))))
       (is (= before (count (p/premise-ids (:records kb)))) "and the sweep stores nothing"))))
 
+(tu/deftest-kb ^:red a-premise-against-a-stated-denial-of-its-argument-type-is-reported
+  (testing (str "https://github.com/vaelii/vaelii/issues/306: well-formedness tries to prove"
+                " the denial of what is asserted, and a stated (not (T x)) is such a proof;"
+                " the constraint-only reading reads only a separation from T, so it misses it")
+    (tu/with-terms [gadget relatesTo GadgetFn Ann Bob CxProbe]
+      (doseq [s [(list 'genl gadget 'thing)
+                 (list 'binary_predicate relatesTo)
+                 (list 'unary_function GadgetFn)
+                 (list 'reifiable_function GadgetFn)
+                 (list 'arg GadgetFn 1 gadget)]]
+        (v/assert kb s CxProbe))
+      (v/assert kb (list 'not (list gadget relatesTo)) CxProbe {:strength :monotonic})
+      (v/assert kb (list (list GadgetFn relatesTo) Ann Bob) CxProbe)
+      (is (v/ask? kb (list 'not (list gadget relatesTo)) CxProbe) "the denial is believed")
+      (is (= [(list (list GadgetFn relatesTo) Ann Bob)]
+             (map :form (filter #(= CxProbe (:context %)) (tu/premise-wff-problems kb))))
+          "the sweep reports the premise its argument's denial contradicts"))))
+
 (def ^:private undeclared-positions
   "The argument positions of arity **2 and up** that the shipped text contexts declare with
   no `arg`-family form, each with the reason.  A position that holds a term of any kind
