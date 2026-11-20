@@ -34,6 +34,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   from the inputs' type. [generators.md](docs/generators.md#what-is-refused)
   *Migration:* none; a generator this admits was refused `:not-stratified`.
 
+### Additive: shipped ontology
+
+- **Kinship hierarchy lifting reads each `genl` edge between generic inputs once.**
+  kinship.txt's two lift rules conclude `(genl (BloodKinFn ?p) (BloodKinFn ?g))` and the
+  `ChosenKinFn` twin from `(generic_kinship_predicate ?p)`, `(generic_kinship_predicate ?g)`
+  and `(genl ?p ?g)`, in place of two generators of one ground rule per ordered pair of
+  generic predicates. The starter stores no generated lift rule (242 before), its forward
+  firings fall from 3,316 to 2,948, and the lifted `genl` set is unchanged.
+  *Migration:* none; the lifted edges are the same.
+
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
 | Area | Change |

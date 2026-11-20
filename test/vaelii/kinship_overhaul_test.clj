@@ -310,3 +310,56 @@
              (lifted kb predicates K)))
       (v/retract! kb edge)
       (is (= without (lifted kb predicates K))))))
+
+;; ---- the generated lift rules follow the genl edges ----
+
+(defn- ground? [form] (not-any? #(and (symbol? %) (= \? (first (name %)))) (flatten (list form))))
+
+(defn- lift-rules
+  "The distinct stored ground rules concluding a `genl` from a constructed kinship
+  predicate, each as `[antecedent consequent context]`, the minted constants spelled
+  through their `natFormula`."
+  [kb]
+  (let [formula (into {} (map (juxt '?term '?expression)) (v/query kb '(natFormula ?term ?expression) U))
+        spell #(get formula % %)
+        qualified? #(and (sequential? %) (some #{(first %)} constructors))]
+    (set (for [context (v/contexts kb)
+               sentex (v/sentexes-in-context kb context)
+               :let [antecedent (:antecedent sentex)
+                     [functor spec general :as consequent] (:consequent sentex)]
+               :when (and antecedent (= 'genl functor) (qualified? (spell spec))
+                          (ground? antecedent) (ground? consequent))]
+           [antecedent (list 'genl (spell spec) (spell general)) context]))))
+
+(defn- lifting-rule?
+  "Does the rule `sentence` conclude, at some level, the `genl` between two readings one
+  constructor makes of two variables: an authored lift rule, or a generator of them."
+  [sentence]
+  (boolean (some #(and (sequential? %) (= 'genl (first %)) (= 3 (count %))
+                       (let [[_ a b] %]
+                         (and (sequential? a) (sequential? b) (some #{(first a)} constructors)
+                              (= (first a) (first b)) (ground? (first a))
+                              (not (ground? (second a))) (not (ground? (second b))))))
+                 (tree-seq sequential? seq sentence))))
+
+(tu/deftest-kb generated-lift-rules-follow-the-genl-edges
+  (let [generic (set (map '?p (v/query kb '(generic_kinship_predicate ?p) U)))
+        rules (lift-rules kb)
+        edge? (fn [[[[functor spec general] :as antecedent] _ context]]
+                (and (= 1 (count antecedent)) (= 'genl functor) (generic spec) (generic general)
+                     (not= spec general) (true? (v/ask? kb (list 'genl spec general) context))))
+        edges (count (for [s (v/sentexes-with-functor kb 'genl {:believed? true})
+                           :let [[_ spec general] (:sentence s)]
+                           :when (and (generic spec) (generic general) (not= spec general))]
+                       s))
+        lifts (filter #(lifting-rule? (:sentence %)) (v/chain-report kb))]
+    (is (= 2 (count lifts)) "one lift rule or generator per constructor")
+    (is (= (* (count constructors) edges) (reduce + (map :placed lifts)))
+        (str "the lift places one firing per genl edge between generic predicates and"
+             " constructor, so its work follows the edges and not the pairs"))
+    (is (empty? (remove edge? rules))
+        (str "every generated lift rule reads a genl edge between two distinct generic"
+             " predicates, so the count follows the edges and not the pairs; "
+             (count (remove edge? rules)) " of " (count rules) " read none"))
+    (is (= (* (count constructors) (count (set (map (juxt first last) rules)))) (count rules))
+        "one generated rule per edge and constructor")))

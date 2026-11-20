@@ -297,18 +297,16 @@
  (implies (generic_kinship_predicate ?predicate)
           (genl (ChosenKinFn ?predicate) ?predicate)))
 
-(implementationNote BloodKinFn "Hierarchy lifting generates ground conditional rules from pairs of generic inputs. The generated antecedent is the original ground genl edge, admitted as forced-between-predicates without forcing genl between types. The finite pair schema also reads a hierarchy edge asserted later. Qualified outputs are not generic inputs, so qualification cannot nest.")
+(implementationNote BloodKinFn "Hierarchy lifting reads each genl edge between two generic inputs once, in either arrival order, and concludes the edge between their readings. The genl antecedent is forced-between-predicates at each firing, whose ground edge relates two predicates, so the lifted edge is forced-monotonic without forcing genl between types. Qualified outputs are not generic inputs, so qualification cannot nest.")
 
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (generic_kinship_predicate ?general))
-          (set/forwardRule
-           (implies (genl ?predicate ?general)
-                    (genl (BloodKinFn ?predicate) (BloodKinFn ?general))))))
+ (implies (and (generic_kinship_predicate ?predicate) (generic_kinship_predicate ?general)
+               (genl ?predicate ?general))
+          (genl (BloodKinFn ?predicate) (BloodKinFn ?general))))
 (set/forwardRule
- (implies (and (generic_kinship_predicate ?predicate) (generic_kinship_predicate ?general))
-          (set/forwardRule
-           (implies (genl ?predicate ?general)
-                    (genl (ChosenKinFn ?predicate) (ChosenKinFn ?general))))))
+ (implies (and (generic_kinship_predicate ?predicate) (generic_kinship_predicate ?general)
+               (genl ?predicate ?general))
+          (genl (ChosenKinFn ?predicate) (ChosenKinFn ?general))))
 
 ;; Predicate arity is explicit on each reading; it is not inherited from its genl.
 (set/forwardRule
