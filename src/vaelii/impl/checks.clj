@@ -3850,9 +3850,11 @@
                                  c  (some->> (:consequence j) (p/get-sentex recs))]
                              ;; a mint held void is no firing (`special/hold-type-mints!`)
                              (when (and c (integer? rh) (not (kb/mint-informant? kb rh)))
-                               (let [s (sx/sentence-of c)]
-                                 (some-> (forced-conclusion-violation kb rh s (union-reading kb)
-                                                                      (firing-bindings kb jid))
+                               (let [s  (sx/sentence-of c)
+                                     on (union-reading kb)]
+                                 (some-> (when (forced-conclusion-violation kb rh s on nil)
+                                           (forced-conclusion-violation kb rh s on
+                                                                        (firing-bindings kb jid)))
                                          (assoc :sentence s :context (:context c) :rule rh))))))))
          (nm/sort-by-content-key (fn [e] [(:sentence e) (:context e)
                                           (some-> (p/get-sentex recs (:rule e)) sx/sentence-of)]))
