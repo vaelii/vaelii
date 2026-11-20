@@ -512,6 +512,23 @@
         (v/retract! kb d))
       (is (= [false true] (concluded? kb c CxU)) "and void again once it is retracted"))))
 
+(tu/deftest-kb a-firing-over-minted-constants-follows-their-length
+  (testing "a length bound after the firing forces the firing's ground genl, and its retraction voids it again"
+    (tu/with-terms [lift_mark KindFn ArgA ArgB]
+      (doseq [s [(list 'reifiable_function KindFn) (list 'unary_function KindFn)
+                 (list 'forced_monotonic_predicate lift_mark)]]
+        (v/assert kb s 'CxUniverse {:strength :monotonic}))
+      (v/assert kb (lift-rule lift_mark 'genl) 'CxUniverse)
+      (v/assert kb (list lift_mark (list KindFn ArgA)) 'CxUniverse)
+      (let [gh (v/assert kb (list 'genl (list KindFn ArgA) (list KindFn ArgB)) 'CxUniverse)
+            ks (rest (:sentence (v/sentex kb gh)))
+            c  (list lift_mark (second ks))]
+        (is (= [false true] (concluded? kb c)) "two constants of no length are no predicates")
+        (let [bs (mapv #(v/assert kb (list 'binary_predicate %) 'CxUniverse {:strength :monotonic}) ks)]
+          (is (= [true false] (concluded? kb c)) "bound, the firing's ground genl is between predicates")
+          (run! #(v/retract! kb %) bs))
+        (is (= [false true] (concluded? kb c)) "and void again once the length is retracted")))))
+
 (tu/deftest-kb a-declaration-forces-a-verdict-and-a-firing-only-where-it-is-seen
   (declaration-seen-reading kb sampled))
 
