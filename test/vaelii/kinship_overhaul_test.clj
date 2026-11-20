@@ -8,7 +8,18 @@
 
 (defn- load-kinship-fixture! [kb]
   (tu/load-starter! kb)
-  (doseq [sentence '[(generic_kinship_predicate testKinshipSequenceOf)
+  (doseq [sentence '[;; edges stated before the generic marks of the predicates they relate
+                     (binary_predicate testEarlyNarrowKinshipOf)
+                     (binary_predicate testEarlyMiddleKinshipOf)
+                     (binary_predicate testEarlyBroadKinshipOf)
+                     (genl testEarlyNarrowKinshipOf testEarlyMiddleKinshipOf)
+                     (genl testEarlyMiddleKinshipOf testEarlyBroadKinshipOf)
+                     (generic_kinship_predicate testEarlyNarrowKinshipOf)
+                     (generic_kinship_predicate testEarlyMiddleKinshipOf)
+                     (generic_kinship_predicate testEarlyBroadKinshipOf)
+                     (generic_kinship_predicate testMiddleKinshipOf)
+                     (binary_predicate testMiddleKinshipOf)
+                     (generic_kinship_predicate testKinshipSequenceOf)
                      (variable_arity_predicate testKinshipSequenceOf)
                      (arityMin testKinshipSequenceOf 3)
                      (generic_kinship_predicate testNarrowKinshipOf)
@@ -251,3 +262,51 @@
     (doseq [mother [GeneticMother Carrier]]
       (is (not (proves? kb (list 'equals (list 'MotherFn Ann) mother) K))))
     (is (empty? (v/contradictions kb)))))
+
+;; ---- hierarchy lifting reads the genl edges in any order ----
+
+(def ^:private constructors '[BloodKinFn ChosenKinFn])
+
+(defn- lifted
+  "The `genl` edges among `predicates` each constructor lifts, read at `context`."
+  [kb predicates context]
+  (set (for [constructor constructors spec predicates general predicates
+             :when (and (not= spec general)
+                        (v/ask? kb (list 'genl (list constructor spec) (list constructor general)) context))]
+         [constructor spec general])))
+
+(defn- lifted-chain
+  "What each constructor lifts from the edges `[spec general]`, read transitively."
+  [edges]
+  (let [closure (loop [pairs (set edges)]
+                  (let [more (into pairs (for [[a b] pairs [c d] pairs :when (= b c)] [a d]))]
+                    (if (= more pairs) pairs (recur more))))]
+    (set (for [constructor constructors [spec general] closure] [constructor spec general]))))
+
+(tu/deftest-kb lifted-edges-agree-when-edges-precede-the-generic-marks
+  (let [predicates '[testEarlyNarrowKinshipOf testEarlyMiddleKinshipOf testEarlyBroadKinshipOf]]
+    (is (= (lifted-chain '[[testEarlyNarrowKinshipOf testEarlyMiddleKinshipOf]
+                           [testEarlyMiddleKinshipOf testEarlyBroadKinshipOf]])
+           (lifted kb predicates U)))))
+
+(tu/deftest-kb lifted-edges-agree-when-the-generic-marks-precede-edges
+  (let [predicates '[testNarrowKinshipOf testMiddleKinshipOf testBroadKinshipOf]]
+    (is (empty? (lifted kb predicates K)) "nothing lifts before the edges")
+    (v/assert kb '(genl testNarrowKinshipOf testMiddleKinshipOf) K)
+    (v/assert kb '(genl testMiddleKinshipOf testBroadKinshipOf) K)
+    (is (= (lifted-chain '[[testNarrowKinshipOf testMiddleKinshipOf]
+                           [testMiddleKinshipOf testBroadKinshipOf]])
+           (lifted kb predicates K)))
+    (is (empty? (lifted kb predicates U)) "the lift stays in the context of its edges")))
+
+(tu/deftest-kb retracting-one-edge-leaves-the-lift-of-a-kb-built-without-it
+  (let [predicates '[testNarrowKinshipOf testMiddleKinshipOf testBroadKinshipOf]]
+    (v/assert kb '(genl testNarrowKinshipOf testMiddleKinshipOf) K)
+    (let [without (lifted kb predicates K)
+          edge (v/assert kb '(genl testMiddleKinshipOf testBroadKinshipOf) K)]
+      (is (= (lifted-chain '[[testNarrowKinshipOf testMiddleKinshipOf]]) without))
+      (is (= (lifted-chain '[[testNarrowKinshipOf testMiddleKinshipOf]
+                             [testMiddleKinshipOf testBroadKinshipOf]])
+             (lifted kb predicates K)))
+      (v/retract! kb edge)
+      (is (= without (lifted kb predicates K))))))
