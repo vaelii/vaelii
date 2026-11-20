@@ -16,29 +16,34 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Breaking: shipped ontology
 
-- **Kinship shares one unqualified hierarchy with genetic and chosen readings.** `relativeOf`
-  becomes `kinOf`; `GeneticKinFn` qualifies eternal genetic history and `ChosenKinFn`
-  qualifies time-varying chosen ties. Unqualified kinship is time-agnostic. Gestational-only
-  parenthood and surrogacy are not genetic kin and specialize no parent or mother predicate.
-  A child can have more than one mother or father, so `life.txt` states
-  `(not (functional motherOf))` and `(not (functional fatherOf))`, and `kinship.txt`
-  states the same of `(GeneticKinFn motherOf)` and `(GeneticKinFn fatherOf)`, each with a
-  `comment` giving a case. `MotherFn` and `FatherFn` are retired. `resources/renames/unreleased.edn` records both as retired, so
-  `upgrade --sync` reports a stored premise that names either.
-  Named genetic/chosen predicates keep separately justified constructor results and
-  correspondences; removing a use removes only the proofs that depend on it.
-  `originatorOf` admits organisms and no longer specializes kinship.
-  *Migration:* rename `relativeOf` to `kinOf`; use `GeneticKinFn` for genetic descent,
-  and state gestational-only parenthood or surrogacy with `gestationalOnlyParentOf` or
-  `surrogateMotherOf`. Unqualified facts no longer assert genetic descent or eternity.
-  State `motherOf` or `fatherOf` facts directly where a KB wrote `(MotherFn ?x)` or
-  `(FatherFn ?x)`.
-  *Breaks:* `relativeOf`, `parentOf`, `childOf`, `motherOf`, `fatherOf`, `siblingOf`,
-  `grandparentOf`, `ancestorOf`, `MotherFn`, `FatherFn`, `originatorOf`
+- **Blood kinship is genetic kinship, and generic kinship is unqualified.** The 0.34.0
+  spellings are renamed with their arity and argument order: `BloodKinFn` is
+  `GeneticKinFn`, `blood_kinship_predicate` is `genetic_kinship_predicate`,
+  `generic_kinship_predicate` is `unqualified_kinship_predicate`, `bloodRelativeOf` is
+  `geneticRelativeOf`, `bloodKinPredicateOf` is `geneticVersionOf` and
+  `chosenKinPredicateOf` is `chosenVersionOf`. `resources/renames/unreleased.edn` records
+  the six, so `upgrade --sync` rewrites a stored premise that names an old spelling.
+  Gestational-only parenthood and surrogacy are not genetic kin and specialize no parent
+  or mother predicate. A child can have more than one mother or father, so `life.txt`
+  states `(not (functional motherOf))` and `(not (functional fatherOf))`, and
+  `kinship.txt` states the same of `(GeneticKinFn motherOf)` and
+  `(GeneticKinFn fatherOf)`, each with a `comment` giving a case. `MotherFn` and
+  `FatherFn` are retired, and `resources/renames/unreleased.edn` records both, so
+  `upgrade --sync` reports a stored premise that names either. `birthDate`,
+  `birthYearOf` and `olderThan` are eternal predicates again and no kinship predicates, so
+  no qualified reading of them ships.
+  *Migration:* run `upgrade --sync`, or rename the six spellings in KB text, rules and
+  queries. State gestational-only parenthood or surrogacy with `gestationalOnlyParentOf`
+  or `surrogateMotherOf`. State `motherOf` or `fatherOf` facts directly where a KB wrote
+  `(MotherFn ?x)` or `(FatherFn ?x)`. Write a `((BloodKinFn birthDate) ?x ?t)`,
+  `birthYearOf` or `olderThan` fact as the unqualified fact.
+  *Breaks:* `BloodKinFn`, `blood_kinship_predicate`, `generic_kinship_predicate`,
+  `bloodRelativeOf`, `bloodKinPredicateOf`, `chosenKinPredicateOf`, `parentOf`,
+  `motherOf`, `fatherOf`, `MotherFn`, `FatherFn`, `birthDate`, `birthYearOf`, `olderThan`
 - **CxTra drops `chosenSiblingOf` for `(ChosenKinFn siblingOf)`.** `chosenSiblingOf`, a
-  spec of `relativeOf`, is retired. `(ChosenKinFn siblingOf)` names the same relation and
-  is symmetric, time-varying, typed `person` at both positions, and below `chosenKinOf`
-  and `siblingOf`.
+  spec of `(ChosenKinFn siblingOf)`, is retired. `(ChosenKinFn siblingOf)` names the same
+  relation and is symmetric, time-varying, typed `person` at both positions, and below
+  `chosenKinOf` and `siblingOf`.
   `resources/renames/unreleased.edn` records the term as retired, so `upgrade --sync`
   reports a stored premise that names it.
   *Migration:* write `((ChosenKinFn siblingOf) ?x ?y)` for `(chosenSiblingOf ?x ?y)`.
