@@ -1231,9 +1231,12 @@ dropped for having no placement context.
 Defends [nat.md](nat.md#the-corresponding-predicate). When a `:monotonic` corresponding
 fact names the value `V` of an application already minted as `K`, the engine derives
 `(rewriteOf V K)`. The two sides are not interchangeable: `V` is a name somebody wrote and
-`K` stands in for not knowing it. An `equals` would let the class elect whichever term
-sorts first, which can be `K`, and every use of `V` would then migrate onto the opaque
-constant.
+`K` stands in for not knowing it. A `rewriteOf` deprecates `K` whatever `V` is. An
+`equals` states no preference, so the class would elect by the constant-first rule
+([equality.md](equality.md#choosing-the-representative)). That rule elects a `V` that is a
+constant over `K`. A `V` that is another reified constant ties with `K`, the term that
+sorts first wins, and that can be `K`. Every use of `V` would then migrate onto the
+opaque constant.
 
 ### A `:default` value copies the placeholder's uses instead of merging
 
