@@ -357,9 +357,7 @@
     (is (= (* (count constructors) edges) (reduce + (map :placed lifts)))
         (str "the lift places one firing per genl edge between generic predicates and"
              " constructor, so its work follows the edges and not the pairs"))
-    (is (empty? (remove edge? rules))
-        (str "every generated lift rule reads a genl edge between two distinct generic"
-             " predicates, so the count follows the edges and not the pairs; "
-             (count (remove edge? rules)) " of " (count rules) " read none"))
-    (is (= (* (count constructors) (count (set (map (juxt first last) rules)))) (count rules))
-        "one generated rule per edge and constructor")))
+    (is (empty? rules)
+        (str "the lift generates no ground rule, so no rule count grows with the pairs; "
+             (count (remove edge? rules)) " of " (count rules) " read no genl edge between"
+             " two distinct generic predicates"))))
