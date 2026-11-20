@@ -5356,25 +5356,44 @@
                    m)))
              {} antes)]))
 
+(defn- separated-everywhere?
+  "Does every reader deny an instance of the type `a` membership of the type `b`?  True
+  for a separation route (`tax/separation-routes`) that CxUniverse reads through
+  `:monotonic` supporters alone (`tax/monotonic-route-witness`), and that no stored
+  `siblingDisjointException` exempts.  Every context sees CxUniverse, so no reader below
+  reads less of the route, and no exception a reader below sees spares the pair."
+  [kb a b]
+  (let [tax (reasoning/taxonomy kb)]
+    (boolean
+     (when (and (symbol? a) (symbol? b) (tax/pair-separated? tax a b))
+       (let [held (decide/holding-class kb)
+             cls  #(when (= :monotonic (held %)) :monotonic)]
+         (some #(and (not (tax/route-exempted? tax % nil))
+                     (tax/monotonic-route-witness tax % 'CxUniverse cls))
+               (tax/separation-routes-held tax a b)))))))
+
 (defn- unsatisfiable-argument?
   "Is `c`, an argument of a generated conclusion, never a value of the read variable `r`?
-  True when `c` is an application whose function has a `result` type disjoint
-  (`tax/disjoint?`, KB-wide) from a type `types` reads of `r`.  An application denotes an
-  instance of each result type of its function, and no instance of a disjoint type is one."
+  True when `c` is an application whose function has a `result` type visible at
+  CxUniverse that is `separated-everywhere?` from a type `types` reads of `r`.  An
+  application denotes an instance of each result type of its function, at `:monotonic`
+  since `result` is forced-monotonic (core.txt).  A reader denies the application each
+  type separated from that result everywhere."
   [kb types c r]
   (boolean
    (when (and (sx/variable? r) (seq (types r)) (sequential? c) (symbol? (first c))
               (not (sx/variable? (first c))))
-     (let [tax (reasoning/taxonomy kb)]
-       (some (fn [res] (some #(tax/disjoint? tax res %) (types r)))
-             (nat/result-types kb (first c)))))))
+     (some (fn [res] (some #(separated-everywhere? kb res %) (types r)))
+           (nat/result-types kb (first c) 'CxUniverse)))))
 
 (defn- feeds?
   "Can the generated conclusion `concl` arrive as one of the read `literals` of a generator
   whose typed reads are `types`?  True for a read literal of its functor where no argument
-  position is `unsatisfiable-argument?`, or where the lengths differ."
+  position is `unsatisfiable-argument?`, or where the lengths differ.  A type read of
+  `concl`'s own functor cuts nothing: `concl` is such a read, and it arrives."
   [kb concl [literals types]]
-  (let [f (nm/functor concl)]
+  (let [f     (nm/functor concl)
+        types (update-vals types #(disj % f))]
     (boolean
      (some (fn [l]
              (and (= f (nm/functor l))
@@ -5396,8 +5415,9 @@
   self-feed included.  A generator feeds another when its innermost conclusion `feeds?` a
   literal the other generates from.  The walk is breadth-first over generators, `via`
   mapping each generator reached to the one reaching it.  It starts at the arriving
-  generator only, since every stored one passed it at its own arrival
-  (docs/generators.md)."
+  generator only, since every stored one passed it at its own arrival.  A feed cut by a
+  `result` or a separation is read at the arrival, so retracting that fact later can open
+  a cycle that no arrival refuses (docs/generators.md)."
   [kb inner context]
   (when (rules/generated-rule (rules/consequent inner))
     (when-let [concl (generated-conclusion-predicate inner)]

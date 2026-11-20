@@ -246,13 +246,18 @@ innermost, because that is the only level that concludes a fact: the levels abov
 conclude rules, filed under `implies`, which no fact carries and no goal asks for. The
 conclusion must also be able to arrive as one of the reads. Take an argument that is an
 application `(F …)`, at a position where the read has a variable `?v` that another read
-`(T ?v)` types. That argument feeds nothing when a stored `(result F R)` gives an `R` that
-`tax/disjoint?` separates from `T` KB-wide. An application denotes an instance of each result type of
-its function, and no instance of a disjoint type is one. So kinship's generator over
-`(generic_kinship_predicate ?p)` would not feed itself through `(genl (BloodKinFn ?p) …)`:
-`BloodKinFn`'s result `blood_kinship_predicate` is time-invariant, and the `partition` of
-`relation` separates it from the time-agnostic generic inputs. The disjointness is read
-when the generator arrives, as the stored generators are. A
+`(T ?v)` types. That argument feeds nothing when a `(result F R)` visible at CxUniverse
+gives an `R` that a separation denies `T` of at every reader. The separation is read at
+CxUniverse, at `:monotonic`, and no stored `siblingDisjointException` spares the pair. An
+application denotes an instance of each result type of its function, and every reader
+denies it `T`. A type read of the conclusion's own predicate cuts nothing, because the
+conclusion is such a read. Take a hypothetical generator that reads
+`(generic_kinship_predicate ?p)` and the edge `(genl ?p ?g)` on its generating level, and
+generates the rule concluding `(genl (BloodKinFn ?p) (BloodKinFn ?g))`. It would not feed
+itself: `BloodKinFn`'s result `blood_kinship_predicate` is time-invariant, and the
+`partition` of `relation` separates it from the time-agnostic generic inputs. The `result`
+facts and the separations are read when the generator arrives, as the stored generators
+are. A
 variable functor names no predicate, so a generator concluding one feeds nothing and a
 generator reading one is fed by nothing. A feed with no path back is a finite chain:
 core.txt's `partitionedByType` generator concludes `genl`, and a generator reading `genl`
@@ -261,7 +266,9 @@ depth-capped ([why](defenses.md#a-generator-cycle-is-refused-not-depth-capped)) 
 [exceptions.md](exceptions.md) makes for a cycle through negation, for the same reason.
 Each generator's assert walks the feeds from the arriving generator over every stored one.
 Every stored generator passed the same walk, so a cycle the arrival closes runs through the
-arrival, and the refusal falls on whichever member of the loop arrives last.
+arrival, and the refusal falls on whichever member of the loop arrives last. The exception
+is a feed a `result` or a separation cut: a cycle through it opens when that fact is
+retracted, with no arrival to refuse.
 
 ## What this is not
 

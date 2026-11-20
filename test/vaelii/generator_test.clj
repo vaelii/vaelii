@@ -412,6 +412,26 @@
                                (list 'implies (list '?q '?y) (list marker '?y)))))
           "the first generator's edges start at an application no generic input is"))))
 
+(tu/deftest-kb a-type-read-of-the-conclusion-s-own-predicate-cuts-no-feed
+  (testing "a conclusion of a typed read's predicate is that read, so it feeds the generator"
+    (tu/with-terms [qualified_kind marker trigger QualifyFn]
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (v/assert kb (list 'disjoint qualified_kind marker) 'CxUniverse {:strength :monotonic})
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list marker '?y)
+                               (list 'implies (list trigger '?x) (list marker (list QualifyFn '?y))))))))))
+
+(tu/deftest-kb only-a-separation-every-reader-reads-at-monotonic-cuts-a-feed
+  (testing "a default separation, or one stated below CxUniverse, can be overridden or unseen by a reader"
+    (doseq [[strength context] [[:default 'CxUniverse] [:monotonic :below]]]
+      (tu/with-terms [generic_kind qualified_kind QualifyFn CxBelow]
+        (v/assert kb (list 'genlCx CxBelow 'CxUniverse) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+        (v/assert kb (list 'disjoint qualified_kind generic_kind)
+                  (if (= :below context) CxBelow context) {:strength strength})
+        (is (= :not-stratified (refusal kb (lift-generator generic_kind QualifyFn)))
+            (str strength " in " context))))))
+
 (tu/deftest-kb the-cycle-check-sees-a-wrapped-generator-too
   ;; every generator is filed under the one key `implies`, which means peeling the
   ;; wrapper off the generated rule first — it is the generated rule's, not the
