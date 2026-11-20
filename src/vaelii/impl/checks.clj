@@ -3652,48 +3652,66 @@
   ([kb literal] (decide/forced-literal? kb literal))
   ([kb literal on?] (decide/forced-literal? kb literal on?)))
 
+(defn union-reading
+  "The forced-monotonic reading over every reader: `decide/forced-monotonic?` on the
+  taxonomy of `kb`."
+  [kb]
+  (partial decide/forced-monotonic? (reasoning/taxonomy kb)))
+
 (defn unforced-antecedents
   "The predicates of the stored rule `rule-sentex`'s antecedents that are not
   `forced-monotonic?` literals (over every reader, or under the forced-monotonic reading `on?`),
   `unknown` antecedents aside, distinct and in antecedent order: the predicates a
   `(forced_monotonic_predicate P)` declaration would make forced-monotonic for the rule's
-  firings to conclude a forced-monotonic literal."
-  ([kb rule-sentex] (unforced-antecedents kb rule-sentex (partial decide/forced-monotonic? (reasoning/taxonomy kb))))
-  ([kb rule-sentex on?]
-   (into [] (comp (remove sx/unknown?) (remove #(forced-monotonic? kb % on?)) (map nm/functor)
-                  (distinct))
+  firings to conclude a forced-monotonic literal.  Given a firing's `bindings`, an
+  antecedent whose ground instance under them is forced-monotonic is not among them
+  (`decide/forced-instance?`)."
+  ([kb rule-sentex] (unforced-antecedents kb rule-sentex (union-reading kb)))
+  ([kb rule-sentex on?] (unforced-antecedents kb rule-sentex on? nil))
+  ([kb rule-sentex on? bindings]
+   (into [] (comp (remove sx/unknown?) (remove #(decide/forced-instance? kb % on? bindings))
+                  (map nm/functor) (distinct))
          (:antecedent rule-sentex))))
 
 (defn forced-rule?
   "Is the stored rule `rule-sentex` one whose firings conclude a forced-monotonic literal as an
   ordinary belief: not `set/defaultRule`, no `unknown` antecedent, and no
-  `unforced-antecedents`.  Its `exceptWhen` exceptions are meta-sentexes, which
-  `forced-conclusion-violation` reads at the firing."
-  [kb rule-sentex]
-  (let [antes (:antecedent rule-sentex)]
-    (boolean (and (seq antes) (not (:defeasible rule-sentex)) (not-any? sx/unknown? antes)
-                  (empty? (unforced-antecedents kb rule-sentex))))))
+  `unforced-antecedents`.  Given a firing's `bindings`, the question is of that firing: its
+  antecedents are read as the ground instances it matched.  Its `exceptWhen` exceptions are
+  meta-sentexes, which `forced-conclusion-violation` reads at the firing."
+  ([kb rule-sentex] (forced-rule? kb rule-sentex nil))
+  ([kb rule-sentex bindings]
+   (let [antes (:antecedent rule-sentex)]
+     (boolean (and (seq antes) (not (:defeasible rule-sentex)) (not-any? sx/unknown? antes)
+                   (empty? (unforced-antecedents kb rule-sentex (union-reading kb) bindings)))))))
+
+(defn firing-bindings
+  "The bindings of the stored firing `jid`, read off its record: the network keeps none
+  (`jtms/graph-just`).  nil when no record is stored."
+  [kb jid]
+  (:bindings (p/get-justification (:records kb) jid)))
 
 (defn forced-conclusion-violation
-  "The `:forced-conclusion` violation of a firing of the rule stored at `rule-handle` that
-  concludes the ground sentence `conseq`, or nil when the firing is admitted.  A firing
-  concluding a denial of a `forced-monotonic?` literal is convicted, and so is one
-  concluding a forced-monotonic literal unless its rule is a `forced-rule?` with no believed
-  `exceptWhen`.  A convicted firing is stored and held void (the `:void` forced set), and
-  the violation names the rule's `unforced-antecedents` (docs/nmtms.md, \"The
-  forced-monotonic set\").  The 3-arity reads the conclusion forced-monotonic over every
-  reader: the entry `forced-conclusion-entries` reads for a firing void at some reader.
-  The 4-arity reads the conclusion under the forced-monotonic reading `on?` (`network-void?`)."
+  "The `:forced-conclusion` violation of a firing of the rule at `rule-handle` concluding the
+  ground `conseq`, or nil when the firing is admitted.  A firing concluding a denial of a
+  `forced-monotonic?` literal is convicted.  A firing concluding a forced-monotonic literal
+  is convicted unless its rule is a `forced-rule?` at the firing's `bindings` with no
+  believed `exceptWhen`.  A convicted firing is held void (the `:void` forced set), and the
+  violation names the antecedents not forced-monotonic at the firing (docs/nmtms.md).  The
+  3-arity reads the conclusion over every reader and the rule as stored; `on?` is the
+  forced-monotonic reading of the conclusion (`network-void?`)."
   ([kb rule-handle conseq]
-   (forced-conclusion-violation kb rule-handle conseq (partial decide/forced-monotonic? (reasoning/taxonomy kb))))
+   (forced-conclusion-violation kb rule-handle conseq (union-reading kb) nil))
   ([kb rule-handle conseq on?]
+   (forced-conclusion-violation kb rule-handle conseq on? nil))
+  ([kb rule-handle conseq on? bindings]
    (let [neg? (sx/negation? conseq)
          body (if neg? (second conseq) conseq)]
      (when (forced-monotonic? kb body on?)
        (let [rsx (p/get-sentex (:records kb) rule-handle)]
-         (when (or neg? (nil? rsx) (not (forced-rule? kb rsx))
+         (when (or neg? (nil? rsx) (not (forced-rule? kb rsx bindings))
                    (seq (provers/rule-exception-entries kb rule-handle)))
-           (let [off (if rsx (unforced-antecedents kb rsx) [])]
+           (let [off (if rsx (unforced-antecedents kb rsx (union-reading kb) bindings) [])]
              {:violation :forced-conclusion
               :detail    {:not-forced-monotonic off
                           :message    (str (pr-str conseq) " is not concluded: " (nm/functor body)
@@ -3711,10 +3729,11 @@
   (`decide/global-reading`) and the antecedents on the union over every reader.  A
   conclusion forced-monotonic only by a declaration stated outside CxUniverse is valid in the
   network, and the read walk voids the firing at a reader that sees the declaration
-  (`exc/forced-void`)."
-  [kb rule-handle conseq]
-  (some? (forced-conclusion-violation kb rule-handle conseq
-                                      (decide/global-reading (reasoning/taxonomy kb)))))
+  (`exc/forced-void`).  `bindings` are the firing's (`forced-conclusion-violation`)."
+  ([kb rule-handle conseq] (network-void? kb rule-handle conseq nil))
+  ([kb rule-handle conseq bindings]
+   (some? (forced-conclusion-violation kb rule-handle conseq
+                                       (decide/global-reading (reasoning/taxonomy kb)) bindings))))
 
 (defn forced-premise?
   "Does a premise mark on the stored sentex `sx` confer `:monotonic` in the labeller (the
@@ -3832,7 +3851,8 @@
                              ;; a mint held void is no firing (`special/hold-type-mints!`)
                              (when (and c (integer? rh) (not (kb/mint-informant? kb rh)))
                                (let [s (sx/sentence-of c)]
-                                 (some-> (forced-conclusion-violation kb rh s)
+                                 (some-> (forced-conclusion-violation kb rh s (union-reading kb)
+                                                                      (firing-bindings kb jid))
                                          (assoc :sentence s :context (:context c) :rule rh))))))))
          (nm/sort-by-content-key (fn [e] [(:sentence e) (:context e)
                                           (some-> (p/get-sentex recs (:rule e)) sx/sentence-of)]))
@@ -3851,8 +3871,10 @@
                    acc
                    (update acc [kind on?] (fnil conj []) id))))
         void (fn [acc jid rh conclusion]
-               (put acc :void jid (and (forced-conclusion-violation kb rh (:sentence conclusion))
-                                       (network-void? kb rh (:sentence conclusion)))))
+               (let [s  (:sentence conclusion)
+                     v? #(and (forced-conclusion-violation kb rh s (union-reading kb) %)
+                              (network-void? kb rh s %))]
+                 (put acc :void jid (and (v? nil) (v? (firing-bindings kb jid))))))
         acc  (put acc :mono h (forced-premise? sx))]
     (cond
       ;; a mint is no firing, so a rule of `kv/mint-rules` holds none void

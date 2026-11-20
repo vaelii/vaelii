@@ -12,6 +12,20 @@ call; 0.8.0 through 0.13.0 keep a subset. The full entry prose for a
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+### Additive: inference
+
+- **A firing whose ground antecedents are forced-monotonic concludes a forced-monotonic
+  literal.** The forced-monotonic check reads each antecedent as stored and as the ground
+  instance the firing's bindings make of it, at the chainer, the `:void` forced set, the
+  read walk and `why-not`. A rule `(implies (and (k ?p) (genl ?p ?g)) (k ?g))` with `k`
+  forced-monotonic places its firing over `(genl p g)` between two predicates, and holds
+  void its firing over `(genl t u)` between two types. `:not-forced-monotonic` names the
+  antecedents not forced-monotonic at the firing.
+  [nmtms.md](docs/nmtms.md#the-forced-monotonic-set)
+  *Migration:* none; a firing this admits was held void, and a firing held void before
+  over an unforced instance is still held void.
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
 | Area | Change |
