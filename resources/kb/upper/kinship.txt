@@ -297,7 +297,7 @@
  (implies (generic_kinship_predicate ?predicate)
           (genl (ChosenKinFn ?predicate) ?predicate)))
 
-(implementationNote BloodKinFn "Hierarchy lifting reads each genl edge between two generic inputs once, in either arrival order, and concludes the edge between their readings. The genl antecedent is forced-between-predicates at each firing, whose ground edge relates two predicates, so the lifted edge is forced-monotonic without forcing genl between types. Qualified outputs are not generic inputs, so qualification cannot nest.")
+(implementationNote BloodKinFn "Hierarchy lifting reads each genl edge between two generic inputs once, in either arrival order. Each firing concludes the genl edge between the two inputs' readings. The genl antecedent is forced-between-predicates at each firing, since its ground edge relates two predicates. The lifted edge is therefore forced-monotonic. No genl between types is forced. Qualified outputs are not generic inputs, so qualification cannot nest.")
 
 (set/forwardRule
  (implies (and (generic_kinship_predicate ?predicate) (generic_kinship_predicate ?general)
