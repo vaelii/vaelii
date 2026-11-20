@@ -329,6 +329,21 @@
                       [form context (mapv :message problems)]))))
       (is (= before (count (p/premise-ids (:records kb)))) "and the sweep stores nothing"))))
 
+(tu/deftest-kb a-member-a-closed-extent-refutes-is-admitted-as-a-theory-revision
+  (testing (str "well-formedness tries to prove the denial of what is asserted and ignores a"
+                " closed-world proof, so a theory is revised without lifting the grant")
+    (tu/with-terms [gizmo Gear Lever Pulley CxProbe]
+      (v/assert kb (list 'genl gizmo 'thing) CxProbe)
+      (v/assert kb (list 'closed_extent_predicate gizmo) CxProbe)
+      (v/assert kb (list gizmo Gear) CxProbe)
+      (v/assert kb (list gizmo Lever) CxProbe)
+      (is (v/ask? kb (list 'not (list gizmo Pulley)) CxProbe) "the closed extent refutes the third")
+      (is (empty? (v/check kb (list gizmo Pulley) CxProbe)) "check admits it")
+      (v/assert kb (list gizmo Pulley) CxProbe)
+      (is (v/ask? kb (list gizmo Pulley) CxProbe))
+      (is (empty? (filter #(= CxProbe (:context %)) (tu/premise-wff-problems kb)))
+          "and the sweep reports nothing"))))
+
 (tu/deftest-kb ^:red a-premise-against-a-stated-denial-of-its-argument-type-is-reported
   (testing (str "https://github.com/vaelii/vaelii/issues/306: well-formedness tries to prove"
                 " the denial of what is asserted, and a stated (not (T x)) is such a proof;"
