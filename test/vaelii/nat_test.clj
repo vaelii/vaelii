@@ -11,6 +11,8 @@
             [vaelii.impl.nat-read :as nat-read]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.reads :as reads]
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-core!))
@@ -2488,6 +2490,21 @@
       (v/assert kb (list 'equals k namedPred) 'CxUniverse {:strength :monotonic})
       (is (= namedPred (v/representative kb k 'CxUniverse)))
       (is (v/ask? kb (list notes Tom namedPred) 'CxUniverse)))))
+
+(tu/deftest-kb a-quoted-spelling-elects-a-constant-head-over-a-reified-constant-head
+  ;; two rewriteOf heads over basePred, the placeholder (<VerFn notes>) and namedPred:
+  ;; the spelling a quoted position reads is the constant, as the class's representative
+  ;; is, though the placeholder's nat/ name sorts first
+  (tu/with-terms [VerFn basePred namedPred notes Tom]
+    (v/assert kb (list 'reifiable_function VerFn) 'CxUniverse {:strength :monotonic})
+    (let [k (nth (v/sentence-of (v/sentex kb (v/assert kb (list notes Tom (list VerFn notes)) 'CxUniverse))) 2)]
+      (is (nat-read/reified-nat-symbol? k))
+      (is (neg? (compare (str k) (str namedPred))) "the placeholder's name sorts first")
+      (v/assert kb (list 'rewriteOf k basePred) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'rewriteOf namedPred basePred) 'CxUniverse {:strength :monotonic})
+      (is (= namedPred
+             (v/representative kb basePred 'CxUniverse)
+             (tax/spelling-representative (reasoning/taxonomy kb) basePred))))))
 
 (tu/deftest-kb an-indeterminate-filler-merges-on-default-evidence-once-declared
   ;; an indeterminate_term merges onto the one constant of its slot, and a membership

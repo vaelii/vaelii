@@ -2397,8 +2397,9 @@
 (defn spelling-representative
   "`term`'s representative over the `rewriteOf` edges alone, a `sameAs` / `equals` merge
   not followed: the mention read `res/representative-term` takes inside a quoted
-  position.  Elected by `class-rep`'s rule over the `rewriteOf`-connected component; a
-  term no `rewriteOf` touches is returned unchanged.  With `visible?`, only the believed
+  position.  Elected by `class-rep`'s rule over the `rewriteOf`-connected component, a
+  constant before a reified constant (`class-min`); a term no `rewriteOf` touches is
+  returned unchanged.  With `visible?`, only the believed
   edges that reader admits count."
   ([tax term] (spelling-representative tax term nil))
   ([tax term visible?]
@@ -2413,8 +2414,8 @@
          (let [preferred  (into #{} (map first) claims)
                deprecated (into #{} (map second) claims)
                heads      (set/difference preferred deprecated)]
-           (cond (seq heads)     (term-min heads)
-                 (seq preferred) (term-min preferred)
+           (cond (seq heads)     (class-min heads)
+                 (seq preferred) (class-min preferred)
                  :else           term)))))))
 
 (defn equality-edges [tax] (get-in @tax [:equality :edges] #{}))
