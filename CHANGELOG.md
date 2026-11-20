@@ -26,6 +26,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [nmtms.md](docs/nmtms.md#the-forced-monotonic-set)
   *Migration:* none; a firing this admits was held void, and a firing held void before
   over an unforced instance is still held void.
+- **A generator whose conclusion's application cannot be one of its typed reads closes no
+  generator cycle.** The generator-cycle check cuts a feed at an argument `(F …)` where the
+  reader types the variable `(T ?v)` and a stored `(result F R)` gives an `R` that
+  `tax/disjoint?` separates from `T`. A generator lifting `genl` edges between generic inputs
+  to edges between their readings is accepted where the readings' result type is disjoint
+  from the inputs' type. [generators.md](docs/generators.md#what-is-refused)
+  *Migration:* none; a generator this admits was refused `:not-stratified`.
+
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
 | Area | Change |

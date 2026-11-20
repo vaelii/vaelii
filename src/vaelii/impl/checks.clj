@@ -5340,39 +5340,93 @@
   (into #{} (comp (mapcat #(keep nm/functor (:antecedents %))) (remove sx/variable?))
         (butlast (rules/nesting sentence))))
 
+(defn- generator-read-literals
+  "The literals whose arrival makes this generator generate (`generator-reads`), as written,
+  with the variables each typed read restricts: `[literals {variable #{type …}}]`.  A typed
+  read is a unary literal `(T ?v)` of a constant `T` on a level the literals come from."
+  [sentence]
+  (let [antes (into [] (mapcat :antecedents) (butlast (rules/nesting sentence)))]
+    [(filterv #(let [f (nm/functor %)] (and f (not (sx/variable? f)))) antes)
+     (reduce (fn [m a]
+               (let [[f v & more] (when (sequential? a) a)]
+                 (if (and (nil? more) (symbol? f) (not (sx/variable? f)) (sx/variable? v))
+                   (update m v (fnil conj #{}) f)
+                   m)))
+             {} antes)]))
+
+(defn- unsatisfiable-argument?
+  "Is `c`, an argument of a generated conclusion, never a value of the read variable `r`?
+  True when `c` is an application whose function has a `result` type disjoint
+  (`tax/disjoint?`, KB-wide) from a type `types` reads of `r`.  An application denotes an
+  instance of each result type of its function, and no instance of a disjoint type is one."
+  [kb types c r]
+  (boolean
+   (when (and (sx/variable? r) (seq (types r)) (sequential? c) (symbol? (first c))
+              (not (sx/variable? (first c))))
+     (let [tax (reasoning/taxonomy kb)]
+       (some (fn [res] (some #(tax/disjoint? tax res %) (types r)))
+             (nat/result-types kb (first c)))))))
+
+(defn- feeds?
+  "Can the generated conclusion `concl` arrive as one of the read `literals` of a generator
+  whose typed reads are `types`?  True for a read literal of its functor where no argument
+  position is `unsatisfiable-argument?`, or where the lengths differ."
+  [kb concl [literals types]]
+  (let [f (nm/functor concl)]
+    (boolean
+     (some (fn [l]
+             (and (= f (nm/functor l))
+                  (or (not= (count concl) (count l))
+                      (not-any? (fn [[c r]] (unsatisfiable-argument? kb types c r))
+                                (map vector (rest concl) (rest l))))))
+           literals))))
+
+(defn- generated-conclusion
+  "The literal a generator eventually concludes (`generated-conclusion-predicate`), as
+  written, or nil when it is no sequential literal."
+  [sentence]
+  (let [c (rules/consequent (rules/innermost-rule sentence))]
+    (when (sequential? c) c)))
+
 (defn generator-cycle
   "A description of the cycle adding this generator would close in the rule set, or nil:
   the shortest path of feeds from `inner` over the stored generators back to `inner`, a
-  self-feed included.  One generator feeds another when its innermost conclusion is a
-  predicate the other generates from.  The walk is breadth-first over concluded
-  predicates, `via` mapping each one reached to the `[predicate handle]` step reaching it.
-  It starts at the arriving generator only, since every stored one passed it at its own
-  arrival (docs/generators.md)."
+  self-feed included.  A generator feeds another when its innermost conclusion `feeds?` a
+  literal the other generates from.  The walk is breadth-first over generators, `via`
+  mapping each generator reached to the one reaching it.  It starts at the arriving
+  generator only, since every stored one passed it at its own arrival
+  (docs/generators.md)."
   [kb inner context]
   (when (rules/generated-rule (rules/consequent inner))
     (when-let [concl (generated-conclusion-predicate inner)]
-      (let [reads (generator-reads inner)
-            gens  (mapv (fn [[h s]]
-                          (let [s (sx/sentence-of s)]
-                            [h (generator-reads s) (generated-conclusion-predicate s)]))
+      (let [own   [(generator-reads inner) (generator-read-literals inner)]
+            node  (into {::arriving [concl (generated-conclusion inner)]}
+                        (map (fn [[h s]]
+                               (let [s (sx/sentence-of s)]
+                                 [h [(generated-conclusion-predicate s) (generated-conclusion s)
+                                     (generator-reads s) (generator-read-literals s)]])))
                         (stored-generators kb))
-            path  (loop [frontier [concl] via {concl nil}]
-                    (if-let [hit (first (filter reads frontier))]
-                      (->> hit (iterate #(first (via %))) (take-while some?)
-                           (map #(vector % (second (via %)))) reverse)
-                      (let [steps (for [p frontier, [h r c] gens
-                                        :when (and c (r p) (not (contains? via c)))]
-                                    [c [p h]])
-                            via'  (reduce (fn [m [c step]] (if (contains? m c) m (assoc m c step)))
+            gens  (into [] (comp (map first) (filter #(first (node %)))) (stored-generators kb))
+            fed?  (fn [n [reads lits]]
+                    (let [[p cl] (node n)]
+                      (and (reads p) (or (nil? cl) (feeds? kb cl lits)))))
+            path  (loop [frontier [::arriving] via {::arriving nil}]
+                    (if-let [hit (first (filter #(fed? % own) frontier))]
+                      (reverse (take-while some? (iterate via hit)))
+                      (let [steps (for [n frontier, h gens
+                                        :when (and (not (contains? via h))
+                                                   (fed? n (subvec (node h) 2 4)))]
+                                    [h n])
+                            via'  (reduce (fn [m [h n]] (if (contains? m h) m (assoc m h n)))
                                           via steps)]
                         (when (seq steps)
-                          (recur (into [] (distinct) (map first steps)) via')))))]
+                          (recur (into [] (comp (map first) (distinct)) steps) via')))))]
         (when path
           (str "the rule it generates concludes " concl
-               (apply str (for [[[read _] [p h]] (partition 2 1 path)]
-                            (str "; the generator at handle " h " reads " read
-                                 " and generates a rule concluding " p)))
-               "; this generator reads " (first (last path))
+               (apply str (for [[from h] (partition 2 1 path)]
+                            (str "; the generator at handle " h " reads " (first (node from))
+                                 " and generates a rule concluding " (first (node h)))))
+               "; this generator reads " (first (node (last path)))
                (when context (str " (asserting into " context ")"))))))))
 
 (defn check-generator!

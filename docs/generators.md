@@ -243,7 +243,16 @@ cycle and the nesting is left to the author.
 generator feeds another when its **innermost** conclusion is a predicate the other reads in
 an antecedent it generates from; a generator that feeds itself is a cycle of one. The
 innermost, because that is the only level that concludes a fact: the levels above it
-conclude rules, filed under `implies`, which no fact carries and no goal asks for. A
+conclude rules, filed under `implies`, which no fact carries and no goal asks for. The
+conclusion must also be able to arrive as one of the reads. Take an argument that is an
+application `(F …)`, at a position where the read has a variable `?v` that another read
+`(T ?v)` types. That argument feeds nothing when a stored `(result F R)` gives an `R` that
+`tax/disjoint?` separates from `T` KB-wide. An application denotes an instance of each result type of
+its function, and no instance of a disjoint type is one. So kinship's generator over
+`(generic_kinship_predicate ?p)` would not feed itself through `(genl (BloodKinFn ?p) …)`:
+`BloodKinFn`'s result `blood_kinship_predicate` is time-invariant, and the `partition` of
+`relation` separates it from the time-agnostic generic inputs. The disjointness is read
+when the generator arrives, as the stored generators are. A
 variable functor names no predicate, so a generator concluding one feeds nothing and a
 generator reading one is fed by nothing. A feed with no path back is a finite chain:
 core.txt's `partitionedByType` generator concludes `genl`, and a generator reading `genl`

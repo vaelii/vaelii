@@ -363,6 +363,55 @@
                              (list 'implies (list bb '?o) (list 'implies (list '?o '?x) (list cc '?x)))
                              (list 'implies (list cc '?o) (list 'implies (list '?o '?x) (list dd '?x)))]))))))))
 
+(defn- lift-generator
+  "A generator over an edge between two `generic` inputs, generating the rule that lifts
+  the edge to their readings under the function `qualify`: the conclusion is the predicate
+  the generator reads, so the functors alone make it a self-feed."
+  [generic qualify]
+  (list 'implies (list 'and (list generic '?p) (list generic '?g) (list 'genl '?p '?g))
+        (list 'implies (list 'genl '?p '?g)
+              (list 'genl (list qualify '?p) (list qualify '?g)))))
+
+(tu/deftest-kb a-feed-whose-applications-cannot-satisfy-a-typed-read-closes-no-cycle
+  (testing "an application whose result type is disjoint from the type read of its variable feeds nothing"
+    (tu/with-terms [generic_kind qualified_kind QualifyFn]
+      (is (= :not-stratified (refusal kb (lift-generator generic_kind QualifyFn)))
+          "with no result type, the conclusion can be an edge the generator reads")
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (is (= :not-stratified (refusal kb (lift-generator generic_kind QualifyFn)))
+          "a result type not known disjoint from the read type can still meet it")
+      (v/assert kb (list 'disjoint qualified_kind generic_kind) 'CxUniverse {:strength :monotonic})
+      (is (= :accepted (refusal kb (lift-generator generic_kind QualifyFn)))))))
+
+(tu/deftest-kb one-position-a-typed-read-cannot-satisfy-cuts-the-feed
+  (testing "one position a typed read refuses is enough, and a type read of another variable is not"
+    (tu/with-terms [generic_kind other_kind qualified_kind QualifyFn]
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (v/assert kb (list 'disjoint qualified_kind generic_kind) 'CxUniverse {:strength :monotonic})
+      (is (= :accepted
+             (refusal kb (list 'implies (list 'and (list generic_kind '?p) (list 'genl '?p '?g))
+                               (list 'implies (list 'genl '?p '?g)
+                                     (list 'genl (list QualifyFn '?p) '?g))))))
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list 'and (list other_kind '?p) (list generic_kind '?g)
+                                              (list 'genl '?p '?g))
+                               (list 'implies (list 'genl '?p '?g)
+                                     (list 'genl (list QualifyFn '?p) '?g)))))
+          "?g is read generic, and the conclusion's second argument is a variable"))))
+
+(tu/deftest-kb a-feed-between-two-generators-is-cut-at-the-readers-typed-read
+  (testing "across two generators, the feed is cut where the reader's typed read is"
+    (tu/with-terms [generic_kind qualified_kind marker QualifyFn]
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (v/assert kb (list 'disjoint qualified_kind generic_kind) 'CxUniverse {:strength :monotonic})
+      (is (= :accepted
+             (refusal kb (list 'implies (list marker '?p)
+                               (list 'implies (list '?p '?x) (list 'genl (list QualifyFn '?p) '?x))))))
+      (is (= :accepted
+             (refusal kb (list 'implies (list 'and (list generic_kind '?q) (list 'genl '?q '?w))
+                               (list 'implies (list '?q '?y) (list marker '?y)))))
+          "the first generator's edges start at an application no generic input is"))))
+
 (tu/deftest-kb the-cycle-check-sees-a-wrapped-generator-too
   ;; every generator is filed under the one key `implies`, which means peeling the
   ;; wrapper off the generated rule first — it is the generated rule's, not the
