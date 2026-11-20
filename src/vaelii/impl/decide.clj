@@ -208,7 +208,9 @@
 (defn- instantiate
   "`form` with each variable `bindings` binds replaced by its value, through a chain of
   bound variables, and a `(Quote X)` left whole.  `res/substitute` also splices a dotted
-  rest; `forced-literal?` holds of no unspliced dotted form, so the read needs no splice."
+  rest, and this read does not.  An unspliced dotted rest reads conservatively: a
+  `:forced-between-predicates` literal is between predicates only as spliced, so no
+  unspliced form is forced that its spliced form is not."
   [form bindings]
   (cond
     (sx/variable? form)   (let [v (get bindings form form)]
