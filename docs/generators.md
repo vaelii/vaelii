@@ -257,9 +257,8 @@ generates the rule concluding `(genl (BloodKinFn ?p) (BloodKinFn ?g))`. It would
 itself: `BloodKinFn`'s result `blood_kinship_predicate` is time-invariant, and the
 `partition` of `relation` separates it from the time-agnostic generic inputs. The `result`
 facts and the separations are read when the generator arrives, as the stored generators
-are. A
-variable functor names no predicate, so a generator concluding one feeds nothing and a
-generator reading one is fed by nothing. A feed with no path back is a finite chain:
+are. A variable functor names no predicate, so a generator concluding one feeds nothing
+and a generator reading one is fed by nothing. A feed with no path back is a finite chain:
 core.txt's `partitionedByType` generator concludes `genl`, and a generator reading `genl`
 to conclude a predicate no generator reads passes. A cycle is refused outright rather than
 depth-capped ([why](defenses.md#a-generator-cycle-is-refused-not-depth-capped)) — the call
@@ -267,8 +266,9 @@ depth-capped ([why](defenses.md#a-generator-cycle-is-refused-not-depth-capped)) 
 Each generator's assert walks the feeds from the arriving generator over every stored one.
 Every stored generator passed the same walk, so a cycle the arrival closes runs through the
 arrival, and the refusal falls on whichever member of the loop arrives last. The exception
-is a feed a `result` or a separation cut: a cycle through it opens when that fact is
-retracted, with no arrival to refuse.
+is a feed a `result` or a separation cut. A cycle through it opens, with no arrival to
+refuse, when a fact the cut read is retracted or weakened, or when a
+`siblingDisjointException` over the separated pair is stated.
 
 ## What this is not
 

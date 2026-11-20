@@ -5416,8 +5416,8 @@
   literal the other generates from.  The walk is breadth-first over generators, `via`
   mapping each generator reached to the one reaching it.  It starts at the arriving
   generator only, since every stored one passed it at its own arrival.  A feed cut by a
-  `result` or a separation is read at the arrival, so retracting that fact later can open
-  a cycle that no arrival refuses (docs/generators.md)."
+  `result` or a separation is read at the arrival, so a later change to it can open a cycle
+  no arrival refuses (docs/generators.md)."
   [kb inner context]
   (when (rules/generated-rule (rules/consequent inner))
     (when-let [concl (generated-conclusion-predicate inner)]
