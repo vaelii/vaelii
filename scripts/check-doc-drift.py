@@ -1983,9 +1983,6 @@ E17_FLAT = {
 }
 E17_PRESENCE_TESTS = ("seq", "empty?", "not-empty")
 E17_ALLOW = {
-    # A generator fires at every context, so a genl in any context can carry its
-    # conclusion into a type read: the cut must not count that read.
-    ("src/vaelii/impl/checks.clj", "predicates-above"),
     # Evidence of the SAME KB-wide stored-key primitive, with explicit proof-local roles.
     ("src/vaelii/impl/rewrite_query.clj", "primitive-mark-evidence"),
     # A fact in CxUniverse merges with a partner in any context: the predicates above and

@@ -439,6 +439,31 @@
              (refusal kb (list 'implies (list marker '?y)
                                (list 'implies (list trigger '?x) (list sub (list QualifyFn '?y))))))))))
 
+(tu/deftest-kb a-conclusion-feeds-a-read-across-a-swap-edge
+  (testing "under genlInverse or inverse, a conclusion arrives with its first two arguments exchanged"
+    (doseq [edge ['genlInverse 'inverse]]
+      (tu/with-terms [marker sub trigger QualifyFn]
+        (v/assert kb (list edge sub marker) 'CxUniverse {:strength :monotonic})
+        (is (= :not-stratified
+               (refusal kb (list 'implies (list marker '?x '?y)
+                                 (list 'implies (list trigger '?z)
+                                       (list sub (list QualifyFn '?y) '?x)))))
+            (str edge))))))
+
+(tu/deftest-kb a-separation-cut-reads-the-swapped-arguments
+  (testing "the cut applies at the position the application arrives in, not where it is written"
+    (doseq [[written expected] [[:second :not-stratified] [:first :accepted]]]
+      (tu/with-terms [marker sub trigger QualifyFn qualified_kind generic_kind]
+        (let [app   (list QualifyFn '?y)
+              concl (if (= :first written) (list sub app '?x) (list sub '?x app))]
+          (v/assert kb (list 'genlInverse sub marker) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+          (v/assert kb (list 'disjoint qualified_kind generic_kind) 'CxUniverse {:strength :monotonic})
+          (is (= expected
+                 (refusal kb (list 'implies (list 'and (list marker '?x '?y) (list generic_kind '?y))
+                                   (list 'implies (list trigger '?z) concl))))
+              (str "application written " written)))))))
+
 (tu/deftest-kb only-a-separation-every-reader-reads-at-monotonic-cuts-a-feed
   (testing "a default separation, or one stated below CxUniverse, can be overridden or unseen by a reader"
     (doseq [[strength context] [[:default 'CxUniverse] [:monotonic :below]]]

@@ -244,26 +244,30 @@ generator feeds another when its **innermost** conclusion is a predicate the oth
 an antecedent it generates from; a generator that feeds itself is a cycle of one. The
 innermost, because that is the only level that concludes a fact: the levels above it
 conclude rules, filed under `implies`, which no fact carries and no goal asks for. A
-conclusion feeds a read of its predicate or of a `genl` of it through any edge: under
-`(genl sub marker)`, a conclusion `(sub x)` arrives as `(marker x)`. The conclusion must
-also be able to arrive as one of the reads. Take an argument that is an
-application `(F …)`, at a position where the read has a variable `?v` that another read
-`(T ?v)` types. That argument feeds nothing when a `(result F R)` visible at CxUniverse
-gives an `R` that a separation denies `T` of at every reader. The separation is read at
+conclusion feeds a read of each predicate it arrives as, through the `genl` and swap edges
+of any context, as a forward trigger walks them. Under `(genl sub marker)` a conclusion
+`(sub x)` arrives as `(marker x)`. Under `(genlInverse sub marker)` or
+`(inverse sub marker)`, `(sub x y)` arrives as `(marker y x)`, with its first two
+arguments exchanged. The conclusion must also be able to arrive as one of the reads, at
+the argument positions it arrives in. Take an argument that is an application `(F …)`,
+at a position where the read has a variable `?v` that another read `(T ?v)` types. That
+argument feeds nothing when a `(result F R)` visible at CxUniverse gives an `R` that a
+separation denies `T` of at every reader. The separation is read at
 CxUniverse, at `:monotonic`, and no stored `siblingDisjointException` spares the pair. An
 application denotes an instance of each result type of its function, and every reader
-denies it `T`. A type read of the conclusion's predicate, or of a `genl` of it, cuts
-nothing, because the conclusion arrives as that read. Take a hypothetical generator that
-reads `(generic_kinship_predicate ?p)` and the edge `(genl ?p ?g)` on its generating level, and
-generates the rule concluding `(genl (BloodKinFn ?p) (BloodKinFn ?g))`. It would not feed
-itself: `BloodKinFn`'s result `blood_kinship_predicate` is time-invariant, and the
-`partition` of `relation` separates it from the time-agnostic generic inputs. The `result`
-facts and the separations are read when the generator arrives, as the stored generators
-are. A variable functor names no predicate, so a generator concluding one feeds nothing
-and a generator reading one is fed by nothing. A feed with no path back is a finite chain:
-core.txt's `partitionedByType` generator concludes `genl`, and a generator reading `genl`
-to conclude a predicate no generator reads passes. A cycle is refused outright rather than
-depth-capped ([why](defenses.md#a-generator-cycle-is-refused-not-depth-capped)) — the call
+denies it `T`. A type read of a predicate the conclusion arrives as cuts nothing, because
+the conclusion arrives as that read. Take a hypothetical generator that
+reads `(generic_kinship_predicate ?p)` and the edge `(genl ?p ?g)` on its generating
+level, and generates the rule concluding `(genl (BloodKinFn ?p) (BloodKinFn ?g))`. It
+would not feed itself: `BloodKinFn`'s result `blood_kinship_predicate` is time-invariant,
+and the `partition` of `relation` separates it from the time-agnostic generic inputs.
+The `result` facts and the separations are read when the generator arrives, as the
+stored generators are. A variable functor names no predicate, so a generator concluding
+one feeds nothing and a generator reading one is fed by nothing. A feed with no path back
+is a finite chain: core.txt's `partitionedByType` generator concludes `genl`, and a
+generator reading `genl` to conclude a predicate no generator reads passes. A cycle is
+refused outright rather than depth-capped
+([why](defenses.md#a-generator-cycle-is-refused-not-depth-capped)) — the call
 [exceptions.md](exceptions.md) makes for a cycle through negation, for the same reason.
 Each generator's assert walks the feeds from the arriving generator over every stored one.
 Every stored generator passed the same walk, so a cycle the arrival closes runs through the
@@ -271,8 +275,9 @@ arrival, and the refusal falls on whichever member of the loop arrives last. The
 is a fact the walk reads at the arrival, which a later change can turn into a cycle no
 arrival refuses. A feed a `result` or a separation cut opens when a fact the cut read is
 retracted or weakened, or when a `siblingDisjointException` over the separated pair is
-stated. A `genl` stated later from a conclusion's predicate to a predicate a generator
-reads opens a feed, cut or not.
+stated. A `genl` or swap edge stated later from a conclusion's predicate to a predicate a
+generator reads opens a feed the arrival's walk did not see. One to a type read also
+removes the cut that read made.
 
 ## What this is not
 

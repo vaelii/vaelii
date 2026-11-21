@@ -5387,26 +5387,36 @@
            (nat/result-types kb (first c) 'CxUniverse)))))
 
 (defn- predicates-above
-  "The predicate `p` and every genl of it in any context (`tax/genls-global`): a
-  conclusion of `p` arrives as a read of each, and a generator fires at every context."
+  "`[straight swapped]`: the predicates a conclusion of `p` arrives as, through the `genl`
+  and swap edges of every context as a forward trigger walks them (`rules/signed-reach`),
+  a `swapped` one with arguments 1 and 2 exchanged.  A generator fires at every context."
   [kb p]
-  (set (tax/genls-global (reasoning/taxonomy kb) p)))
+  (let [[st sw] (tax/signed-closure (reasoning/taxonomy kb) :up p nil)]
+    [(set st) (set sw)]))
+
+(defn- swap-first-two
+  "`literal` with its arguments 1 and 2 exchanged, as a swap edge reads it."
+  [literal]
+  (let [v (vec literal)] (assoc v 1 (v 2) 2 (v 1))))
 
 (defn- feeds?
   "Can the generated conclusion `concl` arrive as one of the read `literals` of a generator
-  whose typed reads are `types`?  True for a read literal of its functor or of a genl of it
-  (`predicates-above`) where no argument position is `unsatisfiable-argument?`, or where
-  the lengths differ.  A type read of one of those predicates cuts nothing: `concl`
-  arrives as that read."
+  whose typed reads are `types`?  True for a read of a predicate `concl` arrives as
+  (`predicates-above`), swapped as it is read, where no argument is
+  `unsatisfiable-argument?` or the lengths differ, or `concl` is too short to swap.  A
+  type read of one of those predicates cuts nothing: `concl` arrives as that read."
   [kb concl [literals types]]
-  (let [up    (predicates-above kb (nm/functor concl))
-        types (update-vals types #(into #{} (remove up) %))]
+  (let [[st sw] (predicates-above kb (nm/functor concl))
+        types   (update-vals types #(into #{} (remove (some-fn st sw)) %))
+        arrives (fn [c l]
+                  (or (not= (count c) (count l))
+                      (not-any? (fn [[a r]] (unsatisfiable-argument? kb types a r))
+                                (map vector (rest c) (rest l)))))]
     (boolean
      (some (fn [l]
-             (and (up (nm/functor l))
-                  (or (not= (count concl) (count l))
-                      (not-any? (fn [[c r]] (unsatisfiable-argument? kb types c r))
-                                (map vector (rest concl) (rest l))))))
+             (let [g (nm/functor l)]
+               (or (and (st g) (arrives concl l))
+                   (and (sw g) (or (< (count concl) 3) (arrives (swap-first-two concl) l))))))
            literals))))
 
 (defn- generated-conclusion
@@ -5420,11 +5430,11 @@
   "A description of the cycle adding this generator would close in the rule set, or nil:
   the shortest path of feeds from `inner` over the stored generators back to `inner`, a
   self-feed included.  A generator feeds another when its innermost conclusion `feeds?` a
-  literal the other generates from, a read of the conclusion's predicate or of a genl of
-  it (`predicates-above`).  The walk is breadth-first over generators, `via` mapping each
-  generator reached to the one reaching it.  It starts at the arriving generator only, since every stored one passed it at its own arrival.  The `genl` edges
-  and a feed's `result` or separation cut are read at the arrival, so a later change to
-  them can open a cycle no arrival refuses (docs/generators.md)."
+  literal the other generates from.  The walk is breadth-first, `via` mapping each
+  generator reached to the one reaching it, from the arriving generator only, since every
+  stored one passed it at its own arrival.  The `genl` and swap edges and a feed's cut
+  are read at the arrival, so a later change to them can open a cycle no arrival refuses
+  (docs/generators.md)."
   [kb inner context]
   (when (rules/generated-rule (rules/consequent inner))
     (when-let [concl (generated-conclusion-predicate inner)]
@@ -5436,7 +5446,7 @@
                                      (generator-reads s) (generator-read-literals s)]])))
                         (stored-generators kb))
             gens  (into [] (comp (map first) (filter #(first (node %)))) (stored-generators kb))
-            up    (memoize #(predicates-above kb %))
+            up    (memoize #(apply into (predicates-above kb %)))
             fed?  (fn [n [reads lits]]
                     (let [[p cl] (node n)]
                       (and (some reads (up p)) (or (nil? cl) (feeds? kb cl lits)))))

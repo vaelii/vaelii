@@ -16,16 +16,18 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ### Refusal: inference
 
-- **A generator whose conclusion's predicate is below a predicate it reads by `genl` feeds
-  itself.** The generator-cycle check matched a conclusion only to reads of its own
+- **A generator whose conclusion arrives as a predicate it reads by `genl` or a swap edge
+  feeds itself.** The generator-cycle check matched a conclusion only to reads of its own
   predicate. A conclusion `(sub (F a))` under `(genl sub marker)` also arrives as a
   `(marker (F a))` read, so a generator reading `(marker ?y)` and concluding
-  `(sub (F ?y))` generated forever. A read of any `genl` of the predicate is now fed.
+  `(sub (F ?y))` generated forever. Under `genlInverse` or `inverse` the conclusion
+  arrives with its first two arguments exchanged, and the check reads it so. A read of
+  each predicate the conclusion arrives as is now fed.
   [generators.md](docs/generators.md#what-is-refused)
   *Migration:* break the cycle, or state the read on the conclusion's own predicate where
   the generator meant to read only its own kind.
   *Breaks:* a generator, or a loop of generators, feeding a read above its conclusion's
-  predicate by `genl`
+  predicate by `genl`, `genlInverse` or `inverse`
 
 ### Additive: inference
 
