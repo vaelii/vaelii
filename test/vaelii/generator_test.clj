@@ -431,6 +431,14 @@
              (refusal kb (list 'implies (list 'and (list sub '?y) (list marker '?y))
                                (list 'implies (list trigger '?x) (list sub (list QualifyFn '?y))))))))))
 
+(tu/deftest-kb a-conclusion-feeds-a-read-of-a-genl-of-its-predicate
+  (testing "with no cut at all, a conclusion arrives as a read of each predicate above its own"
+    (tu/with-terms [marker sub trigger QualifyFn]
+      (v/assert kb (list 'genl sub marker) 'CxUniverse {:strength :monotonic})
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list marker '?y)
+                               (list 'implies (list trigger '?x) (list sub (list QualifyFn '?y))))))))))
+
 (tu/deftest-kb only-a-separation-every-reader-reads-at-monotonic-cuts-a-feed
   (testing "a default separation, or one stated below CxUniverse, can be overridden or unseen by a reader"
     (doseq [[strength context] [[:default 'CxUniverse] [:monotonic :below]]]

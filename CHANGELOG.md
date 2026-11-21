@@ -14,6 +14,19 @@ it — `git show v0.16.0:CHANGELOG.md`.
 
 ## Unreleased
 
+### Refusal: inference
+
+- **A generator whose conclusion's predicate is below a predicate it reads by `genl` feeds
+  itself.** The generator-cycle check matched a conclusion only to reads of its own
+  predicate. A conclusion `(sub (F a))` under `(genl sub marker)` also arrives as a
+  `(marker (F a))` read, so a generator reading `(marker ?y)` and concluding
+  `(sub (F ?y))` generated forever. A read of any `genl` of the predicate is now fed.
+  [generators.md](docs/generators.md#what-is-refused)
+  *Migration:* break the cycle, or state the read on the conclusion's own predicate where
+  the generator meant to read only its own kind.
+  *Breaks:* a generator, or a loop of generators, feeding a read above its conclusion's
+  predicate by `genl`
+
 ### Additive: inference
 
 - **A firing whose ground antecedents are forced-monotonic concludes a forced-monotonic

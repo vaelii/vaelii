@@ -243,8 +243,10 @@ cycle and the nesting is left to the author.
 generator feeds another when its **innermost** conclusion is a predicate the other reads in
 an antecedent it generates from; a generator that feeds itself is a cycle of one. The
 innermost, because that is the only level that concludes a fact: the levels above it
-conclude rules, filed under `implies`, which no fact carries and no goal asks for. The
-conclusion must also be able to arrive as one of the reads. Take an argument that is an
+conclude rules, filed under `implies`, which no fact carries and no goal asks for. A
+conclusion feeds a read of its predicate or of a `genl` of it through any edge: under
+`(genl sub marker)`, a conclusion `(sub x)` arrives as `(marker x)`. The conclusion must
+also be able to arrive as one of the reads. Take an argument that is an
 application `(F …)`, at a position where the read has a variable `?v` that another read
 `(T ?v)` types. That argument feeds nothing when a `(result F R)` visible at CxUniverse
 gives an `R` that a separation denies `T` of at every reader. The separation is read at
@@ -266,10 +268,11 @@ depth-capped ([why](defenses.md#a-generator-cycle-is-refused-not-depth-capped)) 
 Each generator's assert walks the feeds from the arriving generator over every stored one.
 Every stored generator passed the same walk, so a cycle the arrival closes runs through the
 arrival, and the refusal falls on whichever member of the loop arrives last. The exception
-is a feed a `result` or a separation cut. A cycle through it opens, with no arrival to
-refuse, when a fact the cut read is retracted or weakened. Stating a
-`siblingDisjointException` over the separated pair opens it too. So does stating a `genl`
-from the conclusion's predicate to a type read.
+is a fact the walk reads at the arrival, which a later change can turn into a cycle no
+arrival refuses. A feed a `result` or a separation cut opens when a fact the cut read is
+retracted or weakened, or when a `siblingDisjointException` over the separated pair is
+stated. A `genl` stated later from a conclusion's predicate to a predicate a generator
+reads opens a feed, cut or not.
 
 ## What this is not
 

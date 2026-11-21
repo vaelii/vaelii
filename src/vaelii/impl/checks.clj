@@ -5386,19 +5386,24 @@
      (some (fn [res] (some #(separated-everywhere? kb res %) (types r)))
            (nat/result-types kb (first c) 'CxUniverse)))))
 
+(defn- predicates-above
+  "The predicate `p` and every genl of it in any context (`tax/genls-global`): a
+  conclusion of `p` arrives as a read of each, and a generator fires at every context."
+  [kb p]
+  (set (tax/genls-global (reasoning/taxonomy kb) p)))
+
 (defn- feeds?
   "Can the generated conclusion `concl` arrive as one of the read `literals` of a generator
-  whose typed reads are `types`?  True for a read literal of its functor where no argument
-  position is `unsatisfiable-argument?`, or where the lengths differ.  A type read of
-  `concl`'s functor or of a genl of it in any context (`tax/genls-global`, since the
-  generator fires everywhere) cuts nothing: `concl` arrives as that read."
+  whose typed reads are `types`?  True for a read literal of its functor or of a genl of it
+  (`predicates-above`) where no argument position is `unsatisfiable-argument?`, or where
+  the lengths differ.  A type read of one of those predicates cuts nothing: `concl`
+  arrives as that read."
   [kb concl [literals types]]
-  (let [f     (nm/functor concl)
-        up    (set (tax/genls-global (reasoning/taxonomy kb) f))
+  (let [up    (predicates-above kb (nm/functor concl))
         types (update-vals types #(into #{} (remove up) %))]
     (boolean
      (some (fn [l]
-             (and (= f (nm/functor l))
+             (and (up (nm/functor l))
                   (or (not= (count concl) (count l))
                       (not-any? (fn [[c r]] (unsatisfiable-argument? kb types c r))
                                 (map vector (rest concl) (rest l))))))
@@ -5415,11 +5420,11 @@
   "A description of the cycle adding this generator would close in the rule set, or nil:
   the shortest path of feeds from `inner` over the stored generators back to `inner`, a
   self-feed included.  A generator feeds another when its innermost conclusion `feeds?` a
-  literal the other generates from.  The walk is breadth-first over generators, `via`
-  mapping each generator reached to the one reaching it.  It starts at the arriving
-  generator only, since every stored one passed it at its own arrival.  A feed cut by a
-  `result` or a separation is read at the arrival, so a later change to it can open a cycle
-  no arrival refuses (docs/generators.md)."
+  literal the other generates from, a read of the conclusion's predicate or of a genl of
+  it (`predicates-above`).  The walk is breadth-first over generators, `via` mapping each
+  generator reached to the one reaching it.  It starts at the arriving generator only, since every stored one passed it at its own arrival.  The `genl` edges
+  and a feed's `result` or separation cut are read at the arrival, so a later change to
+  them can open a cycle no arrival refuses (docs/generators.md)."
   [kb inner context]
   (when (rules/generated-rule (rules/consequent inner))
     (when-let [concl (generated-conclusion-predicate inner)]
@@ -5431,9 +5436,10 @@
                                      (generator-reads s) (generator-read-literals s)]])))
                         (stored-generators kb))
             gens  (into [] (comp (map first) (filter #(first (node %)))) (stored-generators kb))
+            up    (memoize #(predicates-above kb %))
             fed?  (fn [n [reads lits]]
                     (let [[p cl] (node n)]
-                      (and (reads p) (or (nil? cl) (feeds? kb cl lits)))))
+                      (and (some reads (up p)) (or (nil? cl) (feeds? kb cl lits)))))
             path  (loop [frontier [::arriving] via {::arriving nil}]
                     (if-let [hit (first (filter #(fed? % own) frontier))]
                       (reverse (take-while some? (iterate via hit)))
