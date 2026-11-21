@@ -1411,14 +1411,13 @@
                       (reads/as-stored-naming-handle idx rh)))))
 
 (defn- forced-void
-  "The ids of the justifications of `x` the reader reads void: a rule firing valid in the
-  network, whose conclusion `x` is a forced-monotonic literal at the reader, and whose rule
-  is no forced-monotonic rule there: an antecedent the reader does not read forced-monotonic,
-  an `unknown` antecedent, a `set/defaultRule`, or a believed `exceptWhen`.  The network
-  reads the antecedents on the union over every reader and the conclusion on the baseline
-  set (`checks/network-void?`), so such a firing is valid there through a declaration this
-  reader does not see, or because its conclusion is forced-monotonic only by a declaration
-  this reader sees."
+  "The ids of the justifications of `x` the reader reads void.  Each is a rule firing valid
+  in the network whose conclusion `x` is a forced-monotonic literal at the reader.  Its rule
+  is no forced-monotonic rule there: an antecedent the reader does not read forced-monotonic
+  at the firing (`decide/forced-instance?`), an `unknown`, a `set/defaultRule`, or a
+  believed `exceptWhen`.  The network reads the antecedents over every reader and the
+  conclusion on the baseline set (`checks/network-void?`), so the reader can see less, or
+  more, than the network does."
   [{:keys [kb tms recs forced] :as st} x]
   (let [on? (:on? forced)
         js  (into [] (comp (keep #(jtms/justification tms %))
@@ -1432,7 +1431,9 @@
                               (when-let [antes (seq (:antecedent r))]
                                 (or (:defeasible r)
                                     (some sx/unknown? antes)
-                                    (some #(not (decide/forced-literal? kb % on?)) antes)
+                                    (and (some #(not (decide/forced-literal? kb % on?)) antes)
+                                         (let [b (:bindings (p/get-justification recs (:id j)))]
+                                           (some #(not (decide/forced-instance? kb % on? b)) antes)))
                                     (excepted-rule? st (:informant j)))))))
                   (map :id))
             js))))

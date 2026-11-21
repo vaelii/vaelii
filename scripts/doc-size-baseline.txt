@@ -79,7 +79,7 @@
 32	64	src/vaelii/impl/caches.clj
 23	2	src/vaelii/impl/capabilities.clj
 43	440	src/vaelii/impl/chain.clj
-266	357	src/vaelii/impl/checks.clj
+265	357	src/vaelii/impl/checks.clj
 8	22	src/vaelii/impl/clashes.clj
 57	53	src/vaelii/impl/columnar.clj
 98	13	src/vaelii/impl/config.clj

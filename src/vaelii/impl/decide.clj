@@ -18,6 +18,7 @@
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
+            [vaelii.impl.sentex :as sx]
             [vaelii.impl.strength :as strength]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
@@ -203,6 +204,35 @@
                    (or (on? :forced-monotonic f)
                        (and (on? :forced-between-predicates f)
                             (between-predicates? kb literal))))))))
+
+(defn- instantiate
+  "`form` with each variable `bindings` binds replaced by its value, through a chain of
+  bound variables, and a `(Quote X)` left whole.  `res/substitute` also splices a dotted
+  rest, and this read does not.  An unspliced dotted rest reads conservatively: a
+  `:forced-between-predicates` literal is between predicates only as spliced, so no
+  unspliced form is forced that its spliced form is not."
+  [form bindings]
+  (cond
+    (sx/variable? form)   (let [v (get bindings form form)]
+                            (if (= v form) v (recur v bindings)))
+    (sx/quote-form? form) form
+    (seq? form)           (apply list (map #(instantiate % bindings) form))
+    (vector? form)        (mapv #(instantiate % bindings) form)
+    :else                 form))
+
+(defn forced-instance?
+  "Is the rule antecedent `a` a `forced-literal?` under `on?` at a firing with `bindings`:
+  as stored, or as the ground instance the bindings make of it.  As stored it is forced
+  for every firing; a variable is no predicate, so an antecedent of a
+  `:forced-between-predicates` functor is forced only at a firing whose instance is ground
+  and between predicates.  A firing's conclusion rests on the instances it matched, so
+  reading them is what the forced-monotonic set asks of the rule as stored, firing by
+  firing (docs/nmtms.md, \"The forced-monotonic set\")."
+  [kb a on? bindings]
+  (or (forced-literal? kb a on?)
+      (and (seq bindings)
+           (let [g (instantiate a bindings)]
+             (and (sx/ground-term? g) (forced-literal? kb g on?))))))
 
 (defn literal-declarations
   "`{handle context}` of the stored declarations that make `literal` forced-monotonic in

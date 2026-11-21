@@ -92,6 +92,45 @@ it — `git show v0.16.0:CHANGELOG.md`.
   heads the same way. [equality.md](docs/equality.md#choosing-the-representative)
   *Breaks:* `representative`, `ask`
 
+### Refusal: inference
+
+- **A generator whose conclusion arrives as a predicate it reads by `genl` or a swap edge
+  feeds itself.** The generator-cycle check matched a conclusion only to reads of its own
+  predicate. A conclusion `(sub (F a))` under `(genl sub marker)` also arrives as a
+  `(marker (F a))` read, so a generator reading `(marker ?y)` and concluding
+  `(sub (F ?y))` generated forever. Under `genlInverse` or `inverse` a binary conclusion
+  arrives as a binary read with its arguments exchanged, and the check reads it so. A
+  read of each predicate the conclusion arrives as is now fed.
+  [generators.md](docs/generators.md#what-is-refused)
+  *Migration:* break the cycle, or state the read on the conclusion's own predicate where
+  the generator meant to read only its own kind.
+  *Breaks:* a generator, or a loop of generators, feeding a read above its conclusion's
+  predicate by `genl`, `genlInverse` or `inverse`
+
+### Additive: inference
+
+- **A firing whose ground antecedents are forced-monotonic concludes a forced-monotonic
+  literal.** The forced-monotonic check reads each antecedent as stored and as the ground
+  instance the firing's bindings make of it, at the chainer, the `:void` forced set, the
+  read walk and `why-not`. A rule `(implies (and (k ?p) (genl ?p ?g)) (k ?g))` with `k`
+  forced-monotonic places its firing over `(genl p g)` between two predicates, and holds
+  void its firing over `(genl t u)` between two types. `:not-forced-monotonic` names the
+  antecedents not forced-monotonic at the firing.
+  [nmtms.md](docs/nmtms.md#the-forced-monotonic-set)
+  *Migration:* none; a firing this admits was held void, and a firing held void before
+  over an unforced instance is still held void.
+- **A generator whose conclusion's application cannot be one of its typed reads closes no
+  generator cycle.** The generator-cycle check cuts a feed at an argument `(F …)` where the
+  reader types the variable `(T ?v)`. The cut needs a `(result F R)` visible at CxUniverse,
+  and a separation of `R` from `T` that every reader reads. That separation is read at
+  CxUniverse, at `:monotonic`, and spared by no stored `siblingDisjointException`. A type
+  read of the conclusion's predicate or of a `genl` of it cuts nothing. A generator
+  lifting `genl` edges between unqualified inputs to edges between their readings is
+  accepted where such a separation holds the readings' result type apart from the inputs'
+  type.
+  [generators.md](docs/generators.md#what-is-refused)
+  *Migration:* none; a generator this admits was refused `:not-stratified`.
+
 ### Additive: shipped ontology
 
 - **A function's corresponding predicate is functional at the value position.** A
@@ -139,6 +178,13 @@ it — `git show v0.16.0:CHANGELOG.md`.
   is, so a class membership is never the loser of a nogood.
   [taxonomy.md](docs/taxonomy.md)
   *Migration:* none.
+- **Kinship hierarchy lifting reads each `genl` edge between unqualified inputs once.**
+  kinship.txt's two lift rules conclude `(genl ?v ?gv)` from `(geneticVersionOf ?p ?v)`,
+  `(geneticVersionOf ?g ?gv)` and `(genl ?p ?g)`, and the `chosenVersionOf` twin, in place
+  of two generators of one ground rule per ordered pair of unqualified predicates. The
+  starter stores no generated lift rule (128 before), its forward firings fall from 3,147
+  to 3,019, and the lifted `genl` set is unchanged.
+  *Migration:* none; the lifted edges are the same.
 
 ### Fix: describe
 

@@ -244,11 +244,16 @@ one of these, and the equation rewrites the denied instance as it rewrites every
 
 **A rule concludes a forced-monotonic literal from forced-monotonic antecedents only.** A
 firing is convicted when its conclusion is a denial of a forced-monotonic literal, or a
-forced-monotonic literal and its rule is not a `checks/forced-rule?`: every antecedent a
-forced-monotonic literal, no `unknown`, no
-`set/defaultRule`, and no believed `exceptWhen`. A convicted firing is stored and held void,
+forced-monotonic literal and its rule is not a `checks/forced-rule?` at the firing. A
+forced rule has every antecedent a forced-monotonic literal, no `unknown`, no
+`set/defaultRule`, and no believed `exceptWhen`. An antecedent is read as stored and as
+the ground instance the firing's bindings make of it (`decide/forced-instance?`), so an
+antecedent `(genl ?p ?g)` is forced at a firing that binds two predicates and not at one
+that binds two types. A firing's conclusion rests on the instances it matched, so a
+forced antecedent instance is what the stored antecedent's forcing stands for at every
+firing. A convicted firing is stored and held void,
 and `core/violations` reads a `:forced-conclusion` entry for it, whose `:not-forced-monotonic` names the
-rule's antecedent predicates that are not forced-monotonic (`checks/unforced-antecedents`). The entry is
+rule's antecedent predicates that are not forced-monotonic at the firing (`checks/unforced-antecedents`). The entry is
 not filed: `checks/forced-conclusion-entries` reads it at each call off the `:void` forced set
 and off the firings of the rules concluding a declared predicate in a context that a
 context seeing the declaration sees, so it stands exactly while the firing is stored and

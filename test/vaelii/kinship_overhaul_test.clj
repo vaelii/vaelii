@@ -8,7 +8,18 @@
 
 (defn- load-kinship-fixture! [kb]
   (tu/load-starter! kb)
-  (doseq [sentence '[(unqualified_kinship_predicate testKinshipSequenceOf)
+  (doseq [sentence '[;; edges stated before the unqualified marks of the predicates they relate
+                     (binary_predicate testEarlyNarrowKinshipOf)
+                     (binary_predicate testEarlyMiddleKinshipOf)
+                     (binary_predicate testEarlyBroadKinshipOf)
+                     (genl testEarlyNarrowKinshipOf testEarlyMiddleKinshipOf)
+                     (genl testEarlyMiddleKinshipOf testEarlyBroadKinshipOf)
+                     (unqualified_kinship_predicate testEarlyNarrowKinshipOf)
+                     (unqualified_kinship_predicate testEarlyMiddleKinshipOf)
+                     (unqualified_kinship_predicate testEarlyBroadKinshipOf)
+                     (unqualified_kinship_predicate testMiddleKinshipOf)
+                     (binary_predicate testMiddleKinshipOf)
+                     (unqualified_kinship_predicate testKinshipSequenceOf)
                      (variable_arity_predicate testKinshipSequenceOf)
                      (arityMin testKinshipSequenceOf 3)
                      (unqualified_kinship_predicate testNarrowKinshipOf)
@@ -336,6 +347,113 @@
       (is (not (v/ask? kb (list 'functionalInArg predicate 2) K))))
     (is (not (proves? kb (list 'equals FirstMother SecondMother) K)))
     (is (empty? (v/contradictions kb)))))
+
+;; ---- hierarchy lifting reads the genl edges in any order ----
+
+(def ^:private constructors '[GeneticKinFn ChosenKinFn])
+(def ^:private correspondences '[geneticVersionOf chosenVersionOf])
+
+(defn- lifted
+  "The `genl` edges among `predicates` each constructor lifts, read at `context`."
+  [kb predicates context]
+  (set (for [constructor constructors spec predicates general predicates
+             :when (and (not= spec general)
+                        (v/ask? kb (list 'genl (list constructor spec) (list constructor general)) context))]
+         [constructor spec general])))
+
+(defn- lifted-chain
+  "What each constructor lifts from the edges `[spec general]`, read transitively."
+  [edges]
+  (let [closure (loop [pairs (set edges)]
+                  (let [more (into pairs (for [[a b] pairs [c d] pairs :when (= b c)] [a d]))]
+                    (if (= more pairs) pairs (recur more))))]
+    (set (for [constructor constructors [spec general] closure] [constructor spec general]))))
+
+(tu/deftest-kb lifted-edges-agree-when-edges-precede-the-unqualified-marks
+  (let [predicates '[testEarlyNarrowKinshipOf testEarlyMiddleKinshipOf testEarlyBroadKinshipOf]]
+    (is (= (lifted-chain '[[testEarlyNarrowKinshipOf testEarlyMiddleKinshipOf]
+                           [testEarlyMiddleKinshipOf testEarlyBroadKinshipOf]])
+           (lifted kb predicates U)))))
+
+(tu/deftest-kb lifted-edges-agree-when-the-unqualified-marks-precede-edges
+  (let [predicates '[testNarrowKinshipOf testMiddleKinshipOf testBroadKinshipOf]]
+    (is (empty? (lifted kb predicates K)) "nothing lifts before the edges")
+    (v/assert kb '(genl testNarrowKinshipOf testMiddleKinshipOf) K)
+    (v/assert kb '(genl testMiddleKinshipOf testBroadKinshipOf) K)
+    (is (= (lifted-chain '[[testNarrowKinshipOf testMiddleKinshipOf]
+                           [testMiddleKinshipOf testBroadKinshipOf]])
+           (lifted kb predicates K)))
+    (is (empty? (lifted kb predicates U)) "the lift stays in the context of its edges")))
+
+(tu/deftest-kb retracting-one-edge-leaves-the-lift-of-a-kb-built-without-it
+  (let [predicates '[testNarrowKinshipOf testMiddleKinshipOf testBroadKinshipOf]]
+    (v/assert kb '(genl testNarrowKinshipOf testMiddleKinshipOf) K)
+    (let [without (lifted kb predicates K)
+          edge (v/assert kb '(genl testMiddleKinshipOf testBroadKinshipOf) K)]
+      (is (= (lifted-chain '[[testNarrowKinshipOf testMiddleKinshipOf]]) without))
+      (is (= (lifted-chain '[[testNarrowKinshipOf testMiddleKinshipOf]
+                             [testMiddleKinshipOf testBroadKinshipOf]])
+             (lifted kb predicates K)))
+      (v/retract! kb edge)
+      (is (= without (lifted kb predicates K))))))
+
+;; ---- the generated lift rules follow the genl edges ----
+
+(defn- ground? [form] (not-any? #(and (symbol? %) (= \? (first (name %)))) (flatten (list form))))
+
+(defn- lift-rules
+  "The distinct stored ground rules concluding a `genl` from a constructed kinship
+  predicate, each as `[antecedent consequent context]`, the minted constants spelled
+  through their `natFormula`."
+  [kb]
+  (let [formula (into {} (map (juxt '?term '?expression)) (v/query kb '(natFormula ?term ?expression) U))
+        spell #(get formula % %)
+        qualified? #(and (sequential? %) (some #{(first %)} constructors))]
+    (set (for [context (v/contexts kb)
+               sentex (v/sentexes-in-context kb context)
+               :let [antecedent (:antecedent sentex)
+                     [functor spec general :as consequent] (:consequent sentex)]
+               :when (and antecedent (= 'genl functor) (qualified? (spell spec))
+                          (ground? antecedent) (ground? consequent))]
+           [antecedent (list 'genl (spell spec) (spell general)) context]))))
+
+(defn- lifting-rule?
+  "Does the rule `sentence` conclude, at some level, the `genl` between two variables one
+  correspondence reads as versions: an authored lift rule, or a generator of them."
+  [sentence]
+  (let [forms (filter sequential? (tree-seq sequential? seq sentence))
+        versions (fn [correspondence]
+                   (set (for [[functor _ version :as form] forms
+                              :when (and (= correspondence functor) (= 3 (count form))
+                                         (not (ground? version)))]
+                          version)))]
+    (boolean (some (fn [correspondence]
+                     (let [version? (versions correspondence)]
+                       (some (fn [[functor spec general :as form]]
+                               (and (= 'genl functor) (= 3 (count form)) (not= spec general)
+                                    (version? spec) (version? general)))
+                             forms)))
+                   correspondences))))
+
+(tu/deftest-kb generated-lift-rules-follow-the-genl-edges
+  (let [unqualified (set (map '?p (v/query kb '(unqualified_kinship_predicate ?p) U)))
+        rules (lift-rules kb)
+        edge? (fn [[[[functor spec general] :as antecedent] _ context]]
+                (and (= 1 (count antecedent)) (= 'genl functor) (unqualified spec) (unqualified general)
+                     (not= spec general) (true? (v/ask? kb (list 'genl spec general) context))))
+        edges (count (for [s (v/sentexes-with-functor kb 'genl {:believed? true})
+                           :let [[_ spec general] (:sentence s)]
+                           :when (and (unqualified spec) (unqualified general) (not= spec general))]
+                       s))
+        lifts (filter #(lifting-rule? (:sentence %)) (v/chain-report kb))]
+    (is (= 2 (count lifts)) "one lift rule or generator per constructor")
+    (is (= (* (count constructors) edges) (reduce + (map :placed lifts)))
+        (str "the lift places one firing per genl edge between unqualified predicates and"
+             " constructor, so its work follows the edges and not the pairs"))
+    (is (empty? rules)
+        (str "the lift generates no ground rule, so no rule count grows with the pairs; "
+             (count (remove edge? rules)) " of " (count rules) " read no genl edge between"
+             " two distinct unqualified predicates"))))
 
 (tu/deftest-kb a-reading-named-by-a-plain-symbol-gets-its-inputs-copied-properties
   ;; The copy rules read the correspondence, not the term's syntax. So a genetic reading

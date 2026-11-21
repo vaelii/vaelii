@@ -456,6 +456,79 @@
                (forced-reading kb {:a CxA :b CxB :u CxU} world))
             (str "order " (vec order) (when retract ", declaration retracted")))))))
 
+(defn- relation
+  "A gensym'd temporary predicate spelled camelCase, so a literal of a
+  `forced_monotonic_between_predicates` functor between two of them is forced-monotonic
+  (docs/naming.md); `tu/with-terms` folds the capitals out."
+  [base]
+  (gensym (str base "Tmp")))
+
+(defn- lift-rule
+  "A forward rule concluding `(mark ?general)` from `(mark ?spec)` and `(edge ?spec ?general)`.
+  The antecedent `(edge ?spec ?general)` is no forced-monotonic literal as stored, whatever
+  `edge` is: its arguments are variables, never predicates."
+  [mark edge]
+  (list 'set/forwardRule
+        (list 'implies (list 'and (list mark '?spec) (list edge '?spec '?general))
+              (list mark '?general))))
+
+(tu/deftest-kb a-firing-whose-ground-antecedents-are-forced-monotonic-concludes-a-forced-monotonic-literal
+  (doseq [order (tu/orders [:rule :mark :edge])]
+    (tu/with-terms [lift_mark spec_kind general_kind]
+      (let [spec    (relation "specRel")
+            general (relation "generalRel")
+            writes  {:rule [(lift-rule lift_mark 'genl)]
+                     :mark [(list lift_mark spec) (list lift_mark spec_kind)]
+                     :edge [(list 'genl spec general) (list 'genl spec_kind general_kind)]}
+            why     (str "order " order)]
+        (v/assert kb (list 'forced_monotonic_predicate lift_mark) 'CxUniverse)
+        (doseq [k order, s (writes k)] (v/assert kb s 'CxUniverse))
+        (is (= [true false] (concluded? kb (list lift_mark general)))
+            (str why ": a genl between predicates is forced-monotonic at the firing"))
+        (is (= [false true] (concluded? kb (list lift_mark general_kind)))
+            (str why ": a genl between types is not, so its firing is void"))))))
+
+(tu/deftest-kb a-firing-follows-the-forcing-of-its-ground-antecedents
+  (tu/with-terms [lift_mark CxU CxA CxB]
+    (let [link    (relation "linkRel")
+          spec    (relation "specRel")
+          general (relation "generalRel")
+          c       (list lift_mark general)]
+      (doseq [[s ctx st] (scoped-contexts CxU CxA CxB)] (v/assert kb s ctx {:strength st}))
+      (v/assert kb (list 'forced_monotonic_predicate lift_mark) 'CxUniverse)
+      (v/assert kb (lift-rule lift_mark link) CxU)
+      (v/assert kb (list lift_mark spec) CxU)
+      (v/assert kb (list link spec general) CxU)
+      (is (= [false true] (concluded? kb c CxU)) "before the declaration the firing is void")
+      (let [d (v/assert kb (list 'forced_monotonic_between_predicates link) CxA)]
+        (is (= [true false false] (mapv #(v/ask? kb c %) [CxA CxB CxU]))
+            "the firing stands where the declaration of its ground antecedent is seen")
+        (is (empty? (forced-entries kb c CxU))
+            "an entry reads the antecedents over every reader, as for a rule forced as stored")
+        (v/retract! kb d))
+      (let [d (v/assert kb (list 'forced_monotonic_between_predicates link) 'CxUniverse)]
+        (is (= [[true true true] false]
+               [(mapv #(v/ask? kb c %) [CxA CxB CxU]) (boolean (seq (forced-entries kb c CxU)))]))
+        (v/retract! kb d))
+      (is (= [false true] (concluded? kb c CxU)) "and void again once it is retracted"))))
+
+(tu/deftest-kb a-firing-over-minted-constants-follows-their-length
+  (testing "a length bound after the firing forces the firing's ground genl, and its retraction voids it again"
+    (tu/with-terms [lift_mark KindFn ArgA ArgB]
+      (doseq [s [(list 'reifiable_function KindFn) (list 'unary_function KindFn)
+                 (list 'forced_monotonic_predicate lift_mark)]]
+        (v/assert kb s 'CxUniverse {:strength :monotonic}))
+      (v/assert kb (lift-rule lift_mark 'genl) 'CxUniverse)
+      (v/assert kb (list lift_mark (list KindFn ArgA)) 'CxUniverse)
+      (let [gh (v/assert kb (list 'genl (list KindFn ArgA) (list KindFn ArgB)) 'CxUniverse)
+            ks (rest (:sentence (v/sentex kb gh)))
+            c  (list lift_mark (second ks))]
+        (is (= [false true] (concluded? kb c)) "two constants of no length are no predicates")
+        (let [bs (mapv #(v/assert kb (list 'binary_predicate %) 'CxUniverse {:strength :monotonic}) ks)]
+          (is (= [true false] (concluded? kb c)) "bound, the firing's ground genl is between predicates")
+          (run! #(v/retract! kb %) bs))
+        (is (= [false true] (concluded? kb c)) "and void again once the length is retracted")))))
+
 (tu/deftest-kb a-declaration-forces-a-verdict-and-a-firing-only-where-it-is-seen
   (declaration-seen-reading kb sampled))
 

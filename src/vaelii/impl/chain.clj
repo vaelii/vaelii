@@ -4185,10 +4185,11 @@
         ;; ...and the forced-monotonic check, which a stored conclusion owes as well: a
         ;; firing it convicts is stored and held void, so it supports nothing while the
         ;; forced-monotonic set rules it out and supports its conclusion once the set stops
-        forced   (when-not v (checks/forced-conclusion-violation kb (:rule-handle rule) conseq))
+        forced   (when-not v (checks/forced-conclusion-violation kb (:rule-handle rule) conseq
+                                                                 (checks/union-reading kb) bindings))
         ;; logged when void at some reader, held void in the network when void at every
         ;; one (`checks/network-void?`)
-        void?    (and forced (checks/network-void? kb (:rule-handle rule) conseq))]
+        void?    (and forced (checks/network-void? kb (:rule-handle rule) conseq bindings))]
     (if v
       (drop-fact-conclusion! kb rule conseq pctx v all-antes bindings subs)
       (let [[h s new?] (if existing

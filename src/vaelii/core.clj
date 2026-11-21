@@ -6271,10 +6271,11 @@
                                       {:justification (:id j) :informant (:informant j)
                                        :rule          (readable-sentence r)
                                        :not-forced-monotonic
-                                       (if (jtms/forced? (reasoning/tms kb) :void (:id j))
-                                         (checks/unforced-antecedents kb r)
-                                         (checks/unforced-antecedents
-                                          kb r (exc/forced-reading kb (:context sx))))}))
+                                       (let [b (checks/firing-bindings kb (:id j))]
+                                         (if (jtms/forced? (reasoning/tms kb) :void (:id j))
+                                           (checks/unforced-antecedents kb r (checks/union-reading kb) b)
+                                           (checks/unforced-antecedents
+                                            kb r (exc/forced-reading kb (:context sx)) b)))}))
                                   (filter void? js)))
           (some #(= :inert (:verdict %)) support)
           (assoc base :believed? false :reason :inert :support support)

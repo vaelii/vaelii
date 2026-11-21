@@ -184,18 +184,16 @@
  (implies (chosenVersionOf ?predicate ?version)
           (genl ?version ?predicate)))
 
-(implementationNote GeneticKinFn "Hierarchy lifting generates ground conditional rules from pairs of unqualified inputs. The generated antecedent is the original ground genl edge, admitted as forced-between-predicates without forcing genl between types. The finite pair schema also reads a hierarchy edge asserted later. Qualified outputs are not unqualified inputs, so qualification cannot nest.")
+(implementationNote GeneticKinFn "Hierarchy lifting reads each genl edge between two unqualified inputs once, in either arrival order. Each firing concludes the genl edge between the two readings geneticVersionOf or chosenVersionOf names for the inputs. The genl antecedent is forced-between-predicates at each firing, since its ground edge relates two predicates. The lifted edge is therefore forced-monotonic. No genl between types is forced. Qualified outputs are not unqualified inputs, so qualification cannot nest.")
 
 (set/forwardRule
- (implies (and (geneticVersionOf ?predicate ?version) (geneticVersionOf ?general ?generalVersion))
-          (set/forwardRule
-           (implies (genl ?predicate ?general)
-                    (genl ?version ?generalVersion)))))
+ (implies (and (geneticVersionOf ?predicate ?version) (geneticVersionOf ?general ?generalVersion)
+               (genl ?predicate ?general))
+          (genl ?version ?generalVersion)))
 (set/forwardRule
- (implies (and (chosenVersionOf ?predicate ?version) (chosenVersionOf ?general ?generalVersion))
-          (set/forwardRule
-           (implies (genl ?predicate ?general)
-                    (genl ?version ?generalVersion)))))
+ (implies (and (chosenVersionOf ?predicate ?version) (chosenVersionOf ?general ?generalVersion)
+               (genl ?predicate ?general))
+          (genl ?version ?generalVersion)))
 
 ;; Predicate arity is explicit on each reading; it is not inherited from its genl.
 (set/forwardRule
