@@ -1223,7 +1223,9 @@ application's written order moves to the sorted one's.
 
 A `(result F T)` or `(genlResult F T)` asserted after constants were minted for `F`
 materializes `(T K)` or `(genl K T)` on each of them, justified as the mint justifies it
-when the declaration comes first (`nat/reconcile-nats!`).
+when the declaration comes first (`nat/reconcile-nats!`). A mint's `(natFormula K E)` map, whose
+`K` is the constant `E` names, gets the same `(T K)` or `(genl K T)` and the same
+justification when it is asserted after the declaration, as a text KB's reload asserts it.
 
 ## Where it lives
 

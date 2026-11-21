@@ -148,6 +148,19 @@ it — `git show v0.16.0:CHANGELOG.md`.
   member such as `cat` under `dog` could fall off it. Past the budget the line stays
   unsorted, with the sum as its `:total` and `:exact?` false.
 
+### Fix: order independence
+
+- **A mint's `natFormula` map, stated, gets its constant's result types.** A mint
+  types its constant from each `(result F T)` and `(genlResult F T)` stated before it,
+  and a declaration stated after the mint types every constant minted for `F`. A
+  `(natFormula K E)` map stated after the declaration typed nothing, and a text KB's
+  reload states each map after the declarations, so the reloaded upper layer lost 14
+  `result` justifications of its kinship constants. A stated map whose `K` is the
+  constant `E` names now gets the `(T K)` and `(genl K T)` a mint writes, with the
+  same justification.
+  [nat.md](docs/nat.md)
+  *Migration:* none.
+
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
 | Area | Change |

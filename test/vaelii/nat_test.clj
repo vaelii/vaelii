@@ -562,6 +562,24 @@
       (v/retract! kb h)
       (is (empty? (kb/find-sentexes kb k)) "and the type is bookkeeping, collected with it"))))
 
+(tu/deftest-kb a-stated-map-holds-the-result-type-justification-in-either-order
+  ;; a text KB's reload states each constant's map, and a map stated after the
+  ;; declaration types its constant as a declaration stated after the map does
+  (tu/with-terms [FruitFn PitFn AppleTree fruit]
+    (let [supports (fn [f map-first?]
+                     (v/assert kb (list 'reifiable_function f) 'CxUniverse)
+                     (let [E      (list f AppleTree)
+                           k      (nat/constant-for nat-read/nat-namespace E)
+                           state! #(v/assert kb (list 'natFormula k E) 'CxUniverse {:strength :monotonic})
+                           declare! #(v/assert kb (list 'result f fruit) 'CxUniverse)
+                           [mh dh] (if map-first?
+                                     (let [mh (state!)] [mh (declare!)])
+                                     (let [dh (declare!)] [(state!) dh]))]
+                       (set (for [j (v/supporting-justifications kb (v/handle-of kb (list fruit k) 'CxUniverse))]
+                              [(:informant j) (= #{mh dh} (set (:antecedents j)))]))))]
+      (is (= #{['result true]} (supports FruitFn true)) "the late declaration reaches the stated map")
+      (is (= #{['result true]} (supports PitFn false)) "and the late map reaches the declaration"))))
+
 (tu/deftest-kb a-retracted-result-declaration-takes-its-type-and-leaves-the-constant-to-its-uses
   (tu/with-terms [FruitFn AppleTree fruit color]
     (v/assert kb (list 'reifiable_function FruitFn) 'CxUniverse)
