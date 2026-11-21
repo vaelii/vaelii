@@ -546,6 +546,18 @@
 
 ;; ---- write-mode reify: mint + result-type materialization ----------------
 
+(defn- hold-result-types!
+  "Materialize the types the `result` and `genlResult` declarations of `head` give the
+  `nat/` constant `k`: `(T k)` and `(genl k T)`, each justified by `k`'s map `mh` and its
+  declaration (`hold-on!`), stored under `opts`."
+  [kb k head mh opts]
+  (let [rs (result-declarations kb 'result head)]
+    (doseq [t (result-types kb head)]
+      (hold-on! kb (list t k) opts 'result mh (get rs t))))
+  (let [gs (result-declarations kb 'genlResult head)]
+    (doseq [t (genl-result-types kb head)]
+      (hold-on! kb (list 'genl k t) opts 'genlResult mh (get gs t)))))
+
 (defn mint-nat!
   "Mint the reified constant `K` for the ground NAT expression `E` in reify namespace `ns`
   (`cx/` for a context slot, `nat/` for an argument) and return it.  Asserts `(natFormula
@@ -567,12 +579,7 @@
                                         (assoc opts :chain? (and chain? (not ctx?)
                                                                  (boolean (seq (result-arg-declared kb head))))))]
          (when-not ctx?
-           (let [rs (result-declarations kb 'result head)]
-             (doseq [t (result-types kb head)]
-               (hold-on! kb (list t k) opts 'result mh (get rs t))))
-           (let [gs (result-declarations kb 'genlResult head)]
-             (doseq [t (genl-result-types kb head)]
-               (hold-on! kb (list 'genl k t) opts 'genlResult mh (get gs t)))))))
+           (hold-result-types! kb k head mh opts))))
      ;; after the result types, which the projection is arg-checked against
      (when-not ctx? (nat-read/note-values kb [(list 'natFormula k E)] true))
      k)))
@@ -811,13 +818,34 @@
                       p (kb/find-sentex-handle kb (list 'natFormula k E) nat-read/universal-context)
                       decls)))))))
 
+(defn- reconcile-stated-map!
+  "Materialize the result types of a `nat/` constant `K` whose `(natFormula K E)` map is
+  asserted rather than minted, as a text KB's reload asserts a mint's map.  `K` gets the
+  `(T K)` and `(genl K T)` the mint writes (`hold-result-types!`), justified by the stored
+  map.  So a map stated after `E`'s function's `result` declaration holds the
+  justifications a mint or a late declaration (`reconcile-declared-result!`) leaves.  Only
+  a mint's own map is read: one whose `K` is the constant `E` names (`constant-for`).  A
+  no-op for any other sentence or map, and for an `E` whose function is not a reifiable
+  function."
+  [kb sentence]
+  (when (and (= 'natFormula (first sentence)) (= 3 (count sentence)))
+    (let [k (second sentence)]
+      (when (nat-read/reified-object-symbol? k)
+        (doseq [{mh :id [_ _ E] :sentence} (own-maps k (kb/find-sentexes kb k))
+                :when (and (seq? E)
+                           (= k (constant-for nat-read/nat-namespace E))
+                           (nat-read/reifiable-function? kb (first E)))]
+          (hold-result-types! kb k (first E) mh {:strength :monotonic}))))))
+
 (defn reconcile-nats!
   "The reified-constant maintenance a just-asserted `sentence` owes beside the collision
   repair (`collision-merges`): a result declaration reaching the constants minted before
-  it.  `nat-maintenance/reconcile-assert` calls it behind `any-reified-constants?`, and
-  queues the correspondence derivations itself."
+  it, and a stated map reaching the result declarations stored before it.
+  `nat-maintenance/reconcile-assert` calls it behind `any-reified-constants?`, and queues
+  the correspondence derivations itself."
   [kb sentence]
-  (reconcile-declared-result! kb sentence))
+  (reconcile-declared-result! kb sentence)
+  (reconcile-stated-map! kb sentence))
 
 ;; ---- a reifiable mark moving: the reads `chain/reconcile-reified!` runs on --
 ;; docs/nat.md, A reifiable mark moving.

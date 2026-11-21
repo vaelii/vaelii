@@ -258,10 +258,11 @@ separation is read at CxUniverse, at `:monotonic`, and no stored
 application denotes an instance of each result type of its function, and every reader
 denies it `T`. A type read of a predicate the conclusion arrives as cuts nothing, because
 the conclusion arrives as that read. Take a hypothetical generator that
-reads `(generic_kinship_predicate ?p)` and the edge `(genl ?p ?g)` on its generating
-level, and generates the rule concluding `(genl (BloodKinFn ?p) (BloodKinFn ?g))`. It
-would not feed itself: `BloodKinFn`'s result `blood_kinship_predicate` is time-invariant,
-and the `partition` of `relation` separates it from the time-agnostic generic inputs.
+reads `(unqualified_kinship_predicate ?p)` and the edge `(genl ?p ?g)` on its generating
+level, and generates the rule concluding `(genl (GeneticKinFn ?p) (GeneticKinFn ?g))`. It
+would not feed itself: `GeneticKinFn`'s result `genetic_kinship_predicate` is
+time-invariant, and the `partition` of `relation` separates it from the time-agnostic
+unqualified inputs.
 The `result` facts and the separations are read when the generator arrives, as the
 stored generators are. A variable functor names no predicate, so a generator concluding
 one feeds nothing and a generator reading one is fed by nothing. A feed with no path back

@@ -5718,27 +5718,25 @@
   `disjoint-partners` read — every type the separation reaches, not only the types it was
   declared between."
   [kb context partners limit]
-  (let [known    (types kb)
-        ;; the sum of the partners' closure sizes over-counts their union (an overlap
-        ;; twice), which is exactly what makes it a sound bound on it, and it decides
-        ;; whether building the union is affordable at all
-        bound    (reduce + 0 (map #(count (specs kb % context)) partners))
-        walk     (comp (mapcat #(specs kb % context)) (filter known) (distinct))]
-    (if (<= bound describe-sortable)
-      (let [all (into [] walk partners)]
-        {:terms   (into [] (take limit) (nm/by-print-key all))
-         :total   (count all)
-         :exact?  true
-         :sorted? true})
-      ;; one past the limit, in partner-name order: enough to know whether there is
-      ;; more, and O(limit) rather than O(union) because the closures are in memory
-      (let [head (into [] (comp walk (take (inc limit))) partners)]
-        (if (<= (count head) limit)
-          {:terms (nm/by-print-key head) :total (count head) :exact? true :sorted? true}
-          {:terms   (into [] (take limit) head)
-           :total   bound
-           :exact?  false
-           :sorted? false})))))
+  (let [known (types kb)
+        cap   (max describe-sortable limit)
+        ;; the union itself decides whether it is sorted, built to one past `cap` in
+        ;; partner-name order: the closures overlap, so the sum of their sizes can pass
+        ;; `cap` while the union fits under it
+        head  (into [] (comp (mapcat #(specs kb % context)) (filter known) (distinct)
+                             (take (inc cap)))
+                    partners)]
+    (if (<= (count head) cap)
+      {:terms   (into [] (take limit) (nm/by-print-key head))
+       :total   (count head)
+       :exact?  true
+       :sorted? true}
+      ;; past `cap` the head is unsorted and the total is the sum of the closure sizes,
+      ;; which over-counts the union (an overlap twice) and so is a sound bound on it
+      {:terms   (into [] (take limit) head)
+       :total   (reduce + 0 (map #(count (specs kb % context)) partners))
+       :exact?  false
+       :sorted? false})))
 
 (defn- predicates-for-type
   "The predicates whose argument declarations admit `t`: every believed `(arg P n U)` or

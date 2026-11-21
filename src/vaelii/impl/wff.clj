@@ -505,7 +505,7 @@
   "`(functionCorrespondingPredicate F P N)` says the function `F` and the predicate `P`
   state the same relationship, `N` naming the argument of `P` that carries `F`'s value.
 
-  `F` is a function name — a `MotherFn`-shaped constant, an individual by the naming
+  `F` is a function name — a `StartFn`-shaped constant, an individual by the naming
   invariants — so the individual refusal falls on `P` alone.  `N` is 1-based and always
   stated.  Whether `N` is in range is not knowable here: it is checked against the
   *application*'s arity, which no declaration states."

@@ -141,10 +141,8 @@
 (tu/deftest-kb interpretation-predicates-are-time-agnostic
   (all-of-kind kb 'time_agnostic_relation '[means denotes] 'CxUniverse))
 
-(tu/deftest-kb biology-and-parent-functions-are-time-invariant
-  (all-of-kind kb 'time_invariant_relation
-               '[mortal warm_blooded MotherFn FatherFn]
-               'CxUniverse))
+(tu/deftest-kb biology-predicates-are-time-invariant
+  (all-of-kind kb 'time_invariant_relation '[mortal warm_blooded] 'CxUniverse))
 
 (tu/deftest-kb social-relations-are-time-varying
   (all-of-kind kb 'time_varying_relation
@@ -258,7 +256,7 @@
   (all-of-kind kb 'time_varying_relation
                '[knows livesIn locatedIn eats able asleep awake]
                'CxUniverse)
-  (all-of-kind kb 'time_varying_relation '[chosenSiblingOf nestingPartnerOf]
+  (all-of-kind kb 'time_varying_relation '[nestingPartnerOf]
                'CxTra))
 
 (tu/deftest-kb the-upper-categories-and-biological-kinds-are-time-invariant
@@ -308,7 +306,8 @@
   ;; Each tracks a store or a mind that changes.  An implementation note is about a term,
   ;; as a comment is.
   (all-of-kind kb 'time_varying_relation
-               '[empty nonempty believes indeterminate_term agg/avg agg/count agg/max agg/min
+               '[empty nonempty believes indeterminate_term placeholder_term proxy_term
+                 agg/avg agg/count agg/max agg/min
                  agg/sum]
                'CxUniverse)
   (all-of-kind kb 'time_varying_relation '[toolName] 'CxTra)

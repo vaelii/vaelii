@@ -22,6 +22,7 @@
             [vaelii.impl.io.text :as text]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.predicates :as pr]
+            [vaelii.impl.protocols :as p]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
@@ -317,6 +318,49 @@
         (str "shipped facts their own declarations convict: " (vec guilty)))
     (is (empty? (filter #(= :inert-argument (:violation %)) (v/violations kb)))
         "and none is held inert")))
+
+(tu/deftest-kb every-premise-the-starter-ships-is-consistent-with-the-declarations-it-ships
+  (testing "every premise, rules included, under the constraint-only reading (tu/premise-wff-problems)"
+    (let [before (count (p/premise-ids (:records kb)))
+          guilty (tu/premise-wff-problems kb)]
+      (is (empty? guilty)
+          (str "shipped premises their own declarations convict: "
+               (vec (for [{:keys [context form problems]} guilty]
+                      [form context (mapv :message problems)]))))
+      (is (= before (count (p/premise-ids (:records kb)))) "and the sweep stores nothing"))))
+
+(tu/deftest-kb a-member-a-closed-extent-refutes-is-admitted-as-a-theory-revision
+  (testing (str "well-formedness tries to prove the denial of what is asserted and ignores a"
+                " closed-world proof, so a theory is revised without lifting the grant")
+    (tu/with-terms [gizmo Gear Lever Pulley CxProbe]
+      (v/assert kb (list 'genl gizmo 'thing) CxProbe)
+      (v/assert kb (list 'closed_extent_predicate gizmo) CxProbe)
+      (v/assert kb (list gizmo Gear) CxProbe)
+      (v/assert kb (list gizmo Lever) CxProbe)
+      (is (v/ask? kb (list 'not (list gizmo Pulley)) CxProbe) "the closed extent refutes the third")
+      (is (empty? (v/check kb (list gizmo Pulley) CxProbe)) "check admits it")
+      (v/assert kb (list gizmo Pulley) CxProbe)
+      (is (v/ask? kb (list gizmo Pulley) CxProbe))
+      (is (empty? (filter #(= CxProbe (:context %)) (tu/premise-wff-problems kb)))
+          "and the sweep reports nothing"))))
+
+(tu/deftest-kb ^:red a-premise-against-a-stated-denial-of-its-argument-type-is-reported
+  (testing (str "https://github.com/vaelii/vaelii/issues/306: well-formedness tries to prove"
+                " the denial of what is asserted, and a stated (not (T x)) is such a proof;"
+                " the constraint-only reading reads only a separation from T, so it misses it")
+    (tu/with-terms [gadget relatesTo GadgetFn Ann Bob CxProbe]
+      (doseq [s [(list 'genl gadget 'thing)
+                 (list 'binary_predicate relatesTo)
+                 (list 'unary_function GadgetFn)
+                 (list 'reifiable_function GadgetFn)
+                 (list 'arg GadgetFn 1 gadget)]]
+        (v/assert kb s CxProbe))
+      (v/assert kb (list 'not (list gadget relatesTo)) CxProbe {:strength :monotonic})
+      (v/assert kb (list (list GadgetFn relatesTo) Ann Bob) CxProbe)
+      (is (v/ask? kb (list 'not (list gadget relatesTo)) CxProbe) "the denial is believed")
+      (is (= [(list (list GadgetFn relatesTo) Ann Bob)]
+             (map :form (filter #(= CxProbe (:context %)) (tu/premise-wff-problems kb))))
+          "the sweep reports the premise its argument's denial contradicts"))))
 
 (def ^:private undeclared-positions
   "The argument positions of arity **2 and up** that the shipped text contexts declare with
@@ -688,7 +732,7 @@
         (is (v/assert kb (list 'friendOf CmdrData Geordi) N))
         (is (v/ask? kb (list 'friendOf CmdrData Geordi) N)))
       (testing "while a biological predicate derives organism of the person it is told of"
-        (is (v/assert kb (list (list 'BloodKinFn 'parentOf) CmdrData Geordi) N))
+        (is (v/assert kb (list (list 'GeneticKinFn 'parentOf) CmdrData Geordi) N))
         (is (v/isa? kb CmdrData 'organism N)))
       (testing "and human, the biological half, reaches mammal, animal and person alike"
         (is (v/genl? kb 'human 'mammal))

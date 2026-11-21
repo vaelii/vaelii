@@ -950,6 +950,9 @@
         ;; (`special/drain-context-moves!`): their re-checks are queued before the drain
         ;; below, and the placement families read their reach
         moves   (special/drain-context-moves! kb (:genlcx checked) *rebuilding?*)
+        remerge (cond-> remerge
+                  (special/slot-moves-pending? kb) (into (class-moved-merge-seeds kb region (:merge asked))))
+        region  (if (seq remerge) (delay (jtms/touched (reasoning/tms kb))) region)
         ;; the inherited clashes found and placed, before the other families place
         inh     (phases/with-phase :discovery (chain/place-inherited! kb region moves))
         ;; the nogoods whose placement can have moved, placed again; a defeat stored
@@ -964,6 +967,9 @@
         queued  (drain-recheck! kb)
         ;; the targets whose own-context belief a defeat moved with no relabel
         dmoves  (if *rebuilding?* {} (defeat-belief-moves kb (defeat-moves kb (set @region))))
+        remerge (cond-> remerge
+                  (special/note-defeat-moved-slots! kb (into (set (:back dmoves)) (:gone dmoves)))
+                  (into (class-moved-merge-seeds kb region (:merge asked))))
         ;; the datums whose belief came back, and the targets a removed defeat gave back;
         ;; `reseeded` seeds each once per settle, since the touched set spans the settle.  A
         ;; given-back target is re-chained only when the taxonomy derives from it
@@ -1193,7 +1199,8 @@
   "The calls of `pass-work` that read the KB or note a move and owe nothing, so no row of
   `idle-conditions` names them.  Read by `vaelii.settle-skip-test` alone."
   #{#'reasoning/tms #'reasoning/taxonomy #'jtms/touched #'p/get-sentex #'tax/derives-from?
-    #'special/conviction-generations #'special/note-producer-moves! #'pass-belief})
+    #'special/conviction-generations #'special/note-producer-moves! #'pass-belief
+    #'special/slot-moves-pending? #'special/note-defeat-moved-slots!})
 
 (defn- owes-nothing-up-front?
   "Does every row of `idle-conditions` hold over `region`, the touched set as a delay?

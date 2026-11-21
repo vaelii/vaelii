@@ -1231,16 +1231,23 @@ dropped for having no placement context.
 Defends [nat.md](nat.md#the-corresponding-predicate). When a `:monotonic` corresponding
 fact names the value `V` of an application already minted as `K`, the engine derives
 `(rewriteOf V K)`. The two sides are not interchangeable: `V` is a name somebody wrote and
-`K` stands in for not knowing it. An `equals` would let the class elect whichever term
-sorts first, which can be `K`, and every use of `V` would then migrate onto the opaque
-constant.
+`K` stands in for not knowing it. A `rewriteOf` deprecates `K` whatever `V` is. An
+`equals` states no preference, so the class would elect by the constant-first rule
+([equality.md](equality.md#choosing-the-representative)). That rule elects a `V` that is a
+constant over `K`. A `V` that is another reified constant ties with `K`, the term that
+sorts first wins, and that can be `K`. Every use of `V` would then migrate onto the
+opaque constant.
 
 ### A `:default` value copies the placeholder's uses instead of merging
 
 Defends [nat.md](nat.md#the-corresponding-predicate). A `:default` corresponding fact
 gives each sentex and rule naming `K` a derived copy with `V` in `K`'s place, and stores
 no `(rewriteOf V K)`. `rewriteOf` stays in the forced-monotonic set
-([nmtms.md](nmtms.md#the-forced-monotonic-set)).
+([nmtms.md](nmtms.md#the-forced-monotonic-set)). Only a `:monotonic` value derives a
+`rewriteOf`. The correspondence's `functionalInArg` mark derives no `equals` either: `K`
+and a `:default` `V` are no collision
+([equality.md](equality.md#functional-infers-equality-instead-of-throwing)), so one
+mechanism carries the value.
 
 A merge resting on a `:default` fact would be defeasible, and a merge supersedes `K`'s
 spellings. A defeat of the fact would then withdraw the merge and bring `K`'s superseded

@@ -5220,8 +5220,9 @@
     (derive-merge kb (list 'equals lo hi) context informant antes)))
 
 (defn- monotonic-pair?
-  "Are both members `h` and `o` of a collision `:monotonic`?  Only such a pair of two
-  symbols merges; any other is a nogood the settle places (docs/reference.md, decision 6)."
+  "Are both members `h` and `o` of an `anti_symmetric` converse pair `:monotonic`?  Only
+  such a pair of two symbols merges; any other is a nogood the settle places
+  (docs/reference.md, decision 7)."
   [kb h o]
   (let [tms (reasoning/tms kb)]
     (and (tuple/monotonic-member? tms h) (tuple/monotonic-member? tms o))))
@@ -5248,9 +5249,8 @@
 (defn- derive-functional-equalities-in
   "The functional merges `sentence`, stored as `handle`, forms in exactly `context`
   (docs/equality.md, \"`functional` infers equality instead of throwing\").  Each clash
-  whose filler is a mergeable symbol, whose two members are `:monotonic`, and whose pair
-  `context` does not already hold in one class (`res/same-class-in?`) derives
-  `(equals V1 V2)`.  Returns `{:new :superseded :violations}`, or nil when nothing clashes.
+  that merges at `context` (`checks/functional-merges?`) and whose pair `context` does
+  not already hold in one class (`res/same-class-in?`) derives `(equals V1 V2)`.  Returns `{:new :superseded :violations}`, or nil when nothing clashes.
   The equality takes one justification per declaration of the convicting mark `via`
   (`checks/functional-declaration-supporters`, docs/defenses.md, \"A functional merge
   rests on every declaration of the convicting mark\"), each naming both facts and the
@@ -5259,23 +5259,23 @@
   (let [tax     (reasoning/taxonomy kb)
         recs    (:records kb)
         pred    (nm/functor sentence)
-        ;; ordered by the whole clash's content, never the handle: two handles can fill
-        ;; a slot with one value, and `oh` goes into the antecedents.  A `:default`
-        ;; arrival reads no clash.
-        clashes (when (tuple/monotonic-member? (reasoning/tms kb) handle)
+        args    (nm/args sentence)
+        merges? (fn [[oh v via n :as clash]]
+                  (checks/functional-merges? kb v (checks/functional-filler sentence clash)
+                                             handle oh context via n args))
+        ;; by content, never the handle, which goes into the antecedents.  A `:default`
+        ;; arrival no other filler shares a slot with reads no clash.
+        clashes (when (or (tuple/monotonic-member? (reasoning/tms kb) handle)
+                          (tuple/determinant-member? kb handle))
                   (nm/sort-by-content-key
                    (fn [[oh v via n]] (let [s (p/get-sentex recs oh)]
                                         [v (:sentence s) (:context s) via n]))
-                   (filter (fn [[oh v :as clash]]
-                             (and (tuple/mergeable-values? v (checks/functional-filler sentence clash))
-                                  (monotonic-pair? kb handle oh)))
-                           (checks/functional-clashes kb sentence context))))]
+                   (filter merges? (checks/functional-clashes kb sentence context))))]
     (when (seq clashes)
       (reduce (fn [acc [oh v via n :as clash]]
                 (let [b (checks/functional-filler sentence clash)]
                   ;; skip a pair only when a merge `context` can see already holds it
-                  (if-not (and (tuple/mergeable-values? v b)
-                               (monotonic-pair? kb handle oh)
+                  (if-not (and (merges? clash)
                                (not (res/same-class-in? kb v b context)))
                     acc
                     ;; every declaration constraining `via` at this position — the
@@ -5559,15 +5559,87 @@
                      (some terms (nm/args s))))
              (:antecedents j))))
 
+(defn- functional-collision-slot
+  "`[via n args]` of the functional collision justification `j` over the members `ms`:
+  the mark's predicate and position, read off the `functional` or `functionalInArg`
+  declaration among its antecedents, and the arguments of a member.  nil when no
+  antecedent declares the mark."
+  [recs j ms]
+  (when-let [[via n] (some #(let [s (:sentence (p/get-sentex recs %))]
+                              (case (when (seq? s) (nm/functor s))
+                                functional      (when (= 1 (nm/arity s)) [(second s) 2])
+                                functionalInArg (when (= 2 (nm/arity s)) (vec (rest s)))
+                                nil))
+                           (:antecedents j))]
+    (when-let [args (some-> (p/get-sentex recs (first ms)) :sentence nm/args vec)]
+      (when (<= 1 n (count args)) [via n args]))))
+
+(defn- collision-holds?
+  "Does the collision justification `j` over the members `ms`, all IN, still license its
+  merge?  An `anti_symmetric` one does when every member is `:monotonic`.  A `functional`
+  one does when its fillers merge at the merge's context (`checks/functional-merges?`),
+  so a rival's arrival withdraws a proxy filler's merge."
+  [kb recs j ms]
+  (let [tms (reasoning/tms kb)]
+    (if (and (= 'functional (:informant j)) (= 2 (count ms)))
+      (let [{[_ a b] :sentence c :context} (p/get-sentex recs (:consequence j))
+            [h o] ms]
+        (boolean (when-let [[via n args] (functional-collision-slot recs j ms)]
+                   (checks/functional-merges? kb a b h o c via n args))))
+      (every? #(tuple/monotonic-member? tms %) ms))))
+
+(defn- slot-rows
+  "The stored facts filling a slot whose functional merges a settle re-asks
+  (`tuple/determinant-rows`).  The slots are those a relabelled fact of `region` fills,
+  asked once per settle (`asked`, under `:slot`), and those `tuple/take-slot-moves!`
+  queued.  They are also those an `except` or a `genlCx` edge moved a filler of
+  (`:except-moves`' pending handles), and those a term fills whose determinateness a
+  membership moved."
+  [kb region asked]
+  (let [[left terms] (tuple/take-slot-moves! kb)
+        idx  (:index kb)
+        mine (into [] (remove #(contains? @asked [% :slot])) region)
+        _    (vswap! asked into (map #(vector % :slot)) mine)
+        hid  (keys (:pending @(reasoning/except-moves kb)))]
+    (-> #{}
+        (into (mapcat #(tuple/determinant-rows kb %)) mine)
+        (into (mapcat #(tuple/determinant-rows kb %)) (concat left hid))
+        (into (comp (mapcat #(reads/as-stored-with-term idx %))
+                    (mapcat #(tuple/determinant-rows kb %)))
+              terms))))
+
+(defn- guarded-slot?
+  "Does a slot the stored fact `h` fills hold a filler `provers/determinateness` reads as
+  other than `:determinate` in any context (`tuple/determinant-fillers`)?  Only such a
+  slot merges on `:default` evidence (`checks/functional-merges?`)."
+  [kb h]
+  (boolean (some #(not= :determinate (provers/determinateness kb % '?ctx))
+                 (tuple/determinant-fillers kb h))))
+
+(defn slot-moves-pending?
+  "Has a `genlCx` move, a departed determinant member or a determinacy membership queued
+  slots whose functional merges `class-moved-merges` re-asks (`tuple/slot-moves?`)?"
+  [kb]
+  (tuple/slot-moves? kb))
+
+(defn note-defeat-moved-slots!
+  "Queue the handles `hs`, the targets a placed `defeat` hid or gave back this pass, for
+  `class-moved-merges` to re-ask their slots (`tuple/note-slots-moved!`).  A filler a
+  defeat hides is no candidate where the defeat is in force.  Returns whether any slot is
+  queued (`slot-moves-pending?`)."
+  [kb hs]
+  (tuple/note-slots-moved! kb hs)
+  (slot-moves-pending? kb))
+
 (defn class-moved-merges
   "Re-ask the collision merges of the handles in `region` (a delay over `jtms/touched`)
-  whose class can have moved: drop each collision justification whose members are all IN
-  and one at `:default` (off when `drop?` is false), and re-derive from each member IN at
-  `:monotonic` but a premise this settle created at that class.  `asked` is the settle's
-  volatile set of `[handle class]` asked already.  `{:new :superseded :violations :removed
-  :members}`, `:removed` the merged removals for the caller's stores and `:members` the
-  dropped justifications' members; nil, with `region` unforced, when no merge mark is
-  declared.  See docs/equality.md, \"`functional` infers equality instead of throwing\"."
+  whose class can have moved, and of the slots `slot-rows` names.  Drop each collision
+  justification whose members are all IN and whose merge no longer holds
+  (`collision-holds?`; off when `drop?` is false), and re-derive, or after a drop queue
+  the slots for the next call.  `asked` is the settle's set of `[handle class]` asked.
+  `{:new :superseded :violations :removed :members}`, `:removed` the merged removals for
+  the caller's stores and `:members` the dropped justifications' members; nil, with
+  `region` unforced, when no merge mark is declared.  See docs/equality.md."
   [kb region asked drop?]
   (let [tax (reasoning/taxonomy kb)]
     (when (or (tax/functional-family-declared? tax) (seq (tax/props tax :anti-symmetric)))
@@ -5578,11 +5650,10 @@
                                                    (not (contains? @asked [% cls]))))
                                   @region))
             down  (fresh :default)
-            up    (into [] (remove #(and (contains? born %)
-                                         (= :monotonic (jtms/premise-strength tms %))))
-                        (fresh :monotonic))
+            up    (fresh :monotonic)
             _     (vswap! asked into (concat (map #(vector % :default) down)
                                              (map #(vector % :monotonic) up)))
+            rows  (when (tax/functional-family-declared? tax) (slot-rows kb @region asked))
             stale (when drop?
                     (into (sorted-set)
                           (comp (mapcat #(jtms/dependents tms %))
@@ -5591,18 +5662,25 @@
                                 (keep (fn [j]
                                         (let [ms (collision-members recs j)]
                                           (when (and (every? #(jtms/defeat-class tms %) ms)
-                                                     (not-every? #(tuple/monotonic-member? tms %) ms))
+                                                     (not (collision-holds? kb recs j ms)))
                                             [(:id j) ms])))))
-                          down))
+                          (concat down (filter #(jtms/defeat-class tms %) rows))))
             removed (reduce (fn [acc [jid]]
                               (let [r (jtms/drop-justification! tms jid)]
                                 (p/delete-justification! recs jid)
                                 (merge-with into acc r)))
                             nil stale)
+            ;; a premise this settle created at its class derived its merges arriving
+            fresh? #(not (and (contains? born %)
+                              (= (jtms/defeat-class tms %) (jtms/premise-strength tms %))))
+            _     (when (seq stale) (tuple/note-slots-moved! kb (into (set rows) (mapcat second) stale)))
+            again (cond-> (into #{} (filter fresh?) up)
+                    (empty? stale) (into (filter #(guarded-slot? kb %))
+                                         (concat (filter fresh? down) rows)))
             sxs   (nm/sort-by-content-key (juxt :sentence :context)
                                           (into [] (comp (keep #(p/get-sentex recs %))
                                                          (filter #(nil? (:antecedent %))))
-                                                up))
+                                                again))
             mig   (reduce (fn [acc {:keys [sentence context id]}]
                             (merge-with into acc
                                         (derive-functional-equalities kb sentence context id)
@@ -7022,6 +7100,8 @@
     :run (fn [kb m] (when *seed-moves?* {:seeds (move-seeds kb m true)}))}
    {:family :merges-and-mints :on #{:shown :excepted} :stratum :effective
     :run (fn [kb m] {:mig (reconcile-move kb m)})}
+   {:family :functional-slots :on #{:shown :hidden :excepted} :stratum :effective
+    :run (fn [kb m] (tuple/note-contexts-moved! kb (:moved m)) nil)}
    {:family :covered-merges :on #{:shown :excepted} :stratum :effective
     :run (fn [kb m] {:covered (move-covered-merges kb m)})}
    {:family :slice-lifts :on #{:shown :excepted} :stratum :effective

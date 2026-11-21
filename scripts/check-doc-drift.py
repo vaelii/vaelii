@@ -1991,6 +1991,10 @@ E17_ALLOW = {
     # A term merge restates the premises of every context, so a disjoint declaration in
     # any one of them refuses it.
     ("src/vaelii/impl/term_edit.clj", "merge-problem"),
+    # A merge stored at one context is read in every context below it.  A rival blocks it
+    # wherever some context sees both, so the reach is the whole genlCx closure.
+    ("src/vaelii/impl/checks.clj", "seen-together?"),
+    ("src/vaelii/impl/checks.clj", "slot-candidates"),
     # The public API offers both readings, and its shorter arity IS the global one —
     # `vaelii.core/genls` documents the pair (docs/taxonomy.md).
     ("src/vaelii/core.clj", "genls"),
