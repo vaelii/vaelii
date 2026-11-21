@@ -158,7 +158,7 @@
   test below is about the rare one."
   '#{comment unary_predicate binary_predicate ternary_predicate arity arg genlArg quotedArg
      arg1 arg2 arg3 interArg symmetric transitive asymmetric anti_symmetric anti_transitive
-     reflexive irreflexive functional functionalInArg injection surjection bijection
+     reflexive irreflexive functional functionalInArg injective_predicate surjective_predicate bijective_predicate
      equivalence_relation variable_arity abducible_predicate closed_extent_predicate
      modal_predicate decontextualized_predicate forced_decontextualized_predicate
      instance_relation_predicate type_relation_predicate target_following_predicate

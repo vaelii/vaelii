@@ -176,10 +176,11 @@ or **Derived**) and not defeated.
 with the same word — `(believes Alice P)` proves `P` in Alice's own context and says
 nothing about whether the KB holds it. See [belief.md](belief.md).
 
-**`bijection`** ![kb](../.github/badges/cat-kb.svg): `(bijection P)` — the strongest of
+**`bijective_predicate`** ![kb](../.github/badges/cat-kb.svg): `(bijective_predicate P)` — the strongest of
 the three **function marks**: `P` is single-valued, one-to-one, total on its declared
-domain and onto its declared range. `core.txt` rules derive `(injection P)` and
-`(surjection P)`, and those derive the four marks the engine reads. See
+domain and onto its declared range. `core.txt` rules derive `(injective_predicate P)` and
+`(surjective_predicate P)`, and those derive the four marks the engine reads. A predicate that is
+both an `injective_predicate` and a `surjective_predicate` is concluded a `bijective_predicate`. See
 [taxonomy.md](taxonomy.md).
 
 **Brave / cautious** ![asp](../.github/badges/cat-asp.svg): The two readings of
@@ -763,7 +764,7 @@ inertia's `unknown` tests when the question is asked. Undercutting rather than
 defeat, so a terminating event heard of later leaves no conclusion to arbitrate.
 See [time.md](time.md).
 
-**`injection`** ![kb](../.github/badges/cat-kb.svg): `(injection P)` — a **function
+**`injective_predicate`** ![kb](../.github/badges/cat-kb.svg): `(injective_predicate P)` — a **function
 mark**: `P` is single-valued, one-to-one, and total on its declared domain, with nothing
 said about reaching every member of its range. Derives `(functional P)` and
 `(functionalInArg P 1)`, both enforced at the write, and `(predAllSpecified P D)` off
@@ -1426,7 +1427,7 @@ subtracting from reported belief rather than forced OUT, so its justified twin
 survives. A superseded datum stays IN in the network and fires no rule, and a nogood
 naming one keeps its placement. See [equality.md](equality.md).
 
-**`surjection`** ![kb](../.github/badges/cat-kb.svg): `(surjection P)` — a **function
+**`surjective_predicate`** ![kb](../.github/badges/cat-kb.svg): `(surjective_predicate P)` — a **function
 mark**: `P` is single-valued, total on its declared domain, and onto its declared range,
 with nothing said about one-to-one. Derives `(functional P)`, enforced at the write, and
 the `(predAllSpecified P D)` and `(predSpecifiedAll P R)` requirements off the `arg`

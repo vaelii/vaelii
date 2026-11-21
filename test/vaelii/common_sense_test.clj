@@ -373,7 +373,7 @@
       (is (v/ask? kb '(parentOf Tom Bob))))))
 
 (tu/deftest-kb one-child-can-have-two-distinct-mothers
-  ;; Generic motherhood is not a uniqueness constraint. Two mothers can stay distinct,
+  ;; Unqualified motherhood is not a uniqueness constraint. Two mothers can stay distinct,
   ;; rather than being treated as two names for one animal. The numerical birth-year
   ;; constraint still reports a different year as a clash.
   (tu/with-terms [Pup Dam Mum]
@@ -388,50 +388,6 @@
       (is (v/ask? kb (list 'motherOf Pup Mum) N)))
     (testing "where two numbers cannot merge, and the second is a clash"
       (is (tu/stored-in-clash? kb '(birthYearOf Tom 1971) S)))))
-
-;; ---- naming a thing by the role it plays --------------------------------
-
-(tu/deftest-kb the-mother-of-a-dog-is-the-dog-the-kb-already-knows
-  ;; (MotherFn Pup) is a way of naming somebody without knowing their name.  Because
-  ;; the function corresponds to blood-qualified motherOf, it resolves to the mother already stored
-  ;; rather than minting a second name for her — and the sentence that used it is
-  ;; stored about her, so a later question finds it.  The value resolves the application
-  ;; only where its blood-mother fact is visible: CxSocialWorld does not see CxNaturalWorld.
-  (tu/with-terms [Pup Dam Sire]
-    (v/assert kb (list 'dog Pup) N)
-    (v/assert kb (list 'dog Dam) N)
-    (v/assert kb (list 'dog Sire) N)
-    (v/assert kb (list (list 'BloodKinFn 'motherOf) Pup Dam) N)
-    (v/assert kb (list (list 'BloodKinFn 'fatherOf) Pup Sire) N)
-    (testing "a unique blood father also resolves rather than minting a different name"
-      (v/assert kb (list 'likes 'Ann (list 'FatherFn Pup)) N)
-      (is (true? (v/ask? kb (list 'likes 'Ann Sire) N))))
-    (testing "maternity entails parenthood, and the kinship theory reads on from there"
-      (is (v/ask? kb (list 'parentOf Dam Pup) N))
-      (is (v/ask? kb (list 'childOf Pup Dam)))
-      (is (v/ask? kb (list 'ancestorOf Dam Pup))))
-    (testing "and a sentence about `the mother of Pup` is a sentence about her"
-      (v/assert kb (list 'likes 'Ann (list 'MotherFn Pup)) N)
-      (is (v/ask? kb (list 'likes 'Ann Dam) N)))
-    (testing "where the motherOf fact is not visible"
-      (v/assert kb (list 'likes 'Bob (list 'MotherFn Pup)) S)
-      (is (not (v/ask? kb (list 'likes 'Bob Dam) S))))))
-
-(tu/deftest-kb a-role-nobody-has-filled-still-answers-questions-about-itself
-  ;; Nobody has said who this dog's father is, so the application mints a placeholder
-  ;; — and projects it back onto blood-qualified fatherOf, which is what keeps the constant from being
-  ;; an opaque thing the KB can say nothing about.
-  (tu/with-terms [Stray]
-    (v/assert kb (list 'dog Stray) N)
-    (is (empty? (v/sentexes-matching kb (list (list 'BloodKinFn 'fatherOf) Stray '?f) '?ctx)))
-    (v/assert kb (list 'likes 'Ann (list 'FatherFn Stray)) S)
-    (let [[sx] (v/sentexes-matching kb (list (list 'BloodKinFn 'fatherOf) Stray '?f) '?ctx)
-          father (nth (:sentence sx) 2)]
-      (testing "the placeholder is projected back, so whose father it is, is askable"
-        (is (v/reified-term? father))
-        (is (= (list 'FatherFn Stray) (v/term-expression kb father))))
-      (testing "and it carries the type the function's result is declared to have"
-        (is (v/isa? kb father 'animal))))))
 
 ;; ---- a witness nobody named ---------------------------------------------
 

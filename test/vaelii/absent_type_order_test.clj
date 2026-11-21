@@ -295,14 +295,14 @@
                :rewrites '(rewriteOf ?target ?expression)
                :predicates '(predicate ?p)
                :chosen '(chosen_kinship_predicate ?p)
-               :blood '(blood_kinship_predicate ?p)
+               :genetic '(genetic_kinship_predicate ?p)
                :chosen-same-as '(sameAs chosenKinOf ?p)
                :chosen-equals '(equals chosenKinOf ?p)
-               :blood-same-as '(sameAs bloodRelativeOf ?p)
+               :genetic-same-as '(sameAs geneticRelativeOf ?p)
                :chosen-specs '(genl ?p chosenKinOf)
-               :blood-specs '(genl ?p bloodRelativeOf)
-               :chosen-correspondence '(chosenKinPredicateOf kinOf ?p)
-               :blood-correspondence '(bloodKinPredicateOf kinOf ?p)}]
+               :genetic-specs '(genl ?p geneticRelativeOf)
+               :chosen-correspondence '(chosenVersionOf kinOf ?p)
+               :genetic-correspondence '(geneticVersionOf kinOf ?p)}]
     {:answers (into {}
                     (for [reader ['CxUniverse 'CxKinship]
                           [label goal] goals]

@@ -11,7 +11,7 @@
   [ch. 19](19-relation-properties.md) (`functional`).
 
 A function application `(F a…)` that denotes something is a NAT, a non-atomic term.
-`(MotherFn Muffet)` names Muffet's mother whether or not the KB knows her name. A NAT is
+`(CapitalFn Freedonia)` names Freedonia's capital whether or not the KB knows its name. A NAT is
 useful for naming a thing before it has a name, and a KB that has only the function can
 state nothing about the relationship the function computes. This chapter is about keeping
 both.
@@ -25,26 +25,26 @@ or, for a binary predicate with the value second, `functionCorrespondingBinaryPr
 and write rules in terms of the predicate. Skipping the predicate is a decision, and the
 file says so in a `;;` note when it is made.
 
-**Example.** `life.txt` declares `MotherFn` and `motherOf` together:
+**Example.** `time.txt` declares `StartFn` and `startOf` together:
 
 ```clojure
-(reifiable_function MotherFn)
-(unary_function MotherFn)
-(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf))
-(result MotherFn animal)
+(unreifiable_function StartFn)
+(unary_function StartFn)
+(functionCorrespondingBinaryPredicate StartFn startOf)
+(result StartFn time_point)
 ```
 
 ```clojure
-(set/monotonic (instance_relation_predicate motherOf))
-(arg motherOf 1 causal)
-(arg motherOf 2 causal)
-(generic_kinship_predicate motherOf)
+(set/monotonic (instance_relation_predicate startOf))
+(set/monotonic (eternal_predicate startOf))
+(arg startOf 1 temporal)
+(arg startOf 2 time_point)
 ```
 
 `functionCorrespondingBinaryPredicate` puts the value at the second argument of
-blood-qualified `motherOf`. The child comes first. Generic motherOf and its blood
-reading need not be functional: if several mothers are visible the correspondence
-selects none and does not merge them.
+`startOf`. The interval comes first. A predicate that holds of one argument with several
+things, such as `motherOf`, has no corresponding function, since a function has one
+value for each argument.
 
 **Why.**
 
@@ -52,15 +52,18 @@ selects none and does not merge them.
   `P` holds of `a…` with `V` at argument `N`, and
   `(functionCorrespondingBinaryPredicate F P)` is
   `(functionCorrespondingPredicate F P 2)`. The function and the predicate state one
-  relationship, and the declaration tells the KB so.
-- *Engine.* The correspondence is read both ways. A write or firing naming
-  `(MotherFn Muffet)` stores the application's own constant `K`. A single visible
-  `:monotonic` `((BloodKinFn motherOf) Muffet Mary)` reaches `K` through a supported
-  `rewriteOf` merge, so a read sees its uses as `Mary`. Retracting the value's premise
+  relationship, and the declaration tells the KB so. The function has one value for each
+  argument tuple, so a `core.txt` rule concludes `(functionalInArg P N)` from the
+  declaration.
+- *Engine.* The correspondence is read both ways. For a reifiable `CapitalFn` that a KB
+  declares beside `capitalCityOf`, a write or firing naming `(CapitalFn Freedonia)` stores
+  the application's own constant `K`. A single visible `:monotonic`
+  `(capitalCityOf Freedonia Fredville)` reaches `K` through a supported `rewriteOf` merge,
+  so a read sees its uses as `Fredville`. Retracting the value's premise
   withdraws those restatements and leaves the original uses of `K`. A `:default` value
   supplies supported copies instead of a merge. When no value is known, the constant is
-  projected onto `((BloodKinFn motherOf) Muffet K)`, so it answers blood-qualified
-  `motherOf` questions. Whichever of the application, the fact and the declaration
+  projected onto `(capitalCityOf Freedonia K)`, so it answers `capitalCityOf`
+  questions. Whichever of the application, the fact and the declaration
   arrives last, the KB ends in the same state.
 - *Engine.* The engine does not match a function application inside a rule. A rule whose
   antecedents name an open application of a reifiable function is stored with the
@@ -68,8 +71,8 @@ selects none and does not merge them.
   antecedents. A rule whose antecedents apply a reifiable function its context sees no
   correspondence for is stored as written and held: it is not believed and fires nothing.
   Nothing on the write path refuses the rule.
-- *Maintenance.* Keep the correspondence on the qualified predicate: a generic parent
-  fact alone does not choose blood descent.
+- *Maintenance.* Keep the correspondence on the qualified predicate: an unqualified parent
+  fact alone does not choose genetic descent.
 
 **Why not the other ways.** A function with no predicate forces every statement about
 the relationship to be written with the NAT in it, so the representation depends on how
@@ -123,7 +126,7 @@ The `comment` on `TimeOfFn` reads "A reifiable_function, one value per temporal 
   the … term and does not answer this predicate". The predicate then records the relationship
   for a reader and for any other encoding of the same values.
 - *Maintenance.* Reifying keeps one constant per distinct application. `nat.md` gives the
-  bound: `(FatherFn Muffet)` is one constant per animal, where `(QuantityFn 5 Meter)`,
+  bound: `(CapitalFn Freedonia)` is one constant per country, where `(QuantityFn 5 Meter)`,
   `(QuantityFn 5.001 Meter)` and every magnitude between them would be a constant apiece
   with nothing to bound the store.
 

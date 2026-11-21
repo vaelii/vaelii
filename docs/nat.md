@@ -67,7 +67,7 @@ constant, or left structural for a prover to compute. The criterion between them
 **boundedness of the application space**.
 
 Reifying stores one opaque constant per distinct application and keeps it, so it is safe
-exactly when the applications are bounded: `(FatherFn Muffet)` is one constant per animal,
+exactly when the applications are bounded: `(CapitalFn Freedonia)` is one constant per country,
 and an `AdultFn`-shaped function one per individual. A function whose arguments range over
 a continuous or open-ended domain is not, and takes `unreifiable_function` instead —
 `(QuantityFn 5 Meter)`, `(QuantityFn 5.001 Meter)` and every magnitude between them run
@@ -142,8 +142,8 @@ one declaration bind both classes of function.
 ### An application as a sentence's predicate
 
 A ground application of a function whose `result` is a predicate type can stand as a
-literal's head. `((BloodKinFn siblingOf) Ann Bob)` reifies its head to the constant that
-`(genl (BloodKinFn siblingOf) siblingOf)` and `(arg (BloodKinFn siblingOf) 1 organism)`
+literal's head. `((GeneticKinFn siblingOf) Ann Bob)` reifies its head to the constant that
+`(genl (GeneticKinFn siblingOf) siblingOf)` and `(arg (GeneticKinFn siblingOf) 1 organism)`
 reify their argument to. The fact, the `genl` edge and the argument declaration therefore
 key on one predicate. A `rewriteOf` target replaces the head as it replaces an argument.
 
@@ -467,7 +467,7 @@ the twin IN after the merge's own support leaves
 equality classes give each symbol argument (`class-spellings`), one spelling when no
 argument has merged. A compound `(rewriteOf T E)` target is read the same way
 (`rewrite-target`), except that a stated row answers only where the reader sees its
-context: `(rewriteOf Mary (MotherFn Muffet))` in `CxStory` resolves the application in
+context: `(rewriteOf Fredville (CapitalFn Freedonia))` in `CxStory` resolves the application in
 `CxStory` and below, and not in `CxUniverse` or a sibling of `CxStory`. A use of a
 constant `K` minted for the expression before such a reader saw the `rewriteOf` takes
 the merge `(rewriteOf T K)`, derived from the `rewriteOf` and the use and placed where
@@ -482,7 +482,7 @@ context, `(FruitFn Pomme)` resolves to the constant minted for `(FruitFn Apple)`
 
 ## The corresponding predicate
 
-An ontology that reifies `MotherFn` usually also has `motherOf`, and the two are one
+An ontology that reifies `CapitalFn` usually also has `capitalCityOf`, and the two are one
 claim written twice. `(functionCorrespondingPredicate F P N)` says so: `F` maps
 `a₁ … a_M` to `V` exactly when `(P a₁ … a_{N-1} V a_N … a_M)` holds. `N` is 1-based
 over `P`'s arguments and always stated, so `(functionCorrespondingPredicate StreetCornerFn
@@ -490,13 +490,19 @@ streetCornerOf 1)` makes `(StreetCornerFn Xing North)` the `Lot` of
 `(streetCornerOf Lot Xing North)`.
 
 The common case is a binary predicate with the value second, and
-`(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf))` states it. A `core.txt` rule
-concludes `(functionCorrespondingPredicate MotherFn (BloodKinFn motherOf) 2)` from it, and the engine
-reads only the ternary. The example is the shipped one: `resources/kb/upper/life.txt`
-declares `MotherFn` and `FatherFn` beside blood-qualified `motherOf` and `fatherOf`, so a KB that
-loads the starter can name somebody by their role before it knows their name.
-Generic `motherOf` alone does not determine a `MotherFn` value. Distinct blood mothers
-remain distinct; ambiguous admissible values select none rather than choosing or merging them.
+`(functionCorrespondingBinaryPredicate CapitalFn capitalCityOf)` states it. A `core.txt` rule
+concludes `(functionCorrespondingPredicate CapitalFn capitalCityOf 2)` from it, and the engine
+reads only the ternary. `CapitalFn` is an example a KB would declare, and the upper
+ontology ships `GeneticKinFn` and `ChosenKinFn` the same way, beside `geneticVersionOf`
+and `chosenVersionOf` in `resources/kb/upper/kinship.txt`.
+
+A function has at most one value for each argument tuple, so its corresponding predicate
+has at most one thing at the value position. A `core.txt` rule concludes
+`(functionalInArg P N)` from each `(functionCorrespondingPredicate F P N)`, so
+`(capitalCityOf Freedonia Fredville)` beside `(capitalCityOf Freedonia Libertyville)`,
+both `:monotonic`, merges `Fredville` and `Libertyville`
+(`correspondence_functionality_test/two-values-of-a-corresponding-predicate-name-one-thing`). A predicate that holds of one argument with
+several things, such as `motherOf`, has no corresponding function.
 
 Two `functionalInArg` marks constrain the ternary. A function and predicate pair has one
 position (`functionalInArg` at 3), and a predicate and position have one function
@@ -512,11 +518,11 @@ reads them.
 It is read in **both** directions, and that is the point: a KB told only one of the two
 spellings can otherwise reason with only that one.
 
-- **value → term.** A write or a firing that names `(MotherFn Muffet)` stores the
+- **value → term.** A write or a firing that names `(CapitalFn Freedonia)` stores the
   application's own constant `K`, whatever value the corresponding facts name. A believed
-  `:monotonic` `((BloodKinFn motherOf) Muffet Mary)` reaches `K` through the merge `(rewriteOf Mary
+  `:monotonic` `(capitalCityOf Freedonia Fredville)` reaches `K` through the merge `(rewriteOf Fredville
   K)`, which `chain/sync-values!` derives from the fact and the declaration (the table
-  below). The equality migration then restates each use of `K` as `Mary` where the fact is
+  below). The equality migration then restates each use of `K` as `Fredville` where the fact is
   visible, and the restatement rests on the fact, so a retraction of the fact's premise
   takes the restatement OUT and leaves the use of `K`. The stored set and the belief after
   that retraction are the same whichever of the fact and the use arrives first
@@ -527,11 +533,11 @@ spellings can otherwise reason with only that one.
   handle). A read of an application nothing minted resolves to the one value the visible
   facts name, whatever its class.
 - **term → value.** When no value is known, the mint proceeds and the constant is
-  **projected** back onto the predicate: `((BloodKinFn motherOf) Muffet K)`, derived from the
+  **projected** back onto the predicate: `(capitalCityOf Freedonia K)`, derived from the
   declaration and `K`'s `natFormula` map under the `functionCorrespondingPredicate`
   informant and placed where CxUniverse and the declaration's context meet
   (`res/exception-aware-placements`), as a firing is placed. So the placeholder answers
-  blood-qualified `motherOf` questions instead of being a term nothing says anything about. The
+  `capitalCityOf` questions instead of being a term nothing says anything about. The
   alternative — minting the constant and leaving the predicate unstated — makes the
   placeholder invisible to every question the predicate answers. The projection is
   placed after the mint stores the result types, since the projected literal is
@@ -568,7 +574,7 @@ declaration — and each of the three landing last has an arm:
 |---|---|
 | the application | mints `K`, which the visible value reaches as the next two rows say: a merge from a `:monotonic` value, copies from a `:default` one |
 | a `:monotonic` fact | `(rewriteOf V K)`, derived from the fact and the declaration and placed where their contexts meet, retires the placeholder there, and the equality migration folds every use of `K` — its `natFormula` map included — onto `V` |
-| a `:default` fact | each fact and each rule naming `K` takes a copy with `V` in `K`'s place, derived from the use, the fact and the declaration and placed where the three contexts meet; nothing is merged, so `K`'s own sentexes stay believed |
+| a `:default` fact | each fact and each rule naming `K` takes a copy with `V` in `K`'s place, derived from the use, the fact and the declaration and placed where the three contexts meet; nothing is merged, so `K`'s own sentexes stay believed. Under the correspondence's `functionalInArg` mark the pair is no collision: no `equals` and no nogood joins `K` and `V` ([equality.md](equality.md#functional-infers-equality-instead-of-throwing)) |
 | the declaration | each constant already minted for `F` is projected, then merged with or copied onto its value as the two rows above say |
 | a use of `K` | takes its copy beside each visible `:default` value, as the `:default` row says |
 
@@ -607,13 +613,13 @@ context's merges (`nat-read/correspondence-value`). A
 merge or a copy is placed only where the placement context reads exactly one value beside
 the placeholder, through the one correspondence the merge or copy was drawn from
 (`chain/sync-values!`), decided over the believed facts that context sees. With
-a single visible `((BloodKinFn motherOf) Muffet Mary)` in `CxStory` and a write of
-`(MotherFn Muffet)` in `CxUniverse`:
+a single visible `(capitalCityOf Freedonia Fredville)` in `CxStory` and a write of
+`(CapitalFn Freedonia)` in `CxUniverse`:
 
 | The fact's class | A write in `CxStory` | The placeholder minted in `CxUniverse` | A goal in `CxStory` naming the application or `K` |
 |---|---|---|---|
-| `:monotonic` | stores `K`, restated as `Mary` under the merge | retired in `CxStory` by `(rewriteOf Mary K)`; `CxUniverse` reads `K` | reads `Mary`, the representative |
-| `:default` | mints `K` | stays; each use of `K` has a copy naming `Mary` in `CxStory` | reads both spellings, `K` and `Mary` |
+| `:monotonic` | stores `K`, restated as `Fredville` under the merge | retired in `CxStory` by `(rewriteOf Fredville K)`; `CxUniverse` reads `K` | reads `Fredville`, the representative |
+| `:default` | mints `K` | stays; each use of `K` has a copy naming `Fredville` in `CxStory` | reads both spellings, `K` and `Fredville` |
 
 Both hold in every arrival order, a `genlCx` edge included
 (`nat_test/a-value-in-a-context-retires-the-placeholder-there-alone-in-every-order`). A
@@ -1217,7 +1223,9 @@ application's written order moves to the sorted one's.
 
 A `(result F T)` or `(genlResult F T)` asserted after constants were minted for `F`
 materializes `(T K)` or `(genl K T)` on each of them, justified as the mint justifies it
-when the declaration comes first (`nat/reconcile-nats!`).
+when the declaration comes first (`nat/reconcile-nats!`). A mint's `(natFormula K E)` map, whose
+`K` is the constant `E` names, gets the same `(T K)` or `(genl K T)` and the same
+justification when it is asserted after the declaration, as a text KB's reload asserts it.
 
 ## Where it lives
 
@@ -1329,9 +1337,9 @@ when the declaration comes first (`nat/reconcile-nats!`).
   not see `CxUniverse` does not resolve `(Quote (foo Muffet))` through a rename of
   `Muffet` stated in a context it sees.
 - **A placeholder is retired in each context holding a `:monotonic` value, separately.**
-  With `(motherOf Muffet Mary)` in `CxA` and `(motherOf Muffet Maria)` in `CxB`, a context
-  seeing both reads the placeholder as `Mary` and as `Maria`, so it reads the two as one
-  term.
+  With `(capitalCityOf Freedonia Fredville)` in `CxA` and `(capitalCityOf Freedonia Libertyville)`
+  in `CxB`, a context seeing both reads the placeholder as `Fredville` and as `Libertyville`, so
+  it reads the two as one term.
 - **A reifiable mark leaving does not re-spell a use whose application resolved to a real
   term.** A `rewriteOf` target, a correspondence value and a placeholder an equality
   retired stand where a KB that never declared the function holds the application.

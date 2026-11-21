@@ -46,10 +46,12 @@
             [vaelii.impl.disk.index-snapshot :as index-snapshot]
             [vaelii.impl.except :as exc]
             [vaelii.impl.io.import :as io-import]
+            [vaelii.impl.io.text :as text]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.memory :as mem]
             [vaelii.impl.naming :as nm]
+            [vaelii.impl.nat :as nat]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.overlay.mount :as mount]
             [vaelii.impl.protocols :as p]
@@ -595,6 +597,35 @@
                        :base    (overlay-base-space s)
                        :overlay {:backend :memory :space own}}))
       (merge {:space s} common *storage*))))
+
+(defn- plumbing-row?
+  "Is `form`, under any strength wrapper, a `natFormula` row: the record of what a reified
+  constant denotes, which the mint writes and no author does?"
+  [form]
+  (let [f (loop [f form]
+            (if (and (seq? f) (symbol? (first f)) (= "set" (namespace (first f))))
+              (recur (second f))
+              f))]
+    (and (seq? f) (= 'natFormula (first f)))))
+
+(defn premise-wff-problems
+  "The premises of `kb` that `v/check` refuses under the constraint-only reading of
+  argument declarations, as `{:context c :form f :problems [problem …]}` in premise order.
+  Each premise is read as a KB file writes it (`text/premise-entries`), with every reified
+  constant expanded to the application it denotes.  The `natFormula` rows are skipped.
+  That reading convicts an argument only for a type the taxonomy separates from the
+  declared one: a premise is reported when it contradicts its constraints.  Stores nothing
+  and draws no entailment."
+  [kb]
+  (let [recs (:records kb)]
+    (binding [argument/*assertive-arg-types?* false]
+      (into [] (keep (fn [{:keys [context form]}]
+                       (when-not (plumbing-row? form)
+                         (let [form (nat/expand-expression kb form)]
+                           (when-let [ps (seq (v/check kb form context))]
+                             {:context context :form form :problems (vec ps)})))))
+            (first (text/premise-entries
+                    kb (into [] (keep #(p/get-sentex recs %)) (sort (p/premise-ids recs)))))))))
 
 (defn clear-kb!
   "Wipe the stores under a KB the fixtures hand back over and over.  `v/clear!` without

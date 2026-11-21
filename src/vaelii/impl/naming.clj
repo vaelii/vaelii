@@ -64,7 +64,7 @@
                            (some? (re-matches #"[A-Z][A-Za-z0-9]*" (nm x)))
                            (not (context? x))))
 (defn function-spelled?
-  "Is `x` an `individual?` whose name ends in `Fn` (`FatherFn`, `QuantityFn`), the
+  "Is `x` an `individual?` whose name ends in `Fn` (`StartFn`, `QuantityFn`), the
   spelling of a function?  `individual?` answers true for it as well; a relation slot in
   `vaelii.impl.wff` reads this to admit a function (docs/naming.md)."
   [x]

@@ -87,7 +87,7 @@ as for any other target, and retracting the `except` restores both
 A forced-monotonic literal keeps the strength it was written at, and what is derived from it is capped
 by that strength as by any other antecedent's ([Strength propagates from the
 antecedents](#strength-propagates-from-the-antecedents)): a fact preserved through a
-`:default` predicate `genl` and a firing of `core.txt`'s `injection` rules from a `:default`
+`:default` predicate `genl` and a firing of `core.txt`'s `injective_predicate` rules from a `:default`
 declaration are `:default`. A `genlCx` premise is the one exception: it confers `:monotonic`
 whatever strength it was written at (the `:mono` forced set below), so a `genlCx` edge caps
 no firing's class ([reference.md](reference.md#decisions) 1 and 9).
@@ -109,7 +109,7 @@ not it loads the upper layer:
 | `except` | taking one OUT un-hides its target, so what a reader hides would shrink ([reference.md](reference.md#decisions) 2 and 14) |
 | `exceptWhen` | taking one OUT unblocks the firings of the rule it names, so what a reader holds blocked would shrink ([exceptions.md](exceptions.md)) |
 | `rewriteOf`, `sameAs`, `equals` | taking one OUT un-merges two terms, so what a reader hides would shrink |
-| `injection`, `surjection`, `bijection` | premises of `core.txt`'s rules concluding `functional`, `functionalInArg`, `injection` and `surjection` (decision 17) |
+| `injective_predicate`, `surjective_predicate`, `bijective_predicate` | premises of `core.txt`'s rules concluding `functional`, `functionalInArg`, `injective_predicate` and `surjective_predicate` (decision 17) |
 | `functionCorrespondingPredicate`, `result` | premises of `core.txt`'s rule concluding `(arg P n T)` from a function's `result`, since `arg` is forced-monotonic |
 | `functionCorrespondingBinaryPredicate` | the premise of `core.txt`'s rule concluding `(functionCorrespondingPredicate F P 2)`, which is forced-monotonic |
 | `fixed_arity`, `fixed_arity_predicate`, `fixed_arity_function`, `bounded_arity`, `unbounded_arity`, `at_least_binary`, `at_least_ternary`, `at_least_quaternary`, `at_least_quinary`, `arityMax`, `admitsArgnum` | the arity policies, read beside the arity bindings, so a policy goes OUT only by retraction as a length does |
@@ -255,7 +255,7 @@ context seeing the declaration sees, so it stands exactly while the firing is st
 void at some reader, and names the conclusion's stored spelling. The chainer
 logs a convicted firing once at `:warn`, as its justification is added. `why-not` on the conclusion
 answers `:forced-conclusion` with the rule and the same predicates. A forced-monotonic rule's firings confer the class its
-antecedents give. `core.txt`'s `injection`, `surjection` and `bijection` rules are of this
+antecedents give. `core.txt`'s `injective_predicate`, `surjective_predicate` and `bijective_predicate` rules are of this
 kind. A `genl` consequent with variable arguments is forced-monotonic only where a firing
 binds two predicates. An `exceptWhen` arriving on a forced-monotonic rule convicts its
 firings, and the last one leaving releases them (`special/index-exceptWhen-meta`,

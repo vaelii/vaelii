@@ -22,7 +22,7 @@ spelling makes the decision visible in every sentence that uses the term.
 | individual | CapitalCamelCase | `Muffet`, `Tweety` |
 | type (a unary predicate) | snake_case | `dog`, `electronic_device` |
 | predicate (arity 2 or more) | camelCase, lowercase first | `parentOf`, `locatedIn` |
-| function | CapitalCamelCase ending in `Fn` | `FatherFn`, `StartFn`, `QuantityFn` |
+| function | CapitalCamelCase ending in `Fn` | `GeneticKinFn`, `StartFn`, `QuantityFn` |
 | context | `Cx` then CapitalCamelCase | `CxUniverse`, `CxBiology` |
 | sense | a type, a dash, a lowercase disambiguator | `abrasive-grit` |
 | lexeme | the `lex/` namespace | `lex/fool's_gold` |
@@ -77,17 +77,18 @@ change against the table.
   and has no instances;
 - a **type** is a kind or a one-place property, which has instances and takes `genl` edges;
 - a **predicate** relates two or more terms;
-- a **function** builds a term that denotes a thing from its arguments, such as the father
-  of an animal;
+- a **function** builds a term that denotes a thing from its arguments, such as the start
+  of an interval;
 - a **context** is a theory, a setting or a vantage that sentences hold in.
 
-**Example.** life.txt names a role as a function so the KB can name a father before it knows
-his name, and states the relation the function corresponds to:
+**Example.** kinship.txt names the genetic reading of a kinship predicate as a function,
+so the KB can name `(GeneticKinFn siblingOf)` without a symbol of its own, and states the
+relation the function corresponds to:
 
 ```clojure
-(reifiable_function FatherFn)
-(functionCorrespondingBinaryPredicate FatherFn (BloodKinFn fatherOf))
-(result FatherFn animal)
+(reifiable_function GeneticKinFn)
+(functionCorrespondingBinaryPredicate GeneticKinFn geneticVersionOf)
+(result GeneticKinFn genetic_kinship_predicate)
 ```
 
 **Why.** Each role takes a different set of sentences. An individual takes memberships and

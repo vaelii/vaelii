@@ -142,8 +142,8 @@
     (testing "past the sort budget the closure is bounded on a sum and says so, and the
              maximal reading — which walks no closure — is unaffected"
       ;; 43 partners spanning 290,000 subtypes took 1.5 s of union to produce a list
-      ;; nobody can read: past `describe-sortable` the sum of the closure sizes is taken
-      ;; as the bound (free, every closure being a cached set) and only the first `limit` walked
+      ;; nobody can read: past `describe-sortable` the union is built no further, and the
+      ;; sum of the closure sizes (free, every closure being a cached set) is the bound
       (with-redefs-fn {(ns-resolve 'vaelii.core 'describe-sortable) 100}
         #(let [d (v/describe kb left_type 'CxUniverse)]
            (is (= 50 (count (:terms (:disjoint d)))) "capped")
@@ -158,7 +158,22 @@
         (v/assert kb (list 'disjoint small_type other_type) 'CxUniverse {:chain? false})
         (with-redefs-fn {(ns-resolve 'vaelii.core 'describe-sortable) 0}
           #(is (= {:terms [other_type] :total 1 :exact? true :sorted? true}
-                  (:disjoint (v/describe kb small_type 'CxUniverse)))))))))
+                  (:disjoint (v/describe kb small_type 'CxUniverse))))))))
+  (testing "overlapping partners whose closure sizes sum past the sort budget, and whose
+             union fits it, are sorted and counted exactly"
+    (tu/with-terms [near_type outer_type inner_type]
+      (v/assert kb (list 'genl near_type 'thing) 'CxUniverse {:chain? false})
+      (v/assert kb (list 'genl outer_type 'thing) 'CxUniverse {:chain? false})
+      (v/assert kb (list 'genl inner_type outer_type) 'CxUniverse {:chain? false})
+      (v/assert-many kb (for [i (range 60)]
+                          (list 'genl (symbol (str (name inner_type) "_kid" i)) inner_type))
+                     'CxUniverse {:chain? false})
+      (v/assert kb (list 'disjoint near_type outer_type) 'CxUniverse {:chain? false})
+      (v/assert kb (list 'disjoint near_type inner_type) 'CxUniverse {:chain? false})
+      (with-redefs-fn {(ns-resolve 'vaelii.core 'describe-sortable) 100}
+        #(let [d (v/describe kb near_type 'CxUniverse)]
+           (is (= 2 (:total (:disjoint-maximal d))))
+           (is (= [62 true true] ((juxt :total :exact? :sorted?) (:disjoint d)))))))))
 
 (tu/deftest-kb a-type-names-the-predicates-whose-declarations-admit-it
   ;; The question behind it: I have a `dog`, what may I say about one?  A predicate

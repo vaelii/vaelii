@@ -12,6 +12,155 @@ call; 0.8.0 through 0.13.0 keep a subset. The full entry prose for a
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+### Breaking: shipped ontology
+
+- **Blood kinship is genetic kinship, and generic kinship is unqualified.** The 0.34.0
+  spellings are renamed with their arity and argument order: `BloodKinFn` is
+  `GeneticKinFn`, `blood_kinship_predicate` is `genetic_kinship_predicate`,
+  `generic_kinship_predicate` is `unqualified_kinship_predicate`, `bloodRelativeOf` is
+  `geneticRelativeOf`, `bloodKinPredicateOf` is `geneticVersionOf` and
+  `chosenKinPredicateOf` is `chosenVersionOf`. `resources/renames/unreleased.edn` records
+  the six, so `upgrade --sync` rewrites a stored premise that names an old spelling.
+  Gestational-only parenthood and surrogacy are not genetic kin and specialize no parent
+  or mother predicate. A child can have more than one mother or father, so `life.txt`
+  states `(not (functional motherOf))` and `(not (functional fatherOf))`, and
+  `kinship.txt` states the same of `(GeneticKinFn motherOf)` and
+  `(GeneticKinFn fatherOf)`, each with a `comment` giving a case. `MotherFn` and
+  `FatherFn` are retired, and `resources/renames/unreleased.edn` records both, so
+  `upgrade --sync` reports a stored premise that names either. `birthDate`,
+  `birthYearOf` and `olderThan` are eternal predicates again and no kinship predicates, so
+  no qualified reading of them ships.
+  *Migration:* run `upgrade --sync`, or rename the six spellings in KB text, rules and
+  queries. State gestational-only parenthood or surrogacy with `gestationalOnlyParentOf`
+  or `surrogateMotherOf`. State `motherOf` or `fatherOf` facts directly where a KB wrote
+  `(MotherFn ?x)` or `(FatherFn ?x)`. Write a `((BloodKinFn birthDate) ?x ?t)`,
+  `birthYearOf` or `olderThan` fact as the unqualified fact. `upgrade --sync` rewrites a
+  stored one to a `GeneticKinFn` application and refuses none: the three are eternal
+  predicates, which no `unqualified_kinship_predicate` is, so the rewritten premise is
+  ill-typed. Restate each one as the unqualified fact or retract it.
+  *Breaks:* `BloodKinFn`, `blood_kinship_predicate`, `generic_kinship_predicate`,
+  `bloodRelativeOf`, `bloodKinPredicateOf`, `chosenKinPredicateOf`, `parentOf`,
+  `motherOf`, `fatherOf`, `MotherFn`, `FatherFn`, `birthDate`, `birthYearOf`, `olderThan`
+- **CxTra drops `chosenSiblingOf` for `(ChosenKinFn siblingOf)`.** `chosenSiblingOf`, a
+  spec of `(ChosenKinFn siblingOf)`, is retired. `(ChosenKinFn siblingOf)` names the same
+  relation and is symmetric, time-varying, typed `person` at both positions, and below
+  `chosenKinOf` and `siblingOf`.
+  `resources/renames/unreleased.edn` records the term as retired, so `upgrade --sync`
+  reports a stored premise that names it.
+  *Migration:* write `((ChosenKinFn siblingOf) ?x ?y)` for `(chosenSiblingOf ?x ?y)`.
+  *Breaks:* `chosenSiblingOf`
+- **`injection` is `injective_predicate`, `surjection` is `surjective_predicate` and
+  `bijection` is `bijective_predicate`.** The three predicate types keep their meanings,
+  declarations, comments and rules under the new names in `core.txt`, and `kinship.txt`'s
+  acknowledgments quote the rules by the new names. The names say that each is a type of
+  predicate. `resources/renames/unreleased.edn` records the three renames, so
+  `upgrade --sync` rewrites a stored premise that names an old spelling.
+  [taxonomy.md](docs/taxonomy.md)
+  *Migration:* rename `injection` to `injective_predicate`, `surjection` to
+  `surjective_predicate` and `bijection` to `bijective_predicate` in KB text, rules and
+  queries.
+  *Breaks:* `injection`, `surjection`, `bijection`
+
+### Breaking: inference
+
+- **A functional collision reads three levels of determinateness.** A `functional` or
+  `functionalInArg` collision between two symbols merged only when both facts were
+  `:monotonic`. core.txt now declares `proxy_term` and `placeholder_term`, reflection.txt
+  states `(partition proxy_term placeholder_term indeterminate_term)`, and
+  `provers/determinateness` reads each filler's level off the symbol as written. A `nat/`
+  or `cx/` reified constant that is no skolem is a `placeholder_term`, and the
+  unique-name assumption holds for it. A skolem constant is an `indeterminate_term`. A
+  proxy filler merges whatever the facts' strength with a determinate constant that is
+  the one candidate of its slot. So a `:default` `(bestFriendOf Ann Mary)` merges a
+  placeholder in Ann's slot with Mary, and a `:default` `(bestFriendOf Ann Jane)` beside
+  it withdraws the merge, so Mary and Jane never merge on `:default` evidence. The merge
+  comes back when the rival leaves, in every arrival order. A collision with a proxy
+  filler that does not merge places no nogood in a context that reads the filler as a
+  proxy, and keeps its nogood in a context that does not. A placeholder against a
+  `:default` value of its own correspondence is no collision, and the value's copies
+  carry it. The `different` prover and the `predAllSpecified` audit read a placeholder
+  term as determinate and an indeterminate term as indeterminate. A late membership of
+  either part reaches a collision stored before it.
+  [equality.md](docs/equality.md#functional-infers-equality-instead-of-throwing)
+  *Breaks:* `equals`, `contradictions`
+- **An equality class prefers a constant over a reified constant.** Its representative
+  was the smallest member by name, so `(<VerFn basePred>)` stood for a class holding
+  `namedPred`. A `nat/` or `cx/` constant now stands for a class only when every
+  candidate is one. The spelling a quoted position reads breaks a tie among `rewriteOf`
+  heads the same way. [equality.md](docs/equality.md#choosing-the-representative)
+  *Breaks:* `representative`, `ask`
+
+### Additive: shipped ontology
+
+- **A function's corresponding predicate is functional at the value position.** A
+  `core.txt` rule concludes `(functionalInArg ?predicate ?position)` from each
+  `(functionCorrespondingPredicate ?function ?predicate ?position)`, since a function has
+  one value for each argument tuple. Each shipped correspondence's predicate, `startOf`,
+  `calendarYear` and `listOf` among them, takes the mark, and two `:monotonic` symbol
+  values at the position merge.
+  [nat.md](docs/nat.md#the-corresponding-predicate)
+- **`injective_function`, `surjective_function` and `bijective_function` are types of
+  function.** `core.txt` declares each below `function`, decontextualized, time-invariant
+  and forced-monotonic, as its predicate twin is. `bijective_function` is below the other
+  two. An `injective_function`'s applications to different arguments denote different
+  things. An inert rule states that definition for a unary function, since an argument
+  tuple of any length is no term.
+- **`geneticVersionOf` and `chosenVersionOf` relate an unqualified kinship predicate to
+  its genetic and chosen versions.** `kinship.txt` declares each the binary predicate
+  corresponding to `GeneticKinFn` or `ChosenKinFn`, taking an
+  `unqualified_kinship_predicate` first and a `genetic_kinship_predicate` or
+  `chosen_kinship_predicate` second, functional, eternal and forced-monotonic, so a rule
+  reading one may conclude a forced-monotonic declaration of the version.
+  The kinship copy rules read each reading through them rather than through a
+  `GeneticKinFn` or `ChosenKinFn` application, so a reading named by a plain symbol takes
+  its input's class, arity, argument types and symmetry too.
+  `(geneticVersionOf siblingOf (GeneticKinFn siblingOf))` holds.
+- **An `eagerly_reifiable_function`'s applications are reified as soon as their arguments
+  meet its argument constraints.** `core.txt` declares three terms.
+  `eagerly_reifiable_function` is a type of function, a spec of `reifiable_function`.
+  `meetsArgConstraints` holds of a function and arguments that meet its `arg` and
+  `argGenl` declarations. `reify` holds of a term of the KB. One general rule concludes
+  `(reify (?f . ?args))` from `(eagerly_reifiable_function ?f)` and
+  `(meetsArgConstraints ?f . ?args)`, and its firing mints the application.
+  `kinship.txt` declares `(eagerly_reifiable_function GeneticKinFn)` and
+  `(eagerly_reifiable_function ChosenKinFn)`, so every unqualified kinship predicate,
+  one declared later included, has both readings reified.
+  *@hack:* `reify` has no engine support yet, so a rule comments each reified term as a
+  temporary implementation. `meetsArgConstraints` is concluded only for a unary
+  `eagerly_reifiable_function`, from each `arg` declaration alone and without `argGenl`.
+  `eager_reify_test`'s `^:red` tests state the general reading.
+- **An `injective_predicate` that is a `surjective_predicate` is a `bijective_predicate`,
+  and `folk_biological_class` is forced-monotonic.** A forward-only `core.txt` rule
+  concludes `(bijective_predicate P)` from `(injective_predicate P)` and
+  `(surjective_predicate P)`, and retracting either withdraws it. `organism.txt`
+  declares `(forced_monotonic_predicate folk_biological_class)`, as `folk_species` already
+  is, so a class membership is never the loser of a nogood.
+  [taxonomy.md](docs/taxonomy.md)
+  *Migration:* none.
+
+### Fix: describe
+
+- **A type's disjoint line is sorted whenever the union of its partners' closures fits
+  the sort budget.** The choice used the sum of the closure sizes, which counts an overlap
+  twice, so a line whose union fit could come out unsorted and inexact, and a sorted
+  member such as `cat` under `dog` could fall off it. Past the budget the line stays
+  unsorted, with the sum as its `:total` and `:exact?` false.
+
+### Fix: order independence
+
+- **A mint's `natFormula` map, stated, gets its constant's result types.** A mint
+  types its constant from each `(result F T)` and `(genlResult F T)` stated before it,
+  and a declaration stated after the mint types every constant minted for `F`. A
+  `(natFormula K E)` map stated after the declaration typed nothing, and a text KB's
+  reload states each map after the declarations, so the reloaded upper layer lost 14
+  `result` justifications of its kinship constants. A stated map whose `K` is the
+  constant `E` names now gets the `(T K)` and `(genl K T)` a mint writes, with the
+  same justification.
+  [nat.md](docs/nat.md)
+  *Migration:* none.
+
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
 | Area | Change |

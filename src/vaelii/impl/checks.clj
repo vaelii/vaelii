@@ -1629,6 +1629,108 @@
   [sentence [_ _ _ n]]
   (nth (vec (nm/args sentence)) (dec n)))
 
+(defn- seen-together?
+  "Does some context see both `m` and `s`, over the unscoped `genlCx` closure?  Unscoped
+  on purpose: the context that sees both is a descendant of `m`, and a read scoped to `m`
+  does not answer for it."
+  [tax m s]
+  (or (= m s) (tax/root-context? m) (tax/root-context? s)
+      (let [down (tax/context-down-global tax s)]
+        (boolean (some #(contains? down %) (tax/context-down-global tax m))))))
+
+(defn- slot-candidates
+  "The determinate fillers of the slot `via` at position `n` under `args` that a merge
+  stored at `context` reaches.  They are the fillers of the stored facts visible at
+  `context` (`res/matches-visible`), and of those stored in a context some context sees
+  together with `context` (`seen-together?`), since a merge is read wherever `context` is.
+  The `genlCx` closures are read unscoped, since a descendant of `context` reads the merge.
+  A filler stands for every member of its class as `context` sees the merges, since a
+  merge electing a reified constant spells its members' facts with it.  A term counts
+  when `provers/determinateness` reads it `:determinate`."
+  [kb via n args context]
+  (let [tax   (reasoning/taxonomy kb)
+        vis   (res/visible-supporter-fn kb context)
+        probe (apply list via (assoc (vec args) (dec n) '?fv))
+        up    (tax/context-up-global tax context)
+        far   (fn [[h _]] (let [s (:context (p/get-sentex (:records kb) h))]
+                            (and s (not= s context) (not (contains? up s)) (seen-together? tax context s))))
+        names (fn [v] (if (and (symbol? v) (tax/merged? tax v)) (first (tax/scoped-class tax v vis)) [v]))]
+    (into #{} (comp cat
+                    (keep (fn [[_ b]] (get b '?fv)))
+                    (mapcat names)
+                    (filter #(= :determinate (provers/determinateness kb % context))))
+          [(res/matches-visible kb probe context)
+           (filter far (res/match-pattern kb probe '?ctx))])))
+
+(defn- names-determinate-terms-only?
+  "Does the equality supporter `h` name only terms `provers/determinateness` reads as
+  `:determinate` at `context`?  `sole-constant?` reads two constants as one only through
+  such a merge, so a proxy filler's own merges never make two rivals one."
+  [kb context h]
+  (every? #(= :determinate (provers/determinateness kb % context))
+          (some-> (p/get-sentex (:records kb) h) :sentence nm/args)))
+
+(defn sole-constant?
+  "Is no determinate filler of the functional slot `via` at position `n` under `args`
+  that `context` reaches outside the class of the constant `c` (`slot-candidates`)?  The
+  class is read over the merges `context` sees that name determinate terms only
+  (`names-determinate-terms-only?`).  The guard on a proxy filler's merge
+  (`functional-merges?`): with Mary and Jane in the slot, neither merges with it."
+  [kb c via n args context]
+  (let [admit? #(names-determinate-terms-only? kb context %)]
+    (every? #(or (= c %) (and (symbol? %) (res/same-class-in? kb c % context admit?)))
+            (slot-candidates kb via n args context))))
+
+(defn- stored-expression
+  "The expression a stored `natFormula` map gives the reified constant `k`, believed or
+  not, since a merge electing another spelling supersedes `k`'s own map."
+  [kb k]
+  (or (nat/nat-expression kb k)
+      (some #(let [s (:sentence %)]
+               (when (and (= 'natFormula (nm/functor s)) (= k (second s))) (nth s 2 nil)))
+            (kb/find-sentexes-all kb ['natFormula k]))))
+
+(defn- corresponding-default-pair?
+  "Is the collision between the fillers `a` and `b` of the members `h` and `o` a reified
+  constant `K` of `(F x…)` against a `:default` value of its own correspondence?  A
+  declaration `(functionCorrespondingPredicate F P n)` `context` sees, one member stating
+  `(P x… K …)`, and the other not `:monotonic`.  The value's copies carry such a pair
+  (docs/nat.md, \"The corresponding predicate\"), so no merge joins the two."
+  [kb a b h o context]
+  (let [recs (:records kb)
+        tms  (reasoning/tms kb)
+        decl (delay (res/correspondence-declarations kb context))]
+    (boolean
+     (some (fn [k]
+             (when-let [e (and (nat-read/reified-nat-symbol? k) (stored-expression kb k))]
+               (when (seq? e)
+                 (some (fn [[f pr pos]]
+                         (when (= f (first e))
+                           (let [proj (apply list pr (res/insert-at (rest e) pos k))
+                                 [mk mv] (cond (= proj (:sentence (p/get-sentex recs h))) [h o]
+                                               (= proj (:sentence (p/get-sentex recs o))) [o h])]
+                             (and mk (not (tuple/monotonic-member? tms mv))))))
+                       @decl))))
+           [a b]))))
+
+(defn functional-merges?
+  "Does a functional collision between the symbols `a` and `b` of the members `h` and `o`,
+  in the slot `via` at `n` under `args`, merge them at `context` (docs/equality.md)?  Yes
+  when both members are `:monotonic`.  Else one filler must not be `:determinate`
+  (`provers/determinateness`), and the other a constant that is the slot's one candidate
+  (`sole-constant?`).  No pair `corresponding-default-pair?` names merges that way."
+  [kb a b h o context via n args]
+  (and (tuple/mergeable-values? a b)
+       (let [tms (reasoning/tms kb)]
+         (or (and (tuple/monotonic-member? tms h) (tuple/monotonic-member? tms o))
+             (let [da (provers/determinateness kb a context)
+                   db (provers/determinateness kb b context)
+                   c  (cond (and (not= :determinate da) (= :determinate db)) b
+                            (and (not= :determinate db) (= :determinate da)) a)]
+               (boolean (and c
+                             (not (corresponding-default-pair? kb a b h o context))
+                             (sole-constant? kb c via n args context))))))))
+
 (defn functional-declaration-supporters
   "The handles of every declaration constraining `via` at position `n`: the
   `(functional via)` sentexes when `n` is 2 and the `(functionalInArg via n)` sentexes,

@@ -4882,7 +4882,8 @@
                        (cond-> gs (into (tuple/members-under kb w c (mark-ends kb gs)))))))]
       (when (or (seq full) (seq rhs))
         (place-sets! kb reach full rhs #(tuple/nogoods-holding kb c %) (constantly true)
-                     #(tuple/routes kb w c % (partial provers/measures-agree? kb))
+                     #(tuple/routes kb w c % (partial provers/measures-agree? kb)
+                                    (fn [v ctx] (not= :determinate (provers/determinateness kb v ctx))))
                      (fn [ms core] (tuple/owned? tax ms core)))))))
 
 (defn- placed-pair-sets

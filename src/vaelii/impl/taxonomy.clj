@@ -106,6 +106,16 @@
   (second (reduce (fn [a b] (if (neg? (long (compare (first a) (first b)))) a b))
                   (map (fn [t] [(term-key t) t]) terms))))
 
+(defn- class-min
+  "The member of an equality class `terms` that stands for it: the `term-min` of the
+  members that are no reified constant, else of all of them.  A constant is preferred
+  over a `nat/` or `cx/` constant whatever their names, so a placeholder merged with a
+  constant is spelled as the constant (docs/equality.md, \"Choosing the
+  representative\").  A function of the member set alone, so the arrival order of the
+  edges never moves it."
+  [terms]
+  (term-min (or (seq (remove nm/reified-constant? terms)) terms)))
+
 (defn- reach
   "Reflexive-transitive reachable set from `start` over adjacency `adj`: `graph/reach-all` from
   one node."
@@ -1999,7 +2009,8 @@
   "The representative of a class, from its members and the preference claims its active
   edges carry (docs/equality.md, \"Choosing the representative\"): the smallest head, a
   preferred term nothing deprecates; else, for a `rewriteOf` cycle `wff` refuses, the
-  smallest preferred term; else the smallest member.  Total."
+  smallest preferred term; else the smallest member.  Each smallest is `class-min`'s, a
+  constant before a reified constant.  Total."
   [rel members]
   (let [ps        (into #{}
                         (mapcat (fn [m] (mapcat #(get (:edge-prefs rel) % #{})
@@ -2007,7 +2018,7 @@
                         members)
         preferred (into #{} (map first) ps)
         heads     (set/difference preferred (into #{} (map second) ps))]
-    (term-min (cond (seq heads) heads (seq preferred) preferred :else members))))
+    (class-min (cond (seq heads) heads (seq preferred) preferred :else members))))
 
 (defn- install-class
   "Install `members` as one class under its freshly-computed representative, dropping
@@ -2249,7 +2260,7 @@
                      members)
             preferred (into #{} (map first) ps)
             heads     (set/difference preferred (into #{} (map second) ps))]
-        [members (term-min (cond (seq heads) heads (seq preferred) preferred :else members))]))))
+        [members (class-min (cond (seq heads) heads (seq preferred) preferred :else members))]))))
 
 (defn scoped-path-supporters
   "The supporters of one path joining `a` and `b` over the equality edges some supporter
@@ -2386,8 +2397,9 @@
 (defn spelling-representative
   "`term`'s representative over the `rewriteOf` edges alone, a `sameAs` / `equals` merge
   not followed: the mention read `res/representative-term` takes inside a quoted
-  position.  Elected by `class-rep`'s rule over the `rewriteOf`-connected component; a
-  term no `rewriteOf` touches is returned unchanged.  With `visible?`, only the believed
+  position.  Elected by `class-rep`'s rule over the `rewriteOf`-connected component, a
+  constant before a reified constant (`class-min`); a term no `rewriteOf` touches is
+  returned unchanged.  With `visible?`, only the believed
   edges that reader admits count."
   ([tax term] (spelling-representative tax term nil))
   ([tax term visible?]
@@ -2402,8 +2414,8 @@
          (let [preferred  (into #{} (map first) claims)
                deprecated (into #{} (map second) claims)
                heads      (set/difference preferred deprecated)]
-           (cond (seq heads)     (term-min heads)
-                 (seq preferred) (term-min preferred)
+           (cond (seq heads)     (class-min heads)
+                 (seq preferred) (class-min preferred)
                  :else           term)))))))
 
 (defn equality-edges [tax] (get-in @tax [:equality :edges] #{}))

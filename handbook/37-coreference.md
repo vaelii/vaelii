@@ -217,7 +217,7 @@ may be wrong with a predicate that does not merge.
 ```
 
 A birth year has one integer value; two distinct years conflict rather than becoming
-one integer. Generic parenthood is not a uniqueness constraint: several mothers can
+one integer. Unqualified parenthood is not a uniqueness constraint: several mothers can
 remain distinct. The `comment` and the `implementationNote` on `signOf` in `measure.txt`
 record the opposite decision: a quantity has one sign, and the predicate is not declared
 functional, because a merge would make `SignPositive` and `SignNegative` one term where

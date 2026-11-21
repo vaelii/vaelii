@@ -1418,8 +1418,8 @@
            [time_indexed_relation "ontology, not grammar: a relation one argument of which names the time a tuple holds at, below time_invariant_relation. temporalIndexArg's first argument is typed time_indexed_relation, so a fact of it makes the relation one; no engine check names it."]
            [documentation_predicate "ontology, not grammar: a predicate documenting a term, implementation or usage example, below eternal_predicate. It classifies the annotation, not the truth or temporality of a quoted example; no engine check names it."]
            [situation_predicate "ontology, not grammar: a predicate whose first argument is a situation and whose truth that situation fixes, below eternal_predicate. No engine check names it; the arg-1 constraint is checked by test, not by rule (#273)."]
-           [generic_kinship_predicate "ontology, not grammar: an unqualified kinship predicate with blood and chosen readings. The constructor and guarded hierarchy-lifting rules read this mark; no engine check names it."]
-           [blood_kinship_predicate "ontology, not grammar: a blood-qualified kinship predicate below eternal_predicate. Constructor result typing supplies the mark; no engine check names it."]
+           [unqualified_kinship_predicate "ontology, not grammar: an unqualified kinship predicate with genetic and chosen readings. The constructor and guarded hierarchy-lifting rules read this mark; no engine check names it."]
+           [genetic_kinship_predicate "ontology, not grammar: a genetic kinship predicate below eternal_predicate. Constructor result typing supplies the mark; no engine check names it."]
            [chosen_kinship_predicate "ontology, not grammar: a chosen-family predicate below time_varying_relation. Constructor result typing supplies the mark; no engine check names it."]
            [stable_once_true "ontology, not grammar: a time-varying relation that, once it holds at a time, holds at every later time. No engine check names it."]
            [stable_once_false "ontology, not grammar: a time-varying relation that, once it fails at a time, fails at every later time. No engine check names it."]])
@@ -1593,7 +1593,7 @@
                 (str "generic forward chaining: the three core.txt rules derive (symmetric P),"
                      " (transitive P) and (reflexive P), each enforced in turn; also a"
                      " binary_predicate type"))]
-     ['injection
+     ['injective_predicate
       (enforced (collection :notes (str "three core.txt rules derive (functional P),"
                                         " (functionalInArg P 1) and, off the arg-declared"
                                         " domain, (predAllSpecified P D) — the"
@@ -1602,7 +1602,7 @@
                 (str "generic forward chaining: the three core.txt rules derive (functional P),"
                      " (functionalInArg P 1) and (predAllSpecified P D); also a"
                      " binary_predicate type"))]
-     ['surjection
+     ['surjective_predicate
       (enforced (collection :notes (str "three core.txt rules derive (functional P) and, off"
                                         " the arg-declared domain and range,"
                                         " (predAllSpecified P D) and (predSpecifiedAll P R)"
@@ -1611,15 +1611,28 @@
                 (str "generic forward chaining: the three core.txt rules derive (functional P),"
                      " (predAllSpecified P D) and (predSpecifiedAll P R); also a"
                      " binary_predicate type"))]
-     ['bijection
-      (enforced (collection :notes (str "two core.txt rules derive (injection P) and"
-                                        " (surjection P) from it, and each of those derives"
+     ['bijective_predicate
+      (enforced (collection :notes (str "two core.txt rules derive (injective_predicate P) and"
+                                        " (surjective_predicate P) from it, and each of those derives"
                                         " its own marks in turn — so it is enforced by generic"
                                         " forward chaining and by nothing keyed on its name,"
                                         " like equivalence_relation."))
-                (str "generic forward chaining: the two core.txt rules derive (injection P)"
-                     " and (surjection P), whose own rules land the enforced and audited"
+                (str "generic forward chaining: the two core.txt rules derive (injective_predicate P)"
+                     " and (surjective_predicate P), whose own rules land the enforced and audited"
                      " marks; also a binary_predicate type"))]
+     ['injective_function
+      (inert (collection :notes (str "a type of function whose applications to different"
+                                     " arguments denote different things; core.txt states"
+                                     " its unary definition as an inert rule."))
+             "no engine check names it; core.txt's inert rule states the definition")]
+     ['surjective_function
+      (inert (collection :notes (str "a type of function every member of whose result type"
+                                     " is the value of an application."))
+             "documentary: no engine check or rule names it")]
+     ['bijective_function
+      (inert (collection :notes (str "a type of function both injective and surjective,"
+                                     " below injective_function and surjective_function."))
+             "documentary: no engine check or rule names it")]
 
      ;; ---- the connectives and rule wrappers -------------------------------
      ['implies (enforced (structural {:args [:sentence :sentence]}
@@ -1917,6 +1930,25 @@
                           " rule concludes (acknowledgedFinding :rule-macro ...) from it.")}
              (str "sugar the engine does not read: core.txt's forward rule concludes"
                   " acknowledgedFinding from it, and the integrity sweep reads that"))]
+     ['eagerly_reifiable_function
+      (inert {:shape {:args [:term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes "a type of function, read by core.txt's general reify rule."}
+             "a premise of core.txt's general reify rule; no engine check names it")]
+     ['meetsArgConstraints
+      (inert {:shape {:args [:term] :variadic :term} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "an ordinary fact over a function and its arguments; core.txt's"
+                          " TEMPORARY lazy rules conclude it for a unary function.")}
+             "a premise of core.txt's general reify rule; no engine check names it")]
+     ['reify
+      (inert {:shape {:args [:term]} :storage [:none] :checked false
+              :family nil :facets #{}
+              :notes (str "@hack: an ordinary fact whose firing reifies the application it"
+                          " names through conclusion reification, until reify has engine"
+                          " support.")}
+             (str "no engine check names it: a derived (reify ?term) mints ?term as any"
+                  " conclusion naming an application does"))]
      ;; A rule-clash acknowledgment's subject: the two quoted rules of the pair, which
      ;; core.txt's (commutative RulePairFn) stores in one order.
      ['RulePairFn
@@ -2148,7 +2180,21 @@
                                         " genl."))
                 (str "one implementation behind both the predAllSpecified audit and the"
                      " different prover's identity exemption — a filler that is a member"
-                     " is not determinate and is exempt from the unique-name assumption"))]])))
+                     " is not determinate and is exempt from the unique-name assumption"))]
+     ['placeholder_term
+      (enforced (collection :notes (str "an extensible determinacy category, the part of"
+                                        " proxy_term the unique-name assumption holds for:"
+                                        " a nat/ or cx/ reified constant that is no skolem"
+                                        " is a built-in member, a future kind joins by genl."))
+                (str "read by provers/determinateness: a member is a proxy_term the"
+                     " different prover and the predAllSpecified audit read as determinate"))]
+     ['proxy_term
+      (enforced (collection :notes (str "the determinacy category placeholder_term and"
+                                        " indeterminate_term partition: every reified"
+                                        " constant is a built-in member."))
+                (str "read by provers/determinateness for checks/functional-merges?: a"
+                     " member merges onto the one determinate constant of a functional slot"
+                     " on any evidence, and its collision forms no nogood"))]])))
 
 (def ^:private lane-facets
   "The facets `facet-contract` marks as lanes a mark family moves through together."

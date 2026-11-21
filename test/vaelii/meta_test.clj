@@ -158,11 +158,11 @@
                                    (map #(get % '?predicate)
                                         (v/query kb (list 'natFormula '?predicate
                                                           (list constructor 'siblingOf)) 'CxUniverse)))
-                                 '[BloodKinFn ChosenKinFn]))]
+                                 '[GeneticKinFn ChosenKinFn]))]
       (is (= 2 (count qualified)))
       (is (= (into '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
-                      kinOf bloodRelativeOf chosenKinOf sharesGenesWith
-                      romanticPartnerOf coworkerOf roommateOf nestingPartnerOf chosenSiblingOf
+                      kinOf geneticRelativeOf chosenKinOf sharesGenesWith
+                      romanticPartnerOf coworkerOf roommateOf nestingPartnerOf
                       headmateOf disjoint diachronicallyDisjoint negates inverse
                       contextsOrderedBothWays}
                    qualified)
@@ -1234,9 +1234,9 @@
                 (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))))
             (pr-str s))
         (is (v/in? kb h) (pr-str s)))))
-  (testing "injection, surjection, bijection and an author's own predicate are cleared"
+  (testing "injective_predicate, surjective_predicate, bijective_predicate and an author's own predicate are cleared"
     (tu/with-terms [likes]
-      (doseq [p ['injection 'surjection 'bijection likes]]
+      (doseq [p ['injective_predicate 'surjective_predicate 'bijective_predicate likes]]
         (is (not (contains? checks/uncleared-forcing ['forced_monotonic_predicate p]))
             (str p)))))
   (testing "an author's own forced_decontextualized_predicate is retracted"
@@ -1302,7 +1302,8 @@
     ;; The length bindings are lifted so a relation's length reads the same everywhere.
     (is (= (into '#{functional functionalInArg inverse reflexive symmetric asymmetric transitive
                     irreflexive anti_symmetric anti_transitive equivalence_relation
-                    injection surjection bijection
+                    injective_predicate surjective_predicate bijective_predicate
+                    injective_function surjective_function bijective_function
                     commutative commutativeInArgs commutativeInArgAndRest
                     associative idempotent meetFunctionOf distinctInArgAndRest}
                  sx/arity-binding-functors)

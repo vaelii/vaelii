@@ -4,7 +4,7 @@
   forward firing mints for it; keeping the witness from re-firing its own rule; and the
   `predAll` *Exists* declarations, which record the same kind of requirement and derive
   nothing.
-- **Not here:** a function that names a unique filler (`MotherFn`) →
+- **Not here:** a function that names a unique filler (`StartFn`) →
   [ch. 22](22-functions.md); the `predAllSpecified` audit for a determinate filler and the
   `predAllInstance` generator → [ch. 21](21-claims-about-kinds.md); a negated existential
   in an antecedent → [ch. 32](32-negation.md).
@@ -58,8 +58,8 @@ is a `nat/` constant standing for the parent that exists.
 the parent is a determinate thing the author can name, and every member needs its own
 sentence. A function applied to the member names one filler per member,
 which a type with two parents per member does not have; a function belongs where the
-filler is determined. `MotherFn` uses blood-qualified `motherOf`: one visible value can
-resolve it, but ambiguous blood values select no mother and merge none ([ch. 22](22-functions.md)). A rule with
+filler is determined. A child can have more than one mother, so the KB ships no function
+naming a child's mother, and a parent stays an existential ([ch. 22](22-functions.md)). A rule with
 an unmarked variable in its consequent is refused at assert.
 
 **Audit.** For each head existential, confirm that the rule is forward and that the

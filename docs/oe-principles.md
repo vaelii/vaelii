@@ -78,7 +78,7 @@ A predicate's name, its argument order, its direction and the split between an a
 
 **Audit:** for each naming, argument-order or modelling choice in a vocab PR, the stated reason cites KB content, not how the result reads.
 
-**Example:** `(fatherOf ?child ?father)` puts the child first because `(functionCorrespondingBinaryPredicate FatherFn fatherOf)` reads the function's value from the last argument (life.txt), not because "father of" reads that way in English.
+**Example:** `(startOf ?interval ?instant)` puts the interval first because `(functionCorrespondingBinaryPredicate StartFn startOf)` reads the function's value from the last argument (time.txt), not because "start of" reads that way in English.
 
 ## classify before you constrain
 *Classify before you constrain*

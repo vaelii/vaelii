@@ -74,7 +74,8 @@
 (set/monotonic (genl negated_predication literal))
 (set/monotonic (partition literal predication negated_predication))
 (set/monotonic (genl closed_predication sentence))
-(set/monotonic (genl indeterminate_term denotational_term))
+(set/monotonic (genl proxy_term denotational_term))
+(set/monotonic (partition proxy_term placeholder_term indeterminate_term))
 
 ;; Well-formedness crosses the kinds: an expression is wff or ill-formed whatever its
 ;; shape, and formula and sentence split the same way, each half the intersection of
@@ -82,11 +83,11 @@
 (comment wff_expression "An expression whose every relation, function and connective is applied to as many arguments as its declared arity allows, and whose every quantifier binds a variable. It is checked against the KB's declarations, so parsing alone cannot decide it. Only a wff_expression denotes or predicates.")
 (positiveExampleComment wff_expression "the symbol Muffet")
 (positiveExampleComment wff_expression "?x")
-(positiveExampleComment wff_expression "the term (MotherFn Muffet)")
+(positiveExampleComment wff_expression "the term (GeneticKinFn motherOf)")
 (positiveExampleComment wff_expression "(dog ?x)")
 (comment ill_formed_expression "An expression that is not well-formed: some operator has the wrong number of arguments, or is not a relation, function or connective at all.")
 (positiveExampleComment ill_formed_expression "(3 4): a number in operator position")
-(positiveExampleComment ill_formed_expression "(MotherFn): a one-argument function given no argument")
+(positiveExampleComment ill_formed_expression "(GeneticKinFn): a one-argument function given no argument")
 (positiveExampleComment ill_formed_expression "(dog Muffet Rex): a one-place predicate given two arguments")
 (comment wff "A well-formed formula: it says something once its free variables have values.")
 (positiveExampleComment wff "(dog Muffet)")
@@ -120,12 +121,12 @@
 ;; free, denotes nothing in particular.
 (comment open_expression "An expression in which a variable occurs free. A variable inside (Quote …) is part of the quoted form and is never free in the expression around it.")
 (positiveExampleComment open_expression "?x")
-(positiveExampleComment open_expression "(MotherFn ?x)")
+(positiveExampleComment open_expression "(GeneticKinFn ?x)")
 (positiveExampleComment open_expression "(dog ?x)")
 (positiveExampleComment open_expression "(and (dog ?x) (forall ?y (cat ?y))), open in ?x though ?y is bound")
 (comment closed_expression "An expression with no free variable.")
 (positiveExampleComment closed_expression "the symbol Muffet")
-(positiveExampleComment closed_expression "the term (MotherFn Muffet)")
+(positiveExampleComment closed_expression "the term (GeneticKinFn motherOf)")
 (positiveExampleComment closed_expression "(dog Muffet)")
 (positiveExampleComment closed_expression "(forall ?x (implies (dog ?x) (animal ?x))), where ?x occurs but is bound")
 (comment open_formula "A formula with a free variable. It is true or false only once its free variables have values.")
@@ -231,7 +232,7 @@
 (set/monotonic (time_agnostic_relation means))
 (not (eternal_predicate means))
 
-(comment denotes "(denotes ?term ?thing) means that the denotational_term ?term names ?thing. (denotes (Quote Muffet) Muffet): the symbol Muffet names the dog. (denotes (Quote dog) dog): the symbol dog names the predicate. (denotes (Quote (MotherFn Muffet)) (MotherFn Muffet)). Reference may be fixed or time-dependent under the context's interpretation, so the relation is time-agnostic, not invariant or eternal.")
+(comment denotes "(denotes ?term ?thing) means that the denotational_term ?term names ?thing. (denotes (Quote Muffet) Muffet): the symbol Muffet names the dog. (denotes (Quote dog) dog): the symbol dog names the predicate. (denotes (Quote (GeneticKinFn motherOf)) (GeneticKinFn motherOf)). Reference may be fixed or time-dependent under the context's interpretation, so the relation is time-agnostic, not invariant or eternal.")
 (binary_predicate denotes)
 (set/monotonic (time_agnostic_relation denotes))
 (not (eternal_predicate denotes))

@@ -1621,7 +1621,7 @@ Beyond types, the taxonomy caches predicate properties, declared as sentexes and
 maintained by `integrate-sentex`. The relation marks `irreflexive`, `anti_symmetric`,
 `asymmetric`, `functional`, `functionalInArg` and `anti_transitive`, the relation pair
 `negates`, the function classes
-`injection`, `surjection` and `bijection`, and the arity bindings ([Arity](#arity)), are forced-monotonic: each is never the loser of a nogood whatever strength it was
+`injective_predicate`, `surjective_predicate` and `bijective_predicate`, and the arity bindings ([Arity](#arity)), are forced-monotonic: each is never the loser of a nogood whatever strength it was
 written at, and a denial of one loses to it at either strength
 ([nmtms.md](nmtms.md#the-forced-monotonic-set)). A `transitiveInArg` declaration is not
 forced-monotonic and is weighed as a member of an inherited nogood. The separations
@@ -1935,8 +1935,8 @@ the membership nogood, as a type `genl` edge is.
   the *query* but would not set the `:symmetric` property the enforcement reads, since a
   genl-inherited membership is not a stored `symmetric` sentex the mark ingestion sees — so
   the rules, which materialize that sentex, are the minimal correct expression.
-- `(injection P)`, `(surjection P)`, `(bijection P)` — the composite **function marks**,
-  no engine code either: eight shipped `core.txt` rules derive what the engine already
+- `(injective_predicate P)`, `(surjective_predicate P)`, `(bijective_predicate P)` — the composite **function marks**,
+  no engine code either: nine shipped `core.txt` rules derive what the engine already
   enforces and audits. Each mark splits into two halves, and the split is what the family
   is for. The **enforced** half is `(functional P)` and `(functionalInArg P 1)`, merged or
   decided as a nogood exactly as a directly written mark is. The **audited**
@@ -1947,9 +1947,9 @@ the membership nogood, as a type `genl` edge is.
 
   | mark | single-valued | one-to-one | total on `D` | onto `R` |
   |---|---|---|---|---|
-  | `injection`  | yes | yes | yes | no  |
-  | `surjection` | yes | no  | yes | yes |
-  | `bijection`  | yes | yes | yes | yes |
+  | `injective_predicate` | yes | yes | yes | no  |
+  | `surjective_predicate` | yes | no  | yes | yes |
+  | `bijective_predicate` | yes | yes | yes | yes |
 
   **`D` and `R` are not arguments of the mark.** Totality and ontoness are claims about a
   domain and a range rather than about `P` alone, and `(arg P 1 D)` and `(arg P 2 R)`
@@ -1964,9 +1964,12 @@ the membership nogood, as a type `genl` edge is.
   **The two halves divide on what an open world can refuse.** A second filler contradicts
   a stored one, so the engine refuses it at the write. A domain member with no filler
   contradicts nothing — the filler may arrive next — so totality is a sweep to run at a
-  checkpoint. `(bijection P)` derives `(injection P)` and `(surjection P)` rather than the
+  checkpoint. `(bijective_predicate P)` derives `(injective_predicate P)` and `(surjective_predicate P)` rather than the
   base marks directly, so the whole family reaches the engine through two entries.
-  `(genl bijection injection)` and `(genl bijection surjection)` state the subsumption
+  Conversely, a predicate that is both an `injective_predicate` and a `surjective_predicate` is concluded a
+  `bijective_predicate` by a forward-only rule, so no goal runs it backward, and retracting either
+  mark withdraws the `bijective_predicate`.
+  `(genl bijective_predicate injective_predicate)` and `(genl bijective_predicate surjective_predicate)` state the subsumption
   outright; those edges set none of the properties the enforcement reads, for the reason
   `equivalence_relation`'s entry above gives, so the rules are the minimal correct
   expression.

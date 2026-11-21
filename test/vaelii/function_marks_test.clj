@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.function-marks-test
-  "`injection`, `surjection` and `bijection`, the three composite function marks shipped
+  "`injective_predicate`, `surjective_predicate` and `bijective_predicate`, the three composite function marks shipped
   in CxUniverse: no engine code, eight CxUniverse forward rules derive what the engine already
   enforces and audits — `equivalence_relation`'s pattern, over the functional family and
   the `predAll` audit pair.
@@ -19,9 +19,9 @@
 
   | mark | functional | one-to-one | total | onto |
   |---|---|---|---|---|
-  | `injection`  | yes | yes | yes | no  |
-  | `surjection` | yes | no  | yes | yes |
-  | `bijection`  | yes | yes | yes | yes |
+  | `injective_predicate`  | yes | yes | yes | no  |
+  | `surjective_predicate` | yes | no  | yes | yes |
+  | `bijective_predicate`  | yes | yes | yes | yes |
 
   The merge/refuse rule itself is `functional`'s and is tested exhaustively in
   `functional-in-arg-test`; the audit is `predAllSpecified`'s and is tested in
@@ -64,7 +64,7 @@
 ;;; ── the shipped declarations ──────────────────────────────────────────
 
 (tu/deftest-kb cxuniverse-declares-the-three-function-marks
-  (doseq [term '[injection surjection bijection]]
+  (doseq [term '[injective_predicate surjective_predicate bijective_predicate]]
     (testing (str term " carries its comment sentex like any other CxUniverse entry")
       (is (= 1 (count (core-context/comment-of kb term))) (str "comment for " term))
       (is (string? (first (core-context/comment-of kb term)))))
@@ -73,29 +73,57 @@
         (v/assert kb (list term capitalCityOf) U)
         (is (v/ask? kb (list 'binary_predicate capitalCityOf) U))))))
 
-(tu/deftest-kb a-bijection-is-an-injection-and-a-surjection
+(tu/deftest-kb cxuniverse-declares-the-three-function-types
+  (doseq [term '[injective_function surjective_function bijective_function]]
+    (testing (str term " carries one comment and is a forced-monotonic type of function")
+      (is (= 1 (count (core-context/comment-of kb term))) (str "comment for " term))
+      (is (true? (v/ask? kb (list 'genl term 'function) U)))
+      (is (true? (v/ask? kb (list 'forced_monotonic_predicate term) U)))))
+  (tu/with-terms [PairingFn]
+    (v/assert kb (list 'unary_function PairingFn) U)
+    (v/assert kb (list 'bijective_function PairingFn) U)
+    (testing "a bijective_function is an injective_function and a surjective_function"
+      (is (true? (v/ask? kb (list 'injective_function PairingFn) U)))
+      (is (true? (v/ask? kb (list 'surjective_function PairingFn) U)))
+      (is (true? (v/ask? kb (list 'function PairingFn) U))))))
+
+(tu/deftest-kb a-bijective-predicate-is-an-injective-predicate-and-a-surjective-predicate
   (tu/with-terms [capitalCityOf]
-    (v/assert kb (list 'bijection capitalCityOf) U)
-    (is (v/ask? kb (list 'injection capitalCityOf) U))
-    (is (v/ask? kb (list 'surjection capitalCityOf) U))))
+    (v/assert kb (list 'bijective_predicate capitalCityOf) U)
+    (is (v/ask? kb (list 'injective_predicate capitalCityOf) U))
+    (is (v/ask? kb (list 'surjective_predicate capitalCityOf) U))))
+
+(tu/deftest-kb an-injective-predicate-that-is-a-surjective-predicate-is-a-bijective-predicate
+  (tu/with-terms [capitalCityOf injectiveOf surjectiveOf]
+    (v/assert kb (list 'injective_predicate capitalCityOf) U)
+    (v/assert kb (list 'surjective_predicate capitalCityOf) U)
+    (v/assert kb (list 'injective_predicate injectiveOf) U)
+    (v/assert kb (list 'surjective_predicate surjectiveOf) U)
+    (is (true? (v/ask? kb (list 'bijective_predicate capitalCityOf) U)))
+    (is (not (v/ask? kb (list 'bijective_predicate injectiveOf) U)))
+    (is (not (v/ask? kb (list 'bijective_predicate surjectiveOf) U)))
+    (testing "the bijective_predicate's own injective_predicate rule does not hold the injective_predicate up"
+      (v/retract! kb (v/handle-of kb (list 'injective_predicate capitalCityOf) U))
+      (is (not (v/ask? kb (list 'bijective_predicate capitalCityOf) U)))
+      (is (not (v/ask? kb (list 'injective_predicate capitalCityOf) U))))))
 
 ;;; ── the enforced half: marks the engine already refuses against ───────
 
 (tu/deftest-kb each-mark-derives-the-enforced-marks-it-stands-in-for
-  (testing "an injection is single-valued and one-to-one"
+  (testing "an injective_predicate is single-valued and one-to-one"
     (tu/with-terms [capitalCityOf]
-      (v/assert kb (list 'injection capitalCityOf) U)
+      (v/assert kb (list 'injective_predicate capitalCityOf) U)
       (is (v/ask? kb (list 'functional capitalCityOf) U))
       (is (v/ask? kb (list 'functionalInArg capitalCityOf 1) U))))
-  (testing "a surjection is single-valued, and says nothing about one-to-one"
+  (testing "a surjective_predicate is single-valued, and says nothing about one-to-one"
     (tu/with-terms [pRel]
-      (v/assert kb (list 'surjection pRel) U)
+      (v/assert kb (list 'surjective_predicate pRel) U)
       (is (v/ask? kb (list 'functional pRel) U))
       (is (not (v/ask? kb (list 'functionalInArg pRel 1) U))
-          "two domain members may share one range member under a surjection")))
-  (testing "a bijection is both, through the two marks it derives"
+          "two domain members may share one range member under a surjective_predicate")))
+  (testing "a bijective_predicate is both, through the two marks it derives"
     (tu/with-terms [pRel]
-      (v/assert kb (list 'bijection pRel) U)
+      (v/assert kb (list 'bijective_predicate pRel) U)
       (is (v/ask? kb (list 'functional pRel) U))
       (is (v/ask? kb (list 'functionalInArg pRel 1) U)))))
 
@@ -106,15 +134,15 @@
       (is (v/ask? kb (list 'functionalInArg birthYearOf 2) U))
       (is (not (v/ask? kb (list 'functionalInArg birthYearOf 1) U))
           "and says nothing about argument 1")))
-  (testing "an injection is functional in both arguments, argument 2 through functional"
+  (testing "an injective_predicate is functional in both arguments, argument 2 through functional"
     (tu/with-terms [capitalCityOf]
-      (v/assert kb (list 'injection capitalCityOf) U)
+      (v/assert kb (list 'injective_predicate capitalCityOf) U)
       (is (v/ask? kb (list 'functionalInArg capitalCityOf 1) U))
       (is (v/ask? kb (list 'functionalInArg capitalCityOf 2) U)))))
 
-(tu/deftest-kb a-bijection-clashes-over-two-unmergeable-fillers-in-either-direction
+(tu/deftest-kb a-bijective-predicate-clashes-over-two-unmergeable-fillers-in-either-direction
   (tu/with-terms [pRel Ruritania]
-    (v/assert kb (list 'bijection pRel) U)
+    (v/assert kb (list 'bijective_predicate pRel) U)
     (testing "a second number at argument 2 for one argument 1 is a clash"
       (v/assert kb (list pRel Ruritania 1980) U)
       (is (tu/stored-in-clash? kb (list pRel Ruritania 1990) U)
@@ -125,22 +153,22 @@
         (is (tu/stored-in-clash? kb (list pRel 8 Zenda) U)
             "the mirrored clash, via the derived (functionalInArg P 1)")))))
 
-(tu/deftest-kb a-surjection-admits-the-pair-an-injection-convicts
+(tu/deftest-kb a-surjective-predicate-admits-the-pair-an-injective-predicate-convicts
   ;; The one behavioural difference between the two marks: a
-  ;; surjection is not one-to-one, so two domain members sharing a range member stand.
+  ;; surjective_predicate is not one-to-one, so two domain members sharing a range member stand.
   (tu/with-terms [pSur pInj Fredopolis]
-    (v/assert kb (list 'surjection pSur) U)
+    (v/assert kb (list 'surjective_predicate pSur) U)
     (v/assert kb (list pSur 7 Fredopolis) U)
     (is (nil? (tu/refusal-type #(v/assert kb (list pSur 8 Fredopolis) U)))
-        "two first arguments for one second are what a surjection permits")
-    (v/assert kb (list 'injection pInj) U)
+        "two first arguments for one second are what a surjective_predicate permits")
+    (v/assert kb (list 'injective_predicate pInj) U)
     (v/assert kb (list pInj 7 Fredopolis) U)
     (is (tu/stored-in-clash? kb (list pInj 8 Fredopolis) U)
-        "and what an injection convicts")))
+        "and what an injective_predicate convicts")))
 
-(tu/deftest-kb a-bijection-merges-two-symbol-fillers-in-either-direction
+(tu/deftest-kb a-bijective-predicate-merges-two-symbol-fillers-in-either-direction
   (tu/with-terms [capitalCityOf]
-    (v/assert kb (list 'bijection capitalCityOf) U)
+    (v/assert kb (list 'bijective_predicate capitalCityOf) U)
     (testing "a shared first argument merges its two symbol fillers — the functional half"
       (tu/with-terms [Freedonia]
         (let [[lo hi] (sort [(tu/tmp-ind "Fredville") (tu/tmp-ind "Fredville")])]
@@ -161,15 +189,15 @@
 (tu/deftest-kb the-audit-requirements-are-derived-from-the-arg-declarations
   (tu/with-terms [capitalCityOf country capital_city]
     (typed-relation! kb capitalCityOf country capital_city)
-    (testing "an injection requires totality and says nothing about ontoness"
-      (v/assert kb (list 'injection capitalCityOf) U)
+    (testing "an injective_predicate requires totality and says nothing about ontoness"
+      (v/assert kb (list 'injective_predicate capitalCityOf) U)
       (is (v/ask? kb (list 'predAllSpecified capitalCityOf country) U))
       (is (not (v/ask? kb (list 'predSpecifiedAll capitalCityOf capital_city) U))
-          "a capital no country has is not an injection's problem")))
-  (testing "a surjection requires both"
+          "a capital no country has is not an injective_predicate's problem")))
+  (testing "a surjective_predicate requires both"
     (tu/with-terms [pSur country capital_city]
       (typed-relation! kb pSur country capital_city)
-      (v/assert kb (list 'surjection pSur) U)
+      (v/assert kb (list 'surjective_predicate pSur) U)
       (is (v/ask? kb (list 'predAllSpecified pSur country) U))
       (is (v/ask? kb (list 'predSpecifiedAll pSur capital_city) U)))))
 
@@ -178,7 +206,7 @@
   ;; predicate whose arguments are undeclared states neither, so the requirements are not
   ;; derived rather than derived against `thing`.
   (tu/with-terms [pRel]
-    (v/assert kb (list 'bijection pRel) U)
+    (v/assert kb (list 'bijective_predicate pRel) U)
     (is (v/ask? kb (list 'functional pRel) U)
         "the enforced half lands with no argument declarations")
     (is (empty? (sweep-of kb U pRel))
@@ -187,7 +215,7 @@
 (tu/deftest-kb the-sweep-reports-a-domain-member-with-no-filler
   (tu/with-terms [capitalCityOf country capital_city Freedonia Fredopolis]
     (typed-relation! kb capitalCityOf country capital_city)
-    (v/assert kb (list 'bijection capitalCityOf) U)
+    (v/assert kb (list 'bijective_predicate capitalCityOf) U)
     (v/assert kb (list country Freedonia) U)
     (testing "a country with no capital breaks totality"
       (is (= {['predAllSpecified capitalCityOf country]
@@ -201,7 +229,7 @@
 (tu/deftest-kb the-sweep-reports-a-range-member-nothing-reaches
   (tu/with-terms [capitalCityOf country capital_city Fredopolis]
     (typed-relation! kb capitalCityOf country capital_city)
-    (v/assert kb (list 'bijection capitalCityOf) U)
+    (v/assert kb (list 'bijective_predicate capitalCityOf) U)
     (v/assert kb (list capital_city Fredopolis) U)
     (testing "a capital that is the capital of nothing breaks ontoness"
       (is (= {['predSpecifiedAll capitalCityOf capital_city]
@@ -209,30 +237,30 @@
              (sweep-of kb U capitalCityOf))
           "the sweep keys the declaration [functor pred indep]"))))
 
-(tu/deftest-kb an-injection-is-audited-for-totality-and-not-for-ontoness
+(tu/deftest-kb an-injective-predicate-is-audited-for-totality-and-not-for-ontoness
   ;; The discriminating case for the whole family. capitalCityOf is one-to-one and total
   ;; over `city`, and is not onto it: most cities are no country's capital.
   (tu/with-terms [capitalCityOf country city Freedonia Fredopolis Sylvania]
     (typed-relation! kb capitalCityOf country city)
-    (v/assert kb (list 'injection capitalCityOf) U)
+    (v/assert kb (list 'injective_predicate capitalCityOf) U)
     (v/assert kb (list country Freedonia) U)
     (v/assert kb (list city Fredopolis) U)
     (v/assert kb (list city Sylvania) U)
     (v/assert kb (list capitalCityOf Freedonia Fredopolis) U)
     (is (empty? (sweep-of kb U capitalCityOf))
-        "Sylvania being nobody's capital is no violation of an injection")))
+        "Sylvania being nobody's capital is no violation of an injective_predicate")))
 
 ;;; ── belief-following, in both halves ──────────────────────────────────
 
 (tu/deftest-kb retracting-the-declaration-drops-every-derived-mark
   (tu/with-terms [capitalCityOf country capital_city]
     (typed-relation! kb capitalCityOf country capital_city)
-    (let [decl (v/assert kb (list 'bijection capitalCityOf) U)]
+    (let [decl (v/assert kb (list 'bijective_predicate capitalCityOf) U)]
       (is (v/ask? kb (list 'functional capitalCityOf) U))
       (v/retract! kb decl)
       (testing "the derived marks rested on the declaration and go with it"
-        (is (not (v/ask? kb (list 'injection capitalCityOf) U)))
-        (is (not (v/ask? kb (list 'surjection capitalCityOf) U)))
+        (is (not (v/ask? kb (list 'injective_predicate capitalCityOf) U)))
+        (is (not (v/ask? kb (list 'surjective_predicate capitalCityOf) U)))
         (is (not (v/ask? kb (list 'functional capitalCityOf) U)))
         (is (not (v/ask? kb (list 'functionalInArg capitalCityOf 1) U)))
         (is (not (v/ask? kb (list 'predAllSpecified capitalCityOf country) U)))
@@ -246,7 +274,7 @@
   ;; rather than auditing unconstrained.
   (tu/with-terms [capitalCityOf country capital_city]
     (let [dom (typed-relation! kb capitalCityOf country capital_city)]
-      (v/assert kb (list 'bijection capitalCityOf) U)
+      (v/assert kb (list 'bijective_predicate capitalCityOf) U)
       (v/retract! kb dom)
       (is (not (v/ask? kb (list 'predAllSpecified capitalCityOf country) U))
           "totality rested on the domain declaration and goes with it")
@@ -262,7 +290,7 @@
 
 ;;; ── the declaration reaches back over content already stored ──────────
 
-(tu/deftest-kb a-bijection-declared-after-an-unmergeable-pair-convicts-that-pair
+(tu/deftest-kb a-bijective-predicate-declared-after-an-unmergeable-pair-convicts-that-pair
   ;; The arrival order the mark family gets wrong when a spelling reaches the sweep
   ;; through only some of its readers (#45): the pair is stored first and the
   ;; declaration second, so nothing refuses at the entry point and what has to convict
@@ -272,43 +300,43 @@
   (tu/with-terms [pRel Ruritania]
     (v/assert kb (list pRel Ruritania 1980) U)
     (v/assert kb (list pRel Ruritania 1990) U)
-    (v/assert kb (list 'bijection pRel) U)
+    (v/assert kb (list 'bijective_predicate pRel) U)
     (is (= [:functional] (mapv :kind (v/contradictions kb)))
         "the stored pair sharing argument 1 is convicted by the derived (functional P) and weighed")
     (is (empty? (filter #(= :functional (:violation %)) (v/violations kb)))
         "decided, so not also filed as exposed")))
 
-(tu/deftest-kb a-late-bijection-convicts-a-stored-pair-sharing-argument-2
+(tu/deftest-kb a-late-bijective-predicate-convicts-a-stored-pair-sharing-argument-2
   (tu/with-terms [pRev Zenda]
     (v/assert kb (list pRev 7 Zenda) U)
     (v/assert kb (list pRev 8 Zenda) U)
-    (v/assert kb (list 'bijection pRev) U)
+    (v/assert kb (list 'bijective_predicate pRev) U)
     (is (= [:functional] (mapv :kind (v/contradictions kb)))
         "the mirrored conviction, by the derived (functionalInArg P 1), weighed")
     (is (empty? (filter #(= :functional (:violation %)) (v/violations kb)))
         "decided, so not also filed as exposed")))
 
-(tu/deftest-kb a-late-bijection-merges-two-mergeable-fillers-in-either-direction
+(tu/deftest-kb a-late-bijective-predicate-merges-two-mergeable-fillers-in-either-direction
   (testing "a stored pair sharing argument 1"
     (tu/with-terms [pRel Freedonia]
       (let [[lo hi] (sort [(tu/tmp-ind "Fredville") (tu/tmp-ind "Fredville")])]
         (v/assert kb (list pRel Freedonia lo) U {:strength :monotonic})
         (v/assert kb (list pRel Freedonia hi) U {:strength :monotonic})
-        (v/assert kb (list 'bijection pRel) U)
+        (v/assert kb (list 'bijective_predicate pRel) U)
         (is (v/same-class? kb lo hi)))))
   (testing "and a stored pair sharing argument 2"
     (tu/with-terms [pRev Fredopolis]
       (let [[lo hi] (sort [(tu/tmp-ind "Sylvania") (tu/tmp-ind "Sylvania")])]
         (v/assert kb (list pRev lo Fredopolis) U {:strength :monotonic})
         (v/assert kb (list pRev hi Fredopolis) U {:strength :monotonic})
-        (v/assert kb (list 'bijection pRev) U)
+        (v/assert kb (list 'bijective_predicate pRev) U)
         (is (v/same-class? kb lo hi))))))
 
 (tu/deftest-kb an-arg-declaration-arriving-after-the-mark-derives-the-audit
   ;; The other arrival order for the audit half: the mark is stated of a predicate whose
   ;; arguments are undeclared, and the domain and range are declared afterwards.
   (tu/with-terms [capitalCityOf country capital_city]
-    (v/assert kb (list 'bijection capitalCityOf) U)
+    (v/assert kb (list 'bijective_predicate capitalCityOf) U)
     (is (not (v/ask? kb (list 'predAllSpecified capitalCityOf country) U)))
     (typed-relation! kb capitalCityOf country capital_city)
     (is (v/ask? kb (list 'predAllSpecified capitalCityOf country) U))
@@ -316,13 +344,13 @@
 
 ;;; ── the enforced marks descend the predicate hierarchy ────────────────
 
-(tu/deftest-kb a-bijection-on-a-super-predicate-convicts-a-sub-predicate-pair
+(tu/deftest-kb a-bijective-predicate-on-a-super-predicate-convicts-a-sub-predicate-pair
   ;; Both enforced marks are read up the predicate hierarchy, as every constraint mark
   ;; is, so the declaration is written once at the general predicate. The query does not
   ;; descend — `(functional fatherOf)` is false — and the enforcement does, which is the
   ;; distinction taxonomy.md draws between a mark's classification and its reach.
   (tu/with-terms [parentOf fatherOf Ann Bob]
-    (v/assert kb (list 'bijection parentOf) U)
+    (v/assert kb (list 'bijective_predicate parentOf) U)
     (v/assert kb (list 'genl fatherOf parentOf) U)
     (is (not (v/ask? kb (list 'functional fatherOf) U))
         "the sub-predicate is not itself classified functional")
@@ -348,7 +376,7 @@
       (let [[lo hi] (sort [(tu/tmp-ind "Mum") (tu/tmp-ind "Mum")])]
         (doseq [step order]
           (case step
-            :mark (v/assert kb (list 'bijection parentOf) U)
+            :mark (v/assert kb (list 'bijective_predicate parentOf) U)
             :edge (v/assert kb (list 'genl fatherOf parentOf) U)
             :f1   (v/assert kb (list fatherOf Ann lo) U {:strength :monotonic})
             :f2   (v/assert kb (list fatherOf Ann hi) U {:strength :monotonic})))
@@ -365,8 +393,8 @@
   ;; CxUniverse with it.
   (tu/with-terms [pRel CxStory]
     (v/assert kb (list 'genlCx CxStory U) U)
-    (v/assert kb (list 'bijection pRel) CxStory)
-    (doseq [s [(list 'bijection pRel) (list 'injection pRel) (list 'surjection pRel)
+    (v/assert kb (list 'bijective_predicate pRel) CxStory)
+    (doseq [s [(list 'bijective_predicate pRel) (list 'injective_predicate pRel) (list 'surjective_predicate pRel)
                (list 'functional pRel) (list 'functionalInArg pRel 1)]]
       (is (v/ask? kb s U) (str s " reaches CxUniverse")))))
 
@@ -375,12 +403,12 @@
 (tu/deftest-kb a-reader-convicts-no-tuple-through-a-mark-its-except-withdraws
   ;; The mark a rule concludes from a forced-monotonic literal is not itself hidden where the
   ;; literal is excepted; it leaves that reader through the except's closure alone.  One
-  ;; row per family that reads marks: CxUniverse's `injection` rule concludes
+  ;; row per family that reads marks: CxUniverse's `injective_predicate` rule concludes
   ;; `(functionalInArg P 1)` (the tuple-mark family), and a stated rule concludes
   ;; `(irreflexive P)` from `(anti_transitive P)` (the self and converse family).
   (let [M {:strength :monotonic}]
     (doseq [[label premise rule tuples]
-            [["functionalInArg" 'injection nil
+            [["functionalInArg" 'injective_predicate nil
               (fn [rel x] [[(list rel (tu/tmp-ind "Xa") x) M] [(list rel (tu/tmp-ind "Xb") x)]])]
              ["irreflexive" 'anti_transitive
               '(set/forwardRule (implies (anti_transitive ?r) (irreflexive ?r)))
