@@ -421,7 +421,7 @@
              (refusal kb (list 'implies (list marker '?y)
                                (list 'implies (list trigger '?x) (list marker (list QualifyFn '?y))))))))))
 
-(tu/deftest-kb a-type-read-the-conclusion-s-predicate-is-a-genl-of-cuts-no-feed
+(tu/deftest-kb a-type-read-above-the-conclusion-s-predicate-cuts-no-feed
   (testing "a conclusion of a predicate below a typed read's predicate arrives as that read too"
     (tu/with-terms [qualified_kind marker sub trigger QualifyFn]
       (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
@@ -468,7 +468,10 @@
           (let [gen (lift-generator generic_kind QualifyFn)]
             (is (= (if weaken :not-stratified :accepted) (refusal kb gen))
                 (str (or weaken "no weakening")))
-            (some->> (v/handle-of kb gen 'CxUniverse) (v/retract! kb))))))))
+            (when-not weaken
+              (let [h (v/handle-of kb gen 'CxUniverse)]
+                (is (some? h) "the accepted generator is stored, to be retracted")
+                (v/retract! kb h)))))))))
 
 (tu/deftest-kb the-cycle-check-sees-a-wrapped-generator-too
   ;; every generator is filed under the one key `implies`, which means peeling the

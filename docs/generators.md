@@ -252,9 +252,9 @@ application `(F …)`, at a position where the read has a variable `?v` that ano
 gives an `R` that a separation denies `T` of at every reader. The separation is read at
 CxUniverse, at `:monotonic`, and no stored `siblingDisjointException` spares the pair. An
 application denotes an instance of each result type of its function, and every reader
-denies it `T`. A type read of the conclusion's predicate, or of a type the predicate is a
-`genl` of through any edge, cuts nothing, because the conclusion arrives as that read. Take a hypothetical generator that reads
-`(generic_kinship_predicate ?p)` and the edge `(genl ?p ?g)` on its generating level, and
+denies it `T`. A type read of the conclusion's predicate, or of a `genl` of it, cuts
+nothing, because the conclusion arrives as that read. Take a hypothetical generator that
+reads `(generic_kinship_predicate ?p)` and the edge `(genl ?p ?g)` on its generating level, and
 generates the rule concluding `(genl (BloodKinFn ?p) (BloodKinFn ?g))`. It would not feed
 itself: `BloodKinFn`'s result `blood_kinship_predicate` is time-invariant, and the
 `partition` of `relation` separates it from the time-agnostic generic inputs. The `result`
