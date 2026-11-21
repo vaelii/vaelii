@@ -36,6 +36,7 @@ SCRIPTS=(
   scripts/lint-conflict-markers.sh
   scripts/check-reflection.sh
   scripts/asp-namespaces.sh
+  scripts/ci-perf-plan.sh
   scripts/ci-shard.sh
   scripts/ci-weights.sh
   scripts/check-breaking-siblings.sh

@@ -207,6 +207,24 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [nat.md](docs/nat.md)
   *Migration:* none.
 
+### Internal: tooling
+
+- **`lein perf-ab` fails a run whose JVM stops at a probe that throws.** `assert` refused
+  `arity-edge-move`'s setup, and a full run timed the nine probes before it and passed.
+  The probe runs again, and the seven probes from it on report.
+  [CONTRIBUTING.md §1.1](CONTRIBUTING.md#11-static-analysis-lein-lint-setup)
+
+### Internal: CI
+
+- **A pull request runs the perf-ab probes its change reaches, under one `perf` check.**
+  Each of three reps runs on its own runners, `starter-load` apart from the other probes.
+  A change under `resources/kb/` runs the `starter-load` and `starter-recover` probes, and
+  a change under `src/vaelii/impl/` or to `src/vaelii/core.clj` runs all 16.
+  `scripts/perf-owed.py` reads a file whose namespace its reach map holds no key for, and
+  every file when there is no map, through its per-file rules. `lein perf-ab --first-rep
+  K` numbers a run's reps from K, and `lein perf-ab --judge <rows.tsv>…` judges the rows
+  of several runs as one. [CONTRIBUTING.md §7](CONTRIBUTING.md#7-commits--pull-requests)
+
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
 | Area | Change |

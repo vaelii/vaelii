@@ -950,6 +950,13 @@ remote shell. See [`.github/SECURITY.md`](.github/SECURITY.md).
   figure. When every namespace slowed together, `scripts/ci-weights.sh <run-id>`
   rewrites both files from your pull request's run, where `<run-id>` is the number in
   the run's URL.
+- **A red `perf` check names a probe your change made slower.** The `perf` workflow runs
+  the perf-ab probes `scripts/perf-owed.py` selects for your change, against the pull
+  request's base. The run's **Summary** page lists what was selected and the changed file
+  that selected each, then a table of each probe's base and head milliseconds. A probe
+  fails when the median head/base ratio of three reps passes 1.25x. Reproduce one with
+  `lein perf-ab <base> --only <probe>`. When the change is slower on purpose, state in
+  the pull request which probe is slower, by how much, and why.
 - **Don't `--no-verify`**: fix the hook failure rather than bypassing it.
 - **Don't amend pushed commits**: make a new one.
 - **Merges may be rewritten.** Vaelii may squash, reword or amend your commits when
