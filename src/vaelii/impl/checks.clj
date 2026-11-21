@@ -5403,11 +5403,12 @@
   "Can the generated conclusion `concl` arrive as one of the read `literals` of a generator
   whose typed reads are `types`?  True for a read of a predicate `concl` arrives as
   (`predicates-above`), swapped as it is read, where no argument is
-  `unsatisfiable-argument?` or the lengths differ, or `concl` is too short to swap.  A
-  type read of one of those predicates cuts nothing: `concl` arrives as that read."
+  `unsatisfiable-argument?` or the lengths differ.  A swapped read meets only a binary
+  conclusion and a binary read, as a swapped match does.  A type read of a predicate
+  `concl` arrives as straight cuts nothing: `concl` arrives as that read."
   [kb concl [literals types]]
   (let [[st sw] (predicates-above kb (nm/functor concl))
-        types   (update-vals types #(into #{} (remove (some-fn st sw)) %))
+        types   (update-vals types #(into #{} (remove st) %))
         arrives (fn [c l]
                   (or (not= (count c) (count l))
                       (not-any? (fn [[a r]] (unsatisfiable-argument? kb types a r))
@@ -5416,7 +5417,8 @@
      (some (fn [l]
              (let [g (nm/functor l)]
                (or (and (st g) (arrives concl l))
-                   (and (sw g) (or (< (count concl) 3) (arrives (swap-first-two concl) l))))))
+                   (and (sw g) (= 3 (count concl) (count l))
+                        (arrives (swap-first-two concl) l)))))
            literals))))
 
 (defn- generated-conclusion

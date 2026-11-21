@@ -247,13 +247,14 @@ conclude rules, filed under `implies`, which no fact carries and no goal asks fo
 conclusion feeds a read of each predicate it arrives as, through the `genl` and swap edges
 of any context, as a forward trigger walks them. Under `(genl sub marker)` a conclusion
 `(sub x)` arrives as `(marker x)`. Under `(genlInverse sub marker)` or
-`(inverse sub marker)`, `(sub x y)` arrives as `(marker y x)`, with its first two
-arguments exchanged. The conclusion must also be able to arrive as one of the reads, at
-the argument positions it arrives in. Take an argument that is an application `(F …)`,
-at a position where the read has a variable `?v` that another read `(T ?v)` types. That
-argument feeds nothing when a `(result F R)` visible at CxUniverse gives an `R` that a
-separation denies `T` of at every reader. The separation is read at
-CxUniverse, at `:monotonic`, and no stored `siblingDisjointException` spares the pair. An
+`(inverse sub marker)`, a binary `(sub x y)` arrives as a binary read `(marker y x)`,
+with its arguments exchanged, and a longer one does not arrive. The conclusion must also
+be able to arrive as one of the reads, at the argument positions it arrives in. Take an
+argument that is an application `(F …)`, at a position where the read has a variable `?v`
+that another read `(T ?v)` types. That argument feeds nothing when a `(result F R)`
+visible at CxUniverse gives an `R` that a separation denies `T` of at every reader. The
+separation is read at CxUniverse, at `:monotonic`, and no stored
+`siblingDisjointException` spares the pair. An
 application denotes an instance of each result type of its function, and every reader
 denies it `T`. A type read of a predicate the conclusion arrives as cuts nothing, because
 the conclusion arrives as that read. Take a hypothetical generator that

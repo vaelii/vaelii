@@ -450,6 +450,15 @@
                                        (list sub (list QualifyFn '?y) '?x)))))
             (str edge))))))
 
+(tu/deftest-kb a-swap-edge-feeds-only-a-binary-read
+  (testing "a swapped match needs a binary pattern and a binary fact, so a ternary pair never meets"
+    (tu/with-terms [marker3 sub3 trigger QualifyFn]
+      (v/assert kb (list 'inverse sub3 marker3) 'CxUniverse {:strength :monotonic})
+      (is (= :accepted
+             (refusal kb (list 'implies (list marker3 '?x '?y '?z)
+                               (list 'implies (list trigger '?w)
+                                     (list sub3 '?x '?y (list QualifyFn '?z))))))))))
+
 (tu/deftest-kb a-separation-cut-reads-the-swapped-arguments
   (testing "the cut applies at the position the application arrives in, not where it is written"
     (doseq [[written expected] [[:second :not-stratified] [:first :accepted]]]

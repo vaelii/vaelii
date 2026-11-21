@@ -20,9 +20,9 @@ it — `git show v0.16.0:CHANGELOG.md`.
   feeds itself.** The generator-cycle check matched a conclusion only to reads of its own
   predicate. A conclusion `(sub (F a))` under `(genl sub marker)` also arrives as a
   `(marker (F a))` read, so a generator reading `(marker ?y)` and concluding
-  `(sub (F ?y))` generated forever. Under `genlInverse` or `inverse` the conclusion
-  arrives with its first two arguments exchanged, and the check reads it so. A read of
-  each predicate the conclusion arrives as is now fed.
+  `(sub (F ?y))` generated forever. Under `genlInverse` or `inverse` a binary conclusion
+  arrives as a binary read with its arguments exchanged, and the check reads it so. A
+  read of each predicate the conclusion arrives as is now fed.
   [generators.md](docs/generators.md#what-is-refused)
   *Migration:* break the cycle, or state the read on the conclusion's own predicate where
   the generator meant to read only its own kind.
