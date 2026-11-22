@@ -5656,27 +5656,63 @@
   [kb term context]
   (annotations-on kb '[comment] term context))
 
-(def ^:private declaration-tails
-  "The argument tail each argument-constraint kind takes after the predicate it is about.
-  A table rather than a chain, because the kinds differ in *arity* as well as in functor —
-  `interArg` names two positions and two types (docs/argtypes.md)."
-  '{arg       (?n ?type)
-    genlArg   (?n ?type)
-    quotedArg (?n ?type)
-    interArg  (?n ?type ?m ?utype)
-    interArgEqual (?n ?value ?m ?utype)
-    argArg    (?n ?m)})
+(defn- block-context
+  "The context a block collection's members are read in: `context` where it names one, and
+  the vocabulary's own context for an unscoped read.  Every context sees CxUniverse, where
+  the upper ontology classifies its block predicates."
+  [context]
+  (if (scoped-read? context) context vocab/vocabulary-context))
+
+(defn- block-members
+  "The predicates `marker` holds read from `context` (`vocab/members`): the KB's own
+  classification of which predicates write a part of a definitional block."
+  [kb marker context]
+  (vocab/members kb marker (block-context context)))
+
+(defn- sentences-about
+  "The believed `(P term …)` fact sentexes visible from `context` whose predicate `P` is in
+  `preds`, each as `{:kind :sentence :context}`, content-ordered.  Read off the term's own
+  argument-1 root, so the cost is the number of sentences that name `term` first, whatever
+  their arity, and a per-position declaration such as `(functionalInArg P 2)` comes whole."
+  [kb term context preds]
+  (->> (sentexes-with-arg kb 1 term {:believed? true})
+       (filter #(visible-here? kb % context))
+       (keep (fn [sx]
+               (let [s (:sentence sx) f (nm/functor s)]
+                 (when (contains? preds f)
+                   {:kind (keyword f) :sentence s :context (:context sx)}))))
+       distinct
+       (nm/sort-by-content-key (juxt :sentence :context))
+       vec))
 
 (defn- declarations-on
-  "One predicate's argument declarations visible from `context`, each as
-  `{:kind :sentence :context}`, content-ordered.  Read from the asking context's ancestor set
-  rather than from the whole KB: which types bind a predicate's arguments is a policy of
-  the context that declares them, so two theories over one vocabulary may differ and both
-  be right (docs/argtypes.md)."
+  "One predicate's well-formedness declarations visible from `context`, each as
+  `{:kind :sentence :context}`, content-ordered: every `(P pred …)` sentence whose `P` is a
+  `wff_predicate`, an argument constraint or a statement of what a value satisfies.  Read
+  from the asking context's ancestor set rather than from the whole KB: which types bind a
+  predicate's arguments is a policy of the context that declares them, so two theories over
+  one vocabulary may differ and both be right (docs/argtypes.md)."
   [kb pred context]
-  (->> (for [[kind tail] declaration-tails
-             sx          (visible-matches kb (list* kind pred tail) context)]
-         {:kind (keyword kind) :sentence (:sentence sx) :context (:context sx)})
+  (sentences-about kb pred context (block-members kb 'wff_predicate context)))
+
+(def ^:private link-predicates
+  "The block's links part.  A `seeAlso` sentence is part of its first argument's block, and
+  a `termsRelated` cluster is part of the block of each term it names."
+  '#{seeAlso termsRelated})
+
+(defn- links-on
+  "The term's `seeAlso` and `termsRelated` sentences visible from `context`, among the
+  link predicates the KB classifies `definitional_predicate`, as `{:kind :sentence
+  :context}` rows in content order.  Read off the sentexes naming both the link predicate
+  and the term, so a cluster that names the term in any position is found."
+  [kb term context definitional]
+  (->> (for [p     (filter definitional link-predicates)
+             sx    (believed-filter kb {:believed? true} (find-sentexes-all kb [p term]))
+             :let  [s (:sentence sx)]
+             :when (and (sequential? s) (= p (nm/functor s))
+                        (if (= 'seeAlso p) (= term (second s)) (some #{term} (rest s)))
+                        (visible-here? kb sx context))]
+         {:kind (keyword p) :sentence s :context (:context sx)})
        distinct
        (nm/sort-by-content-key (juxt :sentence :context))
        vec))
@@ -5822,28 +5858,126 @@
     (cond-> {:term s :separation sep}
       (= :overlaps sep) (assoc :witness w :via v))))
 
-(def ^:private arity-classes
-  "The memberships `:arity-class` lists: the exact-arity classes and the variable-arity
-  ones."
-  (into sx/variable-arity-classes (keys sx/exact-arity-classes)))
+(defn- arity-class?
+  "Does knowing a relation's arity imply its membership in `k`, read from the KB at
+  `context`?  It does where `k` is an `arity_type`, where a `predicateTypeByArity` or
+  `functionTypeByArity` fact maps `k` to a length, and where an `intersection` fact makes
+  `k` an `arity_type` intersected with `predicate`, `function` or `relation`.  A `genl` edge
+  alone does not.  The block's kind line lists no such `k`, since its arity line says the
+  same (`definitional-block`)."
+  [kb k context]
+  (or (isa? kb k 'arity_type context)
+      (some (fn [{s :sentence}]
+              (case (nm/functor s)
+                (predicateTypeByArity functionTypeByArity) true
+                intersection (let [[_ _ a r & more] s]
+                               (and (nil? more) ('#{predicate function relation} r)
+                                    (isa? kb a 'arity_type context)))
+                false))
+            (sentences-about kb k context
+                             '#{predicateTypeByArity functionTypeByArity intersection}))))
+
+(defn- display-order
+  "Each predicate's position in the believed `predicateDisplayOrder` facts visible from
+  `context`, as `{predicate index}`: the facts are read in content order and a predicate
+  takes the first position it is named at."
+  [kb context]
+  (->> (sentexes-with-functor kb 'predicateDisplayOrder {:believed? true})
+       (filter #(and (visible-here? kb % context)
+                     (sequential? (:sentence %))
+                     (= 'predicateDisplayOrder (first (:sentence %)))))
+       (map :sentence)
+       (nm/sort-by-content-key identity)
+       (mapcat rest)
+       (reduce (fn [m p] (if (contains? m p) m (assoc m p (count m)))) {})))
+
+(defn- minimal-terms
+  "The members of `ts` the block shows, in print order.  Those are the members no other
+  member is strictly below through the `genl` edges visible from `context`
+  (`tax/min-types`), one per set of members that subsume each other, so a nonempty `ts`
+  gives a nonempty answer.  A member that is not a node stays."
+  [kb ts context]
+  (let [tx (reasoning/taxonomy kb)
+        eq (fn [a b] (and (tax/genl? tx a b context) (tax/genl? tx b a context)))]
+    (reduce (fn [kept t] (if (some #(eq % t) kept) kept (conj kept t)))
+            []
+            (nm/by-print-key (tax/min-types tx ts context)))))
+
+(defn- minimal-unary
+  "The `{:sentence}` rows a block part shows of `rows`: a `(P term)` row is left out where
+  another such row's `P` is in `minimal-terms`' place of it, so `(reflexive P)` goes where
+  `(equivalence_relation P)` is shown, and every other row stays."
+  [kb term rows context]
+  (let [unary? (fn [{s :sentence}] (and (sequential? s) (= 2 (count s)) (= term (second s))))
+        kept   (set (minimal-terms kb (into #{} (comp (filter unary?) (map (comp first :sentence)))
+                                            rows)
+                                   context))]
+    (filterv #(or (not (unary? %)) (contains? kept (first (:sentence %)))) rows)))
+
+(def ^:private table-declarations
+  "The declarations the block's argument constraint table holds: those
+  `res/arg-constraints` reads, and the sugar whose forward rules store one of them (`args`,
+  the `argN` projections)."
+  (into (set (keys res/arg-constraint-kinds)) '#{args arg1 arg2 arg3 arg4 arg5}))
+
+(defn- arg-constraint-table
+  "Predicate `pred`'s argument constraint table (`arity` nil where none binds) as columns
+  `{:position n :quoted? q :rest? r :cell [{:kind K :type T} …]}`, read off
+  `res/arg-constraints`.  A cell holds the entries typing its position, `:quoted` ones in a
+  column of their own, pruned per kind to `minimal-terms`.  An `unbounded_arity_predicate`
+  has a column per `:at` position, then a `:rest?` column per tail start.  Any other has the
+  columns 1 to its arity or highest named position.  nil where every cell is empty."
+  [kb pred arity context]
+  (let [es        (res/arg-constraints kb pred context)
+        unbounded (isa? kb pred 'unbounded_arity_predicate context)
+        quoted?   #(= :quoted (:kind %))
+        covers?   (fn [n e] (and (<= (:from e) n) (or (nil? (:to e)) (<= n (:to e)))))
+        cell      (fn [sel]
+                    (vec (for [k [:instance :type :quoted]
+                               t (minimal-terms kb (into #{} (comp (filter #(= k (:kind %)))
+                                                                   (map :type))
+                                                         sel)
+                                                context)]
+                           {:kind k :type t})))
+        at-col    (fn [n] (let [hits (filter #(covers? n %) es)
+                                plain (cell (remove quoted? hits))
+                                quote (cell (filter quoted? hits))]
+                            (cond-> []
+                              (or (seq plain) (empty? quote))
+                              (conj {:position n :quoted? false :rest? false :cell plain})
+                              (seq quote)
+                              (conj {:position n :quoted? true :rest? false :cell quote}))))
+        tails     (filter #(nil? (:to %)) es)
+        cols      (if unbounded
+                    (concat
+                     (mapcat at-col (sort (distinct (keep #(when (:to %) (:from %)) es))))
+                     (for [q? [false true]
+                           k  (sort (distinct (map :from (filter #(= q? (quoted? %)) tails))))]
+                       {:position k :quoted? q? :rest? true
+                        :cell (cell (filter #(and (= q? (quoted? %)) (<= (:from %) k)) tails))}))
+                    (mapcat at-col (range 1 (inc (reduce max (or arity 0)
+                                                         (keep identity (mapcat (juxt :from :to) es)))))))]
+    (when (some (comp seq :cell) cols) (vec cols))))
 
 (defn- definitional-block
-  "The definitional block `handbook/06-definitional-block.md` names, for the term
-  `described` (a `describe` answer of role `:type` or `:predicate`), as `{:part :value}`
-  rows in the handbook's order.  A part the KB holds nothing for has the value `:missing`.
-  `:kind` is the types asserted of the term (`types-of`) less the arity classes, which
-  `:arity-class` lists.  `:siblings` is a row list of `sibling-separation` rows, one per
-  type sharing a direct parent.  The handbook's links part (`seeAlso`, `termsRelated`)
-  has no row."
+  "The definitional block of the term `described` (a `describe` answer of role `:type` or
+  `:predicate`), as `{:part :value}` rows, `:missing` where the KB holds nothing.  A
+  sentence is in the block when the KB classifies its predicate `definitional_predicate`
+  in `context` (`block-members`).  `:kind` is the term's minimal types no other part shows,
+  less arity classes; `:arity` is `relation-length`'s answer or `{:any? true}`.
+  `:arg-declarations`, `:props`, `:links` and `:other` are `{:kind :sentence :context}`
+  rows.  Parts and rows follow `predicateDisplayOrder` (`display-order`), unnamed ones
+  last in the role's order below.  docs/web.md describes each part."
   [kb {:keys [term role context] :as described} limit]
   (let [tx      (reasoning/taxonomy kb)
         part    (fn [k v] {:part k :value (if (or (nil? v) (and (coll? v) (empty? v))
                                                   (and (map? v) (zero? (:total v))))
                                             :missing v)})
+        minimal (minimal-terms kb (tax/direct-genls tx term context) context)
         sibs    (fn []
                   (let [bt (bounded-terms
                             (disj (into #{} (mapcat #(tax/direct-specs tx % context))
-                                        (tax/direct-genls tx term context))
+                                        minimal)
                                   term)
                             limit)
                         rd (instance-reads kb context)]
@@ -5851,25 +5985,70 @@
                      :value (-> (dissoc bt :terms)
                                 (assoc :rows (mapv #(sibling-separation kb term % context rd)
                                                    (:terms bt))))}))
-        asserted (set (types-of kb term context))
-        kind    (part :kind (bounded-terms (remove arity-classes asserted) limit))
-        aclass  (part :arity-class (bounded-terms (filter arity-classes asserted) limit))
-        parents (part :parents (:genls-direct described))]
-    (case role
-      :type      [(part :comment (:comment described))
-                  (part :positive-examples
-                        (annotations-on kb '[positiveExampleComment positiveExample]
-                                        term context))
-                  (part :negative-examples
-                        (annotations-on kb '[negativeExampleComment negativeExample]
-                                        term context))
-                  parents (sibs) kind aclass]
-      :predicate [(part :comment (:comment described))
-                  kind aclass
-                  (part :arity (:arity described))
-                  (part :arg-declarations (:arg-declarations described))
-                  parents
-                  (part :props (:props described))])))
+        order        (display-order kb context)
+        unplaced     Long/MAX_VALUE
+        by-order     (fn [rows] (if (sequential? rows)
+                                  (vec (sort-by #(get order (nm/functor (:sentence %)) unplaced) rows))
+                                  rows))
+        definitional (block-members kb 'definitional_predicate context)
+        ontology     (block-members kb 'ontology_predicate context)
+        wff          (block-members kb 'wff_predicate context)
+        algebraic    (block-members kb 'algebraic_predicate_property context)
+        shows        {:comment           '#{comment}
+                      :positive-examples '#{positiveExampleComment positiveExample}
+                      :negative-examples '#{negativeExampleComment negativeExample}
+                      :parents           '#{genl}
+                      :siblings          (disj ontology 'genl)
+                      :arity             '#{arity}
+                      :arg-constraints   (into #{} (filter table-declarations) wff)
+                      :arg-declarations  (into #{} (remove table-declarations) wff)
+                      :props             algebraic
+                      :links             link-predicates}
+        elsewhere    (reduce into #{} (vals shows))
+        shows        (assoc shows :kind (reduce disj definitional elsewhere))
+        rank         (fn [{k :part v :value}]
+                       (reduce min unplaced
+                               (keep order (if (= :other k)
+                                             (map (comp nm/functor :sentence) v)
+                                             (shows k)))))
+        other    (into [] (remove #(= 2 (count (:sentence %))))
+                       (sentences-about kb term context (shows :kind)))
+        held     (into #{} (remove elsewhere) (types-of kb term context))
+        kind    (part :kind (bounded-terms (remove #(arity-class? kb % context)
+                                                   (minimal-terms kb held context))
+                                           limit))
+        arity   {:part  :arity
+                 :value (cond (:arity-length described) (:arity-length described)
+                              (isa? kb term 'unbounded_arity_predicate context) {:any? true}
+                              :else :missing)}
+        parents (part :parents (bounded-terms minimal limit))
+        table   (when (= :predicate role)
+                  (arg-constraint-table kb term (:arity described) context))
+        declared (into [] (remove #(table-declarations (nm/functor (:sentence %))))
+                       (:arg-declarations described))
+        links   (part :links (by-order (links-on kb term context definitional)))
+        parts   (case role
+                  :type      [(part :comment (:comment described))
+                              (part :positive-examples
+                                    (annotations-on kb '[positiveExampleComment positiveExample]
+                                                    term context))
+                              (part :negative-examples
+                                    (annotations-on kb '[negativeExampleComment negativeExample]
+                                                    term context))
+                              parents (sibs) kind links]
+                  :predicate [(part :comment (:comment described))
+                              kind arity
+                              (when table {:part :arg-constraints :value table})
+                              (when-not (and table (empty? declared))
+                                (part :arg-declarations (by-order declared)))
+                              parents
+                              (part :props (by-order (minimal-unary kb term
+                                                                    (sentences-about kb term context
+                                                                                     algebraic)
+                                                                    context)))
+                              links])
+        parts   (cond-> (filterv some? parts) (seq other) (conj (part :other (by-order other))))]
+    (vec (sort-by rank parts))))
 
 (defn describe
   "Everything the KB holds about one term, as one map, keyed by the term's own role
@@ -5879,7 +6058,7 @@
 
   | `:role` | also carries |
   |---|---|
-  | `:predicate` | `:arity` (the exact length that binds it, nil where none binds or two do), `:arity-via`, `:arg-declarations`, `:props`, `:inverse`, `:extent-count`, and the grants `:closed-extent?` `:abducible?` `:modal?` `:decontextualized?` |
+  | `:predicate` | `:arity` (the exact length that binds it, nil where none binds or two do), `:arity-via`, `:arity-length` (`relation-length`'s whole answer, an exact or a least length), `:arg-declarations`, `:props`, `:inverse`, `:extent-count`, and the grants `:closed-extent?` `:abducible?` `:modal?` `:decontextualized?` |
   | `:type` | `:predicates-for-type` (whose argument declarations admit it) and `:instance-count` |
   | `:individual` | `:types` (asserted, not supertypes) and `:predicates` with a count each |
   | `:context` | `:up` / `:down` (the `genlCx` ancestor sets), `:sentex-count`, `:computed-spec-of` for a reified NAT |
@@ -5936,6 +6115,7 @@
           (assoc base
                  :arity             (:exact len)
                  :arity-via         (when (:exact len) (:via len))
+                 :arity-length      len
                  :arg-declarations  (declarations-on kb term context)
                  :props             (into (sorted-set)
                                           (filter #(has-prop? kb % term context))

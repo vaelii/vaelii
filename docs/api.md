@@ -609,7 +609,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; line can name most of them where the declared
                                                ; reading names a handful
                                                ; :predicate adds :arity (inherited through genl
-                                               ;   included) :arity-via :arg-declarations :props
+                                               ;   included) :arity-via :arity-length (the
+                                               ;   exact or least length) :arg-declarations :props
                                                ;   :inverse :extent-count and the four grants
                                                ;   :closed-extent? :abducible? :modal?
                                                ;   :decontextualized?
@@ -619,9 +620,12 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ;   :computed-spec-of for a reified one
                                                ; :type and :predicate add :definitional-block:
                                                ;   handbook ch. 06's parts as {:part :value}
-                                               ;   rows in its order, :missing where the KB
-                                               ;   holds none, :kind apart from :arity-class,
-                                               ;   no row for seeAlso/termsRelated; a type's
+                                               ;   rows in predicateDisplayOrder's order,
+                                               ;   :missing where the KB holds none; a sentence
+                                               ;   is in it when its predicate is a
+                                               ;   definitional_predicate; :kind apart from
+                                               ;   :arity-class; :links for seeAlso and
+                                               ;   termsRelated; a type's
                                                ;   :siblings rows each name the :separation
                                                ;   that decides them (:overlaps with a
                                                ;   :witness and :via where one is shown)

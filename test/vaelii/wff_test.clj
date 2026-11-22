@@ -60,6 +60,13 @@
       (is (v/assert kb (list 'genlCx a-ctx 'CxUniverse) 'CxUniverse))
       (is (ill-formed? (list 'genlCx animal 'CxUniverse) 'CxUniverse)))))  ; not a context
 
+(tu/deftest-kb ^:red an-arity-on-an-unbounded-arity-predicate-is-not-well-formed
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unbounded_arity_predicate relP) 'CxUniverse)
+    (is (ill-formed? (list 'arity relP 2) 'CxUniverse)
+        "arity's argument is a fixed_arity relation, and core.txt partitions relation into
+        fixed_arity and variable_arity")))
+
 (tu/deftest-kb an-argument-constraint-may-be-about-a-function
   ;; A function has argument positions exactly as a predicate does — `(arg Milli 1
   ;; unit_of_measure)` says what the argument of a NAT `(Milli Meter)` must be, the same
