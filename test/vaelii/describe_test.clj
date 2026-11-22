@@ -454,6 +454,24 @@
              (mapv :sentence (:value (first (filter #(= :props (:part %)) parts)))))
           "and inside a part, an unlisted row follows the listed ones"))))
 
+(defn- display-order-strays
+  "The predicates a stored `predicateDisplayOrder` fact names, believed or not, that the
+  KB does not classify `definitional_predicate` in CxUniverse, in name order.  A fact is
+  read whether or not it is believed: a fact its argument declaration holds inert orders
+  nothing and is stored all the same."
+  [kb]
+  (->> (v/sentexes-with-functor kb 'predicateDisplayOrder)
+       (mapcat (comp rest :sentence))
+       (remove #(v/ask? kb (list 'definitional_predicate %) 'CxUniverse))
+       distinct
+       (sort-by str)
+       vec))
+
+(tu/deftest-kb every-predicate-a-display-order-names-is-definitional
+  (is (seq (v/sentexes-with-functor kb 'predicateDisplayOrder)) "core.txt states an order")
+  (is (= [] (display-order-strays kb))
+      "the order ranks the definitional block's sentences, so it names only their predicates"))
+
 (tu/deftest-kb a-terms-kind-is-every-unary-predicate-it-holds
   (tu/with-terms [kindT]
     (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing) (list 'type kindT)
