@@ -84,23 +84,24 @@
         (is (not (tu/holds-ask (list 'sees Viewer Image) ctx)) (str "Viewer sees in " ctx))
         (is (not (tu/holds-ask (list 'perceives Seer Scene) ctx)) (str "Seer perceives in " ctx))))))
 
-(tu/deftest-kb image-viewing-is-an-acausal-event-kind-the-theory-states
+(tu/deftest-kb image-viewing-is-an-event-kind-the-theory-states
   (testing "the edge is the theory's, not the upper ontology's"
-    (is (tu/holds-genl 'image_viewing 'acausal_event PCP))
     (is (tu/holds-genl 'image_viewing 'event PCP))
-    (is (tu/holds-genl 'image_viewing 'acausal PCP))
-    (is (not (tu/holds-genl 'image_viewing 'acausal_event 'CxUniverse)))))
+    (is (not (tu/holds-genl 'image_viewing 'event 'CxUniverse))))
+  (testing "taking in an image is not placed acausal"
+    (is (not (tu/holds-genl 'image_viewing 'acausal_event PCP)))
+    (is (not (tu/holds-genl 'image_viewing 'acausal PCP)))))
 
 (tu/deftest-kb a-user-context-under-cxtra-derives-able-of-image-viewing
   (tu/with-terms [CxRoom Viewer]
     (v/assert kb (list 'genlCx CxRoom 'CxWell) 'CxUniverse)
     (v/assert kb (list 'genlCx CxRoom PCP) 'CxUniverse)
     (v/assert kb (list 'able Viewer 'image_viewing) CxRoom)
-    (testing "a context under the theory reads the ability and its causal class"
+    (testing "a context under the theory reads the ability and its event class"
       (is (tu/holds-ask (list 'able Viewer 'image_viewing) CxRoom))
       (is (tu/holds-ask (list 'able Viewer 'event) CxRoom))
-      (is (tu/holds-ask (list 'able Viewer 'acausal_event) CxRoom)))
+      (is (not (tu/holds-ask (list 'able Viewer 'acausal_event) CxRoom))))
     (testing "a context that does not see the theory concludes no such ability class"
       (doseq [ctx ['CxWell 'CxUniverse]]
-        (is (not (tu/holds-ask (list 'able Viewer 'acausal_event) ctx))
-            (str "Viewer able acausal_event in " ctx))))))
+        (is (not (tu/holds-ask (list 'able Viewer 'event) ctx))
+            (str "Viewer able event in " ctx))))))

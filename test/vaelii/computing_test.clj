@@ -225,15 +225,18 @@
       (is (not (tu/holds-ask (list 'able Rover 'image_viewing) CxDesk))))))
 
 (tu/deftest-kb a-computational-system-is-causal-so-a-tool-confers-what-it-enables-on-a-seat
-  (tu/with-terms [CxDesk Viewer Pod]
+  (tu/with-terms [CxDesk CxOdd Viewer Pod Slip Note]
     (v/assert kb (list 'genlCx CxDesk 'CxWell) 'CxUniverse)
     (v/assert kb (list 'genlCx CxDesk CPT) 'CxUniverse)
     (v/assert kb (list 'read_only_software_tool Viewer) CxDesk)
     (v/assert kb (list 'toolEnablesAbility Viewer 'image_viewing) CxDesk)
     (v/assert kb (list 'seat Pod) CxDesk)
     (v/assert kb (list 'agentHasTool Pod Viewer) CxDesk)
-    (testing "a computational system is causal"
-      (is (tu/holds-genl 'computational_system 'causal CPT)))
+    (testing "a computational system is causal, and so temporal without a stated edge"
+      (is (tu/holds-genl 'computational_system 'causal CPT))
+      (is (tu/holds-genl 'computational_system 'temporal CPT))
+      (is (not-any? #(v/premise? kb (:id %))
+                    (v/sentexes-matching kb '(genl computational_system temporal) CPT))))
     (testing "a read-only software tool is causal, since reading changes the reader's knowledge"
       (is (tu/holds-genl 'read_only_software_tool 'causal CPT))
       (is (not (tu/holds-genl 'read_only_software_tool 'acausal CPT)))
@@ -244,4 +247,21 @@
       (is (tu/holds-ask (list 'able Pod 'image_viewing) CxDesk)))
     (testing "no clash is reported"
       (is (empty? (filter #(some #{Viewer Pod} (flatten (map :sentence (:sides %))))
-                          (concat (v/contradictions kb) (v/conflicts kb))))))))
+                          (concat (v/contradictions kb) (v/conflicts kb))))))
+    (testing "the tool position of both relations takes a causal thing"
+      (is (tu/holds-ask '(arg agentHasTool 2 causal) CPT))
+      (is (tu/holds-ask '(arg toolEnablesAbility 1 causal) CPT)))
+    (testing "an acausal thing in a tool position is convicted under the constraint-only reading"
+      (v/assert kb (list 'genlCx CxOdd 'CxWell) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxOdd CPT) 'CxUniverse)
+      (v/assert kb (list 'tool_receipt Slip) CxOdd)
+      (v/assert kb (list 'seat Pod) CxOdd)
+      (is (= [:arg-type] (problem-types (list 'agentHasTool Pod Slip) CxOdd))
+          "a tool receipt is an acausal event")
+      (is (= [:arg-type] (problem-types (list 'toolEnablesAbility Slip 'image_viewing) CxOdd))))
+    (testing "and under the default reading, the declaration concludes an acausal tool causal, which clashes"
+      (v/assert kb (list 'tool_receipt Note) CxOdd)
+      (v/assert kb (list 'agentHasTool Pod Note) CxOdd)
+      (is (tu/holds-ask (list 'causal Note) CxOdd))
+      (is (seq (filter #(some #{Note} (flatten (map :sentence (:sides %))))
+                       (concat (v/contradictions kb) (v/conflicts kb))))))))
