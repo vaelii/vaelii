@@ -62,6 +62,39 @@ it — `git show v0.16.0:CHANGELOG.md`.
   `surjective_predicate` and `bijection` to `bijective_predicate` in KB text, rules and
   queries.
   *Breaks:* `injection`, `surjection`, `bijection`
+- **A `computational_system` is `causal`, read-only software tools included.** CxTra
+  states `(genl computational_system causal)` and drops
+  `(genl read_only_software_tool acausal)`. It also drops
+  `(genl write_capable_software_tool causal)`, which the new edge derives. A running computational system is the doer of
+  what runs in it and of what its tools do. A read-only tool's invocation changes what
+  its caller knows, so a read-only tool can be a cause. `read_only_software_tool`'s
+  comment now says that its invocation changes none of the state it reads. CxTra's
+  default reading `able` from `agentHasTool` and `toolEnablesAbility` concludes `able`
+  only of a causal holder, so a `seat` or any other computational system that has a tool
+  enabling a kind is now `able` of that kind. Through `(partition thing causal acausal)`,
+  every computational system is now disjoint from every acausal kind, `information`,
+  `time` and `communication_channel` among them. `read_only_software_tool` and
+  `write_capable_software_tool` are no longer disjoint. Nor are a read-only tool and
+  `person`, `organization`, `alter`, `singlet`, `plural_system` or `hollow`.
+  [contexts.md](docs/contexts.md)
+  *Migration:* a KB that states a computational system, a read-only tool among them,
+  `acausal` or a member of an acausal kind now clashes. Retract that statement.
+  *Breaks:* `read_only_software_tool`
+- **A tool in `agentHasTool` and `toolEnablesAbility` is `causal`, and `image_viewing` is
+  not `acausal`.** Position 2 of `agentHasTool` and position 1 of `toolEnablesAbility`
+  declare `causal`, not `temporal`. A software tool is causal through
+  `computational_system`, and a hammer or a jetpack is causal through `tangible`. CxTra
+  drops `(genl computational_system temporal)`, which `(genl causal temporal)` derives.
+  CxTra states `(genl image_viewing event)` for `(genl image_viewing acausal_event)`.
+  Taking in an image can change what the viewer knows, so `image_viewing` is not placed
+  acausal. `image_viewing` is no longer disjoint from `causal`, `causal_event`, `flying`,
+  `travelling`, `organization` or `hollow`.
+  [contexts.md](docs/contexts.md)
+  *Migration:* an acausal thing stated in either tool position is now concluded
+  `causal`, and the conclusion clashes. A `tool_receipt` or a `communication_channel`
+  stated as a tool is one such case. Retract that statement. A query for
+  `(able ?x acausal_event)` no longer reads `image_viewing`; ask `(able ?x event)`.
+  *Breaks:* `agentHasTool`, `toolEnablesAbility`, `image_viewing`
 
 ### Breaking: inference
 
