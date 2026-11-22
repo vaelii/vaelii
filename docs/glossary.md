@@ -1489,7 +1489,8 @@ it and leaves with the last. See [indexing.md](indexing.md).
 **`termsRelated`** ![kb](../.github/badges/cat-kb.svg): A curation grouping —
 `(termsRelated t1 t2 …)`, variable-arity, saying the named terms form one cluster so a
 reader meeting one is pointed at the rest. Documentation vocabulary beside `comment` and
-`seeAlso`, and inert: nothing in the engine reads it. See [predicates.md](predicates.md).
+`seeAlso`, read by `describe`'s definitional block and by no inference path. See
+[predicates.md](predicates.md).
 
 **`thereExists`** ![inference](../.github/badges/cat-inference.svg): The
 existential closer — `(thereExists ?x S)` projects `?x` out, so

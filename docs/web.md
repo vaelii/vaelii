@@ -1879,23 +1879,86 @@ than the extent.
 ### A term page lists its definitional block
 
 A type's or a predicate's page opens its prose column with the term's **definitional
-block**: one line per part `handbook/06-definitional-block.md` names, in the handbook's
-order, read off `describe`'s `:definitional-block`. A type lists its comment, positive and
-negative examples, parents, siblings, kind and arity class; a predicate lists its comment,
-kind, arity class, arity, argument declarations, parents and relation properties. The
-kind is the types asserted of the term less its arity class (`unary_predicate`,
-`binary_predicate`, …), which has a line of its own, since the starter loader asserts
-`unary_predicate` of every type. The handbook's links part (`seeAlso`, `termsRelated`)
-has no line. A part the KB holds nothing for is tagged **missing**, beside an **add** link
+block**, under the heading **Definition**: one line per part `handbook/06-definitional-block.md`
+names, read off `describe`'s `:definitional-block`. A sentence about the term is in the
+block when the KB classifies its predicate `definitional_predicate`. The block is a
+summary: each sentence it draws is also listed in its index group below it, and the
+index groups list each sentence naming the term exactly once. A type lists
+its comment, positive and negative examples, kind, parents, siblings and see also. A
+predicate lists its comment, arity, kind, parents, argument declarations, relation
+properties and see also. The lines follow `predicateDisplayOrder`, which core.txt states as the comment, the
+examples, the arity, the kind and then the rest. A line takes the first position any
+predicate it shows is named at, and a line none of whose predicates is named follows the
+named ones. A definitional sentence about the term that no other line shows, such as one of
+a predicate the KB declares `definitional_predicate` and names in no `predicateDisplayOrder`
+fact, is on an **other** line, as its handle badge.
+
+A predicate's arity line is the length `relation-length` binds on its tuples, read
+through `genl` from a super-predicate as well. It shows the exact length, `≥m` for a least
+length `m` (an `arityMin`), and `any` for a least length of at most one.
+An `unbounded_arity_predicate` no length binds shows `any`, never missing, since an
+`arity` sentence about it would be ill-formed.
+
+The kind line lists every unary predicate holding of the term (`types-of`), stored or
+concluded, definitional or not: `made` lists `origin_type`, and a type marked
+`not_assertible` or `closed_extent_predicate` lists the mark. A membership another line
+shows, such as `(irreflexive P)` under the relation properties, is not also a kind. A
+kind another listed kind is strictly below is left out, as a parent is (below): a
+predicate declared `eternal_predicate` and `time_invariant_relation` lists
+`eternal_predicate`. Then a kind that knowing the arity implies is left out, since the
+arity line says the same, and the block has no arity class line. Such a kind is an
+`arity_type` such as `at_least_binary`, a class `predicateTypeByArity` or
+`functionTypeByArity` maps to a length such as `binary_predicate`, or the `intersection` of
+an `arity_type` with `predicate`, `function` or `relation` such as
+`unbounded_arity_predicate`. A kind below one of them by `genl` alone stays:
+`invertebrate_class` is below `unary_predicate`, and `arachnid` lists it.
+
+A line of several values lists them on one line, comma-separated: the examples lines
+list each example, a string quoted or a quoted form drawn, as the kind and parents lines
+list their terms.
+
+A sentence line draws each `(P term)` sentence as its predicate `P`, linked, as the kind line
+does, and any other sentence as its handle badge. So a predicate's relation properties,
+its `algebraic_predicate_property` sentences, show `irreflexive` as a term, and a
+per-position one such as `(functionalInArg P 2)` as its sentence. A `(Q P)` property
+another shown `(R P)` is strictly below by `genl` is left out: `(equivalence_relation P)`
+stands for the `reflexive`, `symmetric` and `transitive` sentences its rules derive. The argument declarations
+are the predicate's `wff_predicate` sentences. The argument constraint chokepoint
+`res/arg-constraints` reads some of them, and `args` and `argN` are sugar stored as one of
+those. These are one **arg constraints** line holding a table. Its header row names each
+column, `arg1`, `arg2`, …, over one row of cells. Each cell lists the types that constrain
+that position, including a super-predicate's. A `(genlArg P n T)`, `argsGenl` or `argAndRestGenl` type
+is marked `⊆ T`, since the argument must specialize it. A `quotedArg` position has a
+column of its own headed `quoted argN`. A covering `(args P T)` or `(argAndRest P k T)`
+puts `T` in every cell it covers. A cell drops a type another of its types of the same
+kind is strictly below, with one representative for types that subsume each other, as the
+parents line does. A predicate has a column for each position up to its arity or the
+highest position a constraint names, and an unconstrained position is an empty cell. An
+`unbounded_arity_predicate` has a column for each position a constraint names. Then one
+`argK…` column holds the tail from `K`. A predicate no constraint types draws no table.
+Every other argument declaration, such as `interArgEqual`, shows as its sentence on the
+**arg declarations** line. The **see also** line lists the terms the
+term's `seeAlso` sentences and every `termsRelated` cluster naming it relate it to, once
+each and in printed order.
+
+The parents line lists the term's minimal direct parents: a direct parent another direct
+parent is strictly below is left out, since the block is a summary and the lower parent
+already says it. `causal` stores `(genl causal temporal)` and, through `(partition thing
+causal acausal)`, an edge to `thing`, and its parents line shows `temporal` alone. Only
+strict subsumption prunes: of two parents each below the other, as a reader below two
+contexts with opposite `genl` edges sees them, the first in printed order stands for both.
+
+A part the KB holds nothing for is tagged **missing**, beside an **add** link
 that opens the assert form on a sentence supplying it (`(comment dog "")`, `(genl dog )`),
-deliberately incomplete as the assert form's term seed is; a predicate's arity class seed
-names the class of its arity. Each sibling carries what decides it against the term, as
+deliberately incomplete as the assert form's term seed is. Each sibling carries what decides it against the term, as
 `subsumption-statuses` reads the pair: `genl`, `spec`, `disjoint`, `orthogonal` for a
 declared overlap, or `overlaps` with the shared instance or shared subtype that shows one,
 which is what the `:open-sibling-pair` pass of `kb-integrity` reads as decided. A sibling
 nothing decides is tagged missing, with one link seeding `disjoint` and one seeding
-`orthogonal`. The siblings are the types sharing a direct parent with the term, capped at
-`describe`'s limit with the remainder counted.
+`orthogonal`. The siblings are the types sharing a parent the parents line shows, capped at
+`describe`'s limit with the remainder counted. The line shows the first 12 siblings in
+order and folds the rest behind a **+ N more** control, a `<details>` that opens them in
+place without a request.
 
 ### Hiding what the engine concluded
 
