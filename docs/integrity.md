@@ -229,12 +229,14 @@ The pass has these limits:
   is still audited unless its support proves it skeletal-only. Incomplete live defining
   support reports `{:status :gap :gap :incomplete-defining-contexts :classifier c
   :term t :handles #{…}}` rather than silently exempting the term. Eligibility is read
-  for every instance before its classification, so a classified instance with
-  incomplete support reports the gap too.
+  for every instance before its classification. A classified instance with incomplete
+  support reports no gap, since it is no violation whatever its eligibility.
 - **One open read per member, then bound asks.** In each reader the pass asks `(K ?x)`
   once for each member `K`, and an eligible instance one of those answers names is
   classified. Every other eligible instance asks `(K x)` of each member in turn. When
-  any member's open read is cut short, no instance is classified from the open reads.
+  any member's open read throws something other than a budget or deadline signal, no
+  instance is classified from the open reads. A budget or deadline signal stops the
+  pass, as it stops a bound ask.
 
 The instance question, each member's open read and each remaining bound membership
 question are metered as the specified pass's are; an instance an open read classifies

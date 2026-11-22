@@ -279,13 +279,12 @@ it — `git show v0.16.0:CHANGELOG.md`.
   reader was its defining home, so an exempt instance paid every failing ask. It now
   reads eligibility first, then one `(K ?x)` per member. An eligible instance those
   answers name is classified, and every other one asks `(K x)` of each member as before.
-  When a member's open read is cut short, the pass asks every instance bound. On the
-  starter, the default `kb-integrity` sweep from CxNormalPhysicalConditions takes 6.2 s
-  against 28.0 s, and its pass 0.84 s against 22.7 s. From CxTra the sweep takes 5.9 s
-  against 28.2 s, and its pass 0.84 s against 23.2 s. Each is a median of five runs.
-  A classified instance with incomplete defining support now reports the
-  `:incomplete-defining-contexts` gap an unclassified one reports; no starter relation
-  has one. [integrity.md](docs/integrity.md#what-a-type-specified-finding-means)
+  When a member's open read throws something other than a budget or deadline signal, the
+  pass asks every instance bound. Its findings are unchanged. On the starter, the default
+  `kb-integrity` sweep from CxNormalPhysicalConditions takes 6.2 s against 28.0 s, and its
+  pass 0.84 s against 22.7 s. From CxTra the sweep takes 5.9 s against 28.2 s, and its
+  pass 0.84 s against 23.2 s. Each is a median of five runs.
+  [integrity.md](docs/integrity.md#what-a-type-specified-finding-means)
   *Migration:* none.
 
 ### Internal: tooling

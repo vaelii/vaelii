@@ -524,8 +524,9 @@
 
 (defn- member-coverage
   "The instances the open asks `(K ?x)` of `members` return in `ctx`, or `#{}` when any
-  member's read is cut short (`filler-table`), so a partial set never stands in for the
-  bound asks."
+  member's read throws something other than a budget or deadline signal (`filler-table`
+  answers nil), so every instance then takes the bound asks.  A budget or deadline signal
+  propagates."
   [kb members ctx]
   (let [tables (mapv #(filler-table kb (list % '?x) ctx) members)]
     (if (every? some? tables)
@@ -534,10 +535,10 @@
 
 (defn type-specified-violations
   "Audit `(typeAllSpecified classifier indep)` in `ctx` using believed memberships.
-  Return `{:status :audited :violations #{…}}`, or `:gap` for an empty classifier or
-  incomplete defining support. Ordinary defining-home eligibility exempts only proved
-  skeletal-only instances; no-home instances remain audited in the actual reader.
-  The five-argument arm accepts a stored declaration's reader eligibility.
+  Return `{:status :audited :violations #{…}}`, or `:gap` for an empty classifier or an
+  unclassified instance's incomplete defining support. Ordinary defining-home eligibility
+  exempts only proved skeletal-only instances; no-home instances remain audited in the
+  actual reader. The five-argument arm accepts a stored declaration's reader eligibility.
   Membership derived by genl or argument preservation counts. See docs/integrity.md.
   Eligibility is read first; an eligible instance no member's open `(K ?x)` returns
   (`member-coverage`) asks `(K x)` of each member in order."
@@ -550,7 +551,15 @@
          tables? *member-tables?*
          covered (delay (if tables? (member-coverage kb members ctx) #{}))
          classified? (fn [x] (or (contains? @covered x)
-                                 (some #(ask? kb (list % x) ctx) members)))]
+                                 (some #(ask? kb (list % x) ctx) members)))
+         audited? (fn [x]
+                    (try
+                      (eligible? x)
+                      (catch clojure.lang.ExceptionInfo e
+                        (if (and (= :incomplete-defining-contexts (:type (ex-data e)))
+                                 (classified? x))
+                          false
+                          (throw e)))))]
      (if (empty? members)
        {:status :gap :gap :empty-classifier :classifier classifier}
        (try
@@ -560,7 +569,7 @@
                 (comp (map #(get % '?x))
                       (filter some?)
                       (if *eligible-first?*
-                        (comp (filter eligible?) (remove classified?))
+                        (comp (filter audited?) (remove classified?))
                         (comp (remove classified?) (filter eligible?))))
                 (quasiquote/ask-prepared kb (list indep '?x) ctx))}
          (catch clojure.lang.ExceptionInfo e

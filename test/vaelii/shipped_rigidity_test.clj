@@ -650,27 +650,49 @@
   ;; instance its members' open asks return with no bound ask.  Every audit the integrity
   ;; sweep runs from both readers finds the same in all four readings, status and gap
   ;; included.  Each is read under the sweep's eligibility and with every instance
-  ;; eligible.  The starter's findings are empty, and the second leaves a hundred or more
-  ;; relations unclassified in most readers.
+  ;; eligible.  The starter's findings are empty, and the second leaves relations
+  ;; unclassified.
   (call-cap/scope
    predall/sweep
    #(let [audits (audited-type-specified kb)
           run    (fn [tables? first? classifier indep reader e]
                    (with-bindings {#'predall/*member-tables?* tables?
                                    #'predall/*eligible-first?* first?}
-                     (predall/type-specified-violations kb classifier indep reader e)))]
+                     (predall/type-specified-violations kb classifier indep reader e)))
+          found  (volatile! false)]
       (is (seq audits) "the sweep audits a typeAllSpecified declaration")
       (doseq [[classifier indep reader eligible?] audits
               [label e] [["the sweep's eligibility" eligible?] ["every instance" (constantly true)]]
-              :let [reference (run false false classifier indep reader e)]
+              :let [reference (run false false classifier indep reader e)
+                    _ (when (seq (:violations reference)) (vreset! found true))]
               [tables? first?] [[true false] [false true] [true true]]]
         (is (= reference (run tables? first? classifier indep reader e))
             (str "(typeAllSpecified " classifier " " indep ") in " reader ", " label
-                 ", tables " tables? ", eligibility first " first?))))))
+                 ", tables " tables? ", eligibility first " first?)))
+      (is @found "a reading leaves an instance unclassified, so a classification is compared"))))
 
-(tu/deftest-kb a-member-read-cut-short-classifies-no-instance-from-the-open-reads
-  ;; A partial table never stands in for the bound asks: when one member's open read is
-  ;; cut short, `type-specified-violations` asks every instance bound.
+(tu/deftest-kb a-classified-instance-s-incomplete-support-is-no-gap
+  ;; Eligibility is read first, and a classified instance is no violation whatever its
+  ;; eligibility, so its incomplete defining support raises no gap; an unclassified
+  ;; instance's still does.  Each reading finds what the bound asks read after them find.
+  (let [incomplete (fn [x] (throw (ex-info "incomplete" {:type :incomplete-defining-contexts
+                                                         :term x :handles #{}})))
+        run        (fn [tables? first? e]
+                     (with-bindings {#'predall/*member-tables?* tables?
+                                     #'predall/*eligible-first?* first?}
+                       (predall/type-specified-violations kb 'rigidity_kind 'relation 'CxUniverse e)))
+        only-genl  (fn [x] (if (= 'genl x) (incomplete x) false))]
+    (is (= {:status :audited :violations #{}} (run true true only-genl))
+        "genl is classified, so its support raises no gap")
+    (is (= (run false false only-genl) (run true true only-genl) (run false true only-genl)))
+    (let [r (run true true incomplete)]
+      (is (= :incomplete-defining-contexts (:gap r)) "an unclassified instance's support is a gap")
+      (is (= (run false false incomplete) r)))))
+
+(tu/deftest-kb a-member-read-that-fails-classifies-no-instance-from-the-open-reads
+  ;; When one member's open read throws something other than a budget or deadline signal,
+  ;; no instance is classified from the open reads: `type-specified-violations` asks every
+  ;; instance bound.
   (let [coverage #'predall/member-coverage
         members  '[time_invariant_relation time_agnostic_relation time_varying_relation]
         table    @#'predall/filler-table]
