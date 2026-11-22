@@ -1905,9 +1905,13 @@ concluded, definitional or not: `made` lists `origin_type`, and a type marked
 shows, such as `(irreflexive P)` under the relation properties, is not also a kind. A
 kind another listed kind is strictly below is left out, as a parent is (below): a
 predicate declared `eternal_predicate` and `time_invariant_relation` lists
-`eternal_predicate`. Then the arity classes (`unary_predicate`, `binary_predicate`,
-`at_least_binary`, an `arity_type`, …) are left out, since the arity line says the same,
-and the block has no arity class line.
+`eternal_predicate`. Then a kind that knowing the arity implies is left out, since the
+arity line says the same, and the block has no arity class line. Such a kind is an
+`arity_type` such as `at_least_binary`, a class `predicateTypeByArity` or
+`functionTypeByArity` maps to a length such as `binary_predicate`, or the `intersection` of
+an `arity_type` with `predicate`, `function` or `relation` such as
+`unbounded_arity_predicate`. A kind below one of them by `genl` alone stays:
+`invertebrate_class` is below `unary_predicate`, and `arachnid` lists it.
 
 A line of several values lists them on one line, comma-separated: the examples lines
 list each example, a string quoted or a quoted form drawn, as the kind and parents lines

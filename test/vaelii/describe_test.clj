@@ -487,6 +487,26 @@
     (is (contains? kinds 'time_invariant_relation))
     (is (not-any? '#{unary_predicate binary_predicate} kinds))))
 
+(defn- kinds-of [kb term context]
+  (:terms (:kind (block (v/describe kb term context)))))
+
+(tu/deftest-kb a-kind-knowing-the-arity-implies-is-left-out
+  (is (= '[time_invariant_relation] (kinds-of kb 'predicateDisplayOrder 'CxUniverse))
+      "unbounded_arity_predicate is the intersection of unbounded_arity and predicate")
+  (tu/with-terms [relQ kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relQ)
+               (list 'arg relQ 1 kindT) (list 'arg relQ 2 kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (is (not-any? '#{binary_predicate binary} (kinds-of kb relQ 'CxUniverse))
+        "predicateTypeByArity maps binary_predicate to 2")))
+
+(tu/deftest-kb a-kind-below-an-arity-class-by-genl-alone-stays
+  (is (= '[invertebrate_class] (kinds-of kb 'arachnid W)))
+  (is (= '[origin_type time_invariant_relation] (kinds-of kb 'made W)))
+  (is (= '[eternal_predicate type_type_by_order] (kinds-of kb 'type 'CxUniverse)))
+  (is (some #{'type_relation_predicate} (kinds-of kb 'genl 'CxUniverse))
+      "type_relation_predicate is below binary_predicate, which is no intersection"))
+
 (tu/deftest-kb a-kind-another-kind-is-strictly-below-is-left-out
   (tu/with-terms [kindT]
     (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)

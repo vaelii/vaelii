@@ -5858,11 +5858,24 @@
     (cond-> {:term s :separation sep}
       (= :overlaps sep) (assoc :witness w :via v))))
 
-(def ^:private arity-classes
-  "The arity classes the engine names: the exact-arity classes and the variable-arity
-  ones.  The block's kind line lists none of them, nor any `arity_type` the KB
-  classifies, since its arity line says the same (`definitional-block`)."
-  (into sx/variable-arity-classes (keys sx/exact-arity-classes)))
+(defn- arity-class?
+  "Does knowing a relation's arity imply its membership in `k`, read from the KB at
+  `context`?  It does where `k` is an `arity_type`, where a `predicateTypeByArity` or
+  `functionTypeByArity` fact maps `k` to a length, and where an `intersection` fact makes
+  `k` an `arity_type` intersected with `predicate`, `function` or `relation`.  A `genl` edge
+  alone does not.  The block's kind line lists no such `k`, since its arity line says the
+  same (`definitional-block`)."
+  [kb k context]
+  (or (isa? kb k 'arity_type context)
+      (some (fn [{s :sentence}]
+              (case (nm/functor s)
+                (predicateTypeByArity functionTypeByArity) true
+                intersection (let [[_ _ a r & more] s]
+                               (and (nil? more) ('#{predicate function relation} r)
+                                    (isa? kb a 'arity_type context)))
+                false))
+            (sentences-about kb k context
+                             '#{predicateTypeByArity functionTypeByArity intersection}))))
 
 (defn- display-order
   "Each predicate's position in the believed `predicateDisplayOrder` facts visible from
@@ -6001,10 +6014,8 @@
         other    (into [] (remove #(= 2 (count (:sentence %))))
                        (sentences-about kb term context (shows :kind)))
         held     (into #{} (remove elsewhere) (types-of kb term context))
-        aclass? #(or (arity-classes %) (isa? kb % 'arity_type context))
-        kind    (part :kind (bounded-terms (remove aclass?
-                                                   (minimal-terms kb held
-                                                                  context))
+        kind    (part :kind (bounded-terms (remove #(arity-class? kb % context)
+                                                   (minimal-terms kb held context))
                                            limit))
         arity   {:part  :arity
                  :value (cond (:arity-length described) (:arity-length described)
