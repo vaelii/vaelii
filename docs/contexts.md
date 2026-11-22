@@ -189,10 +189,11 @@ Data hangs below CxWell.
     receipts, media resources and DNS names, and the sixteen kinds the relations are
     typed over (`computational_system`, `software_tool`, `tool_invocation`,
     `media_resource`, `ip_address` and the kinds below them), each with its comment,
-    its `genl` edges and its disjointness. `(toolEnablesAbility ?tool ?kind)` says
+    its `genl` edges and its disjointness. A `computational_system` is `causal`, so every
+    software tool is, read-only ones included. `(toolEnablesAbility ?tool ?kind)` says
     that whoever has `?tool` can be the doer of a happening of kind `?kind`, and the
     one computing rule, a default guarded by `causal`, reads `able` from it and
-    `agentHasTool`. Both relations take a `temporal` in the tool position, the nearest kind
+    `agentHasTool`. Both relations take a `temporal` in the tool position, a kind
     software and a hammer or a jetpack share, and CxTra excepts CxBiology's
     penguin denial, through `(ist CxBiology …)`, for a penguin that has something that
     enables flying. No rule concludes anything about an invocation.

@@ -52,6 +52,10 @@
 ;; represents.
 (disjoint computational_system event)
 (disjoint computational_system expression)
+;; A running computational system is the doer of what runs in it and of what its tools
+;; do, so it can be a cause.  Reading changes the reader's knowledge, so a read-only
+;; software tool is causal too.
+(set/monotonic (genl computational_system causal))
 
 (unary_predicate software_tool)
 (comment software_tool "A computational system that performs one bounded operation each time an agent invokes it.")
@@ -75,16 +79,15 @@
 (positiveExampleComment mcp_tool "a calendar-lookup MCP tool")
 (set/monotonic (genl mcp_tool software_tool))
 
-;; The edges to acausal and causal separate the two kinds below, through core.txt's
-;; (partition thing causal acausal), so no disjoint is stated between them.
+;; Both kinds below are causal, through computational_system: an invocation of either
+;; can change what its caller knows.
 (unary_predicate read_only_software_tool)
-(comment read_only_software_tool "A software tool whose invocation reads state and changes none.")
+(comment read_only_software_tool "A software tool whose invocation reads state and changes none of the state it reads.")
 (set/monotonic (time_varying_relation read_only_software_tool))
 (positiveExampleComment read_only_software_tool "a text-search tool")
 (positiveExampleComment read_only_software_tool "a directory-listing tool")
 (positiveExampleComment read_only_software_tool "a DNS-lookup tool")
 (set/monotonic (genl read_only_software_tool software_tool))
-(set/monotonic (genl read_only_software_tool acausal))
 
 (unary_predicate write_capable_software_tool)
 (comment write_capable_software_tool "A software tool whose invocation can change state outside the invocation.")
@@ -93,7 +96,6 @@
 (positiveExampleComment write_capable_software_tool "a message-sending tool")
 (positiveExampleComment write_capable_software_tool "a database-update tool")
 (set/monotonic (genl write_capable_software_tool software_tool))
-(set/monotonic (genl write_capable_software_tool causal))
 
 (unary_predicate information)
 (comment information "Information as carried, apart from the medium that holds it. A reading of the information can be a cause where the information is not.")
@@ -208,7 +210,7 @@
 ;; Position 2 of agentHasTool and position 1 of toolEnablesAbility declare
 ;; `temporal`.  Any held thing can enable an ability: software, a hammer, a jetpack.
 ;; Software is intangible and a hammer or a jetpack is tangible, and the two partition
-;; thing, so the nearest genl they share is temporal: a computational system is
+;; thing, so the declaration names a genl the two share: a computational system is
 ;; temporal (above), and so is everything tangible.  A narrower declaration such as
 ;; software_tool would conclude every physical tool a software tool, which the
 ;; disjointness then contradicts.
