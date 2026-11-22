@@ -25,6 +25,10 @@
 # The revision helpers, which `gate.sh` takes without taking any of this.
 # shellcheck source=scripts/lib/revision.sh
 . "$(dirname "${BASH_SOURCE[0]}")/revision.sh"
+# The `lein test :only` patterns `failing_namespaces` and `failing_tests` read, which the
+# CI suite step reads too, as the run goes.
+# shellcheck source=scripts/lib/failed-selectors.sh
+. "$(dirname "${BASH_SOURCE[0]}")/failed-selectors.sh"
 
 # Whether the run's OUTPUT reaches a terminal — the one switch behind both the
 # colour below and the marks-vs-lines default further down.  `-t 1` answers it when
@@ -236,7 +240,7 @@ run_counts() {
   grep -aE '^[0-9]+ failures, [0-9]+ errors' "$1" | tail -1 | sed 's/\.$//'
 }
 failing_namespaces() {
-  grep -aoE '^lein test :only [a-zA-Z0-9._-]+/' "$1" \
+  grep -aoE "^lein test :only ${FAILED_SELECTOR_NS}/" "$1" \
     | sed -E 's|^lein test :only ||; s|/$||' | sort -u
 }
 
@@ -247,7 +251,7 @@ failing_namespaces() {
 # and a test failing under only some of them is a difference between them, which is the
 # whole reason there is more than one run.
 failing_tests() {
-  grep -aoE '^lein test :only [a-zA-Z0-9._-]+/[a-zA-Z0-9._?!*<>=+-]+' "$1" \
+  grep -aoE "^lein test :only ${FAILED_SELECTOR_NS}/${FAILED_SELECTOR_TEST}" "$1" \
     | sed -E 's|^lein test :only ||' | sort -u
 }
 

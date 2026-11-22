@@ -289,6 +289,14 @@ it — `git show v0.16.0:CHANGELOG.md`.
   every file when there is no map, through its per-file rules. `lein perf-ab --first-rep
   K` numbers a run's reps from K, and `lein perf-ab --judge <rows.tsv>…` judges the rows
   of several runs as one. [CONTRIBUTING.md §7](CONTRIBUTING.md#7-commits--pull-requests)
+- **A failing test is a GitHub annotation while its shard still runs.** The `memory` and
+  `disk` suite steps pipe `lein test` through `annotate_failed_selectors`
+  (`scripts/lib/failed-selectors.sh`), which writes one `::error` per failing
+  `<namespace>/<test>` as its `lein test :only` line arrives. Each names the leg, the
+  shard, the log and its failure-log artifact. A shard annotates at most 10 tests, then
+  writes one warning that counts the rest. A marker that does not match suite-marks.sh's
+  patterns whole is counted and not annotated, and no annotation quotes a failure's
+  report. The log, the shards and the step's exit status are as they were.
 
 ## 0.34.0 — 2026-11-18 — "Kinship qualified by blood and choice, forward `(k ?x)` antecedents over declared result types, context NATs ordered both ways, term rename, merge, copy and remove, bounded removals"
 
