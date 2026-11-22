@@ -155,17 +155,17 @@
                    (quasiquote/ask-prepared kb goal ctx)))))
 
 (defn- filler-table
-  "`pred`'s believed tuples in `ctx` read by one open goal, `(pred ?x ?y)` for slot `n`
-  2 or `(pred ?y ?x)` for 1, as the bindings grouped by their `?x`.  An answer with
-  `?x` bound to `x` answers the bound goal `admissible-filler?` asks about `x`, so a
-  term the table admits is admitted by that ask.  A budget or deadline signal from the
-  read propagates, and any other throw answers the empty table."
-  [kb pred n ctx]
-  (let [goal (if (= n 2) (list pred '?x '?y) (list pred '?y '?x))]
-    (try
-      (group-by #(get % '?x) (quasiquote/ask-prepared kb goal ctx))
-      (catch Exception e
-        (if (or (budget/exhausted e) (budget/unit-over? e)) (throw e) {})))))
+  "The answers to open `goal` in `ctx`, or to `(pred ?x ?y)` for slot `n` 2 and `(pred ?y
+  ?x)` for 1, grouped by `?x`.  An answer with `?x` bound to `x` answers the goal with `x`
+  in place of `?x`, so a term the table admits is admitted by that bound ask.  A budget or
+  deadline signal propagates; any other throw answers nil for `goal`, `{}` for `pred`."
+  ([kb pred n ctx]
+   (or (filler-table kb (if (= n 2) (list pred '?x '?y) (list pred '?y '?x)) ctx) {}))
+  ([kb goal ctx]
+   (try
+     (group-by #(get % '?x) (quasiquote/ask-prepared kb goal ctx))
+     (catch Exception e
+       (when (or (budget/exhausted e) (budget/unit-over? e)) (throw e))))))
 
 (defn- member-selector
   [kb]
@@ -512,19 +512,45 @@
           (exists-declarations kb functor ctx)))
        (only identity '[predAllExists predExistsAll predExistsInstance predInstanceExists]))))))
 
+(def ^:private ^:dynamic *member-tables?*
+  "Does `type-specified-violations` classify from its members' open asks?  False only in a
+  test comparing readings."
+  true)
+
+(def ^:private ^:dynamic *eligible-first?*
+  "Does `type-specified-violations` read eligibility before memberships?  False only in a
+  test comparing readings."
+  true)
+
+(defn- member-coverage
+  "The instances the open asks `(K ?x)` of `members` return in `ctx`, or `#{}` when any
+  member's read is cut short (`filler-table`), so a partial set never stands in for the
+  bound asks."
+  [kb members ctx]
+  (let [tables (mapv #(filler-table kb (list % '?x) ctx) members)]
+    (if (every? some? tables)
+      (into #{} (mapcat keys) tables)
+      #{})))
+
 (defn type-specified-violations
   "Audit `(typeAllSpecified classifier indep)` in `ctx` using believed memberships.
   Return `{:status :audited :violations #{…}}`, or `:gap` for an empty classifier or
   incomplete defining support. Ordinary defining-home eligibility exempts only proved
   skeletal-only instances; no-home instances remain audited in the actual reader.
   The five-argument arm accepts a stored declaration's reader eligibility.
-  Membership derived by genl or argument preservation counts. See docs/integrity.md."
+  Membership derived by genl or argument preservation counts. See docs/integrity.md.
+  Eligibility is read first; an eligible instance no member's open `(K ?x)` returns
+  (`member-coverage`) asks `(K x)` of each member in order."
   ([kb classifier indep ctx]
    (let [eligible? (member-selector kb)]
      (type-specified-violations kb classifier indep ctx #(eligible? ctx ctx %))))
   ([kb classifier indep ctx eligible?]
    (let [members (into [] (comp (map #(get % '?k)) (filter some?) (distinct))
-                       (quasiquote/ask-prepared kb (list classifier '?k) ctx))]
+                       (quasiquote/ask-prepared kb (list classifier '?k) ctx))
+         tables? *member-tables?*
+         covered (delay (if tables? (member-coverage kb members ctx) #{}))
+         classified? (fn [x] (or (contains? @covered x)
+                                 (some #(ask? kb (list % x) ctx) members)))]
      (if (empty? members)
        {:status :gap :gap :empty-classifier :classifier classifier}
        (try
@@ -533,8 +559,9 @@
           (into #{}
                 (comp (map #(get % '?x))
                       (filter some?)
-                      (remove (fn [x] (some #(ask? kb (list % x) ctx) members)))
-                      (filter eligible?))
+                      (if *eligible-first?*
+                        (comp (filter eligible?) (remove classified?))
+                        (comp (remove classified?) (filter eligible?))))
                 (quasiquote/ask-prepared kb (list indep '?x) ctx))}
          (catch clojure.lang.ExceptionInfo e
            (if (= :incomplete-defining-contexts (:type (ex-data e)))

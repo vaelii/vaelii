@@ -644,3 +644,38 @@
            (is (< 1000 (count goals)) "the starter has more than a thousand relation-reader pairs of fixed arity")
            (is (< (* 2 @thrown) (count goals)) "and most of them answer an open ask")
            (is (empty? denied) (str "open answers bound asks deny: " (pr-str denied)))))))))
+
+(tu/deftest-kb ^:slow every-reading-of-the-type-specified-audit-finds-the-same
+  ;; `type-specified-violations` reads eligibility before memberships and classifies an
+  ;; instance its members' open asks return with no bound ask.  Every audit the integrity
+  ;; sweep runs from both readers finds the same in all four readings, status and gap
+  ;; included.  Each is read under the sweep's eligibility and with every instance
+  ;; eligible.  The starter's findings are empty, and the second leaves a hundred or more
+  ;; relations unclassified in most readers.
+  (call-cap/scope
+   predall/sweep
+   #(let [audits (audited-type-specified kb)
+          run    (fn [tables? first? classifier indep reader e]
+                   (with-bindings {#'predall/*member-tables?* tables?
+                                   #'predall/*eligible-first?* first?}
+                     (predall/type-specified-violations kb classifier indep reader e)))]
+      (is (seq audits) "the sweep audits a typeAllSpecified declaration")
+      (doseq [[classifier indep reader eligible?] audits
+              [label e] [["the sweep's eligibility" eligible?] ["every instance" (constantly true)]]
+              :let [reference (run false false classifier indep reader e)]
+              [tables? first?] [[true false] [false true] [true true]]]
+        (is (= reference (run tables? first? classifier indep reader e))
+            (str "(typeAllSpecified " classifier " " indep ") in " reader ", " label
+                 ", tables " tables? ", eligibility first " first?))))))
+
+(tu/deftest-kb a-member-read-cut-short-classifies-no-instance-from-the-open-reads
+  ;; A partial table never stands in for the bound asks: when one member's open read is
+  ;; cut short, `type-specified-violations` asks every instance bound.
+  (let [coverage #'predall/member-coverage
+        members  '[time_invariant_relation time_agnostic_relation time_varying_relation]
+        table    @#'predall/filler-table]
+    (is (contains? (coverage kb members 'CxUniverse) 'genl) "the open reads classify genl")
+    (with-redefs [predall/filler-table
+                  (fn [kb goal ctx]
+                    (when-not (= 'time_agnostic_relation (first goal)) (table kb goal ctx)))]
+      (is (= #{} (coverage kb members 'CxUniverse))))))

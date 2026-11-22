@@ -228,11 +228,18 @@ The pass has these limits:
 - **Only proven skeletal population is exempt.** An answer with no stored defining home
   is still audited unless its support proves it skeletal-only. Incomplete live defining
   support reports `{:status :gap :gap :incomplete-defining-contexts :classifier c
-  :term t :handles #{…}}` rather than silently exempting the term.
+  :term t :handles #{…}}` rather than silently exempting the term. Eligibility is read
+  for every instance before its classification, so a classified instance with
+  incomplete support reports the gap too.
+- **One open read per member, then bound asks.** In each reader the pass asks `(K ?x)`
+  once for each member `K`, and an eligible instance one of those answers names is
+  classified. Every other eligible instance asks `(K x)` of each member in turn. When
+  any member's open read is cut short, no instance is classified from the open reads.
 
-Each instance and membership question is metered as the specified pass's are, and each
-declaration with a finding counts once against `:max-results`, after the specified
-category.
+The instance question, each member's open read and each remaining bound membership
+question are metered as the specified pass's are; an instance an open read classifies
+takes no membership question of its own. Each declaration with a finding counts once
+against `:max-results`, after the specified category.
 
 ## What a rigidity-correspondence finding means
 
