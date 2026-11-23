@@ -225,9 +225,11 @@ it — `git show v0.16.0:CHANGELOG.md`.
   meet its argument constraints.** `core.txt` declares three terms.
   `eagerly_reifiable_function` is a type of function, a spec of `reifiable_function`.
   `meetsArgConstraints` holds of a function and arguments that meet its `arg` and
-  `argGenl` declarations. `reify` holds of a term of the KB. One general rule concludes
-  `(reify (?f . ?args))` from `(eagerly_reifiable_function ?f)` and
-  `(meetsArgConstraints ?f . ?args)`, and its firing mints the application.
+  `argGenl` declarations. `reify` holds of a term of the KB, and is a spec of `thing`
+  orthogonal to `not_assertible`.
+  One general rule concludes `(reify (?f . ?args))` from
+  `(eagerly_reifiable_function ?f)` and `(meetsArgConstraints ?f . ?args)`, and its
+  firing mints the application.
   `kinship.txt` declares `(eagerly_reifiable_function GeneticKinFn)` and
   `(eagerly_reifiable_function ChosenKinFn)`, so every unqualified kinship predicate,
   one declared later included, has both readings reified.
@@ -270,6 +272,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   constant `E` names now gets the `(T K)` and `(genl K T)` a mint writes, with the
   same justification.
   [nat.md](docs/nat.md)
+  *Migration:* none.
+- **A row re-spelled onto its own rewritten twin's spelling is believed.** A rule that
+  concludes a sentence over a reifiable application before that application's
+  `rewriteOf` takes effect stores the row, and the merge stores its rewritten twin and
+  supersedes the row. A settle that re-spells the function's uses folds the twin into the
+  row, which takes the twin's spelling. The row kept its supersession entry and read OUT
+  as superseded by its own spelling. The fold now reconciles the row's entry at its new
+  spelling. In the starter loaded in shuffled order, the `genl` edges from the genetic
+  readings to `geneticRelativeOf` read IN.
+  [nat.md](docs/nat.md#a-reifiable-mark-moving)
   *Migration:* none.
 
 ### Fix: performance
