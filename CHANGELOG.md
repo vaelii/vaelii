@@ -157,6 +157,23 @@ it — `git show v0.16.0:CHANGELOG.md`.
   *Breaks:* `describe`'s `:definitional-block`
   [web.md](docs/web.md#a-term-page-lists-its-definitional-block)
 
+### Breaking: integrity
+
+- **The not-under-thing sweep reads each type from its defining contexts.** A candidate
+  type is rooted when the audit context or one of the type's defining contexts
+  (`defining-contexts`) reaches `thing` by `genl`. `core.txt` states
+  `(decontextualized_predicate unary_predicate)`, so every reader sees a type declaration
+  made in a middle theory, while the type's `genl` edges stay in that theory. The sweep
+  read the edges from the audit context alone, so it reported such a type from a reader
+  that does not see the theory. Over the 353 terms the starter declares
+  `unary_predicate`, the sweep from CxNormalPhysicalConditions reported 52 CxTra types.
+  It now reports none, from CxNormalPhysicalConditions or from CxTra. A type whose
+  defining support is incomplete is read from the audit context alone.
+  *Migration:* a caller that relied on a `:not-under-thing` finding for a type whose
+  defining context places it under `thing` reads that context's taxonomy instead.
+  *Breaks:* `:not-under-thing`
+  [integrity.md](docs/integrity.md#what-a-not-under-thing-finding-means)
+
 ### Refusal: inference
 
 - **A generator whose conclusion arrives as a predicate it reads by `genl` or a swap edge

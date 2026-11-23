@@ -838,6 +838,31 @@
         "a genl edge asserted below the audit context is not seen from it")
     (is (= :audited (:status (v/kb-integrity kb #{orphan_kind_fixture} CxHidden))))))
 
+(tu/deftest-kb not-under-thing-reads-each-type-from-its-defining-contexts
+  ;; `(decontextualized_predicate unary_predicate)`, as core.txt states it, lifts a type
+  ;; declaration made in CxHome to CxUniverse, so CxUniverse sees the declaration while the
+  ;; type's genl edge stays in CxHome, where CxUniverse cannot see it.
+  (tu/with-terms [homed_kind_fixture bare_kind_fixture CxHome]
+    (declare-types! kb 'thing)
+    (v/assert kb (list 'genlCx CxHome 'CxUniverse) 'CxUniverse)
+    (v/assert kb '(decontextualized_predicate unary_predicate) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate homed_kind_fixture) CxHome)
+    (v/assert kb (list 'genl homed_kind_fixture 'thing) CxHome)
+    (v/assert kb (list 'unary_predicate bare_kind_fixture) CxHome)
+    (is (v/ask? kb (list 'unary_predicate homed_kind_fixture) 'CxUniverse)
+        "CxUniverse sees the lifted type declaration")
+    (is (not (v/ask? kb (list 'genl homed_kind_fixture 'thing) 'CxUniverse))
+        "CxUniverse does not see the genl edge")
+    (doseq [reader ['CxUniverse CxHome]]
+      (let [opts {:categories #{:not-under-thing}}]
+        (testing (str "from " reader)
+          (is (= [] (mapv :term (:not-under-thing
+                                 (v/kb-integrity kb #{homed_kind_fixture} reader opts))))
+              "a type whose genl edge to thing is in its defining context is rooted")
+          (is (= [{:term bare_kind_fixture}]
+                 (:not-under-thing (v/kb-integrity kb #{bare_kind_fixture} reader opts)))
+              "a type with no genl edge in any context is still a finding"))))))
+
 (tu/deftest-kb not-under-thing-findings-truncate-under-every-bound
   (tu/with-terms [orphan_kind_fixture stray_kind_fixture]
     (v/assert kb (list 'unary_predicate orphan_kind_fixture) 'CxUniverse)

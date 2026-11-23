@@ -345,8 +345,16 @@ each candidate:
 ```
 
 One finding is reported for each candidate term, in print order. The path is the
-transitive `genl` closure read from the audit context, so `(genl nested_kind placed_kind)`
-with `(genl placed_kind thing)` places `nested_kind` under `thing`.
+transitive `genl` closure, so `(genl nested_kind placed_kind)` with `(genl placed_kind
+thing)` places `nested_kind` under `thing`.
+
+The closure is read from the audit context and from each of the type's defining
+contexts (`defining-contexts`, the ordinary defining homes the `typeAllSpecified` audit
+reads). A type is rooted when any of those contexts reaches `thing`. `core.txt` states
+`(decontextualized_predicate unary_predicate)`, so a type declared in a middle theory
+such as CxTra is declared in CxUniverse too, and every context sees the declaration. The
+type's `genl` edges stay in CxTra, its defining context, so the sweep reads them there.
+A reader that does not see CxTra still finds the type rooted.
 
 The pass has these limits:
 
@@ -357,12 +365,19 @@ The pass has these limits:
 - **`unary_predicate` only.** A binary or wider predicate is not a type, so a predicate
   `genl` edge between two binary predicates is not a finding however its chain ends.
 - **`thing` is the root.** `thing` itself is never a finding.
-- **Visible from the audit context.** A `unary_predicate` declaration or a `genl` edge
-  asserted in a context the audit context cannot see contributes nothing, so a type whose
-  only edge to `thing` is asserted below the audit context is a finding there.
+- **The audit context and the defining contexts.** A `unary_predicate` declaration the
+  audit context cannot see contributes nothing. A `genl` edge counts when the audit
+  context or one of the type's defining contexts sees it. The defining contexts are the
+  maximal ones, so a type declared in CxUniverse whose only edge to `thing` is asserted
+  below CxUniverse is a finding from CxUniverse.
+- **Incomplete defining support reads the audit context alone.** A type whose believed
+  mentions include one with no supporting justification has no defining contexts read
+  (`:incomplete-defining-contexts`), so only the audit context decides it.
 
-Reading the declaration and testing the `genl` path each spend one work unit, and
-`:max-results` counts these findings last, after the widening category.
+Reading the declaration and testing the `genl` path from the audit context each spend one
+work unit, and so does testing the path from each defining context. The defining contexts
+are read only for a type the audit context does not place under `thing`. `:max-results`
+counts these findings last, after the widening category.
 
 ## What an implicit-genl finding means
 
