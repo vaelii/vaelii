@@ -225,9 +225,11 @@ it — `git show v0.16.0:CHANGELOG.md`.
   meet its argument constraints.** `core.txt` declares three terms.
   `eagerly_reifiable_function` is a type of function, a spec of `reifiable_function`.
   `meetsArgConstraints` holds of a function and arguments that meet its `arg` and
-  `argGenl` declarations. `reify` holds of a term of the KB. One general rule concludes
-  `(reify (?f . ?args))` from `(eagerly_reifiable_function ?f)` and
-  `(meetsArgConstraints ?f . ?args)`, and its firing mints the application.
+  `argGenl` declarations. `reify` holds of a term of the KB, and is a spec of `thing`
+  orthogonal to `not_assertible`.
+  One general rule concludes `(reify (?f . ?args))` from
+  `(eagerly_reifiable_function ?f)` and `(meetsArgConstraints ?f . ?args)`, and its
+  firing mints the application.
   `kinship.txt` declares `(eagerly_reifiable_function GeneticKinFn)` and
   `(eagerly_reifiable_function ChosenKinFn)`, so every unqualified kinship predicate,
   one declared later included, has both readings reified.

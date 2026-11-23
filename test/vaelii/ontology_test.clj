@@ -545,12 +545,13 @@
         "every name with a genl edge reaches the root")))
 
 (def ^:private placed-unary-predicates
-  "Twenty shipped `unary_predicate` terms each placed under `thing` by a stated `genl`
+  "Twenty-one shipped `unary_predicate` terms each placed under `thing` by a stated `genl`
   edge, so the `:not-under-thing` sweep (docs/integrity.md) reports none of them.  The
   seven biology properties among them are placed under the kind each is said of, as
   `the-biology-properties-are-placed-under-their-kind` holds.  The four classifiers and
-  `except` sit under `type`, `unary_predicate` or `non_atomic_term`."
-  '#{initially functional_at_instant
+  `except` sit under `type`, `unary_predicate` or `non_atomic_term`.  `reify` sits
+  directly under `thing`, since a term of the KB can denote a thing of any type."
+  '#{initially functional_at_instant reify
      abducible_predicate closed_extent_predicate decontextualized_predicate
      target_following_predicate forced_decontextualized_predicate
      sibling_disjoint

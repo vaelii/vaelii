@@ -2686,6 +2686,13 @@
          "(reify ?term) means that ?term is a term of the KB: an application ?term is written as is reified to the constant it denotes, as it is when a sentence names it.")
 (unary_predicate reify)
 (set/monotonic (time_invariant_relation reify))
+;; reify's argument position is not quoted, so a member of reify is what a term of the KB
+;; denotes.  A term of the KB can denote a thing of any type, so no type below thing
+;; holds of every member of reify.
+(set/monotonic (genl reify thing))
+;; A reifiable function can have an application that denotes a not_assertible relation,
+;; so reify and not_assertible are not disjoint, and neither is a genl of the other.
+(orthogonal reify not_assertible)
 
 (set/forwardRule
  (implies
