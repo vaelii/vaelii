@@ -14,6 +14,7 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.clashes :as clashes]
             [vaelii.impl.decide.arity :as arity]
+            [vaelii.impl.defining :as defining]
             [vaelii.impl.except :as exc]
             [vaelii.impl.inherit :as inherit]
             [vaelii.impl.jtms :as jtms]
@@ -161,15 +162,36 @@
 
 ;; ---- not-under-thing: a candidate type with no genl path to thing ----
 
+(defn- term-defining-contexts
+  "`term`'s maximal ordinary defining contexts (`defining/defining-contexts`), in print
+  order.  A term whose defining-context support is incomplete has none, so only the
+  reader's context is read for it."
+  [kb term]
+  (try
+    (sort-by nm/print-key (budget/checked-call #(defining/defining-contexts kb term)))
+    (catch clojure.lang.ExceptionInfo e
+      (if (= :incomplete-defining-contexts (:type (ex-data e)))
+        []
+        (throw e)))))
+
 (defn- unrooted-type?
   "Is `term` a type `context` sees declared `unary_predicate` that reaches `thing` by no
-  `genl` path visible from `context`?  `thing` itself is the root, never unrooted."
+  `genl` path, read from `context` and from each of `term`'s defining contexts
+  (`defining/defining-contexts`, the homes `typeAllSpecified`'s eligibility reads)?  A
+  type declared everywhere, as `(decontextualized_predicate unary_predicate)` makes every
+  type declaration, keeps its `genl` edges in the context that defines it, so that
+  context, not the reader's, says whether it is rooted.  `thing` itself is the root,
+  never unrooted."
   [kb tx term context]
   (and (not= 'thing term)
        (do (budget/spend!)
            (seq (res/matches-visible kb (list 'unary_predicate term) context)))
        (do (budget/spend!)
-           (not (tax/genl? tx term 'thing context)))))
+           (not (tax/genl? tx term 'thing context)))
+       (not-any? (fn [home]
+                   (budget/spend!)
+                   (tax/genl? tx term 'thing home))
+                 (remove #{context} (term-defining-contexts kb term)))))
 
 (defn- not-under-thing-findings
   "Audit each ground symbol of `candidate-terms` in print order, one term at a time,
