@@ -232,11 +232,12 @@ The pass has these limits:
   for every instance before its classification. A classified instance with incomplete
   support reports no gap, since it is no violation whatever its eligibility.
 - **One open read per member, then bound asks.** In each reader the pass asks `(K ?x)`
-  once for each member `K`, and an eligible instance one of those answers names is
-  classified. Every other eligible instance asks `(K x)` of each member in turn. When
-  any member's open read throws something other than a budget or deadline signal, no
-  instance is classified from the open reads. A budget or deadline signal stops the
-  pass, as it stops a bound ask.
+  once for each member `K` before it classifies its first instance. An exempt instance is
+  not classified, so a reader whose instances are all exempt asks no open read. An
+  eligible instance one of those answers names is classified. Every other eligible
+  instance asks `(K x)` of each member in turn. When any member's open read throws
+  something other than a budget or deadline signal, no instance is classified from the
+  open reads. A budget or deadline signal stops the pass, as it stops a bound ask.
 
 The instance question, each member's open read and each remaining bound membership
 question are metered as the specified pass's are; an instance an open read classifies

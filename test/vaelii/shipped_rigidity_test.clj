@@ -572,12 +572,14 @@
 (defn- denials
   "The first `limit` answers to the open `goal` in `ctx` that the bound goal they fill in
   does not answer, as `[goal bound ctx]`.  An answer that leaves a variable of `goal`
-  unbound claims no tuple and is skipped."
-  [kb goal ctx limit]
+  unbound claims no tuple and is skipped.  Each answer compared adds one to the volatile
+  `compared`."
+  [kb goal ctx limit compared]
   (let [vars (filter #(and (symbol? %) (= \? (first (name %)))) (rest goal))]
     (for [b     (take limit (qq/ask-prepared kb goal ctx))
           :when (every? #(contains? b %) vars)
-          :let  [bound (apply list (map #(get b % %) goal))]
+          :let  [_     (vswap! compared inc)
+                 bound (apply list (map #(get b % %) goal))]
           :when (empty? (qq/ask-prepared kb bound ctx))]
       [goal bound ctx])))
 
@@ -624,9 +626,12 @@
                                       r readers
                                       :when (v/sees? kb r c)]
                                   [(open-at s open) r]))
-               denied (into [] (comp (mapcat (fn [[g r]] (denials kb g r 50))) (take 20)) goals)]
+               compared (volatile! 0)
+               denied (into [] (comp (mapcat (fn [[g r]] (denials kb g r 50 compared))) (take 20))
+                            goals)]
            (is (< 100 (count facts)) "the starter's facts use more than a hundred predicates")
            (is (some #(< 3 (second %)) (keys facts)) "and some take more than three arguments")
+           (is (pos? @compared) "an open answer is compared with the bound ask it fills in")
            (is (empty? denied) (str "open answers bound asks deny: " (pr-str denied)))))
        (testing "every relation of fixed arity opened whole, ten answers, in CxUniverse and each integrity reader"
          (let [goals  (into [] (comp (mapcat (fn [r]
@@ -638,14 +643,16 @@
                                      (distinct))
                             (cons 'CxUniverse integrity-readers))
                thrown (volatile! 0)
+               compared (volatile! 0)
                denied (into [] (comp (mapcat (fn [[g r]]
-                                               (try (doall (denials kb g r 10))
+                                               (try (doall (denials kb g r 10 compared))
                                                     (catch clojure.lang.ExceptionInfo _
                                                       (vswap! thrown inc) nil))))
                                      (take 20))
                             goals)]
            (is (< 1000 (count goals)) "the starter has more than a thousand relation-reader pairs of fixed arity")
-           (is (< (* 2 @thrown) (count goals)) "and most of them answer an open ask")
+           (is (< (* 2 @thrown) (count goals)) "and an open ask of most of them throws nothing")
+           (is (pos? @compared) "an open answer is compared with the bound ask it fills in")
            (is (empty? denied) (str "open answers bound asks deny: " (pr-str denied)))))))))
 
 (tu/deftest-kb ^:slow every-reading-of-the-type-specified-audit-finds-the-same
