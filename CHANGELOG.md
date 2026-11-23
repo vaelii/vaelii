@@ -285,6 +285,13 @@ it — `git show v0.16.0:CHANGELOG.md`.
   pass 0.84 s against 22.7 s. From CxTra the sweep takes 5.9 s against 28.2 s, and its
   pass 0.84 s against 23.2 s. Each is a median of five runs.
   [integrity.md](docs/integrity.md#what-a-type-specified-finding-means)
+
+### Fix: inference
+
+- **A ground membership or denial of a part answers when two parts of its cover have closed
+  extents** ([#310](https://github.com/vaelii/vaelii/issues/310)). A goal about a member of
+  the whole stated in no part could throw `StackOverflowError`.
+  [taxonomy.md](docs/taxonomy.md#the-coverage-inference-is-conditional-on-explicit-negation)
   *Migration:* none.
 
 ### Internal: tooling

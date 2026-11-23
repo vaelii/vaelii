@@ -3258,6 +3258,14 @@
        (every? (fn [p] (believed-literal? kb (list 'not (list p member)) context))
                (remove #(= % part) parts))))
 
+(def ^:private ^:dynamic *covering-goals*
+  "The `[goal context]` pairs a `CoveringProver` solve is already inside.  A denial the
+  cover asks for can ask the cover's own goal again: with two parts `B` and `C` closed,
+  `ClosedExtentProver` answers `(not (B x))` by asking `(B x)`, whose cover asks
+  `(not (C x))`.  The prover declines a pair already in the set, as `*defn-stack*` bounds
+  the defn provers' walks."
+  #{})
+
 (defrecord CoveringProver []
   Prover
   ;; A ground unary membership goal `(Part a)` for a `Part` some visible cover names.
@@ -3269,6 +3277,7 @@
          (symbol? (first goal))
          (= 1 (count (rest goal)))
          (ground? goal)
+         (not (contains? *covering-goals* [goal context]))
          (seq (tax/covers-naming-visible (reasoning/taxonomy kb) (first goal) context))))
   (est-bindings [_ _ _ _] 1)                    ; a ground membership test: it holds or not
   (cost         [_ _ _ _] :compute)             ; one bounded level-6 subquery per part
@@ -3279,11 +3288,12 @@
   (solve [_ kb goal context]
     (let [part   (first goal)
           member (second goal)]
-      (if (some (fn [[whole parts _]]
-                  (cover-leaves-only kb whole parts part member context))
-                (tax/covers-naming-visible (reasoning/taxonomy kb) part context))
-        [{}]
-        []))))
+      (binding [*covering-goals* (conj *covering-goals* [goal context])]
+        (if (some (fn [[whole parts _]]
+                    (cover-leaves-only kb whole parts part member context))
+                  (tax/covers-naming-visible (reasoning/taxonomy kb) part context))
+          [{}]
+          [])))))
 
 ;; ---- negates: a denial read off the other side -----------------------------
 ;;

@@ -1492,6 +1492,15 @@ not**: a believed `(not (Part X))`, never a `(Part X)` that merely cannot be pro
 Negation as failure is a separate operator, spelled `unknown`, and it stays a query
 operator that nothing stores ([naf.md](naf.md)).
 
+A denial can rest on a membership the cover proves. With the extents of parts `B` and `C`
+closed ([naf.md](naf.md#a-closed-extent-not-p-a-without-a-stored-negative)), `(not (B
+X))` holds exactly while `(B X)` finds nothing. The cover answers `(B X)` by asking
+`(not (C X))`, which asks `(C X)` in turn. `CoveringProver` declines a goal it is already
+solving in the same context, so the inner read of that goal answers from the other
+provers alone. With a third part open and not denied, the cover proves neither closed
+part, each closed extent denies its own, and the two denials prove the third
+(`covering_inference_test/two-closed-parts-of-a-cover-deny-a-member-stated-in-neither`).
+
 Ruling out *every* part falsifies the cover. `(W X)` with `(not (A X))`, `(not (B X))`
 and `(not (C X))` is a contradiction of kind `:cover`, and the entry point treats it as
 it treats a disjointness clash: the sentence that completes it is stored, and the
