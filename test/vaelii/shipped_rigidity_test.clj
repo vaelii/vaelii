@@ -592,14 +592,17 @@
    (fn []
      (let [readers (sort (tax/context-down (reasoning/taxonomy kb) 'CxUniverse))]
        (testing "every member of every classifier the typeAllSpecified pass audits, over its whole population"
-         (let [audits (audited-type-specified kb)]
+         (let [audits  (audited-type-specified kb)
+               claimed (volatile! 0)]
            (is (seq audits) "the sweep audits a typeAllSpecified declaration")
            (doseq [[classifier indep reader] audits
                    :let [population (answers kb (list indep '?x) '?x reader)]
-                   k (answers kb (list classifier '?k) '?k reader)]
-             (is (empty? (remove (fn [x] (seq (qq/ask-prepared kb (list k x) reader)))
-                                 (filter population (answers kb (list k '?x) '?x reader))))
-                 (str "(" k " ?x) claims what (" k " x) denies in " reader)))))
+                   k (answers kb (list classifier '?k) '?k reader)
+                   :let [claims (filter population (answers kb (list k '?x) '?x reader))]]
+             (vswap! claimed + (count claims))
+             (is (empty? (remove (fn [x] (seq (qq/ask-prepared kb (list k x) reader))) claims))
+                 (str "(" k " ?x) claims what (" k " x) denies in " reader)))
+           (is (pos? @claimed) "an open member ask names an instance of the population")))
        (testing (str "every predicate and arity a stored fact uses: ten facts each, each "
                      "position, pair and the whole tuple opened, fifty answers, every reader "
                      "that sees the fact")
@@ -684,10 +687,12 @@
         only-genl  (fn [x] (if (= 'genl x) (incomplete x) false))]
     (is (= {:status :audited :violations #{}} (run true true only-genl))
         "genl is classified, so its support raises no gap")
-    (is (= (run false false only-genl) (run true true only-genl) (run false true only-genl)))
+    (is (= (run false false only-genl) (run true true only-genl) (run true false only-genl)
+           (run false true only-genl)))
     (let [r (run true true incomplete)]
       (is (= :incomplete-defining-contexts (:gap r)) "an unclassified instance's support is a gap")
-      (is (= (run false false incomplete) r)))))
+      (is (= (run false false incomplete) (run true false incomplete)
+             (run false true incomplete) r)))))
 
 (tu/deftest-kb a-member-read-that-fails-classifies-no-instance-from-the-open-reads
   ;; When one member's open read throws something other than a budget or deadline signal,
