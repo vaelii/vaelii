@@ -80,11 +80,13 @@ annotate_failed_selectors() {
   [[ "$artifact" =~ ^[A-Za-z0-9._-]{1,100}$ ]] || artifact='(invalid)'
   [[ "$max" =~ ^[0-9]{1,3}$ ]] || max=10
 
+  # A failed forward flushes bash 3.2's buffered bytes into /dev/null as ns_timings' does,
+  # so the annotation subshell does not write them to stderr.
   while :; do
     if IFS= read -r line; then
-      printf '%s\n' "$line"
+      printf '%s\n' "$line" || { printf '%s' '' > /dev/null; false; }
     elif [[ -n "$line" ]]; then                    # a last line with no newline
-      printf '%s' "$line"
+      printf '%s' "$line" || { printf '%s' '' > /dev/null; false; }
     else
       break
     fi

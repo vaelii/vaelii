@@ -35,8 +35,12 @@ ns_timings_first() {
 ns_timings() {
   local out="$1" line prev="" pt=0 t d
   : > "$out"
+  # With SIGPIPE ignored, a printf into a closed pipe fails, and bash 3.2 keeps the bytes
+  # in its stdout buffer.  A subshell started after that writes them to its own output,
+  # the clock's `$(perl …)` included.  The empty printf into /dev/null flushes them there,
+  # and `false` keeps the failed printf's status.
   while IFS= read -r line; do
-    printf '%s\n' "$line"
+    printf '%s\n' "$line" || { printf '%s' '' > /dev/null; false; }
     case "$line" in
       "lein test "*|"Ran "*" tests containing "*)
         if [[ -n "${EPOCHREALTIME:-}" ]]; then t=${EPOCHREALTIME/[.,]/}
