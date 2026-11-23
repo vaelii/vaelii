@@ -272,6 +272,21 @@ it — `git show v0.16.0:CHANGELOG.md`.
   [nat.md](docs/nat.md)
   *Migration:* none.
 
+### Fix: performance
+
+- **The typeAllSpecified pass reads eligibility first and one open ask per member.** It
+  asked each instance `(K x)` of every classifier member and only then read whether the
+  reader was its defining home, so an exempt instance paid every failing ask. It now
+  reads eligibility first, then one `(K ?x)` per member. An eligible instance those
+  answers name is classified, and every other one asks `(K x)` of each member as before.
+  When a member's open read throws something other than a budget or deadline signal, the
+  pass asks every instance bound. Its findings are unchanged. On the starter, the default
+  `kb-integrity` sweep from CxNormalPhysicalConditions takes 6.2 s against 28.0 s, and its
+  pass 0.84 s against 22.7 s. From CxTra the sweep takes 5.9 s against 28.2 s, and its
+  pass 0.84 s against 23.2 s. Each is a median of five runs.
+  [integrity.md](docs/integrity.md#what-a-type-specified-finding-means)
+  *Migration:* none.
+
 ### Internal: tooling
 
 - **`lein perf-ab` fails a run whose JVM stops at a probe that throws.** `assert` refused

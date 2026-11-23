@@ -5,9 +5,16 @@
 
   Each family is read through one or more representative members, in the context that
   sees the family's definitions.  A relation of one kind is believed of no other, so each
-  check reads all three kinds."
+  check reads all three kinds.  The last section puts the starter's open asks against
+  the bound asks they fill in, the integrity sweep's typeAllSpecified audit among them."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.call-cap :as call-cap]
+            [vaelii.impl.predall :as predall]
+            [vaelii.impl.protocols :as p]
+            [vaelii.impl.quasiquote :as qq]
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-starter!))
@@ -517,3 +524,192 @@
       (v/assert kb (list 'arg happenedNear 1 'situation) 'CxUniverse)
       (v/assert kb (list 'arg happenedNear 2 'thing) 'CxUniverse)
       (is (not (v/ask? kb (list 'situation_predicate happenedNear) 'CxUniverse))))))
+
+;; ---- an open ask claims nothing a bound ask denies --------------------------
+
+(def ^:private integrity-readers
+  "The contexts `starter-test` sweeps `kb-integrity` from, which together see every middle
+  context."
+  '[CxNormalPhysicalConditions CxTra])
+
+(defn- audited-type-specified
+  "Each `[classifier indep reader eligible?]` the integrity sweep's typeAllSpecified pass
+  audits from `integrity-readers`, read with the audit itself stubbed out."
+  [kb]
+  (let [seen (atom [])]
+    (with-redefs [predall/type-specified-violations
+                  (fn [_ classifier indep reader eligible?]
+                    (swap! seen conj [classifier indep reader eligible?])
+                    {:status :audited :violations #{}})]
+      (doseq [c integrity-readers]
+        (dorun (predall/type-specified-declaration-audits kb c))))
+    (vals (into {} (map (juxt #(subvec % 0 3) identity)) @seen))))
+
+(defn- answers
+  "The `?v` bindings of `goal` in `ctx`, read as the audits read (`ask-prepared`)."
+  [kb goal v ctx]
+  (into #{} (keep #(get % v)) (qq/ask-prepared kb goal ctx)))
+
+(defn- spread
+  "At most `n` of `xs`, spaced evenly through their content order."
+  [n xs]
+  (let [xs (vec (sort-by pr-str xs)) c (count xs)]
+    (if (<= c n) xs (mapv #(xs (quot (* % c) n)) (range n)))))
+
+(defn- openings
+  "The argument positions to open in a tuple of `n` arguments: each one, each pair, and
+  all of them."
+  [n]
+  (let [ps (range 1 (inc n))]
+    (distinct (concat (map vector ps) (for [a ps b ps :when (< a b)] [a b]) [(vec ps)]))))
+
+(defn- open-at
+  "`sentence` with a variable `?vi` at each argument position `i` of `open`."
+  [[f & args] open]
+  (apply list f (map-indexed (fn [i a] (if (some #{(inc i)} open) (symbol (str "?v" (inc i))) a))
+                             args)))
+
+(defn- denials
+  "The first `limit` answers to the open `goal` in `ctx` that the bound goal they fill in
+  does not answer, as `[goal bound ctx]`.  An answer that leaves a variable of `goal`
+  unbound claims no tuple and is skipped.  Each answer compared adds one to the volatile
+  `compared`."
+  [kb goal ctx limit compared]
+  (let [vars (filter #(and (symbol? %) (= \? (first (name %)))) (rest goal))]
+    (for [b     (take limit (qq/ask-prepared kb goal ctx))
+          :when (every? #(contains? b %) vars)
+          :let  [_     (vswap! compared inc)
+                 bound (apply list (map #(get b % %) goal))]
+          :when (empty? (qq/ask-prepared kb bound ctx))]
+      [goal bound ctx])))
+
+(tu/deftest-kb ^:slow an-open-ask-claims-no-tuple-a-bound-ask-denies
+  ;; The vaelii invariant: an open ask never claims something a bound ask would deny.
+  ;; Read as the audits read (`ask-prepared`), with no rule expansion.  The
+  ;; typeAllSpecified pass classifies an instance a member's open `(K ?x)` ask returns
+  ;; without asking `(K x)`.  The Specified passes admit a filler from an open table.  So
+  ;; a denial is an audit that passes what it should report.
+  (call-cap/scope
+   predall/sweep
+   (fn []
+     (let [readers (sort (tax/context-down (reasoning/taxonomy kb) 'CxUniverse))]
+       (testing "every member of every classifier the typeAllSpecified pass audits, over its whole population"
+         (let [audits  (audited-type-specified kb)
+               claimed (volatile! 0)]
+           (is (seq audits) "the sweep audits a typeAllSpecified declaration")
+           (doseq [[classifier indep reader] audits
+                   :let [population (answers kb (list indep '?x) '?x reader)]
+                   k (answers kb (list classifier '?k) '?k reader)
+                   :let [claims (filter population (answers kb (list k '?x) '?x reader))]]
+             (vswap! claimed + (count claims))
+             (is (empty? (remove (fn [x] (seq (qq/ask-prepared kb (list k x) reader))) claims))
+                 (str "(" k " ?x) claims what (" k " x) denies in " reader)))
+           (is (pos? @claimed) "an open member ask names an instance of the population")))
+       (testing (str "every predicate and arity a stored fact uses: ten facts each, each "
+                     "position, pair and the whole tuple opened, fifty answers, every reader "
+                     "that sees the fact")
+         (let [recs   (:records kb)
+               facts  (->> (p/sentex-ids recs)
+                           (map #(p/get-sentex recs %))
+                           (remove #(some? (:antecedent %)))
+                           (keep (fn [{:keys [sentence context]}]
+                                   (when (and (seq? sentence) (symbol? (first sentence))
+                                              (next sentence)
+                                              (not (contains? '#{not implies exceptWhen defeat}
+                                                              (first sentence))))
+                                     [sentence context])))
+                           distinct
+                           (group-by (fn [[s _]] [(first s) (count (rest s))])))
+               goals  (into #{} (for [[[_ n] fs] facts
+                                      [s c] (spread 10 fs)
+                                      open (openings n)
+                                      r readers
+                                      :when (v/sees? kb r c)]
+                                  [(open-at s open) r]))
+               compared (volatile! 0)
+               denied (into [] (comp (mapcat (fn [[g r]] (denials kb g r 50 compared))) (take 20))
+                            goals)]
+           (is (< 100 (count facts)) "the starter's facts use more than a hundred predicates")
+           (is (some #(< 3 (second %)) (keys facts)) "and some take more than three arguments")
+           (is (pos? @compared) "an open answer is compared with the bound ask it fills in")
+           (is (empty? denied) (str "open answers bound asks deny: " (pr-str denied)))))
+       (testing "every relation of fixed arity opened whole, ten answers, in CxUniverse and each integrity reader"
+         (let [goals  (into [] (comp (mapcat (fn [r]
+                                               (for [p    (answers kb '(relation ?p) '?p r)
+                                                     :let [n (when (symbol? p) (v/relation-arity kb p))]
+                                                     :when (and (nat-int? n) (<= 1 n 14))]
+                                                 [(apply list p (map #(symbol (str "?v" %)) (range 1 (inc n))))
+                                                  r])))
+                                     (distinct))
+                            (cons 'CxUniverse integrity-readers))
+               thrown (volatile! 0)
+               compared (volatile! 0)
+               denied (into [] (comp (mapcat (fn [[g r]]
+                                               (try (doall (denials kb g r 10 compared))
+                                                    (catch clojure.lang.ExceptionInfo _
+                                                      (vswap! thrown inc) nil))))
+                                     (take 20))
+                            goals)]
+           (is (< 1000 (count goals)) "the starter has more than a thousand relation-reader pairs of fixed arity")
+           (is (< (* 2 @thrown) (count goals)) "and an open ask of most of them throws nothing")
+           (is (pos? @compared) "an open answer is compared with the bound ask it fills in")
+           (is (empty? denied) (str "open answers bound asks deny: " (pr-str denied)))))))))
+
+(tu/deftest-kb ^:slow every-reading-of-the-type-specified-audit-finds-the-same
+  ;; `type-specified-violations` reads eligibility before memberships and classifies an
+  ;; instance its members' open asks return with no bound ask.  Every audit the integrity
+  ;; sweep runs from both readers finds the same in all four readings, status and gap
+  ;; included.  Each is read under the sweep's eligibility and with every instance
+  ;; eligible.  The starter's findings are empty, and the second leaves relations
+  ;; unclassified.
+  (call-cap/scope
+   predall/sweep
+   #(let [audits (audited-type-specified kb)
+          run    (fn [tables? first? classifier indep reader e]
+                   (with-bindings {#'predall/*member-tables?* tables?
+                                   #'predall/*eligible-first?* first?}
+                     (predall/type-specified-violations kb classifier indep reader e)))
+          found  (volatile! false)]
+      (is (seq audits) "the sweep audits a typeAllSpecified declaration")
+      (doseq [[classifier indep reader eligible?] audits
+              [label e] [["the sweep's eligibility" eligible?] ["every instance" (constantly true)]]
+              :let [reference (run false false classifier indep reader e)
+                    _ (when (seq (:violations reference)) (vreset! found true))]
+              [tables? first?] [[true false] [false true] [true true]]]
+        (is (= reference (run tables? first? classifier indep reader e))
+            (str "(typeAllSpecified " classifier " " indep ") in " reader ", " label
+                 ", tables " tables? ", eligibility first " first?)))
+      (is @found "a reading leaves an instance unclassified, so a classification is compared"))))
+
+(tu/deftest-kb a-classified-instance-s-incomplete-support-is-no-gap
+  ;; Eligibility is read first, and a classified instance is no violation whatever its
+  ;; eligibility, so its incomplete defining support raises no gap; an unclassified
+  ;; instance's still does.  Each reading finds what the bound asks read after them find.
+  (let [incomplete (fn [x] (throw (ex-info "incomplete" {:type :incomplete-defining-contexts
+                                                         :term x :handles #{}})))
+        run        (fn [tables? first? e]
+                     (with-bindings {#'predall/*member-tables?* tables?
+                                     #'predall/*eligible-first?* first?}
+                       (predall/type-specified-violations kb 'rigidity_kind 'relation 'CxUniverse e)))
+        only-genl  (fn [x] (if (= 'genl x) (incomplete x) false))]
+    (is (= {:status :audited :violations #{}} (run true true only-genl))
+        "genl is classified, so its support raises no gap")
+    (is (= (run false false only-genl) (run true true only-genl) (run true false only-genl)
+           (run false true only-genl)))
+    (let [r (run true true incomplete)]
+      (is (= :incomplete-defining-contexts (:gap r)) "an unclassified instance's support is a gap")
+      (is (= (run false false incomplete) (run true false incomplete)
+             (run false true incomplete) r)))))
+
+(tu/deftest-kb a-member-read-that-fails-classifies-no-instance-from-the-open-reads
+  ;; When one member's open read throws something other than a budget or deadline signal,
+  ;; no instance is classified from the open reads: `type-specified-violations` asks every
+  ;; instance bound.
+  (let [coverage #'predall/member-coverage
+        members  '[time_invariant_relation time_agnostic_relation time_varying_relation]
+        table    @#'predall/filler-table]
+    (is (contains? (coverage kb members 'CxUniverse) 'genl) "the open reads classify genl")
+    (with-redefs [predall/filler-table
+                  (fn [kb goal ctx]
+                    (when-not (= 'time_agnostic_relation (first goal)) (table kb goal ctx)))]
+      (is (= #{} (coverage kb members 'CxUniverse))))))
