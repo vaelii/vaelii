@@ -494,9 +494,12 @@
                  ;; this row is the one that leaves; the mirror is already the wanted
                  ;; spelling
                  (= doomed self) (do (fold-row! kb self mirror want witness rewrite) mirror)
-                 ;; the mirror leaves, and this row takes the spelling it vacated
+                 ;; the mirror leaves; this row takes its spelling and re-reads its supersession
                  :else           (do (fold-row! kb mirror self want witness rewrite)
-                                     (:id (respell! kb (p/get-sentex (:records kb) self) want rewrite))))
+                                     (let [h (:id (respell! kb (p/get-sentex (:records kb) self) want rewrite))]
+                                       (when (jtms/superseded? tms h)
+                                         (special/refresh-supersessions kb nil #{h}))
+                                       h)))
             {:keys [new violations]} (redraw-mints! kb at)]
         {:at at :new (into [at] new) :violations violations}))))
 

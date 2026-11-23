@@ -271,6 +271,16 @@ it — `git show v0.16.0:CHANGELOG.md`.
   same justification.
   [nat.md](docs/nat.md)
   *Migration:* none.
+- **A row re-spelled onto its own rewritten twin's spelling is believed.** A rule that
+  concludes a sentence over a reifiable application before that application's
+  `rewriteOf` takes effect stores the row, and the merge stores its rewritten twin and
+  supersedes the row. A settle that re-spells the function's uses folds the twin into the
+  row, which takes the twin's spelling. The row kept its supersession entry and read OUT
+  as superseded by its own spelling. The fold now reconciles the row's entry at its new
+  spelling. In the starter loaded in shuffled order, the `genl` edges from the genetic
+  readings to `geneticRelativeOf` read IN.
+  [nat.md](docs/nat.md#a-reifiable-mark-moving)
+  *Migration:* none.
 
 ### Fix: performance
 
