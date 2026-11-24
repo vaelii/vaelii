@@ -157,7 +157,7 @@
             "an arrival is not a revival, and a displacement is not one either")
         (is (= 6 (count (v/sentexes-matching kb (list ra '?x '?y) ctx)))
             "and the ordinary chain still derived everything, the merged spelling too")
-        (is (false? (v/in? kb (v/handle-of kb (list pa Dep Z) ctx)))
+        (is (false? (v/believed? kb (v/handle-of kb (list pa Dep Z) ctx)))
             "with the merge in force")))))
 
 (deftest a-revival-re-seeds-what-flipped-not-the-settles-whole-region
@@ -208,7 +208,7 @@
         (v/assert kb (list pa displaced Z) ctx {:strength :monotonic})
         (let [lift! (install! kb)
               orig  (v/handle-of kb (list pa displaced Z) ctx)]
-          (is (false? (v/in? kb orig)) "the merge displaces the original spelling")
+          (is (false? (v/believed? kb orig)) "the merge displaces the original spelling")
           (when partner-during-merge?
             (v/assert kb (list qa Z Y) ctx {:strength :monotonic}))
           (lift!)
@@ -216,8 +216,8 @@
             (v/assert kb (list qa Z Y) ctx {:strength :monotonic}))
           ;; the two runs are two KBs with two sets of gensyms, so the reading names
           ;; *which spelling* each conclusion is about rather than the symbol itself
-          {:antecedents [(v/in? kb orig)
-                         (v/in? kb (v/handle-of kb (list qa Z Y) ctx))]
+          {:antecedents [(v/believed? kb orig)
+                         (v/believed? kb (v/handle-of kb (list qa Z Y) ctx))]
            :conclusions (frequencies
                          (map (fn [sx]
                                 (if (= displaced (second (:sentence sx)))

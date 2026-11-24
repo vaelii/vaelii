@@ -102,7 +102,7 @@
 
 (defn- snapshot [kb]
   {:believed  (into #{}
-                    (comp (filter #(v/in? kb %))
+                    (comp (filter #(v/believed? kb %))
                           (keep #(p/get-sentex (:records kb) %))
                           (map (juxt :sentence :context))
                           (map #(tu/handle-free kb %)))

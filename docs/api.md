@@ -413,11 +413,19 @@ default-chain-opts                              ; the bounds a chain run takes w
 ;; A variable context is not a reader at these four: it reads every context's facts into
 ;; ONE network, where two incomparable contexts compose for nobody — a diagnostic reading of
 ;; everything stored, off which no goal is answered.  A goal fans over the readers.
-(calculi)                                      ; the shipped calculi: base relations + vocabulary
+(calculi)                                      ; the shipped calculi: base relations + vocabulary, Allen's endpoint orders
 (qualitative-network kb calculus context)      ; the tightened network + :consistent? (+ :unsatisfiable, :unsatisfiable-sources)
 (possible-relations kb calculus context a b)   ; the base relations still possible between two terms
 (qualitative-scenario kb calculus context)     ; one consistent arrangement, {[a b] -> relation}, or nil
 (qualitative-scenarios kb calculus context n)  ; up to n of them (the count is exponential, so n is required)
+(sign-reading kb context)                      ; each quantity's possible signs and trends + :consistent?
+                                               ;   (docs/sign.md); a read, registered or not
+;; answer set programming (docs/solving.md).  A read: it grounds and solves and stores nothing
+(answer-sets kb context [opts])                ; the program context sees, solved as clingo reads it
+                                               ;   -> {:status :costs :answer-sets [#{sentence}]
+                                               ;   :answer-set-costs}; {:reading :brave|:cautious}
+                                               ;   -> :consequences; :among :limit :project and the
+                                               ;   search options (docs/solving.md)
 (recover kb)                                   ; rebuild taxonomy + JTMS from the durable stores
 (reindex kb)                                   ; rebuild the index (trie/roots/rule/term) from the records, then recover
 (clear! kb)                                    ; empty both durable stores — `recover`'s counterpart,
@@ -511,17 +519,18 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; that loads no directory, is :no-foreign-reader
 (isa? kb individual type [context])            ; transitive type membership (context-scoped)
 (types-of kb x [context])                      ; the believed types asserted of an individual
-                                               ; — the matcher's own three filters:
-                                               ; believed, visible, not `except`-hidden
+                                               ; — believed at context, or with none at
+                                               ; each membership's own context
 (disjoint? kb type-a type-b [context])         ; provable disjointness (scoped with a context)
 (disjoint-metatypes kb) / (metatype-members kb m) ; the declared `disjoint_metatype` cliques and one
                                                ; clique's members — consulted, never materialized,
                                                ; so no `(disjoint a b)` pair is stored to read back
-(separating-covers kb)                         ; the believed `separating` / `partition` covers as
+(separating-covers kb)                         ; the supported `separating` / `partition` covers as
                                                ; `[whole parts kind]`, consulted the same way
 (covers-of kb whole)                           ; the believed `covering` / `separating` / `partition`
                                                ; sentexes over `whole` as `[kind parts]`, read from
-                                               ; `whole`'s own argument roots
+                                               ; `whole`'s own argument roots, each believed at
+                                               ; the context it is stored in
 (subsumption-status kb type-a type-b [context]); the pair's genl relationship as a keyword —
                                                ; :genl :spec :coextensional :disjoint :orthogonal
                                                ; :unknown, or :inconsistent when two of those hold
@@ -545,9 +554,9 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; instance or subtype found
 ;; the taxonomy, read (thin delegations to vaelii.impl.taxonomy — reads only, since
 ;; edges and metadata are maintained by assert / retract! from the sentexes stating them)
-;; with no context, genls / specs / direct-* / genl? / disjoint? / has-prop? / inverse-of
-;; read the KB-wide answer: every edge and declaration held, including one a defeat or
-;; an except hides from every reader; a reader's answer takes its context
+;; with no context, genls / specs / direct-* / min-genls / max-specs / common-* / genl? /
+;; isa? / disjoint? / has-prop? / inverse-of read each edge and declaration at the context
+;; it is stated in, as believed? reads a handle; a reader's answer takes its context
 (genls kb t [context]) / (specs kb t [context])         ; genl up/down closure (scoped with a context)
 (direct-genls kb t [context]) / (direct-specs kb t [context]) ; one genl step up/down, not reflexive;
                                                         ; a cover declaration's installed edges count
@@ -561,7 +570,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                         ; every member; one type gives min-genls /
                                                         ; max-specs of it
 (genl? kb sub super [context])                          ; subtype test, scoped the same way
-(types kb) / (contexts kb)                              ; the nodes of each hierarchy
+(types kb) / (contexts kb)                              ; the nodes of each hierarchy, over supported
+                                                        ; edges, a defeated one included
 (relation? kb term [context])                           ; a stored arity of 2+ or variable_arity,
                                                         ; else an inherited length of 2+:
                                                         ; a `types` node that is a relation, not a type
@@ -609,7 +619,8 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ; line can name most of them where the declared
                                                ; reading names a handful
                                                ; :predicate adds :arity (inherited through genl
-                                               ;   included) :arity-via :arg-declarations :props
+                                               ;   included) :arity-via :arity-length (the
+                                               ;   exact or least length) :arg-declarations :props
                                                ;   :inverse :extent-count and the four grants
                                                ;   :closed-extent? :abducible? :modal?
                                                ;   :decontextualized?
@@ -619,9 +630,12 @@ default-chain-opts                              ; the bounds a chain run takes w
                                                ;   :computed-spec-of for a reified one
                                                ; :type and :predicate add :definitional-block:
                                                ;   handbook ch. 06's parts as {:part :value}
-                                               ;   rows in its order, :missing where the KB
-                                               ;   holds none, :kind apart from :arity-class,
-                                               ;   no row for seeAlso/termsRelated; a type's
+                                               ;   rows in predicateDisplayOrder's order,
+                                               ;   :missing where the KB holds none; a sentence
+                                               ;   is in it when its predicate is a
+                                               ;   definitional_predicate; :kind apart from
+                                               ;   :arity-class; :links for seeAlso and
+                                               ;   termsRelated; a type's
                                                ;   :siblings rows each name the :separation
                                                ;   that decides them (:overlaps with a
                                                ;   :witness and :via where one is shown)
@@ -699,6 +713,8 @@ assertable-strengths                            ; #{:monotonic :default}, the se
 (stored-first-args kb pred)                     ; the terms stored at argument 1 under pred, as a set:
                                                 ; a type's members in one index read, nothing fetched,
                                                 ; belief unread
+(stored-lengths kb preds)                       ; each of preds -> the argument counts its positive
+                                                ; facts are stored at: one index read each, belief unread
                                                 ; each extent is a LAZY seq over live state:
                                                 ; records fetched as it is walked, so (take n …)
                                                 ; costs n; a seq held across a write yields what
@@ -760,18 +776,19 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ; the chain and re-chain, :on-progress reports
                                                 ; each phase (docs/storage.md, "Editing the
                                                 ; records of a KB without belief")
-(in? kb handle)                                 ; raw structural JTMS IN, before contextual exceptions
-(believed? kb handle context)                   ; IN and not withdrawn from context (an except, a
-                                                ; placed defeat it sees, or resting only on one), before
-                                                ; assertion-context inheritance
+(believed? kb handle)                           ; believed at the context it is stored in
+(believed? kb handle context)                   ; believed at context: IN, stored in a context it
+                                                ; sees through genlCx, and not hidden there by an
+                                                ; except, a placed defeat in force, or resting only
+                                                ; on a handle one hides
 (belief-status kb handle context)               ; deterministic diagnostic map:
                                                 ; {:handle :view-context :stored? :in?
                                                 ;  :assertion-context :exceptions :excepted?
                                                 ;  :withdrawn?
-                                                ;  :inherited-path :believed? :visible?}
+                                                ;  :inherited-path :believed?}
                                                 ; :exceptions is context/content ordered; every node
                                                 ; is {:handle :in? :in-force? :excepted-by}
-(believed kb handles)                           ; in? in batch -> the set of raw-IN handles
+(believed kb handles)                           ; (believed? kb h) in batch -> the believed set
 (why kb handle)                                 ; the justification graph down to premises:
                                                 ; {:root h :nodes {h {… :support [{:rule :verdict
                                                 ;  :because [h1 h2 …]}]} h1 {…} …}}, one node per
@@ -781,7 +798,7 @@ assertable-strengths                            ; #{:monotonic :default}, the se
                                                 ; and no handle, so two seats compare it with =
                                                 ; (overlay.md, "Two seats' explanations").
                                                 ; why-not's sentence arity and argue take it too
-(why-not kb handle)                             ; stored but OUT: :defeated (+ what contradicts it)
+(why-not kb handle)                             ; stored but not believed: :defeated (+ what contradicts it)
                                                 ; / :withdrawn (+ the defeats it rests on)
                                                 ; / :superseded (+ the restatement that displaced it)
                                                 ; / :inert (a tuple breaking its arity binding, or a
@@ -1299,7 +1316,10 @@ that would open a definitional clash with believed content visible from the cont
 ;;         :detail {:types [cat dog]}}
 ```
 
-The refusal reads fourteen things, and the call stores nothing when one of them clashes:
+The refusal reads fourteen things, and the call stores nothing when one of them clashes.
+A check of a declaration counts a stored record that the context it reads the record
+from, or a context below that one, believes. Below that context an `except` can take the
+record's `defeat` out of force ([nmtms.md](nmtms.md#a-defeat-is-scoped-to-its-vantage)).
 
 - the sentence against believed content: a `:disjoint`, `:functional`, `:asymmetric`,
   `:anti-transitive` or `:cover` clash, from the checks `assert` runs;
@@ -1353,8 +1373,8 @@ The refusal reads fourteen things, and the call stores nothing when one of them 
   ([argtypes.md](argtypes.md#an-argument-that-fails-its-declared-type-is-held-inert)). `:detail :disjoint-with` names the separated type, and
   `:clashes-with` the believed membership. A declaration stated in a context below the
   sentence's is read too, and `:detail :placed-in` names that context;
-- an `arg`, `genlArg`, `interArg` or `quotedArg` declaration against the stored tuples of its
-  predicate and of the predicates below it through `genl`: the distinct arguments the
+- an `arg`, `genlArg`, `interArg` or `quotedArg` declaration against the believed tuples of
+  its predicate and of the predicates below it through `genl`: the distinct arguments the
   tuples hold at the declared position are read, and a tuple whose argument holds a
   separated type breaks the declaration. `:detail :count` is the number of breaking
   tuples and `:clashes-with` names up to ten of them, in content order;
@@ -1387,12 +1407,13 @@ The refusal reads fourteen things, and the call stores nothing when one of them 
   denial. A complement at `:default` refuses nothing: the pair is stored and
   `contradictions` lists it. A rebuttal whose loss the complement's strength alone decides
   is refused here, and a rebuttal the settle weighs lands. `assert` stores both;
-- after the write settles, the networks of the registered calculi it moves: a component
-  made unsatisfiable, whose blame names a sentex the write premised or concluded, is
-  `:violation :unsatisfiable-network`, `:clashes-with` names the other blamed facts and
-  `:detail` holds `:calculus`, `:context`, `:nodes` and `:pairs`. `{:refuse-unsatisfiable?
-  false}` skips this arm. `assert` stores the write and files a
-  `:qualitative-inconsistency` entry ([qcn.md](qcn.md#support-what-an-entailed-relation-rests-on)).
+- after the write settles, the temporal, qualitative and sign networks it moves: a region
+  `(contradicts …)` the settle placed naming a sentex the write premised or concluded is
+  `:violation :unsatisfiable-network`, `:clashes-with` names the region's other members
+  and `:detail` holds the network entry's detail with `:context`, `:sentence` and, for a
+  calculus, `:calculus`. `{:refuse-unsatisfiable? false}` skips this arm. `assert` stores
+  the write and the contradiction and files the network's entry
+  ([qcn.md](qcn.md#support-what-an-entailed-relation-rests-on)).
 
 `:violation` names the clash kind and `:detail` holds that kind's own keys. Every other
 refusal is `assert`'s, under its own `:type`. The complement arm reads the complement's
@@ -1633,16 +1654,16 @@ its `--` flags, refused the same way and for the same reason — since a command
 not an option map.
 
 **Every handle-taking fn holds one contract.**  `nil` is a question with an answer —
-`handle-of` answers nil for a sentence the KB does not hold, so `(in? kb (handle-of kb
-s ctx))` is an ordinary composition — and each fn answers it gracefully: `in?` and
-`premise?` false, `sentex` / `justification` / `defeat-class` / `provenance` nil,
+`handle-of` answers nil for a sentence the KB does not hold, so `(believed? kb (handle-of
+kb s ctx))` is an ordinary composition — and each fn answers it gracefully: `believed?`
+and `premise?` false, `sentex` / `justification` / `defeat-class` / `provenance` nil,
 `supporting-justifications` / `dependent-justifications` empty, `why` a root node
 `{:stored? false}`, `why-not` `:not-stored`, `add-provenance` a no-op, `retract!` a no-op.
 Anything else that is not an integer handle is **refused** (`:bad-handle`), a vector
 of handles included — `assert` returns a vector for a rule that polycanonicalized (a
 conjunctive consequent, a disjunctive antecedent, or both), so
 `(retract! kb (assert kb rule ctx))` would otherwise be a silent no-op that reads as
-"there was nothing to do".  The contract covers `retract!`, `in?`,
+"there was nothing to do".  The contract covers `retract!`,
 `premise?`, `believed?`, `belief-status`, `why`, `why-not`, `provenance`,
 `add-provenance`, `sentex`,
 `justification`, `defeat-class`, `supporting-justifications`,
@@ -1921,7 +1942,7 @@ The docstring of each var below holds its contract; the rest of what it said is 
 | `:inert` | a tuple whose length breaks its functor's, or a fact whose argument fails its declared argument type, stored and held OUT (docs/nmtms.md); or not a premise, with a mint held void while `arity/mintable-type?` refuses its type (docs/argtypes.md, "Where it does not mint"). `:conviction` is the argument check's problem map, the one `try-assert` throws as `:definitional-clash` (docs/argtypes.md). `:binding` names the length the tuple breaks, `{:length n}` or `{:min m}`, the predicate `:via` binds it and the binding handles under `:grounds` (docs/taxonomy.md, "Arity"). For a held mint, `:support` lists the justifications as `:unsupported` does, each held mint's `:verdict` `:inert` | `:binding` for a tuple, `:conviction` for an argument, `:support` for a mint |
 | `:forced-conclusion` | not a premise, and a supporting justification is a firing held void, at its own context, for concluding a forced-monotonic literal from antecedents that are not forced-monotonic (docs/nmtms.md). Each `:convicted` entry names the `:rule` and, under `:not-forced-monotonic`, the antecedent predicates a `forced_monotonic_predicate` declaration would make forced-monotonic; `:support` lists the other justifications as `:unsupported` does | `:convicted` `:support` |
 | `:unsupported` | not a premise, and no supporting justification reads `:supports` at its own context: each entry's `:verdict` is `justification-verdicts`' reason, and `:missing` lists the handles it rests on that are OUT in the network | `:support` with `:verdict` and `:missing` |
-| `:excepted` | a rule applied and its `exceptWhen` query held: under forward chaining its conclusion is stored with a guard defeat, through `:monotonic` and `:default` blockers alike (docs/exceptions.md) | `:rule` `:exception` `:via` |
+| `:excepted` | a rule applied and its `exceptWhen` query held: under forward chaining its conclusion is stored with a guard defeat, through `:monotonic` and `:default` blockers alike (docs/exceptions.md). Or the handle is IN in the network and an `except` in force at its own context hides it or a handle every justification of it rests on; `:exceptions` names the excepts of the handle itself | `:rule` `:exception` `:via` for a rule; `:exceptions` for an `except` |
 | `:closed-extent` | *(sentence arity only)* nothing stored or derived says so, **and** `(closed_extent_predicate P)` is visible here, or a `(closedExtentForArg P n v)` whose position `n` the sentence fills with `v` — so the KB is not silent about it, it says the extent is complete and this is not in it | — |
 
 A believed handle yields `{:believed? true}` and no `:reason`.  An empty `:support`
@@ -2170,9 +2191,9 @@ constant's minted name declares no role, so it answers nil.
 
 **`close!` releases process registries.**  An in-memory `:space` stays registered until
 `clear!`; an engine-allocated space (an ephemeral fork's own half, a `kb-diff` side), the
-derived index of a disk-backed KB, the incremental matcher's alpha index (keyed weakly, so
-a KB dropped without `close!` is also reclaimed by GC) and the nogood readers' memos are
-dropped, so a process opening durable KBs in a loop keeps no index per finished directory.
+derived index of a disk-backed KB and the incremental matcher's alpha index (keyed weakly,
+so a KB dropped without `close!` is also reclaimed by GC) are dropped, so a process opening
+durable KBs in a loop keeps no index per finished directory.
 
 **`set-log-level` is not a daemon op.**  It changes the process, not a KB, and the
 daemon's bearer token is optional on the loopback default, so an op that turns on `:trace`

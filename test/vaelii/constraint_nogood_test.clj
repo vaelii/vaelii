@@ -238,14 +238,14 @@
                          [(:type e) (:violation e) (:clashes-with e)]))
                   (is (nil? (v/handle-of kb arriving written-in)) "nothing stored")
                   (is (integer? (v/assert kb arriving written-in)) "assert stores it")
-                  (is (v/in? kb h) "the complement stands"))
+                  (is (v/believed? kb h) "the complement stands"))
               (is (= :stored e)))
             (case label
               (:default :separation-denial)
               (is (some #(= #{h (v/handle-of kb arriving written-in)} (set (:nogood %)))
                         (v/contradictions kb))
                   "a default pair is a dilemma")
-              :forced-positive (is (= [true false] [(v/ask? kb arriving written-in) (v/in? kb h)])
+              :forced-positive (is (= [true false] [(v/ask? kb arriving written-in) (v/believed? kb h)])
                                    "the forced positive is believed and its denial loses")
               nil)))))))
 
@@ -389,7 +389,7 @@
           (testing (str (name label) " " (name order))
             (is (= ({:arity [false true] :irreflexive [false false] :anti-symmetric [true true]}
                     violation)
-                   [(v/in? kb h)
+                   [(v/believed? kb h)
                     (boolean (some #(contains? (set (:nogood %)) h)
                                    (concat (v/contradictions kb) (v/conflicts kb))))])
                 "assert stores it and the settle reports it")))))))
@@ -463,9 +463,9 @@
                           (get-in e [:detail (if (= :arity violation) :shapes :count)])]))
                   (is (nil? (v/handle-of kb decl 'CxUniverse)) "nothing stored")
                   (v/assert kb decl 'CxUniverse {:strength strength})
-                  (is (not (v/in? kb (first hs))) "assert stores it and the tuple is not believed"))
+                  (is (not (v/believed? kb (first hs))) "assert stores it and the tuple is not believed"))
               (do (is (= :stored e))
-                  (is (v/in? kb (first hs)) "a :default metatype route binds nothing")))))))))
+                  (is (v/believed? kb (first hs)) "a :default metatype route binds nothing")))))))))
 
 (deftest try-assert-of-a-length-binding-counts-only-believed-tuples
   ;; a `:monotonic` denial defeats the three-argument tuple: stored and not believed
@@ -482,6 +482,63 @@
           (is (= (if denied? :stored [:arity [{:relation likes :arguments 3 :count 1}]]) e)
               (str "denied " denied?)))))))
 
+(deftest try-assert-of-a-declaration-counts-only-believed-content
+  (doseq [row ["irreflexive" "arg" "arg value" "genlArg" "kind membership"
+               "kind declaration" "kind edge" "stranded" "rule"]]
+    (tu/with-kb [kb]
+      (tu/with-terms [likes kind_t fish_t sort_t A B CxTop CxMid CxLow abilityType able Flying]
+        (v/assert kb (list 'genlCx CxTop 'CxUniverse) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list 'genlCx CxLow CxTop) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list 'genlCx CxMid CxTop) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list 'genlCx CxLow CxMid) 'CxUniverse {:strength :monotonic})
+        (doseq [t [kind_t fish_t sort_t]]
+          (v/assert kb (list 'genl t 'thing) 'CxUniverse {:strength :monotonic}))
+        (let [irp 'instance_relation_predicate
+              [setup stored write]
+              (case row
+                "irreflexive"      [[] (list likes A A) (list 'irreflexive likes)]
+                "arg"              [[(list 'disjoint kind_t fish_t) (list fish_t B)]
+                                    (list likes A B) (list 'arg likes 2 kind_t)]
+                "arg value"        [[(list 'disjoint kind_t fish_t)]
+                                    (list likes A 5) (list 'arg likes 2 kind_t)]
+                "genlArg"          [[(list 'disjoint kind_t fish_t)]
+                                    (list likes fish_t B) (list 'genlArg likes 1 kind_t)]
+                "kind membership"  [[] (list 'genlArg likes 1 kind_t) (list irp likes)]
+                "kind declaration" [[] (list irp likes) (list 'genlArg likes 1 kind_t)]
+                "kind edge"        [[(list sort_t likes)] (list 'genlArg likes 1 kind_t)
+                                    (list 'genl sort_t irp)]
+                "stranded"         [[] (list 'genlArg likes 3 kind_t) (list 'binary_predicate likes)]
+                "rule"             [[(list 'disjoint kind_t fish_t) (list 'arg likes 1 kind_t)
+                                     (list 'implies (list abilityType '?p '?a)
+                                           (list 'set/forwardRule
+                                                 (list 'implies '(?p ?x ?y) (list able '?x '?a))))]
+                                    (list abilityType likes Flying) (list 'arg able 1 fish_t)])
+              tried #(try (v/retract! kb (v/try-assert kb write % {:strength :monotonic}))
+                          :stored
+                          (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))
+              no    :definitional-clash
+              want  (fn [in ws] (mapv #(if (or (not= "rule" row) (= in %) (= CxTop %)) no :stored) ws))]
+          (doseq [x setup] (v/assert kb x CxTop {:strength :monotonic}))
+          (let [h (v/assert kb stored CxTop)]
+            (is (= (want CxTop [CxTop CxLow]) [(tried CxTop) (tried CxLow)]) (str row ", believed"))
+            (doseq [[at expected] [[CxTop [:stored :stored]]
+                                   [CxLow (if (= "stranded" row) [no no] [no :stored])]]]
+              (let [d (v/assert kb (list 'not stored) at {:strength :monotonic})]
+                (is (= expected [(tried CxTop) (tried CxLow)]) (str row ", defeated in " at))
+                (v/retract! kb d)))
+            (v/retract! kb h)
+            (doseq [[in ex] [[CxTop CxLow] [CxTop CxMid] [CxTop CxTop] [CxMid CxLow]]
+                    denial? [true false]
+                    :when   (or denial? (not= in ex))]
+              (let [t (v/assert kb stored in)
+                    d (v/assert kb (list 'not stored) in {:strength :monotonic})
+                    e (v/assert kb (list 'except (list 'sentexHandle (if denial? d t))) ex
+                                {:strength :monotonic})]
+                (is (= (if denial? (want in [CxTop CxMid CxLow]) [:stored :stored :stored])
+                       [(tried CxTop) (tried CxMid) (tried CxLow)])
+                    (str row ", stated in " in ", " (if denial? "denial" "record") " excepted in " ex))
+                (run! #(v/retract! kb %) [e d t])))))))))
+
 (tu/deftest-kb try-assert-refuses-an-except-of-a-length-binding
   ;; `assert` stores the except, and the length stays bound at every context, so the
   ;; tuple stays inert under either entry point's outcome
@@ -495,7 +552,7 @@
              [(:type e) (:violation e) (mapv :sentence (:clashes-with e))]))
       (is (nil? (v/handle-of kb x 'CxUniverse)))
       (is (integer? (v/assert kb x 'CxUniverse)))
-      (is (not (v/in? kb t))))))
+      (is (not (v/believed? kb t))))))
 
 (deftest ^:slow try-assert-of-a-metatype-edge-names-every-predicate-it-binds
   ;; 1000 predicates, each a `:monotonic` member of one type and each holding a
@@ -661,7 +718,7 @@
               'CxUniverse)
     (let [h (v/handle-of kb (list fish_t Rex) 'CxUniverse)]
       (is (integer? h) "the conclusion is placed, not discarded")
-      (is (not (v/in? kb h)))
+      (is (not (v/believed? kb h)))
       (is (= :defeated (:reason (v/why-not kb h)))))))
 
 ;;; ── what the report says ──────────────────────────────────────────────
@@ -861,6 +918,17 @@
           (is (empty? (live-memberships kb)))
           (is (empty? (v/contradictions kb))))))))
 
+(tu/deftest-kb a-separation-declared-over-a-term-s-one-type-convicts-the-next-type
+  (tu/with-kb [kb]
+    (tu/with-terms [dog_t cat_t Muffet CxA]
+      (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list dog_t Muffet) 'CxUniverse)
+      (v/assert kb (list dog_t Muffet) CxA)
+      (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse)
+      (v/assert kb (list cat_t Muffet) 'CxUniverse)
+      (is (= 3 (count (live-memberships kb))))
+      (is (= 2 (count (v/contradictions kb)))))))
+
 (tu/deftest-kb a-pair-with-a-defeated-member-is-kept
   (tu/with-terms [dog_t fish_t Rex]
     (v/assert kb (list 'disjoint dog_t fish_t) 'CxUniverse)
@@ -868,7 +936,7 @@
     (v/assert kb (list 'set/defaultRule (list 'set/forwardRule (vr/rule-sentence [(list dog_t '?x)] (list fish_t '?x))))
               'CxUniverse)
     (let [h (v/handle-of kb (list fish_t Rex) 'CxUniverse)]
-      (is (not (v/in? kb h)) "the derived side lost")
+      (is (not (v/believed? kb h)) "the derived side lost")
       (is (contains? (live-memberships kb) h)
           "and it stays a candidate, so the clash is read again if it revives"))))
 
@@ -884,7 +952,7 @@
       (v/assert kb (list markA Rex) 'CxUniverse)
       (let [h (v/handle-of kb (list cat_t Rex) 'CxUniverse)]
         (is (= 1 (count (v/contradictions kb))) "a default/default clash is a dilemma")
-        (is (v/in? kb h))
+        (is (v/believed? kb h))
         ;; a second rule reaching the same conclusion: belief is unmoved, so no relabel
         (v/assert kb (list 'set/defaultRule (list 'set/forwardRule (vr/rule-sentence [(list markB '?x)] (list cat_t '?x))))
                   'CxUniverse)
@@ -1202,9 +1270,9 @@
     (v/assert kb (list 'set/defaultRule (list 'set/forwardRule (vr/rule-sentence [(list dog_t '?x)] (list fish_t '?x))))
               'CxUniverse)
     (let [h (v/handle-of kb (list fish_t Rex) 'CxUniverse)]
-      (is (not (v/in? kb h)) "defeated before the rebuild")
+      (is (not (v/believed? kb h)) "defeated before the rebuild")
       (v/recover kb)
-      (is (not (v/in? kb h)) "and still defeated after it"))))
+      (is (not (v/believed? kb h)) "and still defeated after it"))))
 
 (tu/deftest-kb a-dilemma-survives-a-rebuild
   (tu/with-terms [dog_t cat_t Muffet]
@@ -1601,7 +1669,7 @@
     (v/assert kb (list zhints Qa Qc) 'CxUniverse)
     (let [h (v/handle-of kb (list zprec Qa Qc) 'CxUniverse)]
       (is (some? h) "the conclusion is stored rather than dropped")
-      (is (not (v/in? kb h)) "and defeated, being the one defeasible member")
+      (is (not (v/believed? kb h)) "and defeated, being the one defeasible member")
       (is (= :defeated (:reason (v/why-not kb h))))
       (is (every? #(v/ask? kb % 'CxUniverse) [(list zprec Qa Qb) (list zprec Qb Qc)])
           "the known-true chain is untouched"))))
@@ -1613,9 +1681,9 @@
     (v/assert kb (list zprec Rb Rc) 'CxUniverse)
     (v/assert kb (list zprec Ra Rc) 'CxUniverse {:strength :monotonic})
     (let [h (v/handle-of kb (list zprec Rb Rc) 'CxUniverse)]
-      (is (not (v/in? kb h)) "the one defeasible step is defeated before the rebuild")
+      (is (not (v/believed? kb h)) "the one defeasible step is defeated before the rebuild")
       (v/recover kb)
-      (is (not (v/in? kb h)) "and still defeated after it"))))
+      (is (not (v/believed? kb h)) "and still defeated after it"))))
 
 (deftest an-antitransitive-declaration-arriving-last-is-arbitrated
   (tu/with-kb [kb]
@@ -1834,8 +1902,8 @@
                  (v/assert kb (list cat_t Muffet) 'CxUniverse)
                  (v/assert kb (list 'disjoint dog_t cat_t) 'CxUniverse))
         believed (fn [kb dog_t cat_t Muffet]
-                   [(v/in? kb (v/handle-of kb (list dog_t Muffet) 'CxUniverse))
-                    (v/in? kb (v/handle-of kb (list cat_t Muffet) 'CxUniverse))])]
+                   [(v/believed? kb (v/handle-of kb (list dog_t Muffet) 'CxUniverse))
+                    (v/believed? kb (v/handle-of kb (list cat_t Muffet) 'CxUniverse))])]
     (tu/with-terms [dog_t cat_t Muffet]
       (let [kb (doto (v/open-kb (assoc spaces :recover? false)) (tu/clear-kb!))]
         (try

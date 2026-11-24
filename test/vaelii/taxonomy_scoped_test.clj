@@ -87,7 +87,7 @@
     (tax/install-supporter-visibility! t (constantly (seq {:excepted #{903}})) (fn [_ _] true))
     (doseq [c '[CxU CxA CxB CxW CxE]] (tax/context-down t c))
     (is (= 5 (count (by-ctx))) "the premise: one set per context read")
-    (observe/note-change)
+    (observe/note-change (:clock @t))
     (tax/context-down t 'CxA)
     (is (= '[[CxA false nil]] (keys (by-ctx))))))
 

@@ -20,12 +20,12 @@
 #     duration, and `assert_cost_test` asserts it in the fast test stage of every `lein gate`.
 #   - the SUPER-LINEAR class (a cost that turns quadratic) is what the perf ratios
 #     uniquely catch; CI's `deep.yml` perf job runs them, and `lein release-gate`
-#     runs them here.  When the pending diff touches the retrieval / inference /
-#     index / TMS core and this gate did not run perf, it prints "perf owed" at the
-#     end and names the command — the ask the split leans on (non-blocking).
-#   - a diff that touches `decide/arity.clj`, or an arity `defn` of `checks`, `kb` or
-#     `provers`, prints "perf-ab owed" naming the four arity probes of `vaelii.bench.ab`
-#     (`arity_fns_changed`): a constant added to every write passes the growth checks.
+#     runs them here.  When the pending change reaches a perf check and this gate did
+#     not run perf, it prints "perf owed" at the end and names `lein perf --owed` — the
+#     ask the split leans on (non-blocking).
+#   - a change reaching a `vaelii.bench.ab` probe prints "perf-ab owed" and `lein perf-ab
+#     <base> --owed`: a constant added to every write passes the growth checks.  What a
+#     change reaches is scripts/perf-owed.py's to say.
 #
 # The `:default` selector on the test stage — the `^:slow` half is yours to run:
 #   - `lein test :all` — the deferred tests, 47% of the assertions (CONTRIBUTING.md §5).
@@ -701,25 +701,12 @@ fi
 
 # ---- owed advisories: what this gate left out that the pending diff owes ----------
 #
-# The fast gate drops perf and the `^:slow` half, and each has a changed-file regex that
-# names it when the diff about to land touches its files.  Both are non-blocking: a
-# reminder, not a refusal — a gate you run ten times while developing must not fail on
-# every hot-path edit.  An owed run answers for every commit it contains, so one green run
-# at the newest commit of a batch covers the batch; the advisory asks for a run at a
-# revision holding these files, not a run per commit.
-#
-# PERF_SENSITIVE_RE.  The fast gate drops perf, and two things buy that back (see PERF in
-# the header): `assert_cost_test` asserts the CONSTANT-cost class in the test stage, and CI
-# runs the ratios.  What neither the fast gate nor a glance catches is a change to the
-# retrieval / inference / index / TMS core that turns a cost SUPER-LINEAR.  The set is the
-# files whose code runs inside a `perf.clj` claim's timed body or a cost test's measured
-# region, plus the backward-chaining and matcher files (`levels`, `tactics`, `rete`,
-# `abduce`) that sit on a read path no claim times yet.  A file a claim times belongs here
-# even when it was split out of one that is (`assert_entry`, `settle_phases`,
-# `nat_maintenance`, the `types/` records); a file no claim or cost test executes does not
-# (the public API's shims, io, and the domain reasoners without a claim).  Edit it here
-# when a claim starts timing a file or the hot surface moves.
-PERF_SENSITIVE_RE='^src/vaelii/core\.clj$|^src/vaelii/impl/(provers|resolution|except|inherit|chain|settle|settle_phases|recheck|clashes|discovery|decide|decide/[a-z_]+|journal|recovery|reasoning_image|vantage|assert_entry|jtms|dense_jtms|caches|taxonomy|nat|nat_maintenance|context_nat|plan|tactics|rules|rete|strength|levels|special|wiring|checks|violations|abduce|sentex|wff|naming|kb|memory|observe|reindex|literal_cache|tokens|columnar|kv|dense_kv|dense_roots|rewrite|reads|feed|integrate|quasiquote|skolem|capabilities|profile|qcn|qcn_kb|space|stp|quality|handle_set|overlay/kv|overlay/frozen|asp/solve_context|sign|asp/label|asp/prover)\.clj$|^src/vaelii/impl/(disk|types)/'
+# The fast gate drops perf and the `^:slow` half.  The slow and red advisories name a
+# changed-file regex each, and the perf ones read scripts/perf-owed.py.  All are
+# non-blocking: a reminder, not a refusal — a gate you run ten times while developing must
+# not fail on every hot-path edit.  An owed run answers for every commit it contains, so
+# one green run at the newest commit of a batch covers the batch; the advisory asks for a
+# run at a revision holding these files, not a run per commit.
 #
 # SLOW_OWED_RE.  The engine files the `^:slow` tests drive, in three groups: the index
 # (the retrieval, record and posting stores the index oracles compare), the TMS (the
@@ -739,28 +726,6 @@ SLOW_OWED_RE='^src/vaelii/core\.clj$|^src/vaelii/impl/(resolution|except|literal
 RED_OWED_RE='^src/vaelii/core\.clj$|^src/vaelii/impl/(resolution|assert_entry|kb|budget|rewrite|except|inherit|chain|settle|settle_phases|recheck|clashes|discovery|decide|decide/[a-z_]+|vantage|jtms|dense_jtms|taxonomy|nat|nat_read|nat_maintenance|context_nat|plan|tactics|rules|rete|strength|levels|special|checks|violations|provers|inference|abduce|wff|capabilities|qcn|qcn_kb|stp|interval|point|timepoint|duration|calendar|datetime|fluent|projection|relative|scenario|space)\.clj$|^resources/kb/'
 red_marked=$(git grep -lE '\^:red|\^\{:red true' -- test 2>/dev/null | sed 's/[.]/\\./g; s/^/^/; s/$/$/' | paste -sd'|' -)
 [[ -n "$red_marked" ]] && RED_OWED_RE="$RED_OWED_RE|$red_marked"
-
-# perf_groups_for_path.  The `groups` keys of bench/vaelii/bench/perf.clj whose checks
-# time a changed engine file's code, so the perf owed line names `lein perf --only` over
-# them.  A file not named here prints `all`, which owes the whole run.  The map is a floor:
-# a change whose reach is wider than its file's row owes the whole run too.
-perf_groups_for_path () {
-  case "${1#src/vaelii/impl/}" in
-    kv.clj|reads.clj)                             echo all ;;
-    dense_kv.clj|dense_roots.clj|columnar.clj|reindex.clj|tokens.clj|\
-    literal_cache.clj|overlay/*|disk/*|types/*)  echo index ;;
-    taxonomy.clj)                                 echo taxonomy membership inherit placement clashes ;;
-    except.clj)                                   echo exceptions placement ;;
-    inherit.clj)                                  echo inherit clashes ;;
-    clashes.clj|discovery.clj)                    echo clashes ;;
-    decide.clj|decide/*|journal.clj)              echo placement argtypes membership tuples clashes ;;
-    recovery.clj|reasoning_image.clj)             echo recover ;;
-    qcn.clj|qcn_kb.clj|space.clj|stp.clj|sign.clj|quality.clj|context_nat.clj|plan.clj|asp/*)
-                                                  echo solvers ;;
-    nat.clj|nat_maintenance.clj|feed.clj)         echo chaining ;;
-    *)                                            echo all ;;
-  esac
-}
 
 # What is about to land: committed-since-upstream ∪ staged ∪ unstaged.  Fall back to
 # origin/main, then to the uncommitted diff alone, when no upstream is tracked.
@@ -789,78 +754,38 @@ owed_advisory () {                 # owed_advisory <label> <regex> <what> <why> 
     "$5"
 }
 pending=$(pending_files)
-perf_groups=$(printf '%s\n' "$pending" | grep -E "$PERF_SENSITIVE_RE" \
-  | while read -r f; do perf_groups_for_path "$f"; done | tr ' ' '\n' | sort -u | paste -sd, -)
-case ",$perf_groups," in
-  *,all,*) perf_cmd="${BOLD}lein perf${RST}" ;;
-  *)       perf_cmd="${BOLD}lein perf --only $perf_groups${RST}" ;;
-esac
-[[ $perf_opted -eq 0 ]] && owed_advisory perf "$PERF_SENSITIVE_RE" hot-path \
-  "a change here can turn a cost super-linear — the test stage cannot see that." \
-  "${BOLD}lein release-gate${RST} (lint + test + uberjar + perf), or $perf_cmd alone,"
+
+# The perf checks and perf-ab probes the pending change reaches, read off the reach map
+# `lein perf --reach` measures, or off scripts/perf-owed.py's per-file rules with no map.
+perf_owed_advisory () {
+  local base checks probes n
+  base=$(git merge-base '@{upstream}' HEAD 2>/dev/null) \
+    || base=$(git merge-base origin/main HEAD 2>/dev/null) || return 0
+  checks=$(python3 scripts/perf-owed.py --base "$base" --kind checks 2>/dev/null) || checks=""
+  if [[ $perf_opted -eq 0 && -n "$checks" ]]; then
+    if [[ "$checks" == all ]]; then n="every perf check"
+    else n="$(tr ',' '\n' <<<"$checks" | grep -c .) perf check(s)"; fi
+    printf '%s⚠ perf owed%s — the change about to land reaches %s, and this gate did not run them:\n' \
+      "$BOLD" "$RST" "$n"
+    printf '  a change here can turn a cost super-linear — the test stage cannot see that.\n'
+    printf '  run %slein perf --owed%s (%s-n%s names each and why) or %slein release-gate%s at a revision holding it;\n' \
+      "$BOLD" "$RST" "$BOLD" "$RST" "$BOLD" "$RST"
+    printf '  one green run at the newest commit answers for every earlier one.\n\n'
+  fi
+  probes=$(python3 scripts/perf-owed.py --base "$base" --kind probes 2>/dev/null) || probes=""
+  [[ -n "$probes" ]] || return 0
+  printf '%s⚠ perf-ab owed%s — the change about to land reaches perf-ab probe(s) %s, and no gate stage times them in absolute ms:\n' \
+    "$BOLD" "$RST" "$probes"
+  printf '  %slein perf-ab %s --owed%s\n' "$BOLD" "$(git rev-parse --short "$base")" "$RST"
+  printf '  run it at a revision holding them, from the primary, with the box idle.\n\n'
+}
+perf_owed_advisory
 { [[ $all -eq 0 ]] || ! wanted test; } && owed_advisory slow "$SLOW_OWED_RE" "index / TMS / inference" \
   "the ^:slow half holds the order sweeps and oracles over these files — :default skips it." \
   "${BOLD}lein gate --all${RST} (or ${BOLD}lein test :slow${RST} alone)"
 owed_advisory red "$RED_OWED_RE" "red-test" \
   "a red test that passes keeps its mark until a run of the :red selector names it." \
   "${BOLD}lein test-red${RST}"
-
-# The arity readers a perf-ab probe times (`vaelii.bench.ab`: arity-assert, arity-edge-move,
-# arity-read, arity-recover).  `decide/arity.clj` is all arity.  `checks.clj`, `kb.clj` and
-# `provers.clj` also hold unrelated code, so only a changed line inside a top-level `defn`
-# whose name contains `arity`, metadata before the name included, counts (`kb/relation-arity`,
-# `provers/relation-variable-arity?`, `checks/variable-arity?`).
-ARITY_AB_PROBES=arity-assert,arity-edge-move,arity-read,arity-recover
-arity_fns_changed () {             # arity_fns_changed <base> <file>
-  local base="$1" file="$2"
-  [[ -f "$file" ]] || return 1
-  local ranges
-  ranges=$(awk '
-    /^\(/ { if (start) print start, NR - 1; start = ($0 ~ /^\(defn-? +(\^[^ ]+ +|\^\{[^}]*\} +)*[^ ^]*arity/) ? NR : 0 }
-    END    { if (start) print start, NR }' "$file" | paste -sd';' -)
-  [[ -n "$ranges" ]] || return 1
-  { git diff -U0 "$base" -- "$file"; } 2>/dev/null | awk -v ranges="$ranges" '
-    BEGIN { n = split(ranges, r, ";"); for (i = 1; i <= n; i++) { split(r[i], p, " "); lo[i] = p[1]; hi[i] = p[2] } }
-    /^@@/ { s = $3; sub(/^\+/, "", s); split(s, q, ","); a = q[1] + 0; c = (q[2] == "") ? 1 : q[2] + 0
-            b = (c == 0) ? a : a + c - 1
-            for (i = 1; i <= n; i++) if (a <= hi[i] && b >= lo[i]) { found = 1 } }
-    END   { exit found ? 0 : 1 }'
-}
-perf_ab_arity_advisory () {
-  local base hot="" f
-  base=$(git merge-base '@{upstream}' HEAD 2>/dev/null) \
-    || base=$(git merge-base origin/main HEAD 2>/dev/null) || return 0
-  while IFS= read -r f; do
-    case "$f" in
-      src/vaelii/impl/decide/arity.clj) hot+="$f"$'\n' ;;
-      src/vaelii/impl/checks.clj|src/vaelii/impl/kb.clj|src/vaelii/impl/provers.clj)
-        arity_fns_changed "$base" "$f" && hot+="$f"$'\n' ;;
-    esac
-  done <<<"$pending"
-  [[ -n "$hot" ]] || return 0
-  printf '%s⚠ perf-ab owed%s — arity code about to land, and no gate stage times it in absolute ms:\n' "$BOLD" "$RST"
-  printf '%s' "$hot" | sed 's/^/    /'
-  printf '  %slein perf-ab %s --only %s%s\n' "$BOLD" "$(git rev-parse --short "$base")" "$ARITY_AB_PROBES" "$RST"
-  printf '  run it at a revision holding them, from the primary, with the box idle.\n\n'
-}
-perf_ab_arity_advisory
-
-# The starter load and recover a perf-ab probe times (`vaelii.bench.ab`: starter-load,
-# starter-recover).  A shipped KB file or a loader moves both readings of every `lein perf`
-# check that loads it, so only the absolute times show it.
-STARTER_AB_PROBES=starter-load,starter-recover
-perf_ab_starter_advisory () {
-  local base hot
-  base=$(git merge-base '@{upstream}' HEAD 2>/dev/null) \
-    || base=$(git merge-base origin/main HEAD 2>/dev/null) || return 0
-  hot=$(printf '%s\n' "$pending" | grep -E '^(resources/kb/(upper|middle)/|src/vaelii/host/(starter|core_context|seed)\.clj$)' || true)
-  [[ -n "$hot" ]] || return 0
-  printf '%s⚠ perf-ab owed%s — shipped KB content or its loader about to land, and no gate stage times it in absolute ms:\n' "$BOLD" "$RST"
-  printf '%s\n' "$hot" | sed 's/^/    /'
-  printf '  %slein perf-ab %s --only %s%s\n' "$BOLD" "$(git rev-parse --short "$base")" "$STARTER_AB_PROBES" "$RST"
-  printf '  run it at a revision holding them, from the primary, with the box idle.\n\n'
-}
-perf_ab_starter_advisory
 
 # The revision on the verdict line, since that is the line that gets reported.  A
 # gate is minutes long and this tree has several writers, so a commit landing

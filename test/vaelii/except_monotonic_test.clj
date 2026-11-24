@@ -1,10 +1,10 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
 (ns vaelii.except-monotonic-test
-  "A visibility `(except (sentexHandle H))` hides a sentex in the forced-monotonic set
+  "An `(except (sentexHandle H))` hides a sentex in the forced-monotonic set
   from the context it is asserted in and every context below, as it hides a `:default`
   one, and the consequences the engine computes from it follow.  See docs/contexts.md,
-  \"except: removing visibility down a context subtree\"."
+  \"except: removing belief down a context subtree\"."
   (:require [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.impl.checks :as checks]

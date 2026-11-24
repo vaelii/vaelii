@@ -369,7 +369,7 @@ result, which is the assertion `order_independence_test` makes for the stub.
 `vaelii.impl.asp.label` answers a question the TMS cannot. After `settle` resolves a
 tie one side is IN and the other OUT — but that flattens two different situations. A
 belief can be IN because *every* consistent labeling keeps it, or because the solver
-had two equally good options and took one. `in?` reads the same either way.
+had two equally good options and took one. `believed?` reads the same either way.
 
 Asking for all optimal answer sets instead of one separates them:
 
@@ -439,26 +439,29 @@ genuinely *is* one of several options, so this understates rather than overclaim
 an explicit, queryable record of one arbitration. Two labelings of the same tie can
 be built as sibling contexts and compared.
 
-The labeling is read from the **TMS**, not from a fresh solve: it records what the
-engine committed to, rather than what a second solve might choose.
+The labeling is the set of assumptions `label-dilemmas` kept, recorded with the
+`Program` as `:keep`, less each one its own context no longer believes
+(`exc/believed-own?`). It records what the engine committed to, not what a second solve
+might choose.
 
-The context is minted whether or not there was a tie. With no recorded `Program` — a
-KB the engine never arbitrated in, or a dilemma it declined — the `genlCx` edge is
-written and `:handles` comes back empty, which is what "the engine committed to
-nothing" materializes as. `label-dilemmas` ([labeling.md](labeling.md)) is the other
+The context is minted whether or not there was a tie. With no recorded `Program`, which
+only `label-dilemmas` records, the `genlCx` edge is written and `:handles` comes back
+empty, which is what "the engine committed to nothing" materializes as.
+`label-dilemmas` ([labeling.md](labeling.md)) is the other
 way round on purpose: it *makes* the choice rather than reporting one, so it mints no
 context when there is nothing contested.
 
 ### It entrenches what it records
 
-`label-context` writes ordinary assertions, and an
-assertion is evidence. The recorded side gains a second nogood against its
-rival, which makes defeating the rival strictly cheaper than defeating the record. So
-a tie that classified `:supportable` on both sides classifies `:true`/`:false`
-afterwards.
+`label-context` writes each copy at `:monotonic`, as `do/labeling` does, so inside `ctx`
+the copy out-ranks the rival the base still believes and `ctx` reads the recorded side
+alone ([labeling.md](labeling.md#ctx-inherits-and-the-labeling-is-recorded-by-strengthening)).
+An assertion is evidence. The recorded side gains a second nogood against its rival,
+which makes defeating the rival strictly cheaper than defeating the record. So a tie that
+classified `:supportable` on both sides classifies `:true`/`:false` afterwards.
 
-Belief does not move — the losing side was already OUT — but it stops *looking*
-arbitrary, because it no longer is: something now asserts the choice. **Classify
+Belief in `base` does not move, since every copy is written in `ctx`. The choice stops
+*looking* arbitrary, because it no longer is: something now asserts the choice. **Classify
 before you label.** Retracting the returned handles reopens the tie.
 
 ## Why `:violated` comes back empty

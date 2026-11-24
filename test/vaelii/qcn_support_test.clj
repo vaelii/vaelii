@@ -112,7 +112,7 @@
       (doseq [h sup]
         (let [s (v/sentex kb h)]
           (is (some? s) (str "handle " h " names a stored sentex"))
-          (is (v/in? kb h) (str "handle " h " is believed"))
+          (is (v/believed? kb h) (str "handle " h " is believed"))
           (is (contains? space/spatial-predicates (first (:sentence s)))
               (str "handle " h " is a fact of this calculus, not " (:sentence s))))))))
 

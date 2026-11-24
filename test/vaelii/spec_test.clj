@@ -84,7 +84,7 @@
         gap     (into (sorted-set)
                       (comp (filter (comp opts? val)) (map key) (remove specced))
                       (ns-publics 'vaelii.core))]
-    (is (= '#{abduce add-evaluatable argue assert-many bulk-assert-facts! check clear-caches
+    (is (= '#{abduce add-evaluatable answer-sets argue assert-many bulk-assert-facts! check clear-caches
               compare-tacticians conflicts contradictions copy-term copy-terms digests edit!
               edit-with-consequences! export! export-text! fork import!
               kb-quality load-foreign! load-text! merge-term! merge-terms! preview query-status
@@ -173,7 +173,7 @@
        (testing "introspection + both why-not arities"
          (let [h (v/handle-of kb (list dog Muffet) CxSpec)]
            (is (nat-int? h))
-           (is (boolean? (v/in? kb h)))
+           (is (boolean? (v/believed? kb h)))
            (is (map? (v/sentex kb h)))
            (v/premise? kb h) (v/defeat-class kb h)
            (v/supporting-justifications kb h) (v/dependent-justifications kb h)

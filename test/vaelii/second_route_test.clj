@@ -561,13 +561,13 @@
 (deftest ^:slow a-claim-on-an-unhidden-route-holds-the-firing-in-every-order
   (claim-orders-agree (tu/orders [:claim0 :claim1 :named :other :denial :rule])))
 
-;; ---- belief reads a route the reader does not see -------------------------------
+;; ---- belief does not read a route the reader does not see ------------------------
 ;;
 ;; The two-claim lattice with every firing on the denied `c1 ⊂ c2`, and an except at
-;; CxUniverse of the `c0` claim or of the `c1b ⊂ c2` edge.  An except is visibility, so the
-;; reader still believes the goal over the `c0` claim's route and does not see it
-;; (docs/nmtms.md, "Where the layer stops").  `in?` reads belief at the goal's own context,
-;; CxUniverse.
+;; CxUniverse of the `c0` claim or of the `c1b ⊂ c2` edge.  A belief read does not count a
+;; claim or an edge an except hides at the reader, so the denial's defeat of the goal is in
+;; force at CxUniverse (docs/nmtms.md, "Where the layer stops").  `in?` reads belief at the
+;; goal's own context, CxUniverse.
 
 (defn- hidden-route-answers
   "Whether CxUniverse believes and sees the goal of `kind`'s lattice with its parts arriving
@@ -580,13 +580,13 @@
       (v/assert kb (list 'except (list 'sentexHandle (v/handle-of kb (ffirst (parts hide)) 'CxUniverse)))
                 'CxUniverse)
       (let [h (v/handle-of kb goal 'CxUniverse)]
-        [(boolean (and h (v/in? kb h))) (v/ask? kb goal 'CxUniverse)]))))
+        [(boolean (and h (v/believed? kb h))) (v/ask? kb goal 'CxUniverse)]))))
 
-(deftest a-route-through-an-excepted-claim-or-edge-holds-belief-and-not-visibility
+(deftest a-route-through-an-excepted-claim-or-edge-holds-neither-belief-nor-visibility
   (doseq [kind [:preserve :subsume], hide [:claim0 :other]
           order (map #(conj % :other :denial) (tu/orders [:claim0 :claim1 :named :rule]))]
     (testing (str kind " " hide " " order)
-      (is (= [true false] (hidden-route-answers kind order hide))))))
+      (is (= [false false] (hidden-route-answers kind order hide))))))
 
 ;; ---- a claim that stands on a second route --------------------------------------
 ;;
@@ -661,7 +661,7 @@
   (tu/with-cleared-kb [kb tu/isolated-fresh]
     (let [{:keys [facts E H]} (open-question-shape)
           _     (doseq [[s c o] facts] (v/assert kb s c o))
-          in?   #(let [h (v/handle-of kb % 'CxUniverse)] (boolean (and h (v/in? kb h))))
+          in?   #(let [h (v/handle-of kb % 'CxUniverse)] (boolean (and h (v/believed? kb h))))
           reads {:in-E #(in? E) :in-H #(in? H)
                  :ask-E #(v/ask? kb E 'CxUniverse) :ask-H #(v/ask? kb H 'CxUniverse)}]
       (into {} (map (fn [r] [r ((reads r))])) order))))

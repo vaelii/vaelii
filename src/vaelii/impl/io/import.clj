@@ -17,6 +17,7 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.disk.files :as dfiles]
+            [vaelii.impl.except :as exc]
             [vaelii.impl.foreign :as foreign]
             [vaelii.impl.io.fingerprint :as fp]
             [vaelii.impl.io.frames :as frames]
@@ -1036,12 +1037,12 @@
           (p/clear-index! (:index kb))
           ;; the stores moved without going past a per-sentex choke point, as at
           ;; `core/clear!`, so the change clock is bumped here
-          (observe/note-change)
+          (observe/note-change (:clock kb))
           (swap! (:unrecovered kb) #(merge (dissoc % :no-belief) hazards))
           (catch Throwable t (.addSuppressed e t))))
       (throw e))
     ;; the records arrived past `kb/create-sentex`, or left
-    (finally (kb/forget-mint-rules! kb) (kb/forget-engine-rules! kb))))
+    (finally (kb/forget-mint-rules! kb) (kb/forget-engine-rules! kb) (exc/note-rewritten kb))))
 
 (defn- land-belief-records!
   "The writes of a `{:belief? true|:stored}` import, in order: the sentex pass, the

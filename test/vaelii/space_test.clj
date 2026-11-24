@@ -115,7 +115,7 @@
     (testing (str stated)
       (let [h (v/handle-of kb stated C)]
         (is (integer? h) "the edge is stored")
-        (is (false? (v/in? kb h)) "and is not believed"))
+        (is (false? (v/believed? kb h)) "and is not believed"))
       (tu/with-terms [A B]
         (v/assert kb (list p A B) C)
         (doseq [g goals]
@@ -253,7 +253,7 @@
     (testing (str p " / " q)
       (let [h (v/handle-of kb (list 'inverse p q) C)]
         (is (integer? h) "the converse fact is stored")
-        (is (false? (v/in? kb h)) "and is not believed"))
+        (is (false? (v/believed? kb h)) "and is not believed"))
       (tu/with-terms [A B]
         (v/assert kb (list p A B) C)
         (let [goal (list p A B)

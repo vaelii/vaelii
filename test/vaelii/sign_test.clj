@@ -263,6 +263,79 @@
         (is (= 1 (count es)))
         (is (= #{NetFlow WaterLevel} (set (:quantities (:detail (first es))))))))))
 
+(tu/deftest-kb the-reading-is-readable-from-core-with-the-sets-an-inconsistency-emptied
+  (tu/with-terms [Tap Drain NetFlow WaterLevel Mystery]
+    (tub! kb Tap Drain NetFlow WaterLevel)
+    (v/assert kb (list 'greaterInMagnitudeThan Tap Drain) C)
+    (v/assert kb (list 'greaterInMagnitudeThan Mystery Tap) C)
+    (is (= {:context C :consistent? true
+            :signs   {Tap '#{SignPositive} Drain '#{SignNegative} NetFlow '#{SignPositive}}
+            :trends  {WaterLevel '#{SignPositive}}}
+           (v/sign-reading kb C))
+        "a quantity the reading never narrowed has no entry")
+    (v/assert kb (list 'signOf NetFlow 'SignNegative) C)
+    (is (= {:context C :consistent? false
+            :signs   {Tap '#{SignPositive} Drain '#{SignNegative} NetFlow #{}}
+            :trends  {WaterLevel #{}}}
+           (v/sign-reading kb C)))))
+
+(tu/deftest-kb the-reading-at-a-time-slice-is-read-at-the-context-its-expression-names
+  (tu/with-terms [Tap Drain NetFlow CxBathing BathTime]
+    (let [slice (list 'CxTimeFn CxBathing BathTime)]
+      (doseq [s [(list 'signOf Tap 'SignPositive) (list 'signOf Drain 'SignPositive)
+                 (list 'qualitativeSum Tap Drain NetFlow)]]
+        (v/assert kb s slice))
+      (is (= {Tap '#{SignPositive} Drain '#{SignPositive} NetFlow '#{SignPositive}}
+             (:signs (v/sign-reading kb slice)))))))
+
+(tu/deftest-kb a-variable-context-reads-every-context-into-one-diagnostic-reading
+  (tu/with-terms [Tap Drain NetFlow CxTubOne CxTubTwo]
+    (v/assert kb (list 'signOf Tap 'SignPositive) CxTubOne)
+    (v/assert kb (list 'signOf Drain 'SignPositive) CxTubTwo)
+    (v/assert kb (list 'qualitativeSum Tap Drain NetFlow) CxTubTwo)
+    (is (nil? (get-in (v/sign-reading kb CxTubTwo) [:signs NetFlow]))
+        "CxTubTwo does not see the tap's sign")
+    (is (= '#{SignPositive} (get-in (v/sign-reading kb '?c) [:signs NetFlow])))))
+
+(defn- sign-clash-in-order
+  "Assert the four facts of a sum of two positives stated negative in `order`.  try-assert
+  refuses the last, and assert places one contradiction over the four and files one entry
+  naming it.  Each member retracted takes it out until it is asserted again."
+  [kb order]
+  (v/clear-violations! kb)
+  (tu/with-terms [In Out Net]
+    (let [facts   [(list 'qualitativeSum In Out Net)
+                   (list 'signOf In 'SignPositive)
+                   (list 'signOf Out 'SignPositive)
+                   (list 'signOf Net 'SignNegative)]
+          ordered (mapv facts order)
+          entries #(filterv (fn [e] (= :sign-inconsistency (:violation e))) (v/violations kb))]
+      (run! #(v/assert kb % C) (pop ordered))
+      (let [e (try (v/try-assert kb (peek ordered) C) nil
+                   (catch clojure.lang.ExceptionInfo e (ex-data e)))]
+        (is (= [:definitional-clash :unsatisfiable-network] [(:type e) (:violation e)]))
+        (is (= (set (pop ordered)) (set (map :sentence (:clashes-with e)))))
+        (is (empty? (entries))))
+      (v/assert kb (peek ordered) C)
+      (let [hs (mapv #(v/handle-of kb % C) facts)
+            es (entries)]
+        (is (= 1 (count es)))
+        (is (= #{(:sentence (first es))} (tu/contradictions-naming kb hs)))
+        (is (= #{Net} (set (:quantities (:detail (first es))))) "the quantity no sign is left for")
+        (doseq [f facts]
+          (v/retract! kb (v/handle-of kb f C))
+          (is (empty? (tu/contradictions-naming kb (keep #(v/handle-of kb % C) facts))))
+          (v/assert kb f C)
+          (is (= 1 (count (tu/contradictions-naming kb (mapv #(v/handle-of kb % C) facts))))))))))
+
+(tu/deftest-kb a-sign-clash-is-placed-at-the-write-whichever-fact-closes-it
+  (doseq [order [[0 1 2 3] [1 2 3 0] [2 3 0 1] [3 0 1 2]]]
+    (sign-clash-in-order kb order)))
+
+(tu/deftest-kb ^:slow a-sign-clash-is-placed-at-the-write-in-every-arrival-order
+  (doseq [order (tu/permutations [0 1 2 3])]
+    (sign-clash-in-order kb (vec order))))
+
 (tu/deftest-kb two-stated-signs-that-disagree-are-a-contradiction-not-a-merge
   (tu/with-terms [Balance]
     (v/assert kb (list 'signOf Balance 'SignPositive) C)

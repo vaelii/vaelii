@@ -173,7 +173,7 @@
           wn (v/why-not kb h)]
       (testing "the default lost, but is still stored (it can be revived)"
         (is (some? h))
-        (is (false? (v/in? kb h)))
+        (is (false? (v/believed? kb h)))
         (is (false? (:believed? wn)))
         (is (= :defeated (:reason wn))))
       (testing "the believed negation is named as the contradiction"
@@ -188,14 +188,14 @@
     (v/assert-rule kb [(list flies '?x)] (list airborne '?x) CxBird {:direction :forward})
     (let [ah (v/handle-of kb (list airborne Tweety) CxBird)]
       (is (some? ah))
-      (is (true? (v/in? kb ah)))
+      (is (true? (v/believed? kb ah)))
       ;; now defeat the antecedent; the conclusion is not itself defeated, it rests on a
       ;; handle the placed defeat removes from belief
       (v/assert kb (list 'not (list flies Tweety)) CxBird {:strength :monotonic})
       (let [wn (v/why-not kb ah)
             fh (v/handle-of kb (list flies Tweety) CxBird)]
         (testing "withdrawn by the defeat of what it rests on, not defeated itself"
-          (is (false? (v/in? kb ah)))
+          (is (false? (v/believed? kb ah)))
           (is (false? (:believed? wn)))
           (is (= :withdrawn (:reason wn))))
         (testing "and the defeated antecedent is named"

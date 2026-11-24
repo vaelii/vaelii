@@ -227,7 +227,12 @@ CxUniverse names takes the same edge, which its `natFormula` justifies, so every
 `provers/slice-parts` answers `[CxStory T]` for is below `CxStory` in the `genlCx` closure.
 Such a `K` takes no `contextArgSubrelation` pair, which orders `cx/` constants only. An
 argument that is not a symbol, and `CxUniverse`, which every context sees already, get no
-edge.
+edge. The producer reads each map and declaration as its own context's placed defeats
+leave it (`exc/unwithdrawn-own?`), so a placed defeat of either builds no edge. A defeat arriving after
+the edge takes its map or declaration from belief with no relabel, and the producer drops
+the edge's justification over it (`drop-departed!`). The defeat retracted, the producer
+reads the map or the declaration as an arrival and builds the edge again
+(`context_nat_test/a-denied-map-or-declaration-orders-no-context-until-the-denial-goes`).
 
 `vaelii.impl.context-nat` reads the declarations and the context NATs of `F` from the
 store, groups the contexts that agree on every undeclared argument, and for each ordered
@@ -254,14 +259,22 @@ third one, so a calendar edge posted the re-check triggers and ran no merge at a
 whether two fillers of one functional slot merged came down to whether the year's fact was
 written before January existed (vaelii#56). The producer settles once it has built an
 edge, and the settle's drain runs the sweeps for it as for an asserted or a concluded edge
-([contexts.md](contexts.md#one-context-move)). The producer is idempotent, and a
+([contexts.md](contexts.md#one-context-move)). The drain seeds chaining from the edge as
+the write that minted the context asks (`nat-read/*mint-chains?*`), though the `natFormula`
+map itself does not chain. A forward rule whose antecedents sit in two contexts therefore
+concludes at a context minted below both after they arrive
+(`context_nat_test/a-forward-rule-concludes-at-a-context-minted-after-its-antecedents`).
+The producer is idempotent, and a
 declaration or a revival re-runs it over every pair of a function's contexts; a second
 route to an edge already believed moves no label and is no move.
 
 **Every arrival order converges within eight levels of slice nesting**, the producer's
 round cap below. Five things can arrive last, and each has an arm
 (`reconcile-arrival`). A declaration arriving after the contexts sweeps every pair of them;
-a context arriving after a declaration is swept when it is minted, over the pairs it is in;
+a context arriving after a declaration is swept when it is minted, over the pairs it is in,
+each comparison through one of its points decided from the walk from that point
+([time.md](time.md#the-order-over-time-points-vaeliiimplpoint-order), `lein perf`'s
+`context-nat-mint-along-a-chain`);
 a **link fact**, one the order over time points reads a link from (an instant order or
 equality, a stated bound, an inclusion, an interval relation), pairs each context holding a time some
 link's lower end reaches back to with each holding a time some upper end reaches forward
@@ -276,7 +289,10 @@ it starts at or before the latest moment the start reaches back and ends at or a
 earliest the end reaches forward. The calendar index
 ([indexing.md](indexing.md#the-calendar-index)) gives the context NATs' maps and the link
 facts with a point in the months between the first two bounds, and in the months on the
-side of the second two holding fewer; a context NAT's own map among them is a candidate,
+side of the second two holding fewer. Two bounds in different frames give the months
+beyond each bound in its frame, on the side holding fewer: a time inside whose start is
+placed through local moments and whose end through UTC ones has a fact in both. A context
+NAT's own map among them is a candidate,
 and so is each context at a time a walk away from the calendar end of a stated link among
 them reaches. The walks are shared with the comparisons of the pairs
 (`point-order/with-memo`, `lein perf`'s `context-nat-instant-order-append` and
@@ -284,7 +300,8 @@ them reaches. The walks are shared with the comparisons of the pairs
 
 A time around a slice is read off the months on one side of its bounds, every month a
 context NAT's map or a link fact names a point in up to the earlier bound or from the later
-one, so that read grows with the months on the side it takes.
+one, so that read grows with the months on the side it takes. A time inside a slice whose
+two bounds lie in different frames is read the same way.
 An `(R a b)` **evidence fact** arriving after both sweeps the pairs ordered `a` below `b` in
 the functions declared to order by `R` (`functions-ordered-by`), which is the arm a
 comparator dimension never needs and a stored-fact one cannot do without. A `genlCx` edge
@@ -352,8 +369,8 @@ There it reads the routes from `Kb` to `Ka` (`reconcile-pair`):
 
 The stored `contextsOrderedBothWays` carries the pair's state through the JTMS.
 Retracting a handle of one of its justifications removes it or takes it OUT. A placed
-defeat of one leaves it IN and not believed (`exc/believed-own?`), and the producer then
-builds the edges over the routes whose every handle is believed. A teardown that removes
+defeat of one leaves it IN and withdrawn (`exc/unwithdrawn-own?`), and the producer then
+builds the edges over the routes whose every handle is unwithdrawn. A teardown that removes
 the sentence orders the pair again both ways (`reorder-pair`, from `reconcile-revivals`).
 So does a settle that takes the sentence OUT or brings it back (`:departed` and `:arrived`,
 read by `reconcile-moves`), and a defeat of a handle it rests on directly, which the

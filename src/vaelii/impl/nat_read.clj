@@ -601,6 +601,12 @@
   and the mint queues the constant once its bookkeeping is stored."
   false)
 
+(def ^:dynamic *mint-chains?*
+  "While `*minting?*`, the enclosing write's `:chain?`.  The `genlCx` edges the mint's
+  `natFormula` map entails seed chaining by it (`nat-maintenance/settle-computed-edges`),
+  though the map itself does not chain."
+  false)
+
 (defn values-reachable?
   "Can a corresponding fact reach a minted constant: does the KB declare a reifiable
   function (`any-reifiable-functions?`) and store a correspondence declaration and a

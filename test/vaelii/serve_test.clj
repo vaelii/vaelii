@@ -130,7 +130,7 @@
           (is (= {:ok true :result true :status 200} believed-r))
           (is (:ok status-r))
           (is (= h (get-in status-r [:result :handle])))
-          (is (true? (get-in status-r [:result :visible?])))))
+          (is (true? (get-in status-r [:result :believed?])))))
       (testing "preview answers what a batch would believe, and stores nothing"
         ;; served with the writes because it applies the batch and rolls it back — the
         ;; daemon is the single writer, which is exactly the condition it needs
@@ -545,8 +545,8 @@
                          ["add-provenance ahead of a sentex" (as h "tok-a" :add-provenance 999999 {:note 1})]
                          ["a do/ imperative" (as h "tok-a" :assert (list 'do/labeling CxA) CxA)]]]
           (is (= [403 :forbidden-context] (status-type r)) why))
-        (is (v/in? kb b-claim) "the other principal's claim stands")
-        (is (v/in? kb eternal) "the eternal_predicate membership stands")
+        (is (v/believed? kb b-claim) "the other principal's claim stands")
+        (is (v/believed? kb eternal) "the eternal_predicate membership stands")
         (is (nil? (v/handle-of kb (list animal Rex) CxA)) "a refused batch applied nothing")
         (is (nil? (v/handle-of kb (list dog Rex) CxB)))
         (is (nil? (:note (v/provenance kb b-claim)))))
@@ -590,7 +590,7 @@
         (is (not (v/sees? kb CxB CxA))))
       (testing "so a monotonic denial in the grant's context leaves the other principal's fact believed"
         (is (:ok (as h "tok-a" :assert (list 'not (list dog Fido)) CxA {:strength :monotonic})))
-        (is (v/in? kb b-claim)))
+        (is (v/believed? kb b-claim)))
       (testing "an edge widening a context the grant names is stored"
         (is (:ok (as h "tok-a" :assert (list 'genlCx CxA CxB) CxA)))
         (is (v/sees? kb CxA CxB))))))
@@ -656,7 +656,7 @@
         (doseq [[why r] [["an equality naming a context the grant does not name" (as h "tok-a" :assert eq 'CxUniverse)]
                          ["an equality whose collision repair merges two slices the grant does not name" (as h "tok-ab" :assert eq 'CxUniverse)]]]
           (is (= [403 :forbidden-context] (status-type r)) why))
-        (is (v/in? kb b) "the other principal's fact stands in its own context")
+        (is (v/believed? kb b) "the other principal's fact stands in its own context")
         (is (not (v/ask? kb (list dog Rex) CxA))))
       (testing "a grant naming every context of the two classes stores it, and each name reads the other's facts"
         (let [e (:result (as h "tok-x" :assert eq 'CxUniverse))]
@@ -762,7 +762,7 @@
         (is (nil? (v/handle-of kb (list likes Hal Gus) CxA))))
       (testing "a firing that stores inside the grant lands"
         (is (:ok (as h "tok-a" :assert (list admires Cy Dee) CxA)))
-        (is (v/in? kb (v/handle-of kb (list liked Dee) CxA)))))))
+        (is (v/believed? kb (v/handle-of kb (list liked Dee) CxA)))))))
 
 (tu/deftest-kb a-grants-generator-verdict-is-the-same-whichever-of-fact-and-genl-edge-arrives-last
   (let [;; (A P) for the antecedent A makes the engine write (implies (pet ?x) (P ?x))
@@ -1101,6 +1101,26 @@
                                                   (:results (:result r)))])
                 (pr-str args))))))))
 
+(tu/deftest-kb answer-sets-holds-its-time-limit-under-the-clock-ceiling
+  (tu/with-terms [menu_item picked Aa CxServe]
+    (let [handler (open-app kb)
+          ceiling (long (Math/ceil (/ (config/max-query-ms) 1000.0)))]
+      (post-op handler :assert [(list menu_item Aa) CxServe])
+      (post-op handler :assert [(list 'set/assumptionRule
+                                      (list 'implies (list menu_item '?x) (list picked '?x)))
+                                CxServe])
+      (testing "a limit past the ceiling, and 0, which lifts the limit, are refused by name"
+        (doseq [t [(inc ceiling) 0]]
+          (is (= [false :over-ceiling 400]
+                 ((juxt :ok :type :status) (post-op handler :answer-sets [CxServe {:time-limit t}])))
+              (str t))))
+      (testing "a call naming no limit is given the ceiling's"
+        (with-redefs [v/answer-sets (fn [_ context opts] [context opts])]
+          (is (= [CxServe {:time-limit ceiling :reading :one}]
+                 (:result (post-op handler :answer-sets [CxServe {:reading :one}]))))))
+      (let [r (post-op handler :answer-sets [CxServe])]
+        (is (contains? #{[true :sat] [true :no-backend]} [(:ok r) (:status (:result r))]))))))
+
 (deftest every-op-whose-opt-keys-name-a-clock-is-held-to-a-ceiling
   (let [clocked (for [[sym v] (ns-publics 'vaelii.core)
                       :let [[_ stem] (re-matches #"(.+)-opt-keys" (name sym))]
@@ -1249,7 +1269,7 @@
             (let [r (post-op handler :retract [hiding])]
               (is (= [false :interrupted 400] [(:ok r) (:type r) (:status r)]))))
           (is (zero? (v/count-with-functor kb cnt)))
-          (is (v/in? kb hiding)))
+          (is (v/believed? kb hiding)))
         (finally (v/retract! kb counting))))))
 
 (tu/deftest-kb a-granted-removal-whose-withdrawal-preview-reaches-the-write-bound-is-refused
@@ -1268,7 +1288,7 @@
               (let [r (req)]
                 (is (= [false :interrupted 400] [(:ok r) (:type r) (:status r)]) why)))
             (is (zero? (v/count-with-functor kb cnt)) why)
-            (is (v/in? kb hiding) why)))
+            (is (v/believed? kb hiding) why)))
         (finally (v/retract! kb counting))))))
 
 (tu/deftest-kb a-write-whose-caller-stopped-listening-runs-to-the-end

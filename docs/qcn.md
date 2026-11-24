@@ -674,37 +674,40 @@ explanation — the verdict does not depend on that, only the blame does. That i
 violations ledger records `unsatisfiable-pairs`, a function of the network alone, and
 leaves the culprit set to a caller who asks for it.
 
-**Reporting an impossible network.** When the pass returns `:inconsistent`, the calculus
-appends a `:qualitative-inconsistency` entry to the KB's violations ledger — the
-`(violations kb)` a caller already reads — naming the calculus, the context, the nodes,
-and the pairs that are unsatisfiable *as written* (absent when only composition found it).
-When a narrowing's source is unsatisfiable, the entry's `:sources` carries the source
-descriptions `qualitative-network` answers as `:unsatisfiable-sources`.
-Otherwise a KB with an impossible component answers nothing about its nodes and says
-nothing about why.
+**An impossible network is a stored contradiction.** A settle places one `(contradicts …)`
+per conflicted region of each network it moved (`network-regions/place-moved!`). A
+calculus's region is an unsatisfiable connected component of its network. The point
+network's region is a strongly connected part of its order graph that holds a strict
+ordering. The metric network's region is a strongly connected part of one stated component
+that holds a negative cycle, the component's own dates included
+([stp.md](stp.md#an-unsatisfiable-network-is-a-stored-contradiction)). The sign reading's
+region is a set of linked quantities that leaves one quantity no sign
+([sign.md](sign.md)). The sentence names the region's members in content order: the stored
+facts its pairs rest on, a narrowing source's support included. The settle places it with
+the nogood placement primitive (`chain/place-nogood!`), justified under `nogood` by the
+members and by the `genl`, `genlCx` and unit-table edges they were read through, and with
+no `defeat`. A member going OUT takes the sentence OUT, and a member retracted removes it.
+When a region grows, splits or loses a member, the settle places the sentence of the
+region it now reads and removes the one no context reads any more. Two networks whose
+regions rest on the same members store one sentence.
 
-**The settle asks every write.** A settle whose relabelled region holds a believed fact
-that moves a registered calculus (a fact on a predicate the calculus triggers on, a `genl`
-edge into one, or a `genlCx` edge) asks each governing context of that calculus whether
-its network is unsatisfiable (`qcn-kb/report-moved!`). The entry is therefore filed by the
-write that made the network unsatisfiable, whether or not a rule or a read consults the
-network. A KB with no calculus registered runs no check.
+The facts a settle relabelled name nodes, and each network they move is read at every
+governing context that sees them, over the components that hold those nodes. A calculus
+with no narrowing reads such a component alone, off each node's argument index
+(`qcn-kb/component-read`), so the read costs what the component holds. The point and
+Allen networks read the visible network whole, because their narrowings read the context
+whole, and run the pass over the touched components alone. A `genlCx` edge, a `genl` edge
+into a trigger and an `except` read every component. A KB with no calculus, metric or sign
+prover registered reads nothing.
 
-The settle records each governing context's pass, and the next settle closes it again
-from the constraints its region adds (`qcn/path-consistent-from`, seeded at the pairs they
-narrow), with no network read. That holds when every member of the region is a believed
-fact of the calculus, a rule, or a fact on a predicate the calculus does not trigger on
-and the engine does not read (core.txt's types and inert terms excepted). A region holding
-anything else (an OUT member, a `genl` or `genlCx` edge, an `except`, a defeat, an equality
-edge, a fact on a sub-predicate), and every region of a calculus with a narrowing (`:allen`,
-`:point`), reads each governing context's network whole. A pass that closes
-`:inconsistent` is read and tightened whole, which files the entry and replaces a recorded
-pass that a withdrawal the region does not show left too tight. A fact a governing
-context does not see adds nothing to that context's pass. A plain
-listener's feed event carries the entry under `:unsatisfiable`, once per
-network per KB and context under a marker of its own (`qcn-kb/fed-inconsistencies`). A
-standing query's event carries none, since `watch` refuses a goal a calculus answers
-([feed.md](feed.md#what-is-refused)).
+Each sentence a settle creates files one ledger entry: `:qualitative-inconsistency` for a
+calculus, naming the calculus, the context, the region's nodes, the pairs unsatisfiable *as
+written* (absent when only composition found it) and the stored sentence. When a
+narrowing's source is unsatisfiable, the entry's `:sources` carries the source descriptions
+`qualitative-network` answers as `:unsatisfiable-sources`. A read files nothing. A plain
+listener's feed event carries the entries of the sentences its write placed under
+`:unsatisfiable`. A standing query's event carries none, since `watch` refuses a goal a
+calculus answers ([feed.md](feed.md#what-is-refused)).
 
 **The feed event is the record a caller reads forward.** The ledger is in memory, holds
 its newest 1000 entries, is not persisted and has no cursor. A daemon subscription keeps
@@ -712,32 +715,24 @@ the events in a ring a cursor reads, and its `:lagged` count names the events th
 dropped ([feed.md](feed.md#across-the-wire)).
 
 **`try-assert` refuses the write.** After the write stores, chains and settles,
-`try-assert` looks for an unsatisfiable component, at a governing context of a calculus the
-write moved, whose support-carrying pass blames a sentex the write premised newly or a
-conclusion its firings placed (`qcn-kb/unsatisfiable-write`). A context whose recorded
-pass is satisfiable, with no mutation since the settle, is not read. The first such component
-refuses the write as `:definitional-clash` with `:violation :unsatisfiable-network`, and
-the write is taken back. `:clashes-with` names the other blamed facts, and `:detail` the
-calculus, the context, the component's nodes and its pairs unsatisfiable as written. A
-component the pass blames on none of the write's sentexes was unsatisfiable before the
-write, and does not refuse it. `{:refuse-unsatisfiable? false}` skips the check. A
-`genlCx` edge that puts two satisfiable networks into one unsatisfiable reader is stored:
-the blame names facts and never an edge.
+`try-assert` looks for a believed region sentence that names a sentex the write premised
+newly or a conclusion its firings placed (`network-regions/write-region`), the first by its
+members' content. That sentence refuses the write as `:definitional-clash` with `:violation
+:unsatisfiable-network`, and the write is taken back with the sentence and its entry.
+`:clashes-with` names the other members, and `:detail` the entry's detail with the
+context, the `:sentence` and, for a calculus, the `:calculus`. A write that joins a region
+standing before it is a member of the region it joins, and is refused. A region naming
+none of the write's sentexes does not refuse it. `{:refuse-unsatisfiable? false}` skips
+the check. A `genlCx` edge that puts two satisfiable networks into one unsatisfiable reader
+is stored: an edge is a ground of the placement, never a member.
 
 It is deliberately **not** a `wff` check. [why not a wff
 check](defenses.md#an-impossible-network-is-reported-off-the-pass-not-thrown-as-a-wff-check)
 
-The entry is filed once per network **per KB and context**, which is not the same thing as
-once per pass. The pass is memoized on the network *value* and so is shared — two contexts
-seeing the same constraints, or two KBs holding them, run it once between them — and a
-report riding on it would fire for whichever asked first and leave the rest answering
-nothing with an empty ledger to explain it. So it hangs off `observe/newly-seen?`, which
-asks whether *this* KB has said *this* about *this* context yet. A query loop still reports
-once, and a change of belief yields a different network and reports again. The network
-reported is the one the believed facts give, never one a goal's nodes extended: a goal
-first tightens the network as read, and when that network is unsatisfiable, extends only
-its satisfiable components, which the pass does not report. Queries naming different
-goal-only nodes therefore neither re-report nor list those nodes.
+The entry is filed when the settle creates the sentence, so each KB holding the facts files
+one, and a query loop files none. The pass is memoized on the network *value* and shared
+between contexts and KBs, so no entry rides on it. The network a region is read from is the
+one the believed facts give, never one a goal's nodes extended.
 
 **Cost, completeness, registration.** `cost` is **`:compute`** — a fixpoint over the
 stored facts before the first answer, a closure rather than a search. `completeness` is
@@ -784,7 +779,7 @@ and is answered about the network it actually asked about.
 ## The network is resident, and the clock is what makes that sound
 
 A network is read out of the KB once and then lives on the KB until the engine mutates
-something. What decides "until" is `observe/change-clock`, a single global counter bumped
+something. What decides "until" is `observe/change-clock`, a counter each KB holds, bumped
 at three kinds of place:
 
 * a sentex is **stored** (`kb/create-sentex`) or **leaves** (`integrate/sentex-removed!`);
@@ -936,10 +931,11 @@ Three things follow, and each needed its own wiring:
 
 The **diagonal** rests on the `(reflexive P)` statements the reader sees
 (`res/declared-by`). With `(reflexive partOfRegion)` visible, a forward rule over
-`(partOfRegion ?x ?x)` fires once per node of the network. The firing rests on every visible
-declaration and on a fact naming the node, one justification per such fact
-(`qcn-kb/node-statements`), so it is placed where the node is, and retracting the
-declaration withdraws every one. In the join two distinct variables answer the diagonal too,
+`(partOfRegion ?x ?x)` fires once per node of the network. The firing rests on one believed
+declaration the reader sees and on a fact naming the node, one justification per such pair
+(`qcn-kb/node-statements`, `res/declaration-supports`), so it is placed where the node is,
+and retracting every declaration withdraws every one. In the join two distinct variables
+answer the diagonal too,
 unlike a query's four goal shapes ([above](#what-every-algebra-does-with-it)), so the
 antecedent that binds first decides no firing. A term no fact names, a node only a narrowing
 names included, gets no diagonal firing, even where an earlier antecedent binds it. A
@@ -992,8 +988,9 @@ unioning their answers — never by reading every context's facts into one netwo
 never by reading wherever happens to be convenient. [why the reader set is exact, not a
 convenience](defenses.md#a-variable-context-goal-fans-over-readers-rather-than-reading-one-unioned-network)
 The union network is still what `qcn-kb/network` returns for a variable context, and it is
-a diagnostic reading of everything stored rather than anything a reader sees; no goal is
-answered off it. Placement is unaffected either way: a conclusion is placed from the
+a diagnostic reading of every fact its own context believes rather than anything a reader
+sees; no goal is answered off it. Placement is unaffected either way: a conclusion is
+placed from the
 contexts of its support handles, so one solved at the meeting context lands there because
 the facts that entailed it meet there.
 
@@ -1079,7 +1076,8 @@ nothing, which the numbers below confirm. Loading a containment chain of *n* reg
 The cost grows faster than the input and slower than *n*³: 40 → 80 regions is 2× the
 facts for 6.5× the time — super-quadratic (4× would be quadratic), sub-cubic.
 `lein perf`'s `qcn-chain-load` reads the prover + rule column per fact at 20 and 80
-regions, and holds it under 40× for the 4× step, under the 64× a cubic pass reads. At 80 regions the network reads are
+regions, and holds it under 12× for the 4× step, under the 16× a pass quadratic per fact
+reads and the 64× a cubic one reads. At 80 regions the network reads are
 about 3% of that load, and the two passes below most of the rest.
 Deferring the chaining is no penalty, because the one big datum it produces
 joins over a delta like any other.

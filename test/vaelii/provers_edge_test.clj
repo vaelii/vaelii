@@ -309,7 +309,7 @@
       (v/assert kb (list afterEv EvC EvB) 'CxUniverse)
       (is (v/ask? kb (list beforeEv EvA EvC) 'CxUniverse) "both declared")
       (v/retract! kb h2)
-      (is (v/in? kb h1) "the other declaration is untouched")
+      (is (v/believed? kb h1) "the other declaration is untouched")
       (is (= afterEv (v/inverse-of kb beforeEv))
           "and the taxonomy still reports it, rather than having cleared the entry")
       (is (= beforeEv (v/inverse-of kb afterEv))

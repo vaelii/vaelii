@@ -104,11 +104,15 @@ its inputs moved, and a narrowed quantity's support shares the supports it was d
 from rather than copying them, so a chain of n links costs n narrowings and a rebuild of
 the reading is linear in the sign facts (`lein perf`'s `sign-chain-rebuild`).
 
-**A set narrowed to nothing is a contradiction.** The reading is then `:inconsistent`, a
-`:sign-inconsistency` entry naming the emptied quantities goes to `(violations kb)`, and
-**no** sign goal in that context is answered, a stated one included. It is a report and
-not a `wff` refusal, [as for a qualitative
-network](defenses.md#an-impossible-network-is-reported-off-the-pass-not-thrown-as-a-wff-check).
+**A set narrowed to nothing is a contradiction.** The reading is then `:inconsistent`, and
+**no** sign goal in that context is answered, a stated one included. The settle of the
+write that empties a set stores one `(contradicts …)` per region (`sign/unsatisfiable-regions`).
+A region is the quantities the constraints link to an emptied one. Its members are the
+stated signs of those quantities and the facts of the constraints that narrow them. It files a
+`:sign-inconsistency` entry naming the emptied quantities and the sentence, and
+`try-assert` refuses the write, as for a qualitative network
+([qcn.md](qcn.md#support-what-an-entailed-relation-rests-on)). It is not a `wff`
+refusal ([why not](defenses.md#an-impossible-network-is-reported-off-the-pass-not-thrown-as-a-wff-check)).
 
 `signOf` is **not** declared `functional`, though a quantity has one sign. `functional`
 merges two symbol arguments through the equality partition ([equality.md](equality.md)),
@@ -144,6 +148,13 @@ answered.
 
 A quantity the reading never reached is answered with nothing under either polarity:
 the engine knows no sign for it and can rule none out.
+
+`core/sign-reading` returns the reading itself: each quantity's possible signs and trends
+as sign terms, `:consistent?`, and no entry for a quantity the reading never reached. An
+inconsistent reading keeps its sets there, an emptied quantity's set `#{}`, though no goal
+is answered from it. It is a read, as `qualitative-network` is, and answers whether or
+not the prover is registered. The browser's `/signs` page draws it
+([web.md](web.md#the-sign-drawing)).
 
 `cost` is `:compute` and `completeness` is 100. The reading is **resident** on the KB,
 keyed by the change clock as a qualitative network is ([qcn.md](qcn.md), "The

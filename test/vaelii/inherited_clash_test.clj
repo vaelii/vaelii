@@ -534,7 +534,7 @@
           deny   (v/assert kb (list 'not (list carriesLoad cart_kind 'Bone1)) CxLow)
           placed (fn [] (into #{} (for [f '[contradicts defeat]
                                         s (v/sentexes-with-functor kb f)
-                                        :when (v/in? kb (:id s))]
+                                        :when (v/believed? kb (:id s))]
                                     [f (:context s)])))]
       (is (= #{['contradicts CxJoin] ['defeat CxJoin]} (placed)))
       (is (false? (v/believed? kb deny CxJoin)))
@@ -573,7 +573,7 @@
             names  {CxBase :base CxBelow :below}
             placed (fn [] (into #{} (for [f '[contradicts defeat]
                                           s (v/sentexes-with-functor kb f)
-                                          :when (v/in? kb (:id s))]
+                                          :when (v/believed? kb (:id s))]
                                       [f (names (:context s) (:context s))])))
             now    [(placed) (v/believed? kb (:deny hs) CxBelow) (v/believed? kb (:deny hs) CxBase)]]
         (v/retract! kb (:meta hs))
@@ -621,7 +621,7 @@
                           :else    (names x x)))]
         (into #{} (for [f '[contradicts defeat]
                         s (v/sentexes-with-functor kb f)
-                        :when (v/in? kb (:id s))]
+                        :when (v/believed? kb (:id s))]
                     [(spell (:sentence s)) (spell (:context s))]))))))
 
 (tu/deftest-kb a-defeat-of-a-genl-edge-beside-an-inherited-clash-places-the-same-in-every-order
@@ -680,7 +680,7 @@
             names {CxBase :base CxBelow :below}
             placed (fn [] (into #{} (for [f '[contradicts defeat]
                                           s (v/sentexes-with-functor kb f)
-                                          :when (v/in? kb (:id s))]
+                                          :when (v/believed? kb (:id s))]
                                       [f (names (:context s) (:context s))])))
             now    [(placed) (v/believed? kb (:deny hs) CxBelow) (v/believed? kb (:deny hs) CxBase)]]
         (v/retract! kb (:except hs))

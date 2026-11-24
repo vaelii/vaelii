@@ -40,6 +40,7 @@
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.literal-cache :as literal-cache]
             [vaelii.impl.observe :as observe]
+            [vaelii.impl.resolution :as res]
             [vaelii.impl.settle :as settle]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
@@ -168,8 +169,8 @@
           bump    @#'observe/note-change
           answer  #(set (map '?x (v/query kb '(perch ?x) 'CxUniverse)))]
       (with-redefs [observe/note-change
-                    (fn []
-                      (let [c (bump)]
+                    (fn [clk]
+                      (let [c (bump clk)]
                         (when (and (realized? writer)
                                    (identical? (Thread/currentThread) @writer)
                                    (compare-and-set! armed true false))
@@ -216,7 +217,7 @@
   "What a reader reads about `loser`: the network's label, its belief at the vantage and
   at its own context, and whether a match at the vantage returns it."
   [kb loser vantage home]
-  {:in?          (v/in? kb loser)
+  {:in?          (v/believed? kb loser)
    :at-vantage   (v/believed? kb loser vantage)
    :at-home      (v/believed? kb loser home)
    :matched      (boolean (some #(= loser (:id %))
@@ -258,25 +259,26 @@
   ;; While a settle holds belief, a reader derives what it reads from the belief the
   ;; settle began from, and the writer from the network it is deciding.  The change clock
   ;; each keys a cache entry by keeps the two apart, in both directions.
-  (let [cache  (atom {})
+  (let [clk    (observe/new-clock)
+        cache  (atom {})
         opened (promise)
         done   (promise)
         writer (future
                  (let [h (observe/new-hold)]
-                   (observe/open-hold! h)
+                   (observe/open-hold! h clk)
                    (try
-                     (deliver opened (observe/change-clock))
+                     (deliver opened (observe/change-clock clk))
                      @done
-                     (literal-cache/lookup cache ::k (constantly [:writer]))
-                     (finally (observe/close-hold! h)))))
+                     (literal-cache/lookup clk cache ::k (constantly [:writer]))
+                     (finally (observe/close-hold! h clk)))))
         wclock (deref opened 10000 nil)]
     (is (and wclock (not (neg? (long wclock)))) "the writer reads the clock itself")
-    (is (neg? (observe/change-clock)) "a reader beside the hold reads a clock no writer keys by")
-    (is (= [:reader] (vec (literal-cache/lookup cache ::k (constantly [:reader])))))
+    (is (neg? (observe/change-clock clk)) "a reader beside the hold reads a clock no writer keys by")
+    (is (= [:reader] (vec (literal-cache/lookup clk cache ::k (constantly [:reader])))))
     (deliver done true)
     (is (= [:writer] (vec @writer)) "the writer computes past the reader's entry")
-    (is (not (neg? (observe/change-clock))) "a closed hold leaves the reader on the clock")
-    (is (not= [:reader] (vec (literal-cache/lookup cache ::k (constantly [:after]))))
+    (is (not (neg? (observe/change-clock clk))) "a closed hold leaves the reader on the clock")
+    (is (not= [:reader] (vec (literal-cache/lookup clk cache ::k (constantly [:after]))))
         "nor does a reader after the hold read the entry a held reader stored")))
 
 (deftest ^:slow a-standing-loser-never-reads-believed-beside-a-writer
@@ -304,3 +306,65 @@
       (is (zero? @hits)
           (str (name tms) ": " @hits " of " @reads " reads beside the writer read the loser"))
       (tu/clear-kb! kb))))
+
+(defn- holding
+  "Run `f` on a fresh thread that owns an open hold on the KB whose clock is `clk`, and
+  answer what `f` answers."
+  [clk f]
+  @(future (let [h (observe/new-hold)]
+             (observe/open-hold! h clk)
+             (try (f) (finally (observe/close-hold! h clk))))))
+
+(deftest a-hold-on-one-kb-leaves-another-kb-s-reader-on-its-clock
+  (let [open (fn [tag] (v/open-kb {:backend :memory :space [::two-kb-hold tag] :recover? false}))
+        a    (open :a)
+        b    (open :b)
+        lm   #(select-keys (literal-cache/stats a) [:hits :misses])]
+    (try
+      (tu/with-terms [livesIn Ann Dover]
+        (let [ask    #(doall (res/matches-visible a (list livesIn '?x Dover) 'CxUniverse))
+              _      (v/assert a (list livesIn Ann Dover) 'CxUniverse)
+              _      (dotimes [_ 2] (ask))
+              opened (promise)
+              done   (promise)
+              holder (future (holding (:clock b) #(do (deliver opened true) @done)))]
+          (is (true? (deref opened 10000 false)))
+          (let [before (lm)]
+            (ask)
+            (is (= (update before :hits inc) (lm)) "A's entry is a hit while B's hold is open"))
+          (deliver done true)
+          (deref holder 10000 nil)
+          (let [before (lm)]
+            (ask)
+            (is (= (update before :hits inc) (lm)) "A's entry is a hit after B's hold closes"))))
+      (finally (doseq [kb [a b]] (v/clear! kb) (v/close! kb))))))
+
+(deftest a-thread-holding-one-kb-reads-another-kb-s-settle-as-it-began
+  (doseq [tms   [:dense :reference]
+          scoped? [false true]
+          park  [#'settle/drain-recheck! #'settle/defeat-moves]]
+    (let [[kb loser vantage home] (standing-contradiction! tms scoped?)
+          other   (v/open-kb {:backend :memory :space [::holding-reader tms] :tms tms :recover? false})
+          label   (str (name tms) (if scoped? " scoped" " global") " at " (:name (meta park)))
+          _       (v/retract! kb (v/handle-of kb '(not (flies Tweety)) vantage))
+          before  (loser-reading kb loser vantage home)
+          armed   (atom true)
+          parked  (promise)
+          release (promise)
+          orig    @park]
+      (try
+        (let [during (with-redefs-fn {park (fn [& args]
+                                             (when (compare-and-set! armed true false)
+                                               (deliver parked true)
+                                               @release)
+                                             (apply orig args))}
+                       (fn []
+                         (let [w (future (v/assert kb '(not (flies Tweety)) vantage
+                                                   {:strength :monotonic}))]
+                           (try
+                             (when (deref parked 10000 false)
+                               (holding (:clock other) #(loser-reading kb loser vantage home)))
+                             (finally (deliver release true) (deref w 10000 nil))))))]
+          (is (= before during) (str label ": a thread holding another KB's hold read the denial's settle live"))
+          (is (not= before (loser-reading kb loser vantage home)) (str label ": the denial moved the loser")))
+        (finally (tu/clear-kb! kb) (v/close! other))))))

@@ -216,9 +216,17 @@ page that holds it.
    item 4 of the definition derives it, at the class decision 9 gives. The engine answers
    such a claim through `core/ask?`
    ([inherit.md](inherit.md#forward-chaining-on-a-claim-nobody-stored)).
-6. **Is a `functional` clash between two symbol fillers a nogood?** Yes, unless every
-   member is `:monotonic`, which is a merge (invariant 4). Section:
-   [taxonomy.md](taxonomy.md#predicate-metadata).
+6. **Is a `functional` clash between two symbol fillers a nogood?** Yes, when both
+   fillers are determinate and it is no merge (invariant 4). It is a merge when every
+   member is `:monotonic`. It is one when a filler is a `proxy_term`, a
+   `placeholder_term` or an `indeterminate_term`, and the other a determinate constant
+   that is the one candidate of the slot where the merge is read. A rival candidate
+   arriving withdraws that merge. A clash with a proxy filler that does not merge is no
+   nogood. A
+   reified constant against a `:default` value of its own correspondence neither merges
+   nor clashes. Sections:
+   [taxonomy.md](taxonomy.md#predicate-metadata),
+   [equality.md](equality.md#functional-infers-equality-instead-of-throwing).
 7. **What does the reference do with `irreflexive` and `anti_symmetric`?** Both marks are
    forced-monotonic (invariant 2), and a violation of either is a nogood the settle places
    and decides like any other (decision 16). A converse pair of two symbols whose members
@@ -252,13 +260,18 @@ page that holds it.
     [taxonomy.md](taxonomy.md#what-each-constraint-does-in-each-arrival-order).
 12. **Can an `except` be derived or defeated?** No (invariant 7). An `except` that targets
     an `except` still hides it. The reference leaves `except` outside v1. Section:
-    [contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree).
-13. **Can a merge be defeated?** No (invariant 8). A defeasible identity is written with a
-    predicate that does not merge. The reference leaves equality outside v1. Section:
-    [equality.md](equality.md#what-a-merge-does).
-14. **What class does a firing through `unknown` or `exceptWhen` confer?** `:default`,
-    whatever the classes of the rule and of the other antecedents, because the
-    conclusion goes OUT when a blocker arrives (invariant 9). A sentence first believed
+    [contexts.md](contexts.md#except-removing-belief-down-a-context-subtree).
+13. **Can a merge be defeated?** No (invariant 8). A defeasible identity of two
+    determinate names is written with a predicate that does not merge. A functional merge
+    of a proxy filler is withdrawn, not defeated: its justification is
+    dropped when a rival candidate arrives, and drawn again when the rival leaves
+    (decision 6). The reference leaves equality outside v1. Sections:
+    [equality.md](equality.md#what-a-merge-does),
+    [equality.md](equality.md#functional-infers-equality-instead-of-throwing).
+14. **What class does a firing through `unknown`, `exceptWhen` or an inherited claim
+    confer?** `:default`, whatever the classes of the rule and of the other antecedents,
+    because the conclusion goes OUT when a blocker or a contrary claim arrives
+    (invariant 9). A sentence first believed
     after a defeat through such a rule is therefore `:default` and cannot defeat a
     `:monotonic` member, which bounds the rounds. Sections:
     [nmtms.md](nmtms.md#strength-propagates-from-the-antecedents) and
@@ -282,7 +295,7 @@ page that holds it.
     first. A rule whose antecedents are all forced-monotonic literals, with no `unknown`,
     `exceptWhen` or `set/defaultRule`, keeps the strength it was written at, and its
     conclusion is an ordinary belief at its antecedents' class, never a loser;
-    `core.txt`'s `injection`, `surjection` and `bijection` rules are the case. Each firing
+    `core.txt`'s `injective_predicate`, `surjective_predicate` and `bijective_predicate` rules are the case. Each firing
     of any other rule whose conclusion is a forced-monotonic literal or its denial is
     stored and held void, `core/violations` reads a `:forced-conclusion` entry for it, and
     `why-not` on its conclusion names the antecedent predicates that are not
@@ -345,7 +358,10 @@ members of the forced-monotonic set and the mechanism that holds each are
 4. **A merge needs monotonic evidence on every side.** A `functional` or
    `functionalInArg` collision between two symbol fillers, or an `anti_symmetric`
    converse pair of symbols, merges the two terms only when every member is
-   `:monotonic`. Otherwise the collision is a nogood: the unique weakest member loses,
+   `:monotonic`. A `functional` or `functionalInArg` filler that is a `proxy_term`
+   also merges onto the slot's one constant, and forms no nogood when it does not merge
+   (decision 6). The reference's generated worlds name no such term. Otherwise the
+   collision is a nogood: the unique weakest member loses,
    and a tie at `:default` is a dilemma. The reference gives the all-`:monotonic` pair the
    verdict `:merge` and leaves equality outside v1, so the harness skips the belief
    comparison at a context holding one and compares the pairs it merges with the pairs
@@ -376,9 +392,10 @@ members of the forced-monotonic set and the mechanism that holds each are
    from forced-monotonic antecedents and never defeated, and an `except` that targets an
    `except` still hides it. `except` is outside v1. No settle resolution defeats an
    `except`, so the settle watches no `except` for a belief flip.
-8. **Equality is monotonic.** A `rewriteOf`, `sameAs` or `equals` merge rests only on
-   `:monotonic` evidence, is never defeated, and is undone only by retracting a premise
-   it rests on. Equality is outside v1 ([equality.md](equality.md#what-a-merge-does)).
+8. **Equality is monotonic.** A `rewriteOf`, `sameAs` or `equals` merge rests on
+   `:monotonic` evidence, unless a functional collision names a proxy filler
+   (decision 6). A merge is never defeated. It is undone by retracting a premise it
+   rests on, or, for a proxy filler, by a rival candidate arriving. Equality is outside v1 ([equality.md](equality.md#what-a-merge-does)).
 9. **A guarded firing confers `:default`.** A firing whose rule has an `unknown`
    antecedent or an `exceptWhen` confers `:default` on its conclusion, whatever the
    classes of the rule and of the other antecedents. The engine records `:default` as a
@@ -438,7 +455,7 @@ by the world extractor with `:unsupported`, so the generator cannot produce one.
 | `transitiveInArgInverse` along `genl`, one position | yes, decision 5 | [inherit.md](inherit.md) |
 | equality: `rewriteOf`, `sameAs`, `equals` | no | [equality.md](equality.md) |
 | supersession | no | [equality.md](equality.md), [nmtms.md](nmtms.md#the-set-membership-states-a-node-can-hold) |
-| visibility `except` | no | [contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree) |
+| `except` | no | [contexts.md](contexts.md#except-removing-belief-down-a-context-subtree) |
 | argument types, mints, lifts | no | [argtypes.md](argtypes.md), [contexts.md](contexts.md#decontextualized_predicate-a-fact-that-belongs-to-the-kb-not-to-one-theory) |
 | generators (rules concluding rules) | no | [generators.md](generators.md) |
 | backward-only rules | no | [inference.md](inference.md) |

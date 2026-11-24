@@ -191,7 +191,7 @@ audit stricter than the contract it derives from would be a second type system. 
 subtype arm still convicts on its own: nothing derives a `genl` edge for a filler, so a
 kind the checker excused as evidence-free still violates.
 
-**The function marks derive both.** `(injection P)`, `(surjection P)` and `(bijection P)`
+**The function marks derive both.** `(injective_predicate P)`, `(surjective_predicate P)` and `(bijective_predicate P)`
 are declared of a predicate rather than of a pair of collections, and `core.txt` rules read
 only the quantified side — the domain off `(arg P 1 D)` for totality, the range off
 `(arg P 2 R)` for ontoness — to derive `(predAllSpecified P D)` and

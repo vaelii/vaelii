@@ -214,13 +214,13 @@
 
 (defn- arity-edge-move
   "A `genl` edge asserted and retracted 1,400 times under 200 bound predicates, 40 of them in
-  an arity conflict: each of the 200 is a spec of a root binding two, 40 bind one.  Half
-  the moves put a fresh type under a chain of eight types bound to one argument, in a
-  context the side context does not see; the other half move a conforming predicate under
-  a predicate bound to two."
+  an arity conflict: each of the 200 is a spec of a root binding two, 40 bind one and are
+  spelled as types.  Half the moves put a fresh type under a chain of eight types bound to
+  one argument, in a context the side context does not see; the other half move a
+  conforming predicate under a predicate bound to two."
   []
   (let [m 200 k 40 rounds 700
-        rel   #(symbol (str "abAeRel" %))
+        rel   #(symbol (if (< % k) (str "ab_ae_rel" %) (str "abAeRel" %)))
         chain #(symbol (str "abaec" % "_t"))
         built #(let [kb (fresh-kb)]
                  (v/with-deferred-settle kb

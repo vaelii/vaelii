@@ -58,6 +58,19 @@
             (run! #(v/retract! kb %) (rseq hs))
             r))))
 
+(tu/deftest-kb asymmetric-is-stated-as-the-intersection-of-irreflexive-and-anti-symmetric
+  (let [h (v/handle-of kb '(set/inertRule (implies (and (irreflexive ?p) (anti_symmetric ?p))
+                                                   (asymmetric ?p)))
+                       U)]
+    (is (some? h))
+    (when h
+      (is (v/believed? kb h))
+      (is (= #{} (:engines (v/sentex kb h))))))
+  (tu/with-terms [orderedBefore]
+    (v/assert kb (list 'irreflexive orderedBefore) U)
+    (v/assert kb (list 'anti_symmetric orderedBefore) U)
+    (is (empty? (v/query kb (list 'asymmetric orderedBefore) U {:max-depth 3})))))
+
 ;;; ── irreflexive: a self tuple is a one-member nogood ─────────────────────────
 
 (defn- placed
@@ -106,15 +119,15 @@
       (is (believed-at? kb (list before Alice Bob) U)))))
 
 (tu/deftest-kb a-mark-stated-beside-its-excepted-derivation-convicts-at-the-excepting-reader
-  ;;   CxUniverse  (injection ageRel) monotonic; a core.txt rule derives (functional ageRel)
-  ;;     └─ CxHid  (ageRel Tom 1) default  (ageRel Tom 2) monotonic  (except (injection ageRel))
+  ;;   CxUniverse  (injective_predicate ageRel) monotonic; a core.txt rule derives (functional ageRel)
+  ;;     └─ CxHid  (ageRel Tom 1) default  (ageRel Tom 2) monotonic  (except (injective_predicate ageRel))
   ;; CxHid reads no mark while the derivation alone states it.  The mark stated as well
   ;; convicts the pair there, and the placement reads the network: the default filler its
   ;; own defeat hides at CxHid is no reason to move the placement.
   (tu/with-terms [ageRel Tom CxHid]
     (v/assert kb (list 'genlCx CxHid U) U)
     (let [M   {:strength :monotonic}
-          inj (v/assert kb (list 'injection ageRel) U M)
+          inj (v/assert kb (list 'injective_predicate ageRel) U M)
           los (v/assert kb (list ageRel Tom 1) CxHid)]
       (v/assert kb (list ageRel Tom 2) CxHid M)
       (v/assert kb (list 'except (list 'sentexHandle inj)) CxHid M)
@@ -173,7 +186,7 @@
   [kb a b ctx]
   (let [[lo hi] (sort [a b])
         h       (v/handle-of kb (list 'equals lo hi) ctx)]
-    (boolean (and h (v/in? kb h)))))
+    (boolean (and h (v/believed? kb h)))))
 
 (tu/deftest-kb an-antisymmetric-converse-derives-an-equality
   (tu/with-terms [atOrAbove Alice Bob]
@@ -188,7 +201,7 @@
       (let [[lo hi] (sort [Alice Bob])
             eqh     (v/handle-of kb (list 'equals lo hi) U)]
         (is (some? eqh))
-        (is (v/in? kb eqh))
+        (is (v/believed? kb eqh))
         (is (false? (v/premise? kb eqh)))))))
 
 (tu/deftest-kb the-antisymmetric-merge-is-the-same-in-both-arrival-orders

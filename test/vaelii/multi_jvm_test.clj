@@ -236,7 +236,7 @@
                 (is (not (ids :vaelii.impl.kb/reindexed-on-open)) "the index image is mapped")
                 (is (ids :vaelii.impl.recovery/reasoning-image-installed)
                     "the reasoning image is installed")
-                (is (v/in? kb (v/handle-of kb '(mj_dog MjFido) 'CxUniverse)))
+                (is (v/believed? kb (v/handle-of kb '(mj_dog MjFido) 'CxUniverse)))
                 (finally (v/close! kb))))))))))
 
 (deftest ^:multi-jvm a-daemon-in-another-process-answers-this-one-s-client
@@ -336,7 +336,7 @@
   [kb]
   (into #{} (keep (fn [h]
                     (when-let [sx (p/get-sentex (:records kb) h)]
-                      [(pr-str (:sentence sx)) (pr-str (:context sx)) (boolean (v/in? kb h))])))
+                      [(pr-str (:sentence sx)) (pr-str (:context sx)) (boolean (v/believed? kb h))])))
         (p/sentex-ids (:records kb))))
 
 (defn- matching-prefix

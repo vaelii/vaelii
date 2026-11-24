@@ -512,9 +512,7 @@ Two alternatives fail:
 
 * **A copy at `:default`** ties with the side it is meant to defeat, so it reports a
   second dilemma instead of deciding the first: `contradictions` goes from 1 to 2, and a
-  second labeling reports the dilemma three times. `label-context` writes copies at the
-  default strength because the side it records against is already defeated, so its copy
-  meets no believed rival.
+  second labeling reports the dilemma three times.
 * **A detached `Ctx`** leaves `contradictions` at 1 and the base untouched, but holds only
   the labeled literals and inherits no background, so a query in it answers from the
   labeling alone.
@@ -661,7 +659,7 @@ answer on the first KB that defeats something. Comments do not close it: the two
 the same call, so there is nothing for a comment to attach to that a copy-paste will not
 carry along with it.
 
-So both readings get a name — `reads/as-stored-…` and `reads/believed-…` — and the raw
+So both readings get a name — `reads/as-stored-…` and `reads/in-…` — and the raw
 protocol read is refused outside the implementers (`lein lint`'s E16). The as-stored entry point
 is the one that had to be named rather than left as the default, because it is the one
 whose omission is silent: a missing belief filter answers *more* than it should, and more
@@ -1168,8 +1166,7 @@ reached (`ontology_test/the-watch-of-theseus-is-intermittent`).
 
 So `res/separation-denials` asks every edge on both sides to hold at `:monotonic`, read as
 the widest-bottleneck floor, and a disjoint metatype's membership to hold at `:monotonic`
-too. The separation itself answers at either strength while it is believed and visible at
-the reader: a `:default` `(disjoint pc pb)` denies `(pb Xy)` from `(pc Xy)` by applying the
+too. The separation itself answers at either strength while the reader believes it: a `:default` `(disjoint pc pb)` denies `(pb Xy)` from `(pc Xy)` by applying the
 default forward, and no contrapositive of it is read. Capping the denial at `:default` and reading the believed inherited membership on the
 denying side would answer more, and it would need a second strength on a read the cover
 family names members off. The engine takes the smaller rule ([taxonomy.md](taxonomy.md),
@@ -1231,16 +1228,23 @@ dropped for having no placement context.
 Defends [nat.md](nat.md#the-corresponding-predicate). When a `:monotonic` corresponding
 fact names the value `V` of an application already minted as `K`, the engine derives
 `(rewriteOf V K)`. The two sides are not interchangeable: `V` is a name somebody wrote and
-`K` stands in for not knowing it. An `equals` would let the class elect whichever term
-sorts first, which can be `K`, and every use of `V` would then migrate onto the opaque
-constant.
+`K` stands in for not knowing it. A `rewriteOf` deprecates `K` whatever `V` is. An
+`equals` states no preference, so the class would elect by the constant-first rule
+([equality.md](equality.md#choosing-the-representative)). That rule elects a `V` that is a
+constant over `K`. A `V` that is another reified constant ties with `K`, the term that
+sorts first wins, and that can be `K`. Every use of `V` would then migrate onto the
+opaque constant.
 
 ### A `:default` value copies the placeholder's uses instead of merging
 
 Defends [nat.md](nat.md#the-corresponding-predicate). A `:default` corresponding fact
 gives each sentex and rule naming `K` a derived copy with `V` in `K`'s place, and stores
 no `(rewriteOf V K)`. `rewriteOf` stays in the forced-monotonic set
-([nmtms.md](nmtms.md#the-forced-monotonic-set)).
+([nmtms.md](nmtms.md#the-forced-monotonic-set)). Only a `:monotonic` value derives a
+`rewriteOf`. The correspondence's `functionalInArg` mark derives no `equals` either: `K`
+and a `:default` `V` are no collision
+([equality.md](equality.md#functional-infers-equality-instead-of-throwing)), so one
+mechanism carries the value.
 
 A merge resting on a `:default` fact would be defeasible, and a merge supersedes `K`'s
 spellings. A defeat of the fact would then withdraw the merge and bring `K`'s superseded
@@ -2014,11 +2018,10 @@ well-defined, wrong answer.
 qualitative calculus finds is a property of a *set* of facts, not of any one of them, so
 blaming a single member makes the stored KB's error depend on the order the facts were
 asserted in. The provers are opt-in, so a KB that never registered one is held to no
-calculus. `assert` stores the fact and the settle records the inconsistency in the
-violations ledger, so what the KB stores does not depend on the order the facts arrived
+calculus. `assert` stores the fact and the settle stores one `(contradicts …)` over the
+conflicted region, so what the KB stores does not depend on the order the facts arrived
 in. `try-assert` refuses the write instead
-([qcn.md](qcn.md#support-what-an-entailed-relation-rests-on), "Reporting an impossible
-network").
+([qcn.md](qcn.md#support-what-an-entailed-relation-rests-on)).
 
 ### A variable context goal fans over readers rather than reading one unioned network
 

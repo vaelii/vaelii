@@ -1,0 +1,27 @@
+; A knapsack of capacity 9. A choice per item, asp/atMostSum bounding the packed weight,
+; a solve-only rule deriving each item left behind through default negation, and
+; asp/minimize summing the value left behind, which maximizes the value packed. The
+; optimum packs the tent, the lamp and the map, leaving value 8 behind. Twin: knapsack.lp.
+#base core
+#context CxKnapsack
+(packable_item Tent)
+(packable_item Lamp)
+(packable_item Stove)
+(packable_item Rope)
+(packable_item Map)
+(itemWeight Tent 5)
+(itemWeight Lamp 3)
+(itemWeight Stove 4)
+(itemWeight Rope 2)
+(itemWeight Map 1)
+(itemValue Tent 7)
+(itemValue Lamp 4)
+(itemValue Stove 5)
+(itemValue Rope 3)
+(itemValue Map 2)
+(set/assumptionRule (implies (packable_item ?i) (packed ?i)))
+(asp/atMostSum 9 ?w ?i (and (packed ?i) (itemWeight ?i ?w)))
+(set/inertRule (set/solveRule (implies (and (packable_item ?i) (not (packed ?i))) (left_behind ?i))))
+(asp/minimize 1 ?v (and (left_behind ?i) (itemValue ?i ?v)))
+#models (packed ?i)
+#cautious (left_behind ?i)

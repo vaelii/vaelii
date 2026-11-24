@@ -5,10 +5,10 @@
   fork's own premises and its removals of base premises are read by content, its own half
   is emptied, the dump is imported into the base's stores, belief is rebuilt over the
   merged contents, and the premises are asserted again.  And a durable fork's reopen over
-  a base that grew: its index takes in the base's new records (`follow-base!`) and its rules
-  fire over them (`fire-arrivals!`).  A namespace of its own because it sits above the dump
-  importer, the index writers and the overlay stores, which `vaelii.impl.kb` requires.  See
-  docs/overlay.md, \"Replacing the base\" and \"A base that grew between mounts\"."
+  a base that grew or changed (`follow-base!`, `fire-arrivals!`).  A namespace of its own
+  because it sits above the dump importer, the index writers and the overlay stores, which
+  `vaelii.impl.kb` requires.  See docs/overlay.md, \"Replacing the base\", \"A base that
+  grew between mounts\" and \"A base changed below its end\"."
   (:require [clojure.java.io :as io]
             [clojure.set :as set]
             [taoensso.trove :as trove]
@@ -29,6 +29,7 @@
             [vaelii.impl.overlay.mount :as mount]
             [vaelii.impl.overlay.store :as ostore]
             [vaelii.impl.protocols :as p]
+            [vaelii.impl.reads :as reads]
             [vaelii.impl.recovery :as recovery]
             [vaelii.impl.reindex :as reindex]
             [vaelii.impl.rules :as rules]
@@ -42,11 +43,6 @@
   "Is `kb` a fork, an overlay over a frozen base?"
   [kb]
   (ostore/overlay-record-store? (:records kb)))
-
-(defn- content-key
-  "What a record is matched on across the two bases: its canonical sentence and context."
-  [sx]
-  [(sx/sentence-of sx) (:context sx)])
 
 ;; ---- what the fork wrote, by content ---------------------------------------
 
@@ -73,7 +69,7 @@
   [kb]
   (let [rs   (:records kb)
         base (:base rs)]
-    (into #{} (keep #(some-> (p/get-sentex base %) content-key))
+    (into #{} (keep #(some-> (p/get-sentex base %) ostore/sentex-content))
           (set/difference (set (p/premise-ids base)) (set (p/premise-ids rs))))))
 
 (defn- form-key
@@ -100,7 +96,7 @@
                       es)
         mine    (into #{} (map #(form-key (:form %) (:context %))) entries)
         kept    (into [] (remove #(mine (form-key (:form %) (:context %)))) (:entries held))
-        owned   (into #{} (map content-key) own)]
+        owned   (into #{} (map ostore/sentex-content) own)]
     {:entries (into entries kept)
      :held    kept
      :removed (into (removed-keys kb) (remove owned) (:removed held))}))
@@ -117,10 +113,10 @@
       (seq extras)    (assoc :provenance extras))))
 
 (defn- content-index
-  "`{content-key handle}` over every sentex `kb` holds."
+  "`{content handle}` over every sentex `kb` holds."
   [kb]
   (let [rs (:records kb)]
-    (into {} (keep #(some-> (p/get-sentex rs %) content-key (vector %)))
+    (into {} (keep #(some-> (p/get-sentex rs %) ostore/sentex-content (vector %)))
           (p/sentex-ids rs))))
 
 (defn- replay!
@@ -360,7 +356,7 @@
                          (hook :emptied)
                          (refill-base! (:base-opts rs) dir meta opts fns)))]
          (hook :refilled)
-         (observe/note-change)
+         (observe/note-change (:clock kb))
          (recovery/rebuild! kb)
          (when regs (kb/add-reasoners! kb regs))
          (let [landed (dissoc (replay! kb captured fns) :left)
@@ -419,11 +415,191 @@
       (tax/copy-stored-supporter! bidx i2 h (:context sx)))
     (okv/align-ops fork after [s1 s2])))
 
+(defn- base-handle-of
+  "The handle at which the base holds sentex content `[sentence context]`, or nil: the
+  candidates at its trie leaf, each checked against the record."
+  [brs bidx [s c :as content]]
+  (some #(when (= content (some-> (p/get-sentex brs %) ostore/sentex-content)) %)
+        (reads/as-stored-leaf bidx (sx/path (sx/sentex s c)))))
+
+(defn- resolve-justifications
+  "`{named handle  base handle}` for the named justification handles `hs`: each part of a
+  recorded content resolved to its handle (`resolve-content`), then one pass over the base's
+  justifications for the one holding them.  A handle absent from the answer departed."
+  [rs brs hs resolve-content]
+  (let [want (into {} (keep (fn [h]
+                              (let [[_ i as c] (ostore/named-content rs h)
+                                    r   #(if (vector? %) (resolve-content %) %)
+                                    k   [(r i) (mapv r as) (r c)]]
+                                (when (and (some? (k 0)) (every? some? (k 1)) (some? (k 2)))
+                                  [k h]))))
+                   hs)]
+    (if (empty? want)
+      {}
+      (into {} (keep #(when-let [j (p/get-justification brs %)]
+                        (when-let [h (want [(:informant j) (vec (:antecedents j)) (:consequence j)])]
+                          [h %])))
+            (p/justification-ids brs)))))
+
+(defn- resolve-moved
+  "`{named handle  base handle or nil}` for each handle the fork `kb` names whose content
+  the base no longer holds there (`ostore/moved-handles`): the base handle now holding that
+  content, nil when the base holds it nowhere."
+  [kb]
+  (let [rs    (:records kb)
+        brs   (:base rs)
+        bidx  (kv/->KvIndexStore (:base (mount/kv-backend-of (:index kb))))
+        moved (ostore/moved-handles rs)
+        kind  #(first (ostore/named-content rs %))
+        r     #(base-handle-of brs bidx %)
+        sxs   (into {} (map (fn [h] [h (r (subvec (ostore/named-content rs h) 1))]))
+                    (filter #(= :sentex (kind %)) moved))
+        jds   (filterv #(= :justification (kind %)) moved)]
+    (merge sxs (zipmap jds (repeat nil)) (resolve-justifications rs brs jds r))))
+
+(defn- rewrite-handles
+  "`sentence` with each handle `m` maps replaced by its image, canonical (`sx/canon`); nil
+  when `m` maps one it names to nil.  A handle is a `(sentexHandle n)` term, or the bare
+  integer of an `(except n)`."
+  [sentence m]
+  (let [gone? (volatile! false)
+        image (fn [h] (if (contains? m h) (or (m h) (do (vreset! gone? true) h)) h))
+        walk  (fn walk [x] (cond (sx/sentex-handle? x) (sx/sentex-handle (image (sx/handle-id x)))
+                                 (sequential? x)       (map walk x)
+                                 :else                 x))
+        out   (sx/canon (if (and (= sx/except-functor (first sentence)) (integer? (second sentence)))
+                          (list (first sentence) (image (second sentence)))
+                          (walk sentence)))]
+    (when-not @gone? out)))
+
+(defn- rewrite-sentex
+  "`sx` naming the images `m` gives its handles, or nil when one departed."
+  [sx m]
+  (let [s (sx/sentence-of sx)]
+    (if-not (sx/names-a-handle? s)
+      sx
+      (when-let [s' (rewrite-handles s m)]
+        (if (rules/rule? sx)
+          (merge sx (select-keys (sx/sentex s' (:context sx)) [:antecedent :consequent :varmap]))
+          (assoc sx :sentence s'))))))
+
+(defn- remap-plan
+  "The target state of the fork `kb`'s record half under `m` (`resolve-moved`), as
+  `ostore/apply-remap!` takes it.  Each reference to a moved handle follows it.  What
+  names a departed handle is dropped, with each fork justification resting on a dropped
+  sentence.  docs/overlay.md, \"A base changed below its end\"."
+  [kb m]
+  (let [rs      (:records kb)
+        own     (:overlay rs)
+        img     #(if (contains? m %) (m %) %)
+        premise (set (p/premise-ids own))
+        sxs     (for [h (sort (p/sentex-ids own)) :let [sx (p/get-sentex own h)] :when sx]
+                  (let [to (img h) sx' (when to (rewrite-sentex sx m))]
+                    {:from h :to (when sx' to) :sx (some-> sx' (assoc :id to))
+                     :changed? (or (not= to h) (not (identical? sx sx')))}))
+        dropped (into #{} (comp (remove :to) (map :from)) sxs)
+        jds     (for [h (sort (p/justification-ids own)) :let [j (p/get-justification own h)] :when j]
+                  (let [refs (cons (:consequence j) (:antecedents j))
+                        j'   (when (and (not-any? dropped refs) (some? (img h))
+                                        (every? some? (map img refs))
+                                        (or (not (integer? (:informant j))) (some? (img (:informant j)))))
+                               (cond-> (assoc j :id (img h)
+                                              :antecedents (mapv img (:antecedents j))
+                                              :consequence (img (:consequence j)))
+                                 (integer? (:informant j)) (update :informant img)))]
+                    {:from h :to (:id j') :rec j' :changed? (not= j j')}))
+        writes  (fn [rows rec]
+                  (let [rows (filter :changed? rows)]
+                    (merge (into {} (map (fn [r] [(:from r) nil])) rows)
+                           (into {} (keep (fn [r] (when (:to r) [(:to r) (rec r)]))) rows))))
+        moved   (keys m)
+        named   (merge (into {} (map (fn [h] [h nil])) moved)
+                       (into {} (keep (fn [h] (when-let [to (m h)] [to (ostore/named-content rs h)])))
+                             moved))]
+    {:sentexes       (writes sxs :sx)
+     :justifications (writes jds :rec)
+     :premises       (into {} (keep (fn [{:keys [from to changed?]}]
+                                      (when (and changed? to (contains? premise from))
+                                        [to (p/premise-strength own from)])))
+                           sxs)
+     :provenance     (merge (into {} (map (fn [h] [h nil])) (concat dropped moved))
+                            (into {} (keep (fn [h] (when-let [v (and (m h) (p/get-provenance own h))]
+                                                     [(m h) v])))
+                                  moved))
+     :sets           (into {} (map (fn [[k hs]] [k (into #{} (keep img) hs)]))
+                           (ostore/bookkeeping-sets rs))
+     :named          named}))
+
+(defn- replay-ops
+  "The `kv-batch` ops that take the fork `kb`'s index to the one its rewritten records give
+  over its base.  A scratch layer over the base's index takes out each base record the fork
+  tombstoned.  It takes in each record the fork minted, as `reindex` posts them, and the
+  fork's `:exception-index` postings under `m`.  The ops make the fork's index equal the
+  scratch layer's at each key either one wrote (`okv/align-ops`)."
+  [kb m]
+  (let [fork  (mount/kv-backend-of (:index kb))
+        rs    (:records kb)
+        brs   (:base rs)
+        s     (mem/->MemoryKvBackend (atom {}))
+        src   (okv/overlay-kv s (:base fork))
+        [i old] (map kv/->KvIndexStore [src fork])
+        img   #(if (contains? m %) (m %) %)
+        own   (sort (remove #(p/get-sentex brs %) (p/sentex-ids (:overlay rs))))
+        minted (into #{} (keep #(when-let [j (p/get-justification rs %)]
+                                  (when (kb/records-mint-kind rs (:informant j)) (:consequence j))))
+                     (p/justification-ids (:overlay rs)))]
+    (doseq [h (sort (:sx-tombstoned (ostore/bookkeeping-sets rs)))
+            :let [sx (p/get-sentex brs h)] :when sx]
+      (reindex/unindex-one! i sx h))
+    (doseq [h own :let [sx (p/get-sentex rs h)] :when sx]
+      (reindex/index-one! i sx h)
+      (when (contains? minted h) (special/post-mint! i (sx/sentence-of sx) (:context sx) h))
+      (tax/copy-stored-supporter! old i h (:context sx)))
+    (doseq [[k {:keys [added removed tombstoned?]}] (okv/own-deltas (:overlay fork) :exception-index)]
+      (when tombstoned? (p/kv-delete src k))
+      (doseq [h added :let [h (img h)] :when h] (p/kv-add-to-set src k h))
+      (doseq [h removed :let [h (img h)] :when h] (p/kv-remove-from-set src k h)))
+    (okv/align-ops fork src [(:overlay fork) s])))
+
+(defn- remap!
+  "Follow a base changed below the fork `kb`'s recorded end (`ostore/remap-owed`).  Resolve
+  each moved named handle by content, then record and apply the record half's rewrite.  The
+  index ops and the firings of every record the fork holds become a pending catch-up, which
+  `follow-base!` applies.  Each step is recorded before it applies."
+  [kb]
+  (let [rs   (:records kb)
+        m    (or (:m (:plan (ostore/remap-owed rs))) (resolve-moved kb))
+        plan (or (:plan (ostore/remap-owed rs))
+                 (let [p (assoc (remap-plan kb m) :m m)] (ostore/begin-remap! rs p) p))]
+    (ostore/apply-remap! rs plan)
+    (ostore/owe-follow! rs (vec (sort (p/sentex-ids (:overlay rs)))))
+    (ostore/begin-follow! rs (replay-ops kb (:m plan)))
+    (ostore/end-remap! rs)))
+
+(defn- record-all-named!
+  "Name every base handle the fork `kb` refers to (`ostore/record-all-named!`).  Those are
+  the handles its own records hold or name, the members of its bookkeeping sets, and the
+  handles its index half posts or removes (`okv/own-handles`).  An index half `reindex`
+  rebuilt names none.  One pass over the fork's own half."
+  [kb]
+  (let [rs  (:records kb)
+        own (:overlay rs)]
+    (ostore/record-all-named!
+     rs (concat (p/sentex-ids own)
+                (mapcat #(some-> (p/get-sentex own %) ostore/named-in-sentex) (p/sentex-ids own))
+                (p/justification-ids own)
+                (mapcat #(some-> (p/get-justification own %) ostore/named-in-justification)
+                        (p/justification-ids own))
+                (apply concat (vals (ostore/bookkeeping-sets rs)))
+                (let [ix (:overlay (mount/kv-backend-of (:index kb)))]
+                  (when-not (okv/index-cleared? ix) (okv/own-handles ix)))))))
+
 (defn follow-base!
-  "Bring the index of `kb`, a durable fork, to the base its mount accepted: apply the ops
-  a catch-up left pending (`ostore/pending-follow`), then record and apply the ops for the
-  records the base gained (`ostore/follow-owed`, `follow-ops`), and record the base's
-  summary after each.  `kb/open-kb` calls it before anything reads the fork's index."
+  "Bring the index of `kb`, a durable fork, to the base its mount accepted.  Apply the ops
+  a catch-up left pending (`ostore/pending-follow`).  Then follow a base changed below its
+  end (`remap!`), or record and apply the ops for the records the base gained
+  (`ostore/follow-owed`, `follow-ops`).  A fork whose bookkeeping does not name every base
+  handle it refers to names them (`record-all-named!`).  `kb/open-kb` calls it first."
   [kb]
   (let [rs   (:records kb)
         fork (mount/kv-backend-of (:index kb))]
@@ -431,9 +607,13 @@
       (let [apply! #(do (p/kv-batch fork (:ops (ostore/pending-follow rs)))
                         (ostore/end-follow! rs))]
         (when (ostore/pending-follow rs) (apply!))
-        (when-let [{:keys [arrivals]} (ostore/follow-owed rs)]
-          (ostore/begin-follow! rs (follow-ops kb arrivals))
-          (apply!))))))
+        (if (ostore/remap-owed rs)
+          (do (remap! kb) (apply!))
+          (when-let [{:keys [arrivals]} (ostore/follow-owed rs)]
+            (ostore/begin-follow! rs (follow-ops kb arrivals))
+            (apply!)))
+        (when (and (:durable? rs) (not (ostore/names-complete? rs)))
+          (record-all-named! kb))))))
 
 (defn firings-owed
   "The base handles whose rule firings the fork `kb` owes (`fire-arrivals!`), or nil."

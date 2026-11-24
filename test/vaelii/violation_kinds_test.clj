@@ -205,13 +205,12 @@
   "The filing sites whose kind is a keyword computed at run time, each with the kinds it
   can produce and why the scan cannot see them.
 
-  Four of the five relabel a *problem* map's `:type` into a ledger entry, so the kinds
-  are the check vocabulary rather than anything written at the filing site.  The fifth is
-  a shared builder that takes the kind as an argument, so its callers hold the keywords
-  and the site holds none.  Listing them is a claim this test takes on trust — but which
-  sites exist is not: the scanned set of computed sites is checked against these keys, so
-  a sixth one is a failing test, and its kinds have to be named here before the tables
-  cover that site."
+  Four of them relabel a *problem* map's `:type` into a ledger entry, so the kinds are
+  the check vocabulary rather than anything written at the filing site.  The others take
+  the kind from an argument or from the network that read the region, so the site holds
+  no keyword.  Listing them is a claim this test takes on trust — but which sites exist is
+  not: the scanned set of computed sites is checked against these keys, so a new one is a
+  failing test, and its kinds have to be named here before the tables cover that site."
   {"checks/constraint-admission"
    {:kinds #{:arg-type :inter-arg-type :arg-genl :disjoint}
     :why   (str "relabels `(:type p)` off `constraint-problem`, minus the arbitrable "
@@ -238,7 +237,13 @@
              :disjunction-too-wide}
     :why   (str "carries out whatever `:type` `check-rule!` threw, defaulting to "
                 "`:not-well-formed` — so its kinds are the rule checks' refusal "
-                "vocabulary, minted across `checks`, `rules`, `sentex` and `naming`")}})
+                "vocabulary, minted across `checks`, `rules`, `sentex` and `naming`")}
+
+   "network_regions/file-entry!"
+   {:kinds    #{:qualitative-inconsistency :metric-temporal-inconsistency :sign-inconsistency}
+    :kinds-at #":files\s+:([a-z][a-z-]*)"
+    :why      (str "files the entry of a placed region's `(contradicts …)`, its kind the "
+                   "`:files` of the network that read the region (`checked-networks`)")}})
 
 (def ^:private undocumented-by-design
   "Kinds the scan finds that the table deliberately has no row for.
@@ -366,7 +371,7 @@
   ;; minting. It cannot catch a kind the tree mints and this table omits, which is what
   ;; the `:why` lines are for.
   (let [surface @(resolve 'vaelii.type-contract-test/known-types)
-        listed  (into #{} (mapcat :kinds) (vals computed-sites))
+        listed  (into #{} (mapcat :kinds) (remove :kinds-at (vals computed-sites)))
         strays  (set/difference listed surface
                                 ;; the truncation kinds are this namespace's own
                                 ;; vocabulary — filed, never thrown, so no `ex-info`

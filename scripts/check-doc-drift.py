@@ -172,6 +172,14 @@ and those files describe the project around it.
       states the tree as it stood when the note was written.  Adding a top-level
       entry is a row in `ROOT_ENTRIES`.  Reads `git ls-files`, so a tree that is
       not a git checkout skips it.
+  E24 A read of the IN label (`jtms/in?`, `jtms/in-datums`, `jtms/defeat-class`, the
+      `Tms` protocol's `-believed?`, `-believed` and `-defeat-class`, `reads/in-…`,
+      `res/rule-believed?`) or of the withdrawal reading (`exc/withdrawn-fn`,
+      `exc/own-withdrawn-fn`, `exc/unwithdrawn-own?`) from a definition that
+      `E24_ALLOW` does not list under a reason, or an entry whose definition reads
+      neither or reads them a number of times other than the entry states.  A
+      `defeat` moves no label, and the withdrawal reading applies no except, so
+      neither is belief.
 
   W1  Line-number citations into .clj files (`foo.clj:123`) — warned, not
       failed: cite the var name instead, line numbers always rot.
@@ -755,7 +763,7 @@ for top in (SRC, TEST_SRC, pjoin(ROOT, "bench")):
 # A top-level entry is a decision, so it is a row here.  Read from the index rather
 # than the disk, so an untracked scratch file beside a checkout fails nobody's lint.
 ROOT_ENTRIES = {
-    ".clj-kondo", ".dockerignore", ".github", ".gitignore", "CHANGELOG.md",
+    ".clj-kondo", ".dockerignore", ".github", ".gitignore", ".leinrc", "CHANGELOG.md",
     "CONTRIBUTING.md", "CONTRIBUTORS.md", "DCO", "Dockerfile", "LICENSE", "README.md",
     "bench", "docker-compose.yml", "docs", "handbook", "legal", "licenses",
     "project-env.clj", "project.clj", "resources", "scripts", "src", "test"}
@@ -1646,18 +1654,18 @@ if renames_parsed:
 # The `IndexStore` posting sets are storage: they hold a defeated default, a
 # conclusion whose support was withdrawn and a spelling an equality retired,
 # because all three are revivable and belief lives in the JTMS instead. So every
-# raw read has a question attached — stored, or believed — and read straight off
+# raw read has a question attached — stored, or IN — and read straight off
 # `vaelii.impl.protocols` there is nothing to say which answer the caller wanted.
 # A forgotten belief filter and a deliberate as-stored read are the same three
 # characters.
 #
 # `vaelii.impl.reads` is where the question gets asked, in the name of the read:
-# `as-stored-…` / `stored-…` over the index store, `believed-…` over the KB. This
+# `as-stored-…` / `stored-…` over the index store, `in-…` over the KB. This
 # check is what keeps the entry points the only way in, and the allowlist below is the one
 # place an exception is written down.
 #
 # The allowlist is not a list of trusted callers — it is the implementers. A store
-# answering the protocol, the retrieval that *builds* the believed reads, and the
+# answering the protocol, the retrieval that *builds* the labelled reads, and the
 # dump that copies the index wholesale are all below the question rather than
 # ducking it: there is no belief to filter by at the point they run.
 #
@@ -1710,7 +1718,7 @@ for path in clj_files():
              f"vaelii.impl.reads. The index answers what is STORED, so the read owes "
              f"an answer to which it wants: `reads/as-stored-…` (and say in the "
              f"docstring what a stored-but-disbelieved answer is for) or "
-             f"`reads/believed-…`. If this file implements the protocol rather than "
+             f"`reads/in-…`. If this file implements the protocol rather than "
              f"reading through it, add it to E16_OK_FILES with the reason")
 
 # The family reads serve every family, so the `reads` entry point is where the family
@@ -1734,6 +1742,9 @@ E16_FAMILY_CALL = re.compile(r"\bp/(" + "|".join(re.escape(r) for r in E16_FAMIL
 # allowlist names who calls one, as E17's does for `tax/…-global`. The reason lives in the
 # caller's docstring or beside the row.
 E16_GLOBAL_ALLOW = {
+    # The contexts a temporal network's region is read at: each is then read scoped, over
+    # what it sees.
+    ("src/vaelii/impl/network_regions.clj", "governing"),
     # Discovery only: sparse rule ids and candidate source contexts, not reader authority.
     ("src/vaelii/impl/rewrite_query.clj", "read-consumer-census"),
     ("src/vaelii/impl/rewrite_query.clj", "reader-contexts"),
@@ -1850,7 +1861,9 @@ E16_GLOBAL_ALLOW = {
     ("src/vaelii/impl/special.clj", "recheck-on-separation"),
     ("src/vaelii/impl/chain.clj", "separation-denial-rejoins"),
     ("src/vaelii/impl/special.clj", "requeue-separation-denial-rules"),
-    ("src/vaelii/impl/inherit.clj", "rejoin-rules"),
+    # The rules on a preserved predicate, for the re-join, the re-check and `recover`:
+    # placement decides where a firing lands.
+    ("src/vaelii/impl/inherit.clj", "antecedent-rules"),
     ("src/vaelii/impl/special.clj", "recheck-on-qualitative"),
     ("src/vaelii/impl/provers.clj", "closed-extent-rules"),
     ("src/vaelii/impl/special.clj", "transitive-partner-functors"),
@@ -1991,19 +2004,10 @@ E17_ALLOW = {
     # A term merge restates the premises of every context, so a disjoint declaration in
     # any one of them refuses it.
     ("src/vaelii/impl/term_edit.clj", "merge-problem"),
-    # The public API offers both readings, and its shorter arity IS the global one —
-    # `vaelii.core/genls` documents the pair (docs/taxonomy.md).
-    ("src/vaelii/core.clj", "genls"),
-    ("src/vaelii/core.clj", "specs"),
-    ("src/vaelii/core.clj", "genl?"),
-    ("src/vaelii/core.clj", "direct-genls"),
-    ("src/vaelii/core.clj", "direct-specs"),
-    ("src/vaelii/core.clj", "min-genls"),
-    ("src/vaelii/core.clj", "max-specs"),
-    ("src/vaelii/core.clj", "common-genls"),
-    ("src/vaelii/core.clj", "common-specs"),
-    ("src/vaelii/core.clj", "min-common-genls"),
-    ("src/vaelii/core.clj", "max-common-specs"),
+    # A merge stored at one context is read in every context below it.  A rival blocks it
+    # wherever some context sees both, so the reach is the whole genlCx closure.
+    ("src/vaelii/impl/checks.clj", "seen-together?"),
+    ("src/vaelii/impl/checks.clj", "slot-candidates"),
     # The subsumption reading behind `disjointness-audit` and `subsumption-statuses`:
     # at its five-argument arity `genl?` and the shared subtypes read every edge, as the
     # documented short arities of `genl?` and `specs` do, and the vantage reaches the
@@ -2121,6 +2125,8 @@ E17_ALLOW = {
     ("src/vaelii/impl/inherit.clj", "moved-goal-test"),
     ("src/vaelii/impl/qcn_kb.clj", "held-contexts"),
     ("src/vaelii/impl/qcn_kb.clj", "calculi-triggered-by"),
+    ("src/vaelii/impl/network_regions.clj", "triggers?"),
+    ("src/vaelii/impl/network_regions.clj", "governing"),
     ("src/vaelii/impl/chain.clj", "answered-by-calculus?"),
     ("src/vaelii/impl/special.clj", "rule-reads-above"),
     ("src/vaelii/impl/special.clj", "rule-key-functors"),
@@ -2201,11 +2207,11 @@ E17_ALLOW = {
     ("src/vaelii/impl/special.clj", "wff-problems"),
     ("src/vaelii/impl/decide/arity.clj", "refresh-shapes!"),
     ("src/vaelii/impl/nat_read.clj", "correspondence-value"),
-    # The visibility filter cannot be scoped by the filter it derives — asking
-    # `context-up` here would make except evaluation recursive on itself.
-    ("src/vaelii/impl/except.clj", "visible-exception-index"),
-    ("src/vaelii/impl/except.clj", "except-hidden-fn"),
-    ("src/vaelii/impl/except.clj", "excepts-seen"),
+    # An except or defeat hiding a `genlCx` supporter is read over the unscoped set, and
+    # so is every read while no except reaches one (`exc/staged`): the scoped set is what
+    # those excepts decide, so asking `context-up` there would recurse.  A reader with no
+    # except stated in its unscoped set reads that set, which is then its scoped one.
+    ("src/vaelii/impl/except.clj", "read-up"),
     ("src/vaelii/impl/except.clj", "reader-frame"),
     ("src/vaelii/impl/except.clj", "forced-at"),
     # A pass keeps its reader frames while the KB-wide sets read here stand: each
@@ -2240,11 +2246,8 @@ E17_ALLOW = {
     ("src/vaelii/impl/special.clj", "excepted-edges"),
     ("src/vaelii/impl/special.clj", "declarations-below"),
     #
-    # Context-free flat-cache reads.  The public API's short arity is the KB-wide
-    # reading, as `genls`' is.
-    ("src/vaelii/core.clj", "disjoint?"),
-    ("src/vaelii/core.clj", "has-prop?"),
-    ("src/vaelii/core.clj", "inverse-of"),
+    # A merge is stored for every reader, so its disjointness check reads every
+    # declaration and edge the taxonomy holds (`term-edit/merge-problem`).
     ("src/vaelii/impl/kb.clj", "disjoint?"),
     # A KB-wide property: the read decides a stored key, a storage context or what the
     # store holds, which every reader shares.  The argument-order fold and the reified
@@ -2311,7 +2314,11 @@ E17_ALLOW = {
     ("src/vaelii/impl/decide/tuple.clj", "converse-functors"),
     ("src/vaelii/impl/decide/tuple.clj", "convicting"),
     ("src/vaelii/impl/decide/tuple.clj", "under-marks"),
-    ("src/vaelii/impl/inherit.clj", "denial-readings"),
+    ("src/vaelii/impl/inherit.clj", "asymmetric-supporters"),
+    # `recover` and a `genlCx` move have no reader: the predicates a stored denial of a
+    # preserved one can be on, counted in a context set and listed under a limit.
+    ("src/vaelii/impl/inherit.clj", "deniable-in?"),
+    ("src/vaelii/impl/inherit.clj", "contraries-in"),
     ("src/vaelii/impl/inherit.clj", "separated-types"),
     ("src/vaelii/impl/inherit.clj", "separation-moved"),
     ("src/vaelii/impl/inherit.clj", "separation-test"),
@@ -2493,6 +2500,280 @@ for rel, enclosing in sorted(E17_ALLOW - E17_SEEN):
     flag("E17", pjoin(ROOT, rel), f"{rel}:{enclosing}",
          f"E17_ALLOW names `{enclosing}` in {rel}, which makes no unscoped taxonomy "
          f"read: drop the entry, so the allowlist names only the callers with a reason")
+
+# ── E24: a read of the IN label has a stated reason ────────────────────────────
+# `jtms/in?` is support, and a placed `defeat` moves no label, so a reader that filters
+# on the label alone counts a defeated record.  The label reads are `E24_READS`:
+# `jtms/in?`, `jtms/in-datums`, `jtms/defeat-class` (nil when OUT), the `Tms` protocol's
+# `-believed?`, `-believed` and `-defeat-class`, `reads/in-…` and `res/rule-believed?`.
+# Each definition reading one is listed under the reason the label answers its question,
+# with `:n` after the name when it reads n times.
+# The withdrawal reading (`exc/withdrawn-fn` and its own-context forms) is listed the same
+# way: it applies the placed defeats and no except.  A definition answering belief asks
+# `res/believed-at?` or `exc/believed-own?` instead.
+# The check reads the named calls alone, under any alias or `:refer` the `ns` form
+# gives and fully qualified.  It skips a protocol method's name where a type implements
+# it.  A label reached through `jtms/raw-in?`, `jtms/network-in?` or a bound var passes it.
+E24_READS = {"vaelii.impl.jtms": ("jtms", ("in?", "in-datums", "defeat-class")),
+             "vaelii.impl.jtms-protocol": ("jtms-protocol", ("-believed?", "-believed", "-defeat-class")),
+             "vaelii.impl.reads": ("reads", ("in-with-functor", "in-with-args")),
+             "vaelii.impl.resolution": ("res", ("rule-believed?",)),
+             "vaelii.impl.except": ("exc", ("withdrawn-fn", "own-withdrawn-fn", "unwithdrawn-own?"))}
+E24_REQUIRE = re.compile(r"\[(vaelii\.impl\.(?:jtms-protocol|jtms|reads|resolution|except))\s+:as\s+([^\s\]]+)")
+E24_REFER = re.compile(r"\[(vaelii\.impl\.(?:jtms-protocol|jtms|reads|resolution|except))\s[^\[\]]*:refer\s+\[([^\]]*)\]")
+E24_TYPES = ("defrecord", "deftype", "extend-type", "extend-protocol")
+E24_ALLOW = {
+    "computes belief or visibility, and the label is where both start": {
+        "core": "belief-status:2 believed-fn believed? why-not-handle:2",
+        "impl/checks": "believed-reader",
+        "impl/except": """
+            believed-own? conflict-in-force?:2 defeat-hidden-fn
+            except-closure-hidden-fn exception-states forced-reads? forced-state
+            frame-watch frames-hold? guard-in-force? in-force? verdict-reader""",
+        "impl/resolution": "believed-at? supporter-unhidden?",
+    },
+    "narrows by the label, and applies belief or visibility here, in the read it filters, or in its caller": {
+        "core": "covers-of",
+        "impl/chain": """
+            computed-withdrawn? mention-guard-placements
+            mention-unread? probed-only? rule-firing-report separation-exempted?:2
+            typed-antecedent-unadmitted?""",
+        "impl/checks": """
+            length-declaration-conflict membership-handles-led
+            relation-kind-conflict""",
+        "impl/clashes": "believed-xf clash-grounds",
+        "impl/decide/tuple": "same-class-at?",
+        "impl/defining": "definition-evidence*",
+        "impl/inherit": "believed-matches:2 general-supporters indexed-matches stated-claims",
+        "impl/integrity": """
+            decided-property? handle-records stated-grounds stated-membership?
+            stated-pairs stated-records visible-orthogonals""",
+        "impl/asp/label": "local-analysis:2",
+        "impl/asp/solve_context": "program-rules",
+        "impl/provers": "candidate-rules membership-route nonempty-witness",
+        "impl/qcn_kb": "refuted-pairs",
+        "impl/resolution": """
+            declared-by held-everywhere? hinting match-one matches-hierarchical-over
+            type-memberships visible-declarations""",
+        "impl/rete": "match-one-via-alpha",
+        "impl/special": "held-mint?",
+    },
+    "maintains the network or what is stored from it, which follow support: a reader filters what it derives": {
+        "core": "forward-chain",
+        "impl/chain": """
+            arrival-admit delta-facts drop-outranked-firings! fire-rules-for:4
+            guard-owed? inheritance-withdrawn? key-supporters lazy-antecedent-rules mentioned-applications
+            place-fact-conclusion process-datum reask! reask-raised! refusal-live?
+            reified-plan rejoin-in-full rejoin-lazy-readers-over-types
+            rejoin-qualitative rerecord-refusals! stale-closure-rejoins sync-value!
+            declared-members descent-placements:2 firing-class place-justified-with
+            solve-closure subsumption-support:2 sync-arity-classes!""",
+        "impl/checks": "declared-firings stored-rule-node:2 stratification-graph-current?",
+        "impl/clashes": "placed-verdicts",
+        "impl/context_nat": "reconcile-edge-move",
+        "impl/discovery": """
+            discover-inherited! entry-live?:2 entry-nogoods:2 preserving-entries
+            preserving-moves:2""",
+        "impl/inherit": "licensing-sets",
+        "impl/integrate": "witness-among",
+        "impl/nat": """
+            collision-merges formula-rows formula-rows-joined hold-on! minted-applications
+            orphans-in-cycle own-reading region-from support-maps""",
+        "impl/network_regions": "placement",
+        "impl/recovery": "recover-from-records",
+        "impl/resolution": "rule-believed?",
+        "impl/settle": """
+            defeat-moves:2 departed-handles idle-conditions lost-derivation-seeds
+            reask-seeds:2 rechain-exception-rules rechain-seeds settle-finish
+            stratified-seeds""",
+        "impl/special": """
+            believed-again-sweeps believed-facts-with-functors believed-restatements
+            class-moved-merges:4 copy-witnesses:2 departed-context-edge-mints departed-edge-seeds
+            drain-except-moves!:2 drop-replaced-routes! drop-unread-lifts!
+            edges-subsumption-seeds entail-arg-type eternal-witnesses
+            hold-type-mints! migrate-handle-metas moved-edges
+            negative-subsumption-seeds note-relabelled-correspondences!
+            rebuild-taxonomy recheck-route-gains!:2 reconcile-belief-change
+            release-withheld! revealed-entailments seed-floor seeds-in:2
+            transitive-left-ends""",
+    },
+    "tracks what a placed defeat moves with no relabel, which the withdrawal reading reads; an except reaches a firing through the network's relabel": {
+        "impl/context_nat": """
+            arg-genlcx-declarations context-nat-entry drop-departed!:2 reconcile-moves*
+            reconcile-pair:2 subrelation-declarations unbroken-routes""",
+        "impl/except": "unwithdrawn-own?",
+        "impl/settle": "pass-reading:3 withdrawal-moves:2",
+        "impl/special": "lost-descended-derivations",
+    },
+    "reads a level below level 4, which applies the placed defeats and leaves the excepts to level 4 (docs/levels.md)": {
+        "impl/levels": "level-2 level-3",
+    },
+    "answers with no reader from the caches, declarations or identity maps that read support": {
+        "impl/named_application": "map-row?",
+        "impl/nat_read": "map-rows",
+        "impl/provers": "believed-sentexes-with",
+        "impl/reads": "in-with-args in-with-functor",
+        "impl/resolution": """
+            formula-position? mention-declarations minted-expression
+            reference-positions""",
+        "impl/rewrite_query": "primitive-mark-evidence reading-evidence",
+    },
+    "reads records no denial defeats: forced-monotonic declarations and asserted rules": {
+        "impl/checks": "mark-handles",
+        "impl/decide/arity": "class-route-ok?:2 held-bindings",
+        "impl/except": "excepted-rule?",
+        "impl/integrity": "contrary-rule? macro-candidate?",
+        "impl/provers": "rule-exception-entries",
+    },
+    "reads the `genl` route a length is inherited along, which a defeat or an except of an edge leaves bound (docs/taxonomy.md)": {
+        "impl/decide/arity": "broken-binding",
+    },
+    "reads a solve's assumptions and artifacts, where an IN record is kept": {
+        "impl/asp/label": "local-labeling",
+        "impl/asp/solve_context": "believed-extent? class-blocked clear-context!",
+    },
+    "weighs the defeat class of an IN record, which a verdict, a priority, a strength test or a report reads and belief does not carry": {
+        "core": "defeat-class",
+        "impl/checks": "antitransitivity-problems asymmetry-problems inherited-opposing",
+        "impl/clashes": "clash-report inert-reports report-of",
+        "impl/decide": "holding-class",
+        "impl/decide/arity": "monotonic-members",
+        "impl/decide/tuple": "monotonic-member?",
+        "impl/discovery": "member-priority preserving-entry:2",
+        "impl/except": "support-read verdict-at verdict-at-reader",
+        "impl/inherit": "defeat-classes extent-index strongest-per-tuple",
+        "impl/kb": "reach-strength",
+        "impl/qcn_kb": "CalculusProver.solve-with-support asserted-pairs",
+    },
+    "defines the label and the defeat class the other entries read": {
+        "impl/jtms": "defeat-class in-datums in? justification-confers:3 network-in? raw-in?",
+    },
+}
+E24_LISTED = {(f"src/vaelii/{f}.clj", d.partition(":")[0]): int(d.partition(":")[2] or 1)
+              for files in E24_ALLOW.values() for f, defs in files.items() for d in defs.split()}
+
+
+def e24_read_names(text):
+    """`{token: read}`: each `E24_READS` var as `text` can spell it, under its
+    namespace's conventional alias, the alias the `ns` form gives, and fully qualified."""
+    aliases = {}
+    for nsn, alias in E24_REQUIRE.findall(text):
+        aliases.setdefault(nsn, set()).add(alias)
+    referred = {(nsn, v) for nsn, vs in E24_REFER.findall(text) for v in vs.split()}
+    return {**{f"{q}/{v}": f"{short}/{v}"
+               for nsn, (short, names) in E24_READS.items()
+               for q in {nsn, short} | aliases.get(nsn, set()) for v in names},
+            **{v: f"{short}/{v}" for nsn, (short, names) in E24_READS.items()
+               for v in names if (nsn, v) in referred}}
+
+
+def e24_definition(stack):
+    """The definition the innermost form of `stack` is inside: a top-level `def…` form's
+    name, one inside a top-level `do` by its own name, a `defmethod` with its dispatch
+    value, and a method of an `E24_TYPES` form as `Type.method`."""
+    top = stack[0] if stack else {}
+    if top.get("head") == "do" and len(stack) > 1 and stack[1].get("name"):
+        return stack[1]["name"]
+    name = top.get("name") or "?"
+    if top.get("head") in E24_TYPES and len(stack) > 1 and stack[1].get("head"):
+        return f"{name}.{stack[1]['head']}"
+    return name
+
+
+def e24_label_reads(text):
+    """`(line, definition, read)` for each label read in the Clojure source `text`
+    (`e24_definition`), one in a string, a comment or a `#_` form aside."""
+    reads, out, stack, line, pos = e24_read_names(text), [], [], 1, 0
+    skip, skip_next = None, False
+    for m in E17_TOKEN.finditer(text):
+        line += text.count("\n", pos, m.start())
+        pos, tok = m.start(), m.group(0)
+        if tok[0] in ';"':
+            continue
+        opens = tok[-1] in "([{" and not tok.startswith("\\")
+        if skip_next:
+            skip_next = False
+            if opens:
+                skip = len(stack)
+                stack.append({})
+            continue
+        if tok == "#_":
+            skip_next = True
+        elif opens:
+            stack.append({"head": None, "n": 0, "name": None, "list": tok.endswith("(")})
+        elif tok in ")]}":
+            if stack:
+                stack.pop()
+                if skip == len(stack):
+                    skip = None
+                elif stack and skip is None and not stack[-1].pop("meta", False):
+                    stack[-1]["n"] += 1
+        elif skip is None:
+            if stack and tok == "^":
+                stack[-1]["meta"] = True
+            elif stack and not tok.startswith(("^", "#")):
+                f = stack[-1]
+                f["n"] += 1
+                if f["list"] and f["n"] == 1:
+                    f["head"] = tok
+                elif f["n"] == 2 and (f["head"] or "").startswith("def"):
+                    f["name"] = tok
+                elif f["n"] == 3 and f["head"] == "defmethod":
+                    f["name"] = f"{f['name']} {tok}"
+            method = (len(stack) > 1 and stack[-1]["n"] == 1
+                      and stack[-2].get("head") in E24_TYPES + ("reify",))
+            if (tok.lstrip("#'`~@") in reads and not method
+                    and stack and stack[0].get("head") != "ns"):
+                out.append((line, e24_definition(stack), reads[tok.lstrip("#'`~@")]))
+    return out
+
+
+E24_FIXTURE = '''(ns f (:require [vaelii.impl.jtms :as tms]
+                     [vaelii.impl.jtms-protocol :refer [Tms -believed?]]))
+(defn- a [t h] "(jtms/in? t h)" (jtms/in? t h))
+(defn b [t] ; (jtms/in? t 1)
+  (exc/believed-own? t 1) #_(jtms/in? t 1))
+(def ^:private c #(reads/in-with-args % 'p {}))
+(defn ^long d [t] (tms/in-datums t) (vaelii.impl.resolution/rule-believed? t 1))
+(defmethod e :x [t] (jtms/in? t 2))
+(defrecord F [] P (g [_ t] (jtms/in? t 3)))
+(def ^{:doc "x"} i (jtms/in? 5 6))
+(do (defn h [t] (jtms/in? t 4)))
+(deftype G [] Tms (-believed? [_ d] d))
+(defn k [t] (-believed? t 7) (tms/defeat-class t 8))'''
+if [(d, r) for _, d, r in e24_label_reads(E24_FIXTURE)] != [
+        ("a", "jtms/in?"), ("c", "reads/in-with-args"), ("d", "jtms/in-datums"),
+        ("d", "res/rule-believed?"), ("e :x", "jtms/in?"), ("F.g", "jtms/in?"),
+        ("i", "jtms/in?"), ("h", "jtms/in?"), ("k", "jtms-protocol/-believed?"),
+        ("k", "jtms/defeat-class")]:
+    flag("E24", pjoin(ROOT, "scripts", "check-doc-drift.py"), "e24-fixture",
+         "E24's own fixture no longer reads as it should: `e24_label_reads` misses or "
+         "invents a label read")
+
+E24_SEEN = {}
+for path in clj_files():
+    rel = prel(path, ROOT)
+    if not rel.startswith("src/"):
+        continue
+    for i, enclosing, read in e24_label_reads(open(path, errors="replace").read()):
+        E24_SEEN[(rel, enclosing)] = E24_SEEN.get((rel, enclosing), 0) + 1
+        if (rel, enclosing) in E24_LISTED:
+            continue
+        flag("E24", path, read,
+             f"{rel}:{i} `{enclosing}` reads `{read}`, which is not belief: it keeps a "
+             f"record a defeat or an except removes. A read answering belief asks "
+             f"`res/believed-at?` or `exc/believed-own?`. Where support or withdrawal is "
+             f"the question, add `{enclosing}` to E24_ALLOW under the reason")
+
+for (rel, enclosing), n in sorted(E24_LISTED.items()):
+    seen = E24_SEEN.get((rel, enclosing), 0)
+    if not seen:
+        flag("E24", pjoin(ROOT, rel), f"{rel}:{enclosing}",
+             f"E24_ALLOW names `{enclosing}` in {rel}, which reads no label: drop the entry")
+    elif seen != n:
+        flag("E24", pjoin(ROOT, rel), f"{rel}:{enclosing}",
+             f"E24_ALLOW lists {n} label read(s) in `{enclosing}` ({rel}), which makes "
+             f"{seen}: check that each has the entry's reason, then write `{enclosing}:{seen}`")
 
 # ── E18: the namespace map accounts for every file under src/ ──────────────
 # docs/namespaces.md is the file map, and it makes a countable claim: the glossed

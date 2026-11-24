@@ -174,6 +174,22 @@
                (into #{} (comp (filter #(= hu (:rule %))) (map (juxt :sentence :violation)))
                      (v/violations kb))))))))
 
+(deftest chain-report-reads-a-derived-rule-by-belief-at-its-own-context
+  (let [kb tu/*kb*]
+    (tu/with-terms [abilityType able bird_t Flying]
+      (v/assert kb (list 'implies (list abilityType '?type '?ability)
+                         (list 'set/forwardRule (list 'implies '(?type ?x) (list able '?x '?ability))))
+                'CxFunnel)
+      (let [fact     (list abilityType bird_t Flying)
+            before   (into #{} (map :rule) (v/chain-report kb))
+            _        (v/assert kb fact 'CxFunnel)
+            derived  #(->> (v/chain-report kb) (remove (comp before :rule)) (mapv :believed?))]
+        (is (= [true] (derived)))
+        (let [d (v/assert kb (list 'not fact) 'CxFunnel {:strength :monotonic})]
+          (is (= [false] (derived)) "the fact the rule rests on is defeated")
+          (v/retract! kb d))
+        (is (= [true] (derived)) "the defeat retracted")))))
+
 (deftest chain-report-reads-a-firing-the-argument-hold-keeps-out-as-blocked
   ;; the constraint reading, under which the `arg` declaration convicts the conclusion
   (tu/without-entailing

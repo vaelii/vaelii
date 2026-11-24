@@ -71,11 +71,8 @@
 (arg originatorOf 1 causal)
 (arg originatorOf 2 causal)
 
-;; The provenance of gestational-only parenthood is left open by this theory.
-(exceptWhen (gestationalOnlyParentOf ?parent ?child)
-  (set/backwardRule
-    (implies ((BloodKinFn parentOf) ?parent ?child)
-             (originatorOf ?parent ?child))))
+;; A genetic parent brought its child into being.
+(genl (GeneticKinFn parentOf) originatorOf)
 
 (comment relationshipLabel
          "(relationshipLabel ?namer ?named ?label) means ?namer calls their relationship with ?named by ?label. Perspectival: the label ?named would give the same relationship need not be the same string.")

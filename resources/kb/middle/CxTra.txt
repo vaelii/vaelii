@@ -28,9 +28,8 @@
 ;; tool, and the upper ontology ships no type for that: registered_agent names a
 ;; registered koinii participant (resources/kb/koinii/CxRegistry.txt). Position 3 of
 ;; toolArgType holds a type of any kind, so it declares (genlArg toolArgType 3 thing).
-;; Position 2 of agentHasTool and position 1 of toolEnablesAbility declare `temporal`,
-;; the nearest genl software and a physical tool share (the comment above agentHasTool
-;; says why).
+;; Position 2 of agentHasTool and position 1 of toolEnablesAbility declare `causal`,
+;; which software and a physical tool share (the comment above agentHasTool says why).
 
 ;; ---- the computing kinds: the types the relations below are typed over ----
 ;; A software_tool is software that performs one bounded operation per invocation. It
@@ -43,15 +42,16 @@
 (positiveExampleComment computational_system "a running web service")
 (negativeExampleComment computational_system "the hardware that runs a computational system, which is a separate thing")
 (set/monotonic (genl computational_system intangible))
-;; Software computes when it runs, so it is built, run, upgraded and retired in time: a
-;; computational system is temporal.  The type covers software that runs.  An abstract
-;; machine, such as a Turing machine taken as a mathematical object, is not a
-;; computational system; it would be a type of its own, on the atemporal side.
-(set/monotonic (genl computational_system temporal))
 ;; A computational system is not something that happens, and is not a form the KB
 ;; represents.
 (disjoint computational_system event)
 (disjoint computational_system expression)
+;; A running computational system is the doer of what runs in it and of what its tools
+;; do, so it can be a cause.  Reading changes the reader's knowledge, so a read-only
+;; software tool is causal too.  The type covers software that runs.  An abstract
+;; machine, such as a Turing machine taken as a mathematical object, is not a
+;; computational system; it would be a type of its own, on the atemporal side.
+(set/monotonic (genl computational_system causal))
 
 (unary_predicate software_tool)
 (comment software_tool "A computational system that performs one bounded operation each time an agent invokes it.")
@@ -75,16 +75,15 @@
 (positiveExampleComment mcp_tool "a calendar-lookup MCP tool")
 (set/monotonic (genl mcp_tool software_tool))
 
-;; The edges to acausal and causal separate the two kinds below, through core.txt's
-;; (partition thing causal acausal), so no disjoint is stated between them.
+;; Both kinds below are causal, through computational_system: an invocation of either
+;; can change what its caller knows.
 (unary_predicate read_only_software_tool)
-(comment read_only_software_tool "A software tool whose invocation reads state and changes none.")
+(comment read_only_software_tool "A software tool whose invocation reads state and changes none of the state it reads.")
 (set/monotonic (time_varying_relation read_only_software_tool))
 (positiveExampleComment read_only_software_tool "a text-search tool")
 (positiveExampleComment read_only_software_tool "a directory-listing tool")
 (positiveExampleComment read_only_software_tool "a DNS-lookup tool")
 (set/monotonic (genl read_only_software_tool software_tool))
-(set/monotonic (genl read_only_software_tool acausal))
 
 (unary_predicate write_capable_software_tool)
 (comment write_capable_software_tool "A software tool whose invocation can change state outside the invocation.")
@@ -93,7 +92,6 @@
 (positiveExampleComment write_capable_software_tool "a message-sending tool")
 (positiveExampleComment write_capable_software_tool "a database-update tool")
 (set/monotonic (genl write_capable_software_tool software_tool))
-(set/monotonic (genl write_capable_software_tool causal))
 
 (unary_predicate information)
 (comment information "Information as carried, apart from the medium that holds it. A reading of the information can be a cause where the information is not.")
@@ -206,17 +204,17 @@
 (quotedArg toolArgComment 3 string)
 
 ;; Position 2 of agentHasTool and position 1 of toolEnablesAbility declare
-;; `temporal`.  Any held thing can enable an ability: software, a hammer, a jetpack.
-;; Software is intangible and a hammer or a jetpack is tangible, and the two partition
-;; thing, so the nearest genl they share is temporal: a computational system is
-;; temporal (above), and so is everything tangible.  A narrower declaration such as
-;; software_tool would conclude every physical tool a software tool, which the
-;; disjointness then contradicts.
-(comment agentHasTool "(agentHasTool ?agent ?tool) means that ?tool is available to ?agent: ?agent can use ?tool, invoking it if it is software and wielding, wearing or riding it if it is not. ?tool is any temporal thing, software or physical, e.g. a command-line program, a hammer or a jetpack.")
+;; `causal`.  A tool can be software, a hammer or a jetpack.  Software is intangible
+;; and a hammer or a jetpack is tangible, and the two partition thing, so the
+;; declaration names a genl the two share: a computational system is causal (above),
+;; and so is everything tangible.  A narrower declaration such as software_tool would
+;; conclude every physical tool a software tool, which the disjointness then
+;; contradicts.
+(comment agentHasTool "(agentHasTool ?agent ?tool) means that ?tool is available to ?agent: ?agent can use ?tool, invoking it if it is software and wielding, wearing or riding it if it is not. ?tool is any causal thing, software or physical, e.g. a command-line program, a hammer or a jetpack.")
 (set/monotonic (instance_relation_predicate agentHasTool))
 (set/monotonic (time_varying_relation agentHasTool))
 (arg agentHasTool 1 thing)
-(arg agentHasTool 2 temporal)
+(arg agentHasTool 2 causal)
 
 (comment probesPredicate "(probesPredicate ?tool ?predicate) means that an invocation of ?tool can return evidence about a sentence whose predicate is ?predicate.")
 (set/monotonic (instance_relation_predicate probesPredicate))
@@ -232,10 +230,10 @@
 ;; agentHasTool declares thing and position 1 of able declares causal, so an
 ;; unguarded rule would conclude causal of whatever has a tool.  The agent is the doer
 ;; and the tool the instrument, so nothing here concludes able of the tool.
-(comment toolEnablesAbility "(toolEnablesAbility ?tool ?happeningKind) means that whoever has ?tool available can be the doer of a happening of kind ?happeningKind. ?tool is any temporal thing, software or physical: a tool that fetches an image and returns what it shows enables image_viewing, and a jetpack enables flying.")
+(comment toolEnablesAbility "(toolEnablesAbility ?tool ?happeningKind) means that whoever has ?tool available can be the doer of a happening of kind ?happeningKind. ?tool is any causal thing, software or physical: a tool that fetches an image and returns what it shows enables image_viewing, and a jetpack enables flying.")
 (binary_predicate toolEnablesAbility)
 (set/monotonic (time_varying_relation toolEnablesAbility))
-(arg toolEnablesAbility 1 temporal)
+(arg toolEnablesAbility 1 causal)
 (genlArg toolEnablesAbility 2 happening)
 
 (set/defaultRule (set/forwardRule
@@ -941,13 +939,11 @@
 ;; (resources/kb/upper/life.txt): (able ?x ?happeningKind) means ?x can be the
 ;; doer of a happening of that kind, and image_viewing is an event kind. image_viewing pairs with seeImage the way flying
 ;; pairs with flies: the relation states who is looking, the event kind states the
-;; ability to be its doer. Taking in an image changes nothing about what it depicts,
-;; so image_viewing is a kind of acausal_event, abstract.txt's intersection of acausal
-;; and event, whose own comment names an observation as an example.
+;; ability to be its doer.
 (unary_predicate image_viewing)
 (comment image_viewing
          "An event of taking in a static image through sight and perceiving what it shows. The event-kind counterpart of seeImage: (able ?x image_viewing) means ?x can be the doer of one.")
-(set/monotonic (genl image_viewing acausal_event))
+(set/monotonic (genl image_viewing event))
 
 ;; ==== relationships and plural identity ======================================
 ;; Relationship vocabulary narrower than CxSocial's own, which CxTra sees: nesting
@@ -972,16 +968,6 @@
 (acknowledgedFinding :rule-macro
                      (Quote (intersection nestingPartnerOf romanticPartnerOf roommateOf))
                      "The declaration says what the rule and the two genl edges say, and is not stated in their place. Stated at default strength in CxTra, it files a :forced-conclusion violation for each of its two genl edges, since genl is forced-monotonic.")
-
-;; ---- chosen kinship ----------------------------------------------------------
-(comment chosenSiblingOf
-         "(chosenSiblingOf ?x ?y) means ?x and ?y are siblings by choice.")
-(set/monotonic (instance_relation_predicate chosenSiblingOf))
-(set/monotonic (time_varying_relation chosenSiblingOf))
-(set/monotonic (symmetric chosenSiblingOf))
-(arg chosenSiblingOf 1 person)
-(arg chosenSiblingOf 2 person)
-(genl chosenSiblingOf (ChosenKinFn siblingOf))
 
 ;; ---- constructs and their founders --------------------------------------------
 ;; A construct is a person.  It is not made, since made is tangible, and a construct

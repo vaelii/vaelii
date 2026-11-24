@@ -12,12 +12,14 @@
             [vaelii.impl.decide.inherited :as inherited]
             [vaelii.impl.decide.membership :as membership]
             [vaelii.impl.decide.negation :as negation]
+            [vaelii.impl.decide.region :as region]
             [vaelii.impl.decide.related :as related]
             [vaelii.impl.decide.tuple :as tuple]
             [vaelii.impl.journal :as journal]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.protocols :as p]
+            [vaelii.impl.sentex :as sx]
             [vaelii.impl.strength :as strength]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]))
@@ -42,7 +44,7 @@
     negation family, whose members are an index family (`reads/as-stored-opposed-in`).
   Every family places its nogoods as conclusions (`chain/place-nogoods!`)."
   [tuple/converse-family arity/family argument/family negation/family tuple/marks-family
-   membership/family related/family inherited/family])
+   membership/family related/family inherited/family region/family])
 
 (def held-members
   "The forced-monotonic predicates no family reads among its grounds, each with the reason
@@ -53,9 +55,9 @@
     rewriteOf  "withdrawing one un-merges two terms, so the OUT set of a round would shrink"
     sameAs     "withdrawing one un-merges two terms, so the OUT set of a round would shrink"
     equals     "withdrawing one un-merges two terms, so the OUT set of a round would shrink"
-    injection  "a premise of core.txt's rules concluding (functional P) and (functionalInArg P 1)"
-    surjection "a premise of core.txt's rule concluding (functional P)"
-    bijection  "a premise of core.txt's rules concluding (injection P) and (surjection P)"
+    injective_predicate "a premise of core.txt's rules concluding (functional P) and (functionalInArg P 1)"
+    surjective_predicate "a premise of core.txt's rule concluding (functional P)"
+    bijective_predicate "a premise of core.txt's rules concluding (injective_predicate P) and (surjective_predicate P)"
     functionCorrespondingPredicate "a premise of core.txt's rule concluding (arg P n T) from a function's result"
     functionCorrespondingBinaryPredicate "a premise of core.txt's rule concluding (functionCorrespondingPredicate F P 2), which is forced-monotonic"
     result     "a premise of core.txt's rule concluding (arg P n T) from a function's result"
@@ -204,6 +206,35 @@
                        (and (on? :forced-between-predicates f)
                             (between-predicates? kb literal))))))))
 
+(defn- instantiate
+  "`form` with each variable `bindings` binds replaced by its value, through a chain of
+  bound variables, and a `(Quote X)` left whole.  `res/substitute` also splices a dotted
+  rest, and this read does not.  An unspliced dotted rest reads conservatively: a
+  `:forced-between-predicates` literal is between predicates only as spliced, so no
+  unspliced form is forced that its spliced form is not."
+  [form bindings]
+  (cond
+    (sx/variable? form)   (let [v (get bindings form form)]
+                            (if (= v form) v (recur v bindings)))
+    (sx/quote-form? form) form
+    (seq? form)           (apply list (map #(instantiate % bindings) form))
+    (vector? form)        (mapv #(instantiate % bindings) form)
+    :else                 form))
+
+(defn forced-instance?
+  "Is the rule antecedent `a` a `forced-literal?` under `on?` at a firing with `bindings`:
+  as stored, or as the ground instance the bindings make of it.  As stored it is forced
+  for every firing; a variable is no predicate, so an antecedent of a
+  `:forced-between-predicates` functor is forced only at a firing whose instance is ground
+  and between predicates.  A firing's conclusion rests on the instances it matched, so
+  reading them is what the forced-monotonic set asks of the rule as stored, firing by
+  firing (docs/nmtms.md, \"The forced-monotonic set\")."
+  [kb a on? bindings]
+  (or (forced-literal? kb a on?)
+      (and (seq bindings)
+           (let [g (instantiate a bindings)]
+             (and (sx/ground-term? g) (forced-literal? kb g on?))))))
+
 (defn literal-declarations
   "`{handle context}` of the stored declarations that make `literal` forced-monotonic in
   `kb` and are not `global?`: empty when the baseline set holds `literal` or no
@@ -246,24 +277,6 @@
       (recovered kb w))
     (swap! cands journal/restart)))
 
-(defonce ^{:private true
-           :doc "`[candidates-atom taxonomy candidates]` of the last `synced` read: the index
-  it answered and the taxonomy value it was synced against.  `:synced?` reads only the
-  taxonomy and the index, so a read finding both identical answers from here; a settle
-  reads them several times an assert.  A
-  volatile vector, as `provers/registry-support`: a lost race costs a recompute."}
-  sync-memo
-  (volatile! nil))
-
-(defn drop-memos
-  "Empty `sync-memo`, and return nil.  It is process-wide and holds the taxonomy value of
-  the last KB read, which holds references into that KB, so it keeps its records and index
-  reachable until another KB is read; `vaelii.core/close!` calls this last.  A KB still
-  open recomputes its entry on its next read."
-  []
-  (vreset! sync-memo nil)
-  nil)
-
 (defn candidate?
   "Is `h` among `candidate-handles` of the candidate index `c` of `kb`?"
   [kb c h]
@@ -278,24 +291,30 @@
 (defn synced
   "The candidate index after each family's rows derived from the taxonomy are read again
   where it moved (`:synced?`, `:sync`), and its candidates by the context they are stated
-  in read again off the journal (`journal/indexed`, read by `handles-at`)."
+  in read again off the journal (`journal/indexed`, read by `handles-at`).  Answered off
+  `kb`'s sync memo (X1) while the taxonomy value and the candidates it was read from stand,
+  compared by identity; a lost race costs a recompute."
   [kb]
   (let [tax   (reasoning/taxonomy kb)
         cands (reasoning/nogood-candidates kb)
+        memo  (reasoning/sync-memo kb)
+        tl    (caches/tally-of memo :X1)
         t     @tax
-        [a mt mc] @sync-memo]
-    (if (and (identical? a cands) (identical? mt t) (identical? mc @cands))
-      mc
-      (let [recs (:records kb)
-            _    (reduce (fn [c {:keys [synced? sync]}]
-                           (if (or (nil? sync) (synced? tax c))
-                             c
-                             (swap! cands #(if (synced? tax %) % (sync kb (unscoped-closures tax) %)))))
-                         @cands registry)
-            c    (swap! cands journal/indexed #(candidate? kb %1 %2)
-                        #(:context (p/get-sentex recs %)) #(handles-of-index kb %))]
-        (vreset! sync-memo [cands t c])
-        c))))
+        [mt mc] @memo]
+    (if (and (identical? mt t) (identical? mc @cands))
+      (do (caches/hit tl) mc)
+      (caches/recomputed
+       tl
+       (let [recs (:records kb)
+             _    (reduce (fn [c {:keys [synced? sync]}]
+                            (if (or (nil? sync) (synced? tax c))
+                              c
+                              (swap! cands #(if (synced? tax %) % (sync kb (unscoped-closures tax) %)))))
+                          @cands registry)
+             c    (swap! cands journal/indexed #(candidate? kb %1 %2)
+                         #(:context (p/get-sentex recs %)) #(handles-of-index kb %))]
+         (reset! memo [t c])
+         c)))))
 
 (defn candidate-handles
   "Every handle some reader can read as a nogood member of a family."
@@ -451,8 +470,6 @@
 (caches/register-derived
  {:id :X1 :label "Sync memo" :kind :cache :keyed-by :global :reads [:N1 :T1]
   :holds-content? false
-  :retired-by (assoc (caches/on-every :I) :closed :W) :computed :read :imaged? false
-  :var #'sync-memo
-  :value (fn [_] @sync-memo)
-  :note "one slot for the process: the candidates atom, taxonomy value and candidates of the last `synced` read, compared by identity; another KB's read evicts it"})
+  :retired-by (caches/on-every :I) :computed :read :imaged? false :at [[:sync-memo]]
+  :note "one slot per KB: the taxonomy value and candidates of its last `synced` read, compared by identity; a settle reads them several times an assert"})
 

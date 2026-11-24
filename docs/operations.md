@@ -161,7 +161,7 @@ lein cli repl --starter                                                    # int
 - **Commands:** `assert`, `assert-rule`, `match` (`sentexes-matching`, sentences only),
   `query`, `query?`, `ask`, `prove`, `provable?`, `retract`, `why`, `why-not`, `in`,
   `isa`, `types-of`, `describe`, `handle-of`, `types`, `contexts`, `conflicts`,
-  `contradictions`, `quality`, `load`, `export`, `diff`, `upgrade`, `repl`. `--depth n` is how the line says how far to expand rules,
+  `contradictions`, `quality`, `load`, `export`, `diff`, `upgrade`, `run`, `repl`. `--depth n` is how the line says how far to expand rules,
   and `query` without one expands none. A sentence is
   written as an EDN string (`'(dog Muffet)'`), a context as a symbol, a handle as an
   integer, and a path as itself — an argument that reads as no EDN form is kept as the
@@ -278,8 +278,9 @@ lein cli repl --starter                                                    # int
 - **A flag belongs to the commands that read it**, and one carried by a command that
   does not is refused the same way rather than dropped — an ignored option reads from
   outside exactly like an honoured one. The first three above name the KB and go
-  anywhere; `--strength` is `assert` and `assert-rule`'s, `--depth` is `query` and
-  `query?`'s, `--variant`, `--compression` and `--format` are `export`'s, `--context` is
+  anywhere; `--strength` is `assert` and `assert-rule`'s, `--depth` is `query`, `query?`
+  and `run`'s, `--variant` and `--compression` are `export`'s, `--format` is `export` and
+  `run`'s, `--context` is
   `describe`'s, `--nearest` is `why-not`'s, and `repl` carries all of
   them because its options are fixed at session start and each line reuses them. `help`
   prints the owner beside each flag, and the refusal names what the command does read.
@@ -296,6 +297,79 @@ lein cli repl --starter                                                    # int
 
 `dispatch` takes args already parsed to data, so the shell (which `edn`-reads each argv
 string) and the REPL (which reads forms off the line) share one command table.
+
+### Run files
+
+A **run file** (`.vae`) holds KB forms in the text KB format
+([kbs.md](kbs.md#text-you-exported-yourself)) and directives written as EDN tags.
+`lein cli run <file.vae>` runs one: it restores the base the file names, asserts every
+form, and then answers every read. `vaelii.host.run/read-run-file` reads the file, and
+every file it includes, into `{:base :entries :reads :files}`: the entries `load-text!`'s
+pass asserts, each `[form context]` carrying its `{:file :line}` as metadata, and the reads
+in file order. `run-in` asserts the entries into a KB and answers the reads.
+
+```clojure
+#base core
+#context CxZoo
+(genl penguin bird)
+(bird Tweety)
+(penguin Opus)
+(set/forwardRule (exceptWhen (penguin ?x) (implies (bird ?x) (flies ?x))))
+#show (flies ?x)
+#truth (flies Opus)
+```
+
+| Directive | Argument | Effect |
+|---|---|---|
+| `#base` | `core`, `upper` or `starter` | names the KB a run starts from: `core.txt` with `interface-rules.txt`, every `kb/upper/` file, or the upper and middle layers. A second `#base` naming another base is refused |
+| `#context` | a context name that is not a query context | sets the context the forms after it assert into, to the end of its file. A form before any `#context` asserts into `CxMain` |
+| `#include` | a path string, read against the including file's directory | reads a run file at the context and `#solve` map in force at the `#include`, and its `#context`s and `#solve`s end with it. A directory or a `.txt` file is read as a text KB, each form in the context its file names |
+| `#solve` | a map of `answer-sets` options ([solving.md](solving.md#the-asp-reading-of-a-program)) | sets the options the solve reads after it run under, to the end of its file. Each read takes the options its reading reads, and `:project true` projects onto the read's own pattern |
+| `#show` | a sentence or pattern | prints each instance of the pattern `query-status` answers at the context in force where it is written, one per line, in content order |
+| `#truth` | a sentence holding no variable | prints `argue`'s verdict at that context, then the sentence: `true`, `false`, `unknown` or `contradiction` |
+| `#models` | a sentence or pattern | solves the program at that context ([solving.md](solving.md#the-asp-reading-of-a-program)) and prints each optimal answer set as an `Answer <i>:` line of the pattern's instances true in it, then `Optimization:` and the optimum's cost per objective level, highest level first, when the program has an objective. Under a `#solve` `:among` other than `:optimal`, an `Optimization:` line follows each answer set that has a cost |
+| `#model` | a sentence or pattern | prints one optimal answer set as `#models` does |
+| `#brave` | a sentence or pattern | prints each instance of the pattern true in some optimal answer set, one per line |
+| `#cautious` | a sentence or pattern | prints each instance true in every optimal answer set, one per line |
+
+The tags are read by `clojure.edn` with `tagged-literal` as its default reader, so a run
+file runs no code. A refused directive is `:bad-directive`, carrying `:file`, `:line` and
+a `:mismatch`:
+
+| `:mismatch` | the directive |
+|---|---|
+| `:unknown-key` | is a tag no directive has |
+| `:misplaced` | is a tag inside a form, or inside another directive's argument |
+| `:bad-value` | takes an argument of another kind |
+| `:conflict` | is a second `#base` naming another base |
+| `:cycle` | is an `#include` of a file already being read |
+
+An `#include` naming no file is
+`:missing-resource`. `load-text!` reads no directive: a tag in a text KB file is
+`:unreadable`.
+
+`run` answers every read after every form is stored, so a read above a form sees it. A read
+expands rules to `--depth`, whose default is `VAELII_MAX_QUERY_DEPTH` (256). A read that
+stopped short of its whole answer prints a stderr line naming its file, its line and its
+`:status`. The status is `query-status`'s for a `#show`, and the solve's for a solve read
+that the solve limit or the time limit stopped ([asp.md](asp.md#the-solve-limit)). `argue` reports no depth cut, so a `#truth` cut at
+the depth answers `unknown`. `--format edn` prints each read as a map holding its answer.
+A solve read solves its context's program once per reading and `#solve` map, however many
+reads name the pair, and a solve with no answer set prints `unsatisfiable`.
+
+| Exit | the run |
+|---|---|
+| 0 | answered every read in full |
+| 1 | met a refusal, and answered no read. A refused form prints `<file>:<line>: error: [<:type>] <message>` on stderr |
+| 3 | answered every read, and a `#show` or a solve read stopped short |
+
+`run` restores its base from an export dump under `<java.io.tmpdir>/vaelii-run-dump/<base>`,
+named as the starter dump is named ([web.md](web.md#the-starter-dump)). A run that finds
+no such dump loads the base and writes one. `--dir`, `--memory` and `--starter` are refused
+beside `run`, since the file names its base. On 2026-11-23, on a box at load 30, a run of
+an 11-line file over `core` took 10.9 s from the JVM's start. Of that, 7.5 s loaded the
+engine's namespaces, and 2.1 to 2.6 s named and imported the dump and answered the reads. Loading a
+base without the dump took 37 to 45 s on that box.
 
 ## Daemon — `vaelii.serve`
 
@@ -435,7 +509,9 @@ VAELII_API_TOKEN=… lein serve 4200 /var/lib/vaelii --listen 0.0.0.0   # off-ma
   with `:status :depth-cut`, and `:prove-within` reports the cut as `:truncated? true`
   ([anytime.md](anytime.md#the-partial-result-contract)). A depth the request names
   prunes, as in process. `:compare-tacticians` holds all its rows to one
-  deadline. `:why` reads no bound. `:kb-integrity` has two more dials,
+  deadline. `:why` reads no bound. `:answer-sets` holds its ASP `:time-limit`, in seconds,
+  under the clock ceiling rounded up to whole seconds. An absent limit is the ceiling, and
+  `0`, which lifts the limit, is refused as a larger one is. `:kb-integrity` has two more dials,
   `:max-work` and `:max-results`, held the same way under `VAELII_INTEGRITY_MAX_WORK`
   (**10000**) and `VAELII_INTEGRITY_MAX_RESULTS` (**1000**), `0` lifting either, and filled
   with the ceiling when a request omits them or sends no option map, so a served sweep always
@@ -1524,7 +1600,7 @@ CI sets these too; nothing in a deployment does.
 | `VAELII_TEST_NS_REPEAT` | `project.clj:150+` | a whole number from 1 to 100 | `1` | Runs each test namespace that many times in a row in the one JVM. CI's `weights` rerun sets it to 3 (`scripts/lib/ns-timings.sh`). |
 | `VAELII_SETTLE_HOUR` | `test/vaelii/settle_hour_test.clj:0+` | `1` or unset | unset (the settle test prints that it skipped) | Runs `settle-of-the-full-kb-within-an-hour`, the `^:full-kb` test that opens `VAELII_FULL_KB_DIR` without belief, settles it with `settle-record-edits!`, prints each phase's minutes and fails past 60. Opt-in beyond the selector because `full_kb_test` opens the same clone with belief and two full-size KBs do not fit one heap: `VAELII_SETTLE_HOUR=1 lein test-full-kb <store> :only vaelii.settle-hour-test`. A postgres store is refused. |
 | `VAELII_SETTLE_REMOVE` | `test/vaelii/settle_hour_test.clj:0+` | a count | `0` | How many stored premises the settle test removes through `edit-records!` before it settles, so the sweep has seeds. |
-| `VAELII_TEST_HEAP` | `project-env.clj:40+` | a JVM heap size (`4g`, `6144m`) | `4g` | The `-Xmx` the `:test` profile gives a test JVM. Unset, a `JVM_OPTS` that already names `-Xmx` keeps its own, which is how `lein test-full-kb` passes `VAELII_HEAP`. The profile also sets G1 to return freed heap (`MaxHeapFreeRatio=30`, a 15 s periodic collection) and two parallel and one concurrent collector thread per JVM. |
+| `VAELII_TEST_HEAP` | `project-env.clj:40+` | a JVM heap size (`4g`, `6144m`) | `4g` | The `-Xmx` the `:test` profile gives a test JVM. Unset, a `JVM_OPTS` that already names `-Xmx` keeps its own, which is how `lein test-full-kb` passes `VAELII_HEAP`. The profile also sets G1 to return freed heap (`MaxHeapFreeRatio=30`, a 15 s periodic collection) and two parallel and one concurrent collector thread per JVM. The slot rule charges each test JVM this heap and 1 GiB more. It admits only as many more test JVMs as fit in the memory the OS can hand out, less 16 GiB, after charging each running vaelii JVM the part of that charge it does not hold yet. The bound holds the matrix's count and every `lein test-parallel` count, one named with `--jobs` or `GATE_JOBS` included. |
 | `VAELII_BENCH_LOG_LEVEL` | `project.clj:170+` | `error` `warn` `info` `debug` `trace`; blank is unset | `error` | The same floor for the `:bench` profile, so `lein perf` and the `bench-*` harnesses print readings rather than the logging their workloads provoke. |
 | `VAELII_RETE` | `test/vaelii/test_util.clj:30+` | the boolean vocabulary | `false` | Runs the suite's forward chaining through the incremental matcher instead of the reference. |
 | `VAELII_HIER` | `test/vaelii/test_util.clj:60+` | the boolean vocabulary | `true` | The set-algebra context-scoped retrieval. `0` routes every match through the reference nested fan-out instead. |
@@ -1538,7 +1614,7 @@ CI sets these too; nothing in a deployment does.
 | `VAELII_GATE_OUT` | `scripts/test-parallel.sh:40+` | a directory | `logs/gate` | Where the parallel test stage writes its per-shard logs, `test.assign` (each shard's namespaces with their predicted seconds) and each shard's `test.timing-<n>.tsv`. `lein gate` sets it to that run's own directory, so the shard logs land beside the stage logs rather than in a directory two `lein gate` runs share. |
 | `VAELII_GATE_TIMINGS` | `scripts/test-parallel.sh:40+` | a file | `logs/test-timings.tsv` | The per-namespace timings the test stage bin-packs its shards from, a moving average each run moves 0.3 of the way to its own figures. **Per checkout, not per run**: they are feedback for the *next* `lein gate` run, so every run shares them, outside `target/`, which `lein clean`, `lein jar` and `lein install` empty. A namespace the file lacks takes its CI weight scaled to local time. |
 | `GATE_JOBS` | `scripts/gate.sh:60+` | a whole number | unset | The test stage's shard count. **Not frozen** — see below. |
-| `TEST_MIN_JOBS` | `scripts/test-parallel.sh:20+` | a whole number | `3` | The fewest shards `lein test-parallel` (and so `lein gate`'s test stage) starts when no `--jobs` or `GATE_JOBS` names a count. The load-aware count subtracts every vaelii JVM running, an idle REPL or server included, and at one shard the suite takes over 50 minutes. Under `GATE_MAX_CONCURRENT`'s default of 2, two sharded suites at this floor start six test JVMs across the box. **Not frozen.** |
+| `TEST_MIN_JOBS` | `scripts/lib/slots.sh:110+` | a whole number | a third of the box's slot base, or `3` when that is more (`scripts/lib/slots.sh`) | The fewest shards `lein test-parallel` (and so `lein gate`'s test stage) starts when no `--jobs` or `GATE_JOBS` names a count. The load-aware count subtracts every vaelii JVM running, an idle REPL or server included, and at one shard the suite takes over 50 minutes. Under `GATE_MAX_CONCURRENT`'s default of 2, two sharded suites at this floor take at most two thirds of a base of 9 or more, and a matrix or a REPL has the rest. The slot rule's memory term (`scripts/lib/slots.sh`, the `VAELII_TEST_HEAP` row) lowers a count below this floor. **Not frozen.** |
 | `PERF_TOLERANCE` | `scripts/gate.sh:60+` | a multiplier (`1.5`) | unset | Passed through to `lein perf --tolerance`, for a loaded box. **Not frozen.** |
 | `GATE_MAX_CONCURRENT` | `scripts/lib/slots.sh:280+` | a whole number; `0` disables | `2` | How many sharded suites run at once across every clone and worktree on the box: a `lein gate` test stage, or a `lein test-parallel` run outside `lein gate`. Each holds one `gate-lock.<i>` file in `VAELII_BOX_STATE_DIR`, and the `lein test-parallel` a `lein gate` runs takes no second slot. A run over the cap waits for a slot, naming the holders and their checkouts once a minute; `lein gate` runs lint meanwhile. The shard count is read after admission. **Not frozen.** |
 | `GATE_NO_WAIT` | `scripts/lib/slots.sh:280+` | any non-empty value | unset | Makes `lein gate` and `lein test-parallel` exit 75 instead of waiting when every gate slot is held. **Not frozen.** |
@@ -1548,7 +1624,7 @@ CI sets these too; nothing in a deployment does.
 | `TEST_SWEEPS_OUT` | `scripts/test-sweeps.sh:50+` | a directory | `logs/test-sweeps` | Where `lein test-sweeps` writes one log per run. **Not frozen.** |
 | `SUITE_PROGRESS` | `scripts/lib/suite-marks.sh:40+` | `marks` `lines` `auto` | `auto` | How `lein test-backends` and `lein test-sweeps` report a namespace as it finishes: `marks` is the ✔/✘ rows a terminal animates, `lines` is one named, counted and timed line each — what a log, a pipe or CI gets, since a row of ticks in a file names nothing. `auto` reads the terminal. **Not frozen.** |
 | `TEST_MATRIX_OUT` | `scripts/test-matrix.sh:50+` | a directory | `logs/test-matrix/run-<pid>` | Where `lein test-matrix` writes one log per configuration, plus `summary.tsv`; per-run, with `latest` pointing at the newest. Under `logs/` (gitignored), not `target/`, so a concurrent `lein clean` cannot delete a live run; old run dirs are pruned to the last `MATRIX_KEEP_RUNS` (20), sparing any touched in the last 24h. **Not frozen.** |
-| `MATRIX_JOBS` | `scripts/test-matrix.sh:50+` | a whole number | performance cores − 2, less the vaelii JVMs already running (`scripts/lib/slots.sh`) | How many of the fourteen configurations run at once. One run is about one core of test work, so more slots than cores buys nothing and costs a JVM each. Unset, the running matrix re-reads that rule with its own JVMs left out, each time a configuration ends and every `MATRIX_SLOTS_EVERY` seconds. `lein test-matrix --set-jobs <n>` sets the running matrix's count and stops that re-read; its scheduler re-reads the set count every pass. Either way a raise launches more at once, and a lower launches nothing new until fewer are running. **Not frozen.** |
+| `MATRIX_JOBS` | `scripts/test-matrix.sh:50+` | a whole number | cores outside the Efficiency tier − 2, on Apple Silicon at most 3/4 of all cores, less the vaelii JVMs already running (`scripts/lib/slots.sh`) | How many of the fourteen configurations run at once. One run takes about 4/3 cores, so more slots than the cores hold buys nothing and costs a JVM each. Unset, the running matrix re-reads that rule with its own JVMs left out, each time a configuration ends and every `MATRIX_SLOTS_EVERY` seconds. `lein test-matrix --set-jobs <n>` sets the running matrix's count and stops that re-read; its scheduler re-reads the set count every pass. Either way a raise launches more at once, and a lower launches nothing new until fewer are running. **Not frozen.** |
 | `MATRIX_OWED_MAX` | `scripts/test-matrix.sh:50+` | a whole number; `0` disables | `4` | The most configurations `lein test-matrix --owed` starts: the ones a changed file names itself first, then the ones a group word brought in, each half in the (shuffled) launch order; the rest are on the `not run:` line. A queued owed run is capped the same way. **Not frozen.** |
 | `MATRIX_RED_COOLDOWN` | `scripts/lib/slots.sh:200+` | seconds; `0` disables | `1800` | How long after a red `lein test-matrix` run no matrix starts or queues. The refusal (exit 75) names the red run's directory, its failing tests per configuration with a one-test re-run command each, who requested it, and the queued requests it dropped; the red run drops the queue, and a green run lifts the cooldown. **Not frozen.** |
 | `MATRIX_YIELD` | `scripts/test-matrix.sh:50+` | `0` disables | `1` | Whether a running `lein test-matrix --owed` ends at its first configuration verdict when a request is queued behind it. On a green verdict it stops the configurations still running, queues its own baseline and exits 75, and the next matrix runs every queued baseline's owed set at the primary's HEAD; on a red one it halts as a red run. A configuration a yield leaves without a verdict runs first in the next owed run that owes it, and that run does not yield before the configuration has a verdict. A run named by group or configuration never yields. **Not frozen.** |

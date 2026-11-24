@@ -49,6 +49,7 @@ and set the heap from `VAELII_HEAP` (default half of physical memory, up to `31g
 `:browser` profile sets the `vaelii.starter.dump` system property to `target/starter-dump`,
 and `fresh-starter-kb!` hands the directory to `starter/load-through-dump`. With the
 property unset, as under `lein run -m vaelii.web` and `/kbs`, the starter loads in full.
+`lein cli run` restores a run file's base through the same fn ([operations.md](operations.md#run-files)).
 
 The dump's directory name joins everything that decides what a load stores: the source
 identity's digest ([storage.md](storage.md#the-source-identity)), a hash of the loader
@@ -202,6 +203,7 @@ request log either, which [operations.md](operations.md) states as the trade it 
 | `/quality/run` (POST) | run `kb-quality` as a read job and answer with the page when it finishes inside 5 s, else with `/jobs`; with a reading already running over the KB, answer with the page and start nothing. Origin-checked: it starts work |
 | `/quality/progress` | a running reading's progress bar, polled by the page each second; once the job settles it answers `HX-Refresh`, which reloads the page |
 | `/closure?dir=genls\|specs&q=<term>` | **every supertype or every subtype** of a type, drawn as a layered picture of the reduced order, the term on the bottom row for genls and the top row for specs (below). The term page links both under its graph |
+| `/vantage?ctx=<context>&q=<pattern or term>` | **one sentence across contexts**: the stored matches of a pattern and of its negation, or the stored sentexes holding a term, as `ctx`, the contexts it sees that store one, and the contexts that see it each read them, drawn as one card per context and listed under the drawing (below) |
 | `/find?q=<pattern>` | **term search** over the KB's vocabulary: every term whose name matches (a query with no regex metacharacter is a case-insensitive substring match, so `DOG` finds `dog`; a query carrying one is a regular expression under `re-find`, so `^parent` anchors), each linked to its term page — the header search box points here. A pattern resolving to a single term (the only match, or an exact-name match) **jumps straight to that term's page** (`HX-Push-Url`) |
 | `/term?q=<term>` | a **term**: a drawn picture of where it sits (below), its [definitional block](#a-term-page-lists-its-definitional-block), then every sentex containing it grouped by the **index root** that reaches it — functor `[:predicate-extent]`, argument-position `[:argument-slot pos]` (the slot predicate set the predicate-agnostic read unions the scoped roots over), context `[:context-root]`, and the term-index `[:term-index]` remainder (rules, deeper nestings) — each group carrying its cheap count (O(1) for the roots; one O(1) read per predicate at the slot for the argument groups) |
 | `/sentex/:id` | a **sentex** (atomic or rule): an action bar — Copy, Edit, Remove (below) — then **what its circle says** (the kind its colour draws and how that kind runs, the origin its fill draws, and the belief its brightness draws), then for an inert rule **why it is inert** (the declarations whose mints the engine computes in code, the generator that concluded it, or that it was written inert, followed by each `implementationNote` on the term it concludes and on the generator's antecedents), then its **belief state** (IN, or the `why-not` reason — superseded / defeated / withdrawn / forced conclusion / inert / unsupported — with the restatement, contradictors, the hidden sentexes and the defeats hiding them, the void firings, the declarations a placed defeat convicts through, the grounds of the length an inert tuple breaks, or missing antecedents that explain it), its supporting justifications (justifications concluding it), its dependents (justifications using it as an argument), the meta-sentexes naming it by `(sentexHandle id)` (`sentexes-naming`, the first 60), its provenance map, and its terms |
@@ -209,7 +211,8 @@ request log either, which [operations.md](operations.md) states as the trade it 
 | `/justification/:id` | a **justification**: its supports/arguments (antecedent sentexes) and its dependent sentex (the conclusion) |
 | `/levels?q=<goal>&ctx=<context>` | the **lookup-to-query stack**: what each of the eight levels answers for a goal, which level first does, and — above them — the **query plan**: the provers bearing on the goal with their estimates and which one runs. A **vector** goal is a conjunctive query and gets the join plan instead (below). Links across to `/inference` for the same goal |
 | `/inference?q=<goal>&ctx=<context>&d=<depth>` | the **inference debugger**: the run that plan predicted, one step past `/levels`. The **search tree** the node engine builds for a goal — every node the frontier reached (not only the path that answered), each with the itemized estimate that ordered it, the rewrite that produced it, and the answers that came off it — plus the same goal under several **tacticians side by side**, tabled by the work each did and the answers each found. The identity property (every complete tactician returns the same answer set) is **verified** on the page, not asserted: a differing row is marked. Reads through `search-tree` / `compare-tacticians`, both of which bound their own work (a node budget and a wall-clock), so the page holds no session and works under `--attach`. Needs a depth — the node engine's only termination |
-| `/network?ctx=<context>&calc=<calculus>` | the **constraint network** a qualitative calculus computes over a context: the tightened matrix (a cell is what still holds of row-to-column), whether the believed facts are satisfiable at all, and one scenario out of it. With no context, the six calculi, their vocabularies and each one's stored fact count, and a line saying so when the KB states none |
+| `/network?ctx=<context>&calc=<calculus>` | the **constraint network** a qualitative calculus computes over a context: the network drawn as a graph and, for the interval and point calculi, as a [timeline](#the-timeline), the tightened matrix (a cell is what still holds of row-to-column), whether the believed facts are satisfiable at all, and one scenario out of it. With no context, the six calculi, their vocabularies and each one's stored fact count, and a line saying so when the KB states none |
+| `/signs?ctx=<context>` | the **sign network** the sign reading computes over a context ([sign.md](sign.md)): the network [drawn](#the-sign-drawing), whether the believed facts are consistent, and a table of each quantity's possible signs and trends. The context is a name or a ground context application such as a time slice, `(CxTimeFn CxWell Morning1)`. With no context, the seven predicates of the sign vocabulary and each one's stored fact count |
 | `/demo` (GET/POST) | the **non-monotonicity walkthrough**: three stepped writes to the reader's sandbox in which `(able Pingu flying)` is believed, stops being believed, and comes back — at the same handle. GET renders where the sandbox stands, POST runs one step. Every step writes, so every step is origin-checked (below) |
 | `/reasoning` (GET/POST) | the **worked examples**: every kind of inference the shipped ontology performs, each a question with a live answer, the level that answered it, and links to the stored sentexes it reasoned from. GET renders every card at once and asks nothing; POST establishes one example's premises in the reader's sandbox (below) |
 | `/reasoning/verdict?id=&ms=` (GET) | one card's verdict, which the gallery asks for after it renders, one card at a time (`hx-sync` queued on `#main`). `ms` is the climb's deadline (`escalate`'s `:max-ms`), 10 s from the page and up to 2 min from a card's "Give it 2.0 min" button; a stopped climb says **No answer within**, which is not a verdict |
@@ -273,8 +276,10 @@ with different chrome. The whole feature is one function called from one place.
 Being live is also what obliges the budget. **A picture nobody asked for may never be the
 reason a term page is slow**, so the bound is part of the work and not a follow-up:
 
-- **The taxonomy graph's expansions cost at most 24 facade reads**, ever — twelve
-  expansions, six per side, at one or two reads each. The radial graph spends at most twelve:
+- **The taxonomy graph's expansions cost at most 56 facade reads**, ever — 28
+  expansions, fourteen per side, at one or two reads each. A side spends six finding its
+  rows and up to eight more (`graph-edge-budget`) reading the edges between the nodes
+  found (below). The radial graph spends at most twelve:
   it expands three neighbours, and each costs two O(1) argument counts and two pattern
   reads. A taxonomy expansion reads the node's one-step neighbours through
   `(take (inc cap))`, so it costs the node's own fan-out and nothing more. A node with two
@@ -284,15 +289,17 @@ reason a term page is slow**, so the bound is part of the work and not a follow-
   a `genl` page spends one of its six on `covers-of`, the read its cover frames come from
   (below). A radial expansion reads
   at most `ego-scan` (500) matches and orders them by handle before the cap cuts.
-- **Measured** twice. Over the shipped schema plus the test-world cast: **2–10 reads** and
-  **0.7–2.9 ms** a page (`dog` +3 reads / +0.7 ms, `animal` +10, a synthetic 5,000-subtype
-  hub +9 / +2.9 ms). Over a generated 148k-sentex corpus — 44k terms, 4k types — a type
-  page costs **+0.4 to +0.8 ms**, and the five widest individuals in it, up to ~12k
+- **Measured** twice. Over the starter KB the picture adds **14–41 reads** to a page (`dog`
+  +14, `animal` +36, `thing` +41, a 40- or 400-subtype hub +21). At a load average of 40 it
+  adds **−2 to +10 ms** to the median of 21 renders. Over a generated 148k-sentex corpus —
+  44k terms, 4k types — a type page costs **+0.4 to +0.8 ms**, and the five widest
+  individuals in it, up to ~12k
   incident facts each, cost **−0.4 to +2.5 ms**: inside the run-to-run noise of the page
   they sit on. A hub with 400 subtypes costs exactly what one with 40 does (`web_test`),
   which is the claim a render cap alone would never make.
-- **Degrade, never defer.** A side that runs out of budget stops a row short and the
-  caption says so. There is no fallback to a button.
+- **Degrade, never defer.** A side that runs out of budget draws fewer nodes, and the
+  caption says how many of the closure it drew: *showing 3 of 4 contexts that see it*.
+  There is no fallback to a button.
 - **Nothing new to reach it.** No route and no dependency. Its reads are access ops the
   daemon serves, so the graph renders identically against `--attach`, and `docs/web.md`
   needs no row in the table above.
@@ -330,17 +337,26 @@ next row draws it there. With `dog ⊂ mammal ⊂ animal` believed, the page for
 no arrow from `dog` to `animal`. The page for `animal` draws `mammal` below it and `dog`
 below `mammal`. Each expanded node's row is read the same way, not the centre's alone.
 
-The engine computes both sets over every believed edge of the closure, whatever installed
-the edge: a stated `(genl sub super)`, a `genl` sentex a rule derived (an `intersection`
-derives one to each type it intersects), and an edge a `covering`, `separating` or
+The engine computes both sets over every edge of the closure the read context believes,
+or with no read context every edge the network holds IN, whatever installed the edge: a
+stated `(genl sub super)`, a `genl` sentex a rule derived (an `intersection` derives one
+to each type it intersects), and an edge a `covering`, `separating` or
 `partition` declaration installs. A cover declaration stores no `genl` sentence for its parts, and a
 picture read off stored `genl` sentences alone would draw a part with no parent. Two
 supertypes that subsume each other are both drawn.
 
-A row is a hop count from the centre. Two nodes of one row can therefore be comparable:
-when `dog`'s minimal supertypes are `mammal` and `pet`, and `animal` is minimal above
-`mammal` while `companion` is minimal above `pet` with `companion ⊂ animal`, the second
-row holds both `animal` and `companion`.
+**Every edge of the reduction between two drawn nodes is drawn**, and each node sits on the
+row of its longest path from the centre over those edges, so a drawn node is above every
+drawn node it subsumes. A diamond draws both of its edges into its top. Whether the
+reduction joins two drawn nodes is settled by a read of the lower one's nearest supertypes
+or of the upper one's nearest subtypes. A read's members are pairwise unordered, so a read
+naming `a` beside a node at or above `b` rules out an edge `a ⊂ b`, and so does a read naming
+`b` beside a node at or below `a`. `grow` then reads against the side's direction, each time
+the node whose read settles the most pairs. Below `warm_blooded`, one read each of the six
+types under `bird` and `mammal` settles every edge into the second row. On `CxWell`'s page
+one read of `CxUniverse`'s children settles the edges from all seven parent contexts. A node
+a pair still names when the eight reads run out is not drawn, deepest first, and the
+caption's count says so.
 
 **The first row below a type is framed by the covers over it.** `vaelii.core/covers-of`
 answers the believed `partition`, `covering` and `separating` sentexes whose whole is the
@@ -351,7 +367,8 @@ carries three partitions, drawn as `partition 1` … `partition 3`. The frames a
 by content, by kind in that order and then by the printed part list, so the numbering does
 not depend on which declaration arrived first. A cover that declares a part the row does
 not hold, because the part sits below another subtype or past the row cap, says how many
-of its parts the row drew (`1 of 2 parts in this row`). A subtype in two covers is one
+of its parts the row drew (`1 of 2 parts drawn`). The label is set left of the frame's
+first part, inside the frame, where no edge passes. A subtype in two covers is one
 node, drawn in the first frame, and the caption names it for the later cover: `partition
 2 also names p (drawn under partition 1)`. A subtype no cover names is drawn outside
 every frame. The frames are a property of the centre: the rows further down, the rows
@@ -385,9 +402,20 @@ below, dimmed. Symbols only — a number, `comment`'s text and a compound in arg
 position are terms of a sentence rather than nodes of a graph. And **one node per term**: a
 neighbour reached by two predicates is one node whose edge names both, because a node per
 *fact* would put two `Ann`s on the page where the KB has one — the same defect drawing an
-edge once per asserting context would be. One edge in two contexts is one edge; the graph
-is not context-scoped and does not label an edge with a context. `merge-neighbours` removes the repeats
-by term, because a stateful filter over a lazy seq would answer differently the second time anything read it.
+edge once per asserting context would be. A related term the rows already draw is not
+drawn again in the flank: the caption names it with the relations that reach it. One edge
+in two contexts is one edge, and the graph does not label an edge with a context.
+`merge-neighbours` removes the repeats by term, because a stateful filter over a lazy seq
+would answer differently the second time anything read it.
+
+**A page read at a context draws what that context sees.** `/term` and `/closure` take a
+`ctx` parameter. With one, a relation edge is drawn only where its sentex is stored in the
+context's `genlCx` ancestor set (`v/context-up`), and each `genl` neighbour set is read at
+the context. A cover frame is drawn only where a cover sentence stored in that set states
+it, which costs one more read per cover kind and part count. A link out of the picture
+carries the context, and the caption names it. With no `ctx` the picture reads every
+context. The `genlCx` reads take no context, so a context's own lattice is drawn whole at
+every context, and the rows under the picture list every context's sentexes.
 
 **It says what it left out**, with the count, in a caption under the picture: *showing 8 of
 37 direct subtypes*. A truncated picture that does not announce itself is worse
@@ -400,8 +428,8 @@ predicate at that position — worded *showing 8 of up to 4,812 related terms*. 
 term is never subject to a cap: a stated root that is not drawn reads as orphans.
 
 **Drawn with no library.** `vaelii.browser.svg` is a node, an edge, an arrowhead and the
-arithmetic that lays out a row, a column or a ring — pure, KB-free, tested on hand-built
-maps. No Graphviz shell-out (a page that renders by starting a process is a page that
+arithmetic that lays out layered rows, a relation flank, a column or a ring — pure,
+KB-free, tested on hand-built maps. No Graphviz shell-out (a page that renders by starting a process is a page that
 cannot be served), no d3, no cytoscape, no build step, and nothing added to `project.clj`:
 the client is two JavaScript files and a graph library would be the largest thing in it.
 Node colour is `term-class`'s class resolving to the same `--t-type` … `--t-context` custom
@@ -413,6 +441,19 @@ the box. The box leaves `overscroll-behavior` at its default, so a wheel turn th
 cannot use, past its edge or along an axis with no overflow, scrolls the page. `contain`
 would keep that turn in the box and leave the page still under a pointer resting on the
 graph.
+
+**No box or label overlaps another, and no edge crosses a box it does not end at.**
+`svg/layered` takes each node's row as given and orders each row in three sweeps by where
+its neighbours sit. It puts a zero-width item in every row an edge passes through, so an
+edge spanning rows bends around the boxes between. Every segment between two rows runs in the
+gap between their bands, and the edges meeting one box meet it at points 10 px apart. A
+node label wraps at 32 characters a line (`svg/label-cap`) over at most three lines, and the
+box is sized from its longest line. A flank edge's label sits over a lane as wide as that
+side's widest label, and the centre's row is as tall as the taller flank column. Any other
+edge label sits beside the middle of its line, at the first of 6, 12, 24 and 48 px right,
+left, above or below that no segment of the edge crosses. `svg/faults`
+lists every overlap and crossing in a finished picture, and `web_test` runs it over the
+pictures of `thing`, `animal`, `organism`, `parentOf`, `CxWell` and two closures.
 
 **The text stays.** Every term the picture draws is a row in the index groups under it —
 the `genl` sentexes an argument group lists are the edges it drew — so the rows are the
@@ -893,7 +934,7 @@ that comes back empty answers with `/stats` and a note, so the reader needs no w
   clashes costs far more than the two reads alone.
 - **Unary predicates without a genl** reads the stored members of `unary_predicate` and
   of each of its subtypes (`specs`) off the index (`stored-first-args`, one read a
-  subtype), and keeps those whose direct genls (`direct-genls`, KB-wide) are `thing`
+  subtype), and keeps those whose direct genls (`direct-genls` with no context) are `thing`
   alone or nothing and whose membership is believed (`isa?`). `thing` itself is left
   out.
 - **Held facts and rules** is the `:inert-argument`, `:inert-rule` and
@@ -944,12 +985,61 @@ say so in place of a cancel button.
 
 A type's page draws a few rows of its neighbourhood each way. **All genls** and **All
 specs**, under that graph, open `/closure`, which draws one direction whole: the types
-reachable by `min-genls` (or `max-specs`), so no arrow is one two others imply. Each type
-sits on the row of its longest path from the term. In a well-built taxonomy every genl
+reachable by `min-genls` (or `max-specs`), so no arrow is one two others imply. A context's
+page opens the same picture of its `genlCx` ancestor set (**All ancestor contexts**,
+`min-context-parents`) or descendant set (**All descendant contexts**,
+`max-context-children`). Each type
+sits on the row of its longest path from the term, laid out as the term page's rows are,
+so an arrow spanning rows bends around the boxes between. In a well-built taxonomy every genl
 closure narrows to `thing` alone on its top row, a diamond, and a spec closure only widens
 downward, a triangle; a different shape points at the edges to read. The walk is
 breadth-first and stops at 250 types, the nearest by steps, and the page then says "more
 than". Below the picture the same types are listed row by row.
+
+## A sentence across contexts
+
+`/vantage?ctx=<context>&q=<pattern or term>` draws what one sentence reads as from several
+contexts. A pattern `q` reads the stored matches of `q` and of its negation in every
+context (`sentexes-matching` at `CxEverything`). A term `q` reads every stored sentex
+holding it (`find-sentexes`). Each read takes its first 500 matches.
+
+The drawing holds at most 12 contexts: `ctx`, then the contexts `ctx` sees that store a
+match, then the contexts that see `ctx`, breadth-first down `max-context-children` and each
+level in print order. An arrow runs from a context to each drawn context it sees with no
+drawn context between, and the rows are laid out as the [closure drawing](#a-types-whole-closure)'s
+are. An arrow that is not a `min-context-parents` step is labelled with how many contexts
+it passes.
+
+Each context is a card. A card lists the first 8 matches stored in a context it sees, by
+text and then by where each is stored, and each row's note names three things:
+
+- where the sentex is stored: `stored here`, or `from <context>`;
+- how it came to be: `stated` for a premise, `copied from <context> by <informant>` for a
+  conclusion whose justification rests on the same sentence stored in that context,
+  `derived` for another conclusion, and nothing for a record that is neither;
+- how the card's context reads it, from `belief-status` at that context: `believed`,
+  `hidden by the except in <context>`, `defeated by the defeat in <context>` for a placed
+  defeat the card's context sees and believes, `withdrawn: no support holds here`, or
+  `not believed: <reason>` with `why-not`'s reason for a record the JTMS holds OUT.
+
+A row the card's context believes is solid, violet for a premise and green for a
+conclusion, as in the [proof drawing](#the-proof-tree). A row it does not believe is dashed.
+Each row links to its sentex page, and each card to its context's term page. The caption
+counts the ancestors left out for storing no match, the descendants past the cap, and the
+matches stored where no drawn context sees them. A card past 8 rows ends with how many it
+left out, and the list under the drawing holds the same rows as text.
+
+| Case | Stated | What the cards show |
+|---|---|---|
+| an except | `(except (ist CxStory (dog Rex)))` in CxDream | the row solid in CxStory, dashed in CxDream as `hidden by the except in CxDream`, and each conclusion resting on it `withdrawn` there |
+| a lift | `(decontextualized_predicate termCodeOf)` | the CxUniverse copy in every card, `copied from CxLedger by decontextualized_predicate`; a context stating the denial lists both polarities believed |
+| time slices | `(ist (CxTimeFn CxTracker (MonthFn 2026 9)) (statusOf Pr1 Draft))` | each month slice reads its own status and the year slice's facts, and not the other month's status |
+| labelings | `(do/label CxDinner CxSeating)` | each labeling context lists its own truth values, dashed `not believed: unsupported`: a labeling's content is stored and never believed ([solving.md](solving.md)) |
+| a placed defeat | `(not (able Pip flying))` in CxScene | the conclusion dashed `defeated by the defeat in CxScene` in CxScene and solid in CxOtherScene |
+
+The drawing shows no justification step; the [proof drawing](#the-proof-tree) does. A
+context outside the drawn set is not read for belief, so a sentence's reading there is
+absent from the page rather than inferred.
 
 ## Long work as jobs
 
@@ -1196,7 +1286,7 @@ round-trip under `--attach`.
   whether the answer is a fragment, and a **belief cache**: a listing calls
   `prime-belief!` with the handles it is about to render and `vaelii.core/believed`
   answers them in **one** read, so a page of 60 rows costs one belief read rather than
-  60. A handle nobody primed still falls back to a single cached `in?`.
+  60. A handle nobody primed still falls back to a single cached `believed?`.
 - **A row renderer takes the record, not the handle.** Every listing already holds the
   sentexes it is rendering; `sentex-ref` takes one. `handle-ref` is the variant for a
   caller that genuinely holds only a handle (a justification's antecedent, a
@@ -1313,10 +1403,11 @@ round-trip under `--attach`.
 - **The concept graph is bounded before its first read, not after.** Its relation flank is
   read off the index groups the term page built anyway, its taxonomy is probed only where
   the closures the page already read say there is something, and every expansion is spent
-  from one hard budget — twelve, six a side — so the picture costs at most 24 reads
-  whatever the fan-out. Capping what is *drawn* is not capping what is *read*, and a page
-  that draws eight of forty thousand subtypes by reading forty thousand looks identical on
-  the shipped schema. The radial graph's second hop is bounded the same way twice over: it
+  from a hard budget of fourteen a side, six for the rows and eight for the edges between
+  them, so the picture's expansions cost at most 56 reads whatever the fan-out. Capping
+  what is *drawn* is not capping what is *read*, and a page that draws eight of forty
+  thousand subtypes by reading forty thousand looks identical on the shipped schema. The
+  radial graph's second hop is bounded the same way twice over: it
   reads at most `ego-scan` (500) matches before ordering them, and it does not expand a
   neighbour whose own argument counts put it past `ego-expand-cap` (2,000) — that read
   unions the scoped roots over an open functor, which a prefix of the answer does not make
@@ -1617,6 +1708,159 @@ length. A branch ends at
 a **premise** (with the strength it was asserted at) or at a node that is not believed,
 which links back to the sentex page where `why-not` answers instead.
 
+**Above the tree the page draws the same graph**, top-down. The conclusion is on the top
+row. Under each derived sentence are the justifications that conclude it, each labelled
+with the rule it fires or its informant, and under each justification are its antecedents.
+A sentence is one node however many justifications rest on it. Each node sits on the row
+of its longest path from the conclusion, as on the closure page. An edge back to an
+ancestor, which a cycle of justifications closes, is drawn and moves no row. An arrow runs
+from an antecedent to its justification and from the justification to its conclusion.
+
+The drawing shows what the tree shows and no more. A stated sentence is violet
+(`g-stated`, `--g-stated`), a derived one green (`g-derived`, `--g-derived`), a
+justification an ink box on the code background (`g-rule`), and the conclusion has the
+centre's fill. A sentence the KB does not believe has a dashed muted box (`g-out`). So does
+a justification whose verdict is not `:supports` (`g-blocked`), and its arrow to its
+conclusion is dashed and labelled `blocked`. A premise is drawn alone. A derived
+conclusion that is not believed is drawn with its stored justifications
+(`v/supporting-justifications`), each dashed, its verdict at the conclusion's context
+(`v/justification-verdicts`) in its `title` and its antecedents under it. The arrow into
+the conclusion is labelled `blocked` or `not believed`. The caption names what holds the
+conclusion out, from `v/why-not`: the sentences that defeat it, or the condition its
+rule's `exceptWhen` names. A label wraps at 40 characters a line (`svg/sentence-cap`) over at
+most three lines, broken at spaces, and is cut only past the third. The node's `title` holds the whole sentence, its context and what
+the tree says of it.
+
+The drawing is bounded as the concept graph is. It walks the graph breadth-first from the
+conclusion and takes each justification with its antecedents. It stops before the
+justification that would take it past 40 nodes, sentences and justifications together,
+and the caption then says *showing 20 of 26 sentences and 19 of 25 justifications, those
+nearest the conclusion*. A row wider than 720 px wraps onto lines stacked under one
+another, as the network and vantage drawings do, so the drawing prints 5.5 inches wide at
+73% of its size or more. A throw costs the figure and not the page, as on the term page. The figure is
+`<figure class="kb-graph-fig">`, the markup of the term and closure pages' drawings.
+
+**The SVG is the same bytes for the same KB content.** Every row is ordered by printed
+sentence and context, never by handle, and so is every node's list of justifications and
+antecedents. A label, a `title`, the `aria-label` and the caption carry no handle number,
+and a `(sentexHandle N)` inside a sentence is written as the sentence N holds. Only the
+links, `/sentex/<h>` and `/justification/<jid>`, name a handle (`web_test`,
+`the-proof-drawing-is-the-same-bytes-whatever-the-assertion-order`).
+
+## The network drawing
+
+**Above the matrix, `/network` draws the network as a graph.** Each term of the network is
+a node in its role colour, as on the concept graph, linked to its term page. Each pair
+whose set is not the calculus's universal set is one edge, so a pair with no edge can
+stand in any base relation. A pair and its converse are one edge. The edge runs from the
+term that prints first to the other, as a matrix row runs to its column. Its label is the
+set's base relations in the calculus's spelling (`before meets`, `n ne nw`), in print
+order, wrapped at 24 characters a line. An edge whose set is its own converse (`equal`,
+`dc`, `co`) has no head. The empty set is `∅`.
+
+An inconsistent network is drawn from the `:constraints` `v/qualitative-network` returns
+for it. A pair whose set is empty (`∅`), or which `:unsatisfiable` names, is dashed in the
+disjoint colour (`g-unsat`), and so is the box of a term `:unsatisfiable` pairs with
+itself. The empty set marks a pair that a narrowing emptied for an unsatisfiable point or
+metric source, which `:unsatisfiable` does not name. A dashed frame in the same colour
+encloses the drawing (`svg/framed`). The frame's label is text inside the SVG: it says that
+the network is inconsistent and, when a pair is dashed, what a dashed pair is. The SVG cut
+from the page therefore carries both. When no pair is dashed, the caption says so.
+
+Each connected part of the network is laid out on an ellipse of its own
+(`svg/ring-graph`). The ellipse takes the part's terms along a path that goes next to the
+term whose edge carries the widest label, so a long label runs along a side, which no other
+edge crosses. Each edge is straight, and its label goes beside it. The label stays clear of
+every box and every other label, nearer its own edge than any other, and 20 px from any
+point where its edge crosses another. When a label finds no such place the ellipse grows,
+while it stays within 720 px across and 720 px down. A drawing 720 px wide prints 5.5
+inches wide at 73% of its size. The parts are packed into rows 720 px wide (`svg/pack`).
+
+A network of more than 40 terms or 40 related pairs gets a line saying so in place of the
+drawing, and so does one with a part whose labels find no place within 720 px. The point
+network over the endpoints of `(YearFn 2009)`, `Office1` and `Prize1`, seven instants, is
+one. A throw costs the figure and not the page. Every node, part and edge is taken in print
+order, so the SVG is the same bytes for the same KB content (`web_network_test`,
+`the-network-drawing-is-the-same-bytes-whatever-the-assertion-order`).
+
+### The timeline
+
+**Under the network drawing, the interval and point calculi draw a timeline.** It has a
+band for each part of the network whose every pair the tightened network narrows to one
+base relation. A band has a lane per term, named by the term's node, and an axis of its
+own. An interval is a bar from its start to its end, and an instant is a tick. Two
+endpoints the network makes equal share a position, and each position is 48 px along the
+axis from the one before it, so a position gives the order of the endpoints and not a
+duration. The interval calculus orders the endpoints by the `:endpoints` of its `v/calculi`
+map, the order each base relation forces on the four endpoint comparisons. The point
+calculus draws `(StartFn x)` and `(EndFn x)` as one bar `x` when the part holds both.
+
+**A part the network leaves open is not drawn.** Drawing one order out of several the
+network allows is choosing a scenario, and the timeline does not choose one. The caption
+names the terms of each part it leaves out, and the graph above draws them. With two bands
+or more, the caption also says that the bands are not ordered against each other. An
+inconsistent network has no timeline. A network whose every part leaves an order open
+gets a line saying so.
+
+**A metric distance is a line under the axis.** For each two neighbouring positions, the
+timeline names each endpoint through `v/ask` on `(startOf x ?i)` and `(endOf x ?i)`, and
+asks `(temporalDistance a b ?d)` between a name at each position. A line with a head at
+each end joins the two positions, labelled with the first answer in print order: `15
+Minute` as stated, or `900 Second` when the `:metric-time` reasoner is registered. The
+position is widened to hold the label. `v/qualitative-network` returns no metric bound, so
+these reads are the timeline's only source of one.
+
+## The sign drawing
+
+**`/signs` draws the sign network of a context above a table of its quantities.** The
+page reads `v/sign-reading` ([sign.md](sign.md#reading-out)) and, for the facts the
+reading reads, `v/lookup` at level 4: every believed fact of the seven predicates the
+context sees. A fact with an argument that is not a symbol is left out, as the reading
+leaves it out. Both reads answer whether or not the `:sign` reasoner is registered.
+
+Each quantity is a node linked to its term page. Under its name the node has a sign line,
+a trend line or both. A quantity in a `signOf`, an arithmetic relation, a comparison or a
+`derivativeOf`'s rate position gets the sign line, and a quantity in a `trendOf` or a
+`derivativeOf`'s quantity position gets the trend line. A line lists the signs the reading
+leaves possible as `−`, `0` and `+`, in that order. `∅` is a set the reading emptied, and
+`unread` is a quantity the reading recorded nothing for, which may take every sign. A
+stated sign adds `(stated)` when the reading leaves exactly the stated set, and otherwise
+`(stated −)` with the stated signs. The node is violet (`g-stated`) when a fact states its
+sign or trend, else green (`g-derived`) when the reading narrowed one, else dashed grey
+(`g-out`). A quantity with an emptied set is also boxed in dashed amber (`g-unsat`).
+
+Each arithmetic relation is a small node, `+`, `×` or `a − b`, linked to its sentex, with
+an edge from each operand into it and one out to the result. A difference labels its
+operand edges `a` and `b`. A `derivativeOf` is an edge from the rate to its quantity, and a
+`greaterInMagnitudeThan` an edge from the larger quantity to the smaller, each labelled
+with its predicate. Two facts relating one pair are one edge carrying both labels, with a
+head at each end when they run opposite ways.
+
+Each connected part is laid out by `svg/layered`. A node's row is its longest path from a
+quantity no edge enters, over every edge but the comparisons and over each comparison, in
+print order, that closes no cycle. `svg/clear-labels` then moves each edge label that
+touches an edge, a node or an earlier label to a clear place beside a segment of its edge.
+The parts are packed into rows 720 px wide. The figure's `aria-label` begins `sign network
+over`, and the caption names each kind of node and edge the drawing holds and says when
+the reading is inconsistent. Above the drawing, an inconsistent reading names the
+quantities it emptied. An inconsistent reading is drawn inside a dashed amber frame
+(`svg/framed`), as an inconsistent network is. The frame's label is text in the SVG: it
+says that no sign goal is answered in the context and, when a quantity is dashed, what a
+dashed box is.
+
+A network of more than 40 quantities and relations gets a line saying so in place of the
+drawing. A throw costs the figure and not the page. Every node, part and edge is taken in
+print order, so the SVG is the same bytes for the same KB content apart from the handle in
+each operator's link (`web_network_test`,
+`the-sign-drawing-is-the-same-bytes-whatever-the-assertion-order`).
+
+**The `ctx` parameter takes a ground context application as well as a name**, since a sign
+network over time is stated per slice, `(CxTimeFn CxBath Filling1)`, and `v/sign-reading`
+reads an application at the context it names. A value that does not read, or reads as
+anything but a symbol or a list, or as a variable, is the 400 of `bad-parameter`, and so is
+an application no context function heads. A query context is the 400 of
+`unsupported-context`.
+
 ## The levels page
 
 `/levels` takes its goal from a text input, as `/inference` does — a goal is a sentence,
@@ -1879,23 +2123,86 @@ than the extent.
 ### A term page lists its definitional block
 
 A type's or a predicate's page opens its prose column with the term's **definitional
-block**: one line per part `handbook/06-definitional-block.md` names, in the handbook's
-order, read off `describe`'s `:definitional-block`. A type lists its comment, positive and
-negative examples, parents, siblings, kind and arity class; a predicate lists its comment,
-kind, arity class, arity, argument declarations, parents and relation properties. The
-kind is the types asserted of the term less its arity class (`unary_predicate`,
-`binary_predicate`, …), which has a line of its own, since the starter loader asserts
-`unary_predicate` of every type. The handbook's links part (`seeAlso`, `termsRelated`)
-has no line. A part the KB holds nothing for is tagged **missing**, beside an **add** link
+block**, under the heading **Definition**: one line per part `handbook/06-definitional-block.md`
+names, read off `describe`'s `:definitional-block`. A sentence about the term is in the
+block when the KB classifies its predicate `definitional_predicate`. The block is a
+summary: each sentence it draws is also listed in its index group below it, and the
+index groups list each sentence naming the term exactly once. A type lists
+its comment, positive and negative examples, kind, parents, siblings and see also. A
+predicate lists its comment, arity, kind, parents, argument declarations, relation
+properties and see also. The lines follow `predicateDisplayOrder`, which core.txt states as the comment, the
+examples, the arity, the kind and then the rest. A line takes the first position any
+predicate it shows is named at, and a line none of whose predicates is named follows the
+named ones. A definitional sentence about the term that no other line shows, such as one of
+a predicate the KB declares `definitional_predicate` and names in no `predicateDisplayOrder`
+fact, is on an **other** line, as its handle badge.
+
+A predicate's arity line is the length `relation-length` binds on its tuples, read
+through `genl` from a super-predicate as well. It shows the exact length, `≥m` for a least
+length `m` (an `arityMin`), and `any` for a least length of at most one.
+An `unbounded_arity_predicate` no length binds shows `any`, never missing, since an
+`arity` sentence about it would be ill-formed.
+
+The kind line lists every unary predicate holding of the term (`types-of`), stored or
+concluded, definitional or not: `made` lists `origin_type`, and a type marked
+`not_assertible` or `closed_extent_predicate` lists the mark. A membership another line
+shows, such as `(irreflexive P)` under the relation properties, is not also a kind. A
+kind another listed kind is strictly below is left out, as a parent is (below): a
+predicate declared `eternal_predicate` and `time_invariant_relation` lists
+`eternal_predicate`. Then a kind that knowing the arity implies is left out, since the
+arity line says the same, and the block has no arity class line. Such a kind is an
+`arity_type` such as `at_least_binary`, a class `predicateTypeByArity` or
+`functionTypeByArity` maps to a length such as `binary_predicate`, or the `intersection` of
+an `arity_type` with `predicate`, `function` or `relation` such as
+`unbounded_arity_predicate`. A kind below one of them by `genl` alone stays:
+`invertebrate_class` is below `unary_predicate`, and `arachnid` lists it.
+
+A line of several values lists them on one line, comma-separated: the examples lines
+list each example, a string quoted or a quoted form drawn, as the kind and parents lines
+list their terms.
+
+A sentence line draws each `(P term)` sentence as its predicate `P`, linked, as the kind line
+does, and any other sentence as its handle badge. So a predicate's relation properties,
+its `algebraic_predicate_property` sentences, show `irreflexive` as a term, and a
+per-position one such as `(functionalInArg P 2)` as its sentence. A `(Q P)` property
+another shown `(R P)` is strictly below by `genl` is left out: `(equivalence_relation P)`
+stands for the `reflexive`, `symmetric` and `transitive` sentences its rules derive. The argument declarations
+are the predicate's `wff_predicate` sentences. The argument constraint chokepoint
+`res/arg-constraints` reads some of them, and `args` and `argN` are sugar stored as one of
+those. These are one **arg constraints** line holding a table. Its header row names each
+column, `arg1`, `arg2`, …, over one row of cells. Each cell lists the types that constrain
+that position, including a super-predicate's. A `(genlArg P n T)`, `argsGenl` or `argAndRestGenl` type
+is marked `⊆ T`, since the argument must specialize it. A `quotedArg` position has a
+column of its own headed `quoted argN`. A covering `(args P T)` or `(argAndRest P k T)`
+puts `T` in every cell it covers. A cell drops a type another of its types of the same
+kind is strictly below, with one representative for types that subsume each other, as the
+parents line does. A predicate has a column for each position up to its arity or the
+highest position a constraint names, and an unconstrained position is an empty cell. An
+`unbounded_arity_predicate` has a column for each position a constraint names. Then one
+`argK…` column holds the tail from `K`. A predicate no constraint types draws no table.
+Every other argument declaration, such as `interArgEqual`, shows as its sentence on the
+**arg declarations** line. The **see also** line lists the terms the
+term's `seeAlso` sentences and every `termsRelated` cluster naming it relate it to, once
+each and in printed order.
+
+The parents line lists the term's minimal direct parents: a direct parent another direct
+parent is strictly below is left out, since the block is a summary and the lower parent
+already says it. `causal` stores `(genl causal temporal)` and, through `(partition thing
+causal acausal)`, an edge to `thing`, and its parents line shows `temporal` alone. Only
+strict subsumption prunes: of two parents each below the other, as a reader below two
+contexts with opposite `genl` edges sees them, the first in printed order stands for both.
+
+A part the KB holds nothing for is tagged **missing**, beside an **add** link
 that opens the assert form on a sentence supplying it (`(comment dog "")`, `(genl dog )`),
-deliberately incomplete as the assert form's term seed is; a predicate's arity class seed
-names the class of its arity. Each sibling carries what decides it against the term, as
+deliberately incomplete as the assert form's term seed is. Each sibling carries what decides it against the term, as
 `subsumption-statuses` reads the pair: `genl`, `spec`, `disjoint`, `orthogonal` for a
 declared overlap, or `overlaps` with the shared instance or shared subtype that shows one,
 which is what the `:open-sibling-pair` pass of `kb-integrity` reads as decided. A sibling
 nothing decides is tagged missing, with one link seeding `disjoint` and one seeding
-`orthogonal`. The siblings are the types sharing a direct parent with the term, capped at
-`describe`'s limit with the remainder counted.
+`orthogonal`. The siblings are the types sharing a parent the parents line shows, capped at
+`describe`'s limit with the remainder counted. The line shows the first 12 siblings in
+order and folds the rest behind a **+ N more** control, a `<details>` that opens them in
+place without a request.
 
 ### Hiding what the engine concluded
 
@@ -1989,10 +2296,13 @@ A sentence is rendered structurally, not as one opaque string:
   `implies` are), context (blue), literal (white: a number or a string), variable
   (grey). The word `in` between a sentence and its context is white too, and a no-break
   space joins it to the context, so a line never ends between the two. A node of the
-  genl taxonomy colors by stored content: a predicate when `relation?` reads it as a relation of two or
-  more places, as for `orthogonal` under its `genl` edge, and a type otherwise, as for
-  `dog`. A term outside the taxonomy colors by its spelling, so `parentOf` colors as a
-  predicate. The node check comes **before** the non-symbol
+  genl taxonomy colors by stored content. It colors as a predicate when `relation?` reads
+  it as a relation of two or more places, as for `orthogonal` under its `genl` edge. It
+  colors as a predicate too when a positive fact of two or more arguments is stored under
+  it (`stored-lengths`), as for an undeclared `dislikes` used as `(dislikes Ann Bob)`. Any
+  other node colors as a type, as for `dog`. A picture reads `stored-lengths` once for its
+  nodes, and a page of rows once for its terms. A term outside the taxonomy colors by its
+  spelling, so `parentOf` colors as a predicate. The node check comes **before** the non-symbol
   fallback, because a type node need not be a symbol: an imported ontology names a type
   it has no atomic name for with a function term, and 17,211 of the types in
   the OpenCyc import [kbs.md](kbs.md) is the route to are compounds.

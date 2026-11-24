@@ -296,11 +296,11 @@
         (is (= {P 1 Q 2 R 0} (counted kb ancestorCount)))
         (let [d (v/assert kb (list 'not (list ancestorOf R P)) 'CxWell
                           {:strength :monotonic})]
-          (is (not (v/in? kb h)) "the stronger negation defeats the fact")
+          (is (not (v/believed? kb h)) "the stronger negation defeats the fact")
           (is (= {P 0 Q 1 R 0} (counted kb ancestorCount))
               "a defeated fact is stored but not believed, so it is not counted")
           (v/retract! kb d)
-          (is (v/in? kb h) "the fact revives...")
+          (is (v/believed? kb h) "the fact revives...")
           (is (= {P 1 Q 2 R 0} (counted kb ancestorCount)) "...and so does the count"))))))
 
 (tu/deftest-kb a-rule-no-aggregate-can-answer-is-refused-and-stores-nothing
@@ -740,7 +740,7 @@
         (is (= {:placed 0 :refused 0 :status :silent} batched (row))
             "the withdrawn firing is not in the refusal record"))
       (v/retract! kb (v/handle-of kb (list valueOf Ann 1) 'CxWell))
-      (is (v/in? kb (v/handle-of kb (list lacking Ann) 'CxWell))
+      (is (v/believed? kb (v/handle-of kb (list lacking Ann) 'CxWell))
           "the count falling back to zero fires the rule"))))
 
 ;; ---- the index is derived, so a rebuild must restore the maintenance ----

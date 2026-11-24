@@ -17,6 +17,7 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.disk.durability :as dur]
+            [vaelii.impl.inherit :as inherit]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
@@ -55,7 +56,7 @@
     (let [kb2 (restart)]
       (testing "before recover, the in-memory graph is empty"
         (is (not (v/isa? kb2 'Muffet 'animal)))           ; taxonomy not rebuilt yet
-        (is (not (v/in? kb2 gp))))                        ; jtms not rebuilt yet
+        (is (not (v/believed? kb2 gp))))                        ; jtms not rebuilt yet
       (v/recover kb2)
       (testing "after recover, the taxonomy answers isa? again"
         (is (= {:n 0 :handles []} (v/unsupported kb2))
@@ -63,7 +64,7 @@
         (is (v/isa? kb2 'Muffet 'animal))
         (is (v/disjoint? kb2 'dog 'cat)))
       (testing "the JTMS is rebuilt: the derived grandparent is IN with its support"
-        (is (v/in? kb2 gp))
+        (is (v/believed? kb2 gp))
         (is (seq (v/supporting-justifications kb2 gp))))
       (testing "querying and retraction work on the recovered KB"
         (is (seq (v/sentexes-matching kb2 '(grandparentOf Tom Ann) 'CxNaturalWorld)))
@@ -112,7 +113,7 @@
       (p/unmark-premise! (:records kb) h)     ; the record survives, its support does not
       (let [kb2 (restart)]
         (v/recover kb2)
-        (is (not (v/in? kb2 h)) "nothing stored supports the edge")
+        (is (not (v/believed? kb2 h)) "nothing stored supports the edge")
         (testing "so nothing derived from the closure answers through it"
           (is (not (contains? (set (v/genls kb2 dog_t)) mammal_t)))
           (is (not (contains? (set (v/types kb2)) mammal_t)))
@@ -120,7 +121,7 @@
         (testing "and the supporter is still stored, so re-marking it brings the edge back"
           (p/mark-premise (:records kb2) h :default)
           (v/recover kb2)
-          (is (v/in? kb2 h))
+          (is (v/believed? kb2 h))
           (is (contains? (set (v/genls kb2 dog_t)) mammal_t))
           (is (v/isa? kb2 Rex mammal_t)))))))
 
@@ -238,7 +239,7 @@
         (is (not (contains? (get-in @(reasoning/taxonomy kb2) [:genl :nodes]) value)))
         (is (not (v/genl? kb2 value t 'CxUniverse))))
       (testing "the sentex stays stored, and check names what is wrong with it"
-        (is (v/in? kb2 h))
+        (is (v/believed? kb2 h))
         (is (= [:not-well-formed]
                (mapv :type (v/check kb2 (list 'genl value t) 'CxUniverse))))))))
 
@@ -248,7 +249,7 @@
                                     #(tax/add-disjoint %1 "Bob" t %2 'CxUniverse))
         kb2 (restart)]
     (v/recover kb2)
-    (is (v/in? kb2 h))
+    (is (v/believed? kb2 h))
     (is (not (v/disjoint? kb2 "Bob" t)))))
 
 (tu/deftest-kb a-stored-value-relation-mark-recovers-inert
@@ -268,7 +269,7 @@
       (let [h   (store-as-older-writer! kb sentence post!)
             kb2 (restart)]
         (v/recover kb2)
-        (is (v/in? kb2 h) (pr-str sentence))
+        (is (v/believed? kb2 h) (pr-str sentence))
         (is (not (installed? @(reasoning/taxonomy kb2))) (pr-str sentence))))))
 
 (tu/deftest-kb a-stored-value-argument-type-recovers-inert
@@ -280,7 +281,7 @@
     (let [h   (store-as-older-writer! kb (list 'arg walks 1 "Bob") nil)
           kb2 (restart)]
       (v/recover kb2)
-      (is (v/in? kb2 h))
+      (is (v/believed? kb2 h))
       (is (= [] (v/check kb2 (list walks Fido) 'CxUniverse))))))
 
 (tu/deftest-kb recover-rebuilds-disjoint-metatype-membership
@@ -345,10 +346,10 @@
     (let [d   (v/assert kb (list 'not (list 'siblingDisjointException a b)) 'CxUniverse
                         {:strength :monotonic})
           kb2 (restart)]
-      (is (= [true true] [(v/disjoint? kb a b 'CxUniverse) (v/in? kb d)])
+      (is (= [true true] [(v/disjoint? kb a b 'CxUniverse) (v/believed? kb d)])
           "the denial defeats the exemption in memory")
       (v/recover kb2)
-      (is (= [true true] [(v/disjoint? kb2 a b 'CxUniverse) (v/in? kb2 d)]) "and after a restart"))))
+      (is (= [true true] [(v/disjoint? kb2 a b 'CxUniverse) (v/believed? kb2 d)]) "and after a restart"))))
 
 (tu/deftest-kb recover-agrees-about-a-denied-declaration
   ;; A `:monotonic` denial of a `:default` `disjoint` is the stronger member of the negation
@@ -359,9 +360,9 @@
     (v/assert kb (list 'disjoint dog cat) 'CxUniverse {:strength :default})
     (let [d   (v/assert kb (list 'not (list 'disjoint dog cat)) 'CxUniverse {:strength :monotonic})
           kb2 (restart)]
-      (is (= [false true] [(v/disjoint? kb dog cat 'CxUniverse) (v/in? kb d)]) "in memory")
+      (is (= [false true] [(v/disjoint? kb dog cat 'CxUniverse) (v/believed? kb d)]) "in memory")
       (v/recover kb2)
-      (is (= [false true] [(v/disjoint? kb2 dog cat 'CxUniverse) (v/in? kb2 d)]) "after a restart"))))
+      (is (= [false true] [(v/disjoint? kb2 dog cat 'CxUniverse) (v/believed? kb2 d)]) "after a restart"))))
 
 (tu/deftest-kb recover-decides-a-late-declaration-s-clash-as-the-live-kb-did
   ;; The clash a declaration arriving after both memberships makes is decided the same
@@ -372,11 +373,11 @@
     (v/assert kb (list cat rex) 'CxUniverse {:strength :default})
     (v/assert kb (list 'disjoint dog cat) 'CxUniverse {:strength :monotonic})
     (let [cat-h  (v/handle-of kb (list cat rex) 'CxUniverse)
-          before (v/in? kb cat-h)
+          before (v/believed? kb cat-h)
           kb2    (restart)]
       (is (not before) "the late declaration defeats the default member live")
       (v/recover kb2)
-      (is (= before (v/in? kb2 cat-h)) "and a restart decides the pair as the live KB did"))))
+      (is (= before (v/believed? kb2 cat-h)) "and a restart decides the pair as the live KB did"))))
 
 (tu/deftest-kb recover-agrees-about-a-rule-concluded-equality
   ;; The live path reads the write and the rebuild reads the store, so a functor whose
@@ -400,7 +401,7 @@
         (v/assert kb (list aliasOf lo hi) 'CxUniverse)
         (let [live-class (set (v/equiv-class kb hi))
               live-rep   (v/representative kb hi)
-              live-in?   (v/in? kb (v/handle-of kb (list caresFor hi Tom) 'CxUniverse))
+              live-in?   (v/believed? kb (v/handle-of kb (list caresFor hi Tom) 'CxUniverse))
               kb2        (restart)]
           (v/recover kb2)
           (testing "the rebuilt closure holds what the live one holds"
@@ -411,7 +412,7 @@
             (is (= live-rep (v/representative kb2 hi))))
           (testing "and they agree about the displaced spelling"
             (is (= live-in?
-                   (v/in? kb2 (v/handle-of kb2 (list caresFor hi Tom) 'CxUniverse)))
+                   (v/believed? kb2 (v/handle-of kb2 (list caresFor hi Tom) 'CxUniverse)))
                 "a restart changed whether the retired spelling is believed")))))))
 
 (tu/deftest-kb a-void-firing-installs-its-conclusion-in-no-cache-live-or-recovered
@@ -440,7 +441,7 @@
               c       (apply list (first conseq) (map {'?x a '?y b} (rest conseq)))]
           (v/assert-rule kb [(list aliasOf '?x '?y)] conseq 'CxUniverse {:direction :forward})
           (v/assert kb (list aliasOf a b) 'CxUniverse)
-          (is (false? (v/in? kb (v/handle-of kb c 'CxUniverse))) "the conclusion is stored OUT")
+          (is (false? (v/believed? kb (v/handle-of kb c 'CxUniverse))) "the conclusion is stored OUT")
           (is (not (in-effect? kb a b)) "the live cache holds nothing of it")
           (let [kb2 (restart)]
             (v/recover kb2)
@@ -529,13 +530,13 @@
     (let [orig (v/handle-of kb (list chainR (list pp (list pp Nn))) 'CxUniverse)
           twin (v/handle-of kb (list chainR (list gpp Nn)) 'CxUniverse)]
       (is (some? twin) "the twin was created")
-      (is (v/in? kb twin))
-      (is (not (v/in? kb orig)) "the original is superseded before the restart")
+      (is (v/believed? kb twin))
+      (is (not (v/believed? kb orig)) "the original is superseded before the restart")
       (let [kb2 (restart)]
         (v/recover kb2)
         (testing "after recover the twin is believed and the original stays superseded"
-          (is (v/in? kb2 twin))
-          (is (not (v/in? kb2 orig)))
+          (is (v/believed? kb2 twin))
+          (is (not (v/believed? kb2 orig)))
           (is (seq (v/sentexes-matching kb2 (list chainR (list gpp Nn)) 'CxUniverse))))))))
 
 (tu/deftest-kb recover-reads-a-denial-of-an-equation-instance-as-before
@@ -553,8 +554,8 @@
                           'CxUniverse {:strength :monotonic})
           orig  (v/handle-of kb (list chainR (list pp (list pp Nn))) 'CxUniverse)
           reads (fn [k] [(v/ask? k (list 'equals (list pp (list pp Nn)) (list gpp Nn)) 'CxUniverse)
-                         (v/in? k orig)
-                         (v/in? k d)
+                         (v/believed? k orig)
+                         (v/believed? k d)
                          (v/ask? k (list chainR (list gpp Mm)) 'CxUniverse)
                          (v/ask? k (list chainR (list gpp Nn)) 'CxUniverse)])]
       (is (= [true false true true true] (reads kb)) "before the restart")
@@ -570,7 +571,7 @@
     (let [same   (v/assert kb (list 'sameAs Ann Bob) 'CxUniverse)
           arity  (v/assert kb (list 'arity likes 2) 'CxUniverse)
           denial (v/assert kb (list 'not (list 'sameAs Ann Bob)) 'CxUniverse {:strength :monotonic})
-          reads  (fn [k] [(v/defeat-class k same) (v/defeat-class k arity) (v/in? k denial)])]
+          reads  (fn [k] [(v/defeat-class k same) (v/defeat-class k arity) (v/believed? k denial)])]
       (is (= [:default :default false] (reads kb)) "before the restart")
       (let [kb2 (restart)]
         (v/recover kb2)
@@ -593,14 +594,14 @@
     (let [moved (v/handle-of kb (list bornIn Ada London) 'CxUniverse)
           known (v/handle-of kb (list knownPlace London) 'CxUniverse)
           orig  (v/handle-of kb (list birthplaceOf Ada London) 'CxUniverse)]
-      (is (v/in? kb moved))
-      (is (v/in? kb known) "the migrated rule concluded before the restart")
+      (is (v/believed? kb moved))
+      (is (v/believed? kb known) "the migrated rule concluded before the restart")
       (let [kb2 (restart)]
         (v/recover kb2)
         (testing "the predicate merge survives: fact moved, original superseded, rule rebuilt"
-          (is (v/in? kb2 moved))
-          (is (not (v/in? kb2 orig)))
-          (is (v/in? kb2 known)))
+          (is (v/believed? kb2 moved))
+          (is (not (v/believed? kb2 orig)))
+          (is (v/believed? kb2 known)))
         (testing "and the recovered rule index still carries the migrated rule"
           (tu/with-terms [Bob Paris]
             (v/assert kb2 (list bornIn Bob Paris) 'CxUniverse)
@@ -630,11 +631,11 @@
     (let [orig (v/handle-of kb (list admires Kim Tango) CxVis)
           twin (v/handle-of kb (list admires Kim Yankee) CxVis)]
       (is (some? twin))
-      (is (not (v/in? kb orig)) "superseded before the restart")
+      (is (not (v/believed? kb orig)) "superseded before the restart")
       (let [kb2 (restart)]
         (v/recover kb2)
-        (is (v/in? kb2 twin))
-        (is (not (v/in? kb2 orig)) "and still superseded after it")
+        (is (v/believed? kb2 twin))
+        (is (not (v/believed? kb2 orig)) "and still superseded after it")
         (is (= [{'?x Yankee}] (v/query kb2 (list admires Kim '?x) CxVis))
             "so Vis reports the one fact once, in the name Vis elects")))))
 
@@ -671,10 +672,10 @@
               'CxUniverse {:direction :forward})
     (let [goal (list outweighs chihuahua_t maine_coon_t)
           h    (v/handle-of kb goal 'CxUniverse)]
-      (is (v/in? kb h))
+      (is (v/believed? kb h))
       (let [kb2 (restart)]
         (v/recover kb2)
-        (is (v/in? kb2 h) "the firing is IN again after the rebuild")
+        (is (v/believed? kb2 h) "the firing is IN again after the rebuild")
         (let [reasons (into #{}
                             (comp (mapcat :because) (map :sentence))
                             (:support (tu/why-root kb2 h)))]
@@ -683,7 +684,42 @@
           (is (contains? reasons (list 'transitiveInArgInverse typeLargerThan 1 'genl))))
         (testing "a post-recover retraction of a reason still withdraws it"
           (v/retract! kb2 (v/handle-of kb2 (list 'genl chihuahua_t dog_t) 'CxUniverse))
-          (is (not (v/in? kb2 h))))))))
+          (is (not (v/believed? kb2 h))))))))
+
+(defn- inherited-firing-readers
+  "Which of CxUniverse (`:U`), a child `:C` holding `(not (down_kind upper_t))` and a
+  sibling `:S` believe `(noted lower_t)` and the generated rule's `(genHit lower_t Seed)`
+  after a restart's `recover`, the writes having run under the var `redefs`."
+  [kb redefs]
+  (tu/with-terms [down_kind noted genHit seed_kind lower_t upper_t top_t Seed CxC CxS]
+    (let [u      'CxUniverse
+          writes [[(list 'genlCx CxC u) u] [(list 'genlCx CxS u) u]
+                  [(list 'transitiveInArgInverse down_kind 1 'genl) u]
+                  [(list 'genl lower_t upper_t) u] [(list 'genl upper_t top_t) u]
+                  [(list 'not (list down_kind upper_t)) CxC]
+                  [(list 'set/forwardRule (list 'implies (list down_kind '?x) (list noted '?x))) u]
+                  [(list 'implies (list down_kind '?x)
+                         (list 'implies (list seed_kind '?y) (list genHit '?x '?y))) u]
+                  [(list seed_kind Seed) u]
+                  [(list down_kind top_t) u :default]]]
+      (with-redefs-fn redefs
+        #(doseq [[s c st] writes] (v/assert kb s c {:strength (or st :monotonic)})))
+      (let [kb2 (restart)]
+        (v/recover kb2)
+        (into {} (for [[k g] {:noted (list noted lower_t) :generated (list genHit lower_t Seed)}]
+                   [k (into #{} (keep (fn [[r c]] (when (v/ask? kb2 g c) r)))
+                            {:U u :C CxC :S CxS})]))))))
+
+(tu/deftest-kb recover-places-the-guard-defeat-a-killed-write-left-unplaced
+  (doseq [limit [nil 0]]
+    (with-redefs-fn (if limit {#'special/contrary-limit limit} {})
+      #(is (= {:noted #{:U :S} :generated #{:U :S}}
+              (inherited-firing-readers kb {#'chain/place-guard-defeats! (fn [& _] [])}))
+           (str "contrary-limit " (or limit "as shipped"))))))
+
+(tu/deftest-kb recover-fires-an-inherited-firing-the-store-does-not-hold
+  (is (= {:noted #{:U :S} :generated #{:U :S}}
+         (inherited-firing-readers kb {#'inherit/supports-for (fn [& _] [])}))))
 
 (tu/deftest-kb a-recover-in-session-or-after-a-restart-rebuilds-every-label-of-a-chain
   ;; An in-session `recover` replays the store onto the network that already holds it, and
@@ -699,7 +735,7 @@
       (v/bulk-assert-facts! kb (mapv #(list linkTo (nd %) (nd (inc %))) (range n)) CxRecChain)
       (v/assert kb (list reach_t (nd 0)) CxRecChain)
       (let [before (lbl kb)]
-        (is (v/in? kb (v/handle-of kb (list reach_t (nd n)) CxRecChain)))
+        (is (v/believed? kb (v/handle-of kb (list reach_t (nd n)) CxRecChain)))
         (v/recover kb)
         (is (= before (lbl kb)) "in session")
         (let [kb2 (restart)]
@@ -772,7 +808,7 @@
     (let [kb2 (restart)]
       (v/recover kb2)
       (let [h (v/handle-of kb2 (list q1 Ind) 'CxUniverse)]
-        (is (v/in? kb2 h) "the conclusion is believed again after the restart")
+        (is (v/believed? kb2 h) "the conclusion is believed again after the restart")
         (is (seq (tu/why-root kb2 h))
             "and it is supported by the justification the rebuild rooted")))))
 
@@ -786,7 +822,7 @@
   [kb]
   (into #{}
         (map #(let [s (p/get-sentex (:records kb) %)]
-                (tu/handle-free kb [(sx/sentence-of s) (:context s) (v/in? kb %)])))
+                (tu/handle-free kb [(sx/sentence-of s) (:context s) (v/believed? kb %)])))
         (tu/sentex-ids kb)))
 
 (tu/deftest-kb a-recovered-kb-releases-a-withheld-mint-as-the-live-one-does

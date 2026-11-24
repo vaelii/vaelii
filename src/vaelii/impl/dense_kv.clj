@@ -51,29 +51,6 @@
 
 ;; ---- the backend --------------------------------------------------------
 
-(def ^:private handle-tags
-  "Family tag -> `:leaf` when its `[tag :handles …]` keys hold handles (a trie or count
-  trie whose `:leaf` is `:handles`), `:all` when every key does (a set whose `:leaf` is
-  `:handles`), read off `kv/index-families`."
-  (into {} (keep (fn [[tag {:keys [shape leaf]}]]
-                   (when (= :handles leaf)
-                     [tag (if (#{:trie :count-trie} shape) :leaf :all)])))
-        kv/index-families))
-
-(defn- handle-key?
-  "Does `k` name a HANDLE set (int postings)?  The child sets, the counters and the
-  name sets stay an ordinary set / a Long.
-
-  A key this fails to recognize is stored boxed and answers every read identically, so
-  nothing behavioural can catch a spelling that drifts from the one `vaelii.impl.kv`
-  writes; `dense_routing_test` checks the stored representation instead."
-  [k]
-  (and (vector? k)
-       (case (handle-tags (nth k 0 nil))
-         :leaf (= :handles (nth k 1 nil))
-         :all  true
-         false)))
-
 (defrecord TieredKvBackend [state]
   p/KvBackend
   (kv-get  [_ k]   (get @state k))
@@ -88,12 +65,12 @@
                                    k)))
 
   (kv-add-to-set [_ k m]
-    (if (handle-key? k)
+    (if (kv/handle-key? k)
       (padd! (or (get @state k) (let [p (int-postings)] (swap! state assoc k p) p)) m)
       (swap! state update k (fnil conj #{}) m))
     nil)
   (kv-remove-from-set [_ k m]
-    (if (handle-key? k)
+    (if (kv/handle-key? k)
       (when-let [p (get @state k)]
         (prem! p m)
         (when (zero? (pcard p)) (swap! state dissoc k)))          ; empty set == absent
@@ -140,7 +117,7 @@
   (kv-load [_ entries]
     (swap! state into
            (map (fn [[k v]]
-                  [k (if (and (handle-key? k) (set? v))
+                  [k (if (and (kv/handle-key? k) (set? v))
                        (reduce padd! (int-postings) v)
                        v)]))
            entries)

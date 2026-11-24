@@ -39,6 +39,19 @@
   `integrity-readers`, read by the `:once` fixture before the test-world loads beneath it."
   (atom ::unread))
 
+(def ^:private starter-unrooted
+  "The `:not-under-thing` sweep from each of `integrity-readers` over every term the
+  starter declares `unary_predicate` in any context, read by the `:once` fixture before
+  the test-world loads beneath it.  `:declared` is how many terms that is."
+  (atom ::unread))
+
+(defn- declared-unary-predicates
+  "Every ground symbol a believed `(unary_predicate ?t)` sentex names, in any context."
+  [kb]
+  (into #{} (comp (map #(second (:sentence %)))
+                  (filter #(and (symbol? %) (not (sx/variable? %)))))
+        (v/sentexes-matching kb '(unary_predicate ?t))))
+
 (use-fixtures :once (tu/loaded (fn [kb]
                                  (starter/load-into kb)
                                  (reset! starter-violations (v/violations kb))
@@ -46,6 +59,13 @@
                                          (into {} (for [c integrity-readers]
                                                     [c (dissoc (v/kb-integrity kb #{} c)
                                                                :work :elapsed-ms)])))
+                                 (let [types (declared-unary-predicates kb)]
+                                   (reset! starter-unrooted
+                                           {:declared (count types)
+                                            :reports  (into {} (for [c integrity-readers]
+                                                                 [c (v/kb-integrity
+                                                                     kb types c
+                                                                     {:categories #{:not-under-thing}})]))}))
                                  (world/load-into kb))))
 (use-fixtures :each (tu/neutral))
 
@@ -71,6 +91,20 @@
       "every middle context is seen by one of the readers")
   (is (= (zipmap integrity-readers (repeat {:status :audited :candidate-count 0}))
          @starter-integrity)))
+
+(deftest every-type-the-starter-declares-reaches-thing
+  (is (not= ::unread @starter-unrooted) "the fixture ran the sweep")
+  (let [{:keys [declared reports]} @starter-unrooted]
+    (is (pos? declared) "the starter declares unary predicates")
+    (doseq [c integrity-readers
+            :let [report (get reports c)]]
+      (is (= declared (:candidate-count report)) (str c " audits every declared type"))
+      (is (= :audited (:status report))
+          (str "from " c ", " (count (:not-under-thing report))
+               " types reach thing by no genl path: "
+               (pr-str (mapv :term (:not-under-thing report)))
+               (when (= :truncated (:status report))
+                 (str ", and the sweep was truncated: " (pr-str (:reason report)))))))))
 
 (tu/deftest-kb the-loaded-starter-holds-every-argument-type-derivation
   ;; `record-arg-types` records the derivations a store loaded around `assert` lacks.  The
@@ -158,7 +192,7 @@
   test below is about the rare one."
   '#{comment unary_predicate binary_predicate ternary_predicate arity arg genlArg quotedArg
      arg1 arg2 arg3 interArg symmetric transitive asymmetric anti_symmetric anti_transitive
-     reflexive irreflexive functional functionalInArg injection surjection bijection
+     reflexive irreflexive functional functionalInArg injective_predicate surjective_predicate bijective_predicate
      equivalence_relation variable_arity abducible_predicate closed_extent_predicate
      modal_predicate decontextualized_predicate forced_decontextualized_predicate
      instance_relation_predicate type_relation_predicate target_following_predicate
@@ -390,7 +424,7 @@
 
 (defn- holds-probe?
   [kb]
-  (boolean (some->> (v/handle-of kb '(genl dump_probe thing) 'CxUniverse) (v/in? kb))))
+  (boolean (some->> (v/handle-of kb '(genl dump_probe thing) 'CxUniverse) (v/believed? kb))))
 
 (defn- dumps
   "The entries under the dump directory `root`."
@@ -528,7 +562,7 @@
       (let [a    (io/file root "a" "CxLayA.txt")
             b    (io/file root "b" "CxLayA.txt")
             rule '(implies (linkedTo ?x ?y) (knows ?x ?y))
-            in?  (fn [kb s] (boolean (some->> (v/handle-of kb s 'CxLayA) (v/in? kb))))]
+            in?  (fn [kb s] (boolean (some->> (v/handle-of kb s 'CxLayA) (v/believed? kb))))]
         (io/make-parents a)
         (io/make-parents b)
         (write-forms! a [(list 'genlCx 'CxLayA 'CxUniverse) (list 'set/forwardRule rule)

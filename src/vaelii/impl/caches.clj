@@ -868,7 +868,7 @@
   {:K  "per key: the write names the entries it moves"
    :S  "per key part: the write moves one part of a composite key"
    :G  "generation: a counter bump retires every entry keyed on it"
-   :G* "the change clock, which any write in any KB bumps"
+   :G* "the KB's change clock, which any write through any value over its store or its fork base bumps"
    :I  "identity: compared with `identical?` against a value the write replaces"
    :W  "wholesale clear"
    :Q  "take-and-empty: the consumer drains the queue"
@@ -981,17 +981,26 @@
     [(if g (.indexOf "STMJNXWDQRK" ^String g) 99)
      (or (some-> n parse-long) 0) (name row-name)]))
 
+(defn- scope-of
+  "A row's `:scope`, read off its location: `:pass`, `:process` for a row a static var
+  holds, else `:kb`."
+  [{:keys [kind] held-by :var}]
+  (cond (= :pass kind) :pass
+        (some #(and (var? %) (not (.isDynamic ^clojure.lang.Var %))) (flatten [held-by]))
+        :process
+        :else :kb))
+
 (defn derived-state
   "The register as data: `{:rows [row …] :events [event …] :edges [[reader read] …]}`.
-  A row is its descriptor less `:value`, ordered by id.  With `kb`, a row that is a
-  registered cache also carries that cache's `:entries`."
+  A row is its descriptor less `:value`, with its `:scope`, ordered by id.  With `kb`, a
+  row that is a registered cache also carries that cache's `:entries`."
   ([] (derived-state nil))
   ([kb]
    (let [caches (when kb (into {} (map (juxt :cache identity)) (rows kb)))
          st     (when kb (some-> @tallying deref))
          st     (when (identical? (:reasoning kb) (:reasoning (:kb st))) st)
          rows'  (->> (sort-by (comp row-order key) @derived)
-                     (map #(cond-> (dissoc (val %) :value :live)
+                     (map #(cond-> (assoc (dissoc (val %) :value :live) :scope (scope-of (val %)))
                              (:var (val %)) (update :var str)
                              (and kb (:cache (val %)))
                              (assoc :entries (:entries (caches (:cache (val %)))))

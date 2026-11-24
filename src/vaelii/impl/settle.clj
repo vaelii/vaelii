@@ -22,12 +22,12 @@
             [vaelii.impl.kb :as kb]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.nat-read :as nat-read]
+            [vaelii.impl.network-regions :as regions]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.predicates :as pr]
             [vaelii.impl.progress :as progress]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
-            [vaelii.impl.qcn-kb :as qkb]
             [vaelii.impl.reads :as reads]
             [vaelii.impl.recheck :as recheck]
             [vaelii.impl.resolution :as res]
@@ -266,7 +266,7 @@
   handles to chain from (`special/withheld-releases`).  `withdrawn` is the mints this
   settle withdrew, whose own departure releases nothing.  Empty during a rebuild, which
   drops the queued departures: a restore changes nothing.  `was-in` and `believed?` are
-  belief before the settle and now (`pass-belief`)."
+  belief before the settle and now (`pass-reading`)."
   [kb moved was-in believed? asked withdrawn]
   (if *rebuilding?*
     (do (special/drain-departures! kb) [])
@@ -483,10 +483,11 @@
   whose support the network moved (`jtms/moved-supports`), what each of those sentexes
   moves (`sentence-seeds`), and what the `genlCx` moves the settle drained reach
   (`edge-write-seeds`, `edge-declaration-seeds`).  Empty when neither KB owes the read
-  walk (`exc/walk-reads?`): no handle is then hidden on either side."
+  walk (`exc/walk-reads?`) or stores an `except`: no handle is then hidden on either side."
   [kb pk moved]
   (let [both (fn [f] (cond-> (f kb) pk (into (reading-prior (f pk)))))]
-    (if-not (seq (both #(when (exc/walk-reads? %) [true])))
+    (if-not (seq (both #(when (or (exc/walk-reads? %) (reads/stores-any? (:index %) sx/except-functor))
+                          [true])))
       #{}
       (let [exempt? (boolean (seq (both #(when (exc/exemption-reads? %) [true]))))
             changed (into (set moved) (kb/recorded-sentexes kb))
@@ -500,27 +501,28 @@
                                           (into (edge-declaration-seeds kb moves)))))]
         (both #(kb/moved-reach % seeds))))))
 
-(defn- defeat-belief-moves
-  "`{:gone :back}`: the targets of the defeats `stored` that their own context no longer
-  believes, and the targets of `removed` it believes again (`exc/believed-own?`) — the
+(defn- withdrawal-moves
+  "`{:gone :back}`: the targets of the defeats `stored` that their own context withdraws,
+  and the targets of `removed` it no longer withdraws (`exc/unwithdrawn-own?`) — the
   handles a defeat moved with no relabel, which a pass reads as it reads a relabelled
   one.  One progress line covers both."
   [kb [stored removed]]
   (if (and (empty? stored) (empty? removed))
     {:gone #{} :back #{}}
     (let [recs (:records kb)]
-      (with-open [r (progress/start ::defeat-belief-moves "settle: read the defeats' own-context belief"
+      (with-open [r (progress/start ::withdrawal-moves "settle: read the defeats' own-context withdrawal"
                                     (+ (count stored) (count removed)))]
         {:gone (into #{} (comp (keep #(some-> (p/get-sentex recs %) :sentence kb/defeat-target))
-                               (remove #(exc/believed-own? kb %)))
+                               (remove #(exc/unwithdrawn-own? kb %)))
                      (progress/each r stored))
-         :back (into #{} (comp (map first) (filter #(exc/believed-own? kb %)))
+         :back (into #{} (comp (map first) (filter #(exc/unwithdrawn-own? kb %)))
                      (progress/each r removed))}))))
 
-(defn- pass-belief
+(defn- pass-reading
   "`[was-in believed?]` for a pass: the relabelled handles believed before the settle
-  (`jtms/touched-in`) with the targets a defeat moved (`moves`, `defeat-belief-moves`)
-  folded in, and belief now: the network's, and for a moved target its own context's."
+  (`jtms/touched-in`) with the targets a defeat moved (`moves`, `withdrawal-moves`)
+  folded in, and belief now: the network's, and for a moved target its own context's
+  withdrawal (`exc/unwithdrawn-own?`)."
   [kb {:keys [gone back]}]
   (let [tms   (reasoning/tms kb)
         moved (into (set gone) back)]
@@ -529,7 +531,7 @@
        (reduce disj w back))
      (if (empty? moved)
        #(jtms/in? tms %)
-       #(and (jtms/in? tms %) (or (not (contains? moved %)) (exc/believed-own? kb %))))]))
+       #(and (jtms/in? tms %) (or (not (contains? moved %)) (exc/unwithdrawn-own? kb %))))]))
 
 (defn- post-defeat-moves!
   "Post the re-check each `defeat` relabelled in `region` (the pass's `touched`, as a
@@ -770,13 +772,13 @@
         (chain/chain kb live {:on-progress (progress/on-progress r)})))))
 
 (defn- settle-finish
-  "Reconcile the derived caches with settled belief, publish the moved region to the
-  sinks and the feed, file a calculus network the region made unsatisfiable
-  (`qkb/report-moved!`), and clear the touched set.  `belief-moved?` decides whether
+  "Reconcile the derived caches with settled belief, place the conflicted network regions
+  the region moved (`regions/place-moved!`), publish the moved region to the sinks and the
+  feed, and clear the touched set.  `belief-moved?` decides whether
   the first `refresh-beliefs` reconcile runs.  Returns the spellings superseded since the
   last settle, for `settle` to withdraw the firings over (`withdraw-retired-firings!`),
   and on a rebuild's first settle every superseded spelling; empty with `*sweep?*` off.
-  `dmoves` is the last pass's `defeat-belief-moves`, nil when a pass applied after it.
+  `dmoves` is the last pass's `withdrawal-moves`, nil when a pass applied after it.
   The order and each condition: docs/nmtms.md, \"What `settle-finish` reconciles\"."
   [kb region passes moved belief-moved? dmoves]
   ;; a potential the passes left loose; free when none is
@@ -809,12 +811,12 @@
                 (tax/equality-moves? (reasoning/taxonomy kb) :supersessions))
         (special/refresh-supersessions kb (:extra ex) (when-not (:full? ex) (set (:region ex)))))
       ;; a corresponding fact that moved in belief or class moves the values it names: a
-      ;; relabelled one, and a defeat's or an `except`'s target, whose belief or
-      ;; visibility the defeat or the `except` moves with no relabel.  An `except`'s
+      ;; relabelled one, and a defeat's or an `except`'s target, whose belief the
+      ;; defeat or the `except` moves with no relabel.  An `except`'s
       ;; target also moves the constants it names, as a write of it does: a use the
       ;; `except` hid or showed is a copy's source
       (when-not *rebuilding?*
-        (let [{:keys [gone back]} (or dmoves (defeat-belief-moves kb (defeat-moves kb (set @region))))
+        (let [{:keys [gone back]} (or dmoves (withdrawal-moves kb (defeat-moves kb (set @region))))
               hs (cond-> (-> #{} (into gone) (into back))
                    belief-moved? (into @region))
               sentences #(keep (fn [h] (:sentence (p/get-sentex (:records kb) h))) %)]
@@ -848,56 +850,54 @@
         (vreset! retired (if (and *rebuilding?* discovery/*whole-store-region?*)
                            (vec (keys after))
                            (filterv #(and (contains? after %) (not (contains? before %))) moved)))))
-    ;; a network the settle made unsatisfiable files its ledger entry here, whether or
-    ;; not a rule or a read asks it, before the feed event that carries it (docs/qcn.md,
-    ;; "The settle asks every write")
-    (cond
-      *rebuilding?*        (qkb/forget-settled kb)
-      (qkb/settles? kb)    (qkb/report-moved! kb @region @extra))
-    ;; the published set is built only when a sink is bound or a listener registered
-    (let [sink    *touched-sink*
-          in-sink *touched-in-sink*
-          fed?    (and (not *rebuilding?*) (feed/wants-region? kb))]
-      (when (or sink in-sink fed?)
-        (let [tms    (reasoning/tms kb)
-              ;; the KB as it stood when the write record opened; with none open, a
-              ;; handle reads as hidden before the write as it reads now
-              pk     (when observe/*write-record* (kb/prior-kb kb))
-              moved  (-> @extra (into @region))
-              moved  (into moved (report-reach kb pk moved))
-              ;; the label when the settle began: `touched-in` for a relabelled handle,
-              ;; and the label it holds now, less the `:held` set, for any other.  A
-              ;; spelling superseded when the settle began was not believed, whatever its
-              ;; label.
-              tin    (jtms/touched-in tms)
-              label? #(if (contains? @region %)
-                        (contains? tin %)
-                        (and (jtms/network-in? tms %) (not (jtms/forced? tms :held %))))
-              open?  #(not (contains? @opened %))
-              cands  (filterv #(and (label? %) (open? %)) moved)
-              hidden (if pk
-                       (reading-prior (if-let [hid (exc/own-hidden-fn pk)] (into #{} (filter hid) cands) #{}))
-                       (if-let [hid (exc/own-hidden-fn kb)] (into #{} (filter hid) cands) #{}))
-              was-in (into #{} (remove hidden) cands)]
-          (let [filed (some-> sink deref)]
-            (when sink    (swap! sink into moved))
-            (when in-sink (swap! in-sink into (remove #(contains? filed %)) was-in)))
-          (when fed?    (feed/note-region! kb moved was-in)))))
-    (discovery/note-touched! kb @extra)
-    (kb/note-reach-touched! kb)
-    (jtms/reset-touched! (reasoning/tms kb))
-    ;; the next report diffs against the belief this one published
-    (some-> ^java.util.Map observe/*write-record* .clear)
-    (swap! (reasoning/settle-stats kb)
-           (fn [s] (-> s
-                       (assoc :iterations moved :passes passes)
-                       (update-in [:histogram moved] (fnil inc 0)))))
-    ;; the pass count says whether the KB's exceptions have started to interact
-    (trove/log! {:level :debug :id ::settled
-                 :data {:passes     passes
-                        :iterations moved
-                        :moved?     belief-moved?}})
-    @retired))
+    ;; the regions the settle moved are placed before the feed event that carries them
+    ;; (docs/qcn.md); a placement relabels, so the published set reads the region again
+    (let [moved? (and (not *rebuilding?*) (regions/place-moved! kb region @extra))
+          region (if moved? (delay (jtms/touched (reasoning/tms kb))) region)]
+      ;; the published set is built only when a sink is bound or a listener registered
+      (let [sink    *touched-sink*
+            in-sink *touched-in-sink*
+            fed?    (and (not *rebuilding?*) (feed/wants-region? kb))]
+        (when (or sink in-sink fed?)
+          (let [tms    (reasoning/tms kb)
+                ;; the KB as it stood when the write record opened; with none open, a
+                ;; handle reads as hidden before the write as it reads now
+                pk     (when observe/*write-record* (kb/prior-kb kb))
+                moved  (-> @extra (into @region))
+                moved  (into moved (report-reach kb pk moved))
+                ;; the label when the settle began: `touched-in` for a relabelled handle,
+                ;; and the label it holds now, less the `:held` set, for any other.  A
+                ;; spelling superseded when the settle began was not believed, whatever its
+                ;; label.
+                tin    (jtms/touched-in tms)
+                label? #(if (contains? @region %)
+                          (contains? tin %)
+                          (and (jtms/network-in? tms %) (not (jtms/forced? tms :held %))))
+                open?  #(not (contains? @opened %))
+                cands  (filterv #(and (label? %) (open? %)) moved)
+                hidden (if pk
+                         (reading-prior (if-let [hid (exc/own-hidden-fn pk)] (into #{} (filter hid) cands) #{}))
+                         (if-let [hid (exc/own-hidden-fn kb)] (into #{} (filter hid) cands) #{}))
+                was-in (into #{} (remove hidden) cands)]
+            (let [filed (some-> sink deref)]
+              (when sink    (swap! sink into moved))
+              (when in-sink (swap! in-sink into (remove #(contains? filed %)) was-in)))
+            (when fed?    (feed/note-region! kb moved was-in)))))
+      (discovery/note-touched! kb @extra)
+      (kb/note-reach-touched! kb)
+      (jtms/reset-touched! (reasoning/tms kb))
+      ;; the next report diffs against the belief this one published
+      (some-> ^java.util.Map observe/*write-record* .clear)
+      (swap! (reasoning/settle-stats kb)
+             (fn [s] (-> s
+                         (assoc :iterations moved :passes passes)
+                         (update-in [:histogram moved] (fnil inc 0)))))
+      ;; the pass count says whether the KB's exceptions have started to interact
+      (trove/log! {:level :debug :id ::settled
+                   :data {:passes     passes
+                          :iterations moved
+                          :moved?     belief-moved?}})
+      @retired)))
 
 (defn- finish-settle
   "Close one settle: note the pass count for `settle-phases`, run `settle-finish` inside
@@ -950,6 +950,9 @@
         ;; (`special/drain-context-moves!`): their re-checks are queued before the drain
         ;; below, and the placement families read their reach
         moves   (special/drain-context-moves! kb (:genlcx checked) *rebuilding?*)
+        remerge (cond-> remerge
+                  (special/slot-moves-pending? kb) (into (class-moved-merge-seeds kb region (:merge asked))))
+        region  (if (seq remerge) (delay (jtms/touched (reasoning/tms kb))) region)
         ;; the inherited clashes found and placed, before the other families place
         inh     (phases/with-phase :discovery (chain/place-inherited! kb region moves))
         ;; the nogoods whose placement can have moved, placed again; a defeat stored
@@ -963,7 +966,10 @@
         _       (when-not *rebuilding?* (special/recheck-route-gains! kb))
         queued  (drain-recheck! kb)
         ;; the targets whose own-context belief a defeat moved with no relabel
-        dmoves  (if *rebuilding?* {} (defeat-belief-moves kb (defeat-moves kb (set @region))))
+        dmoves  (if *rebuilding?* {} (withdrawal-moves kb (defeat-moves kb (set @region))))
+        remerge (cond-> remerge
+                  (special/note-defeat-moved-slots! kb (into (set (:back dmoves)) (:gone dmoves)))
+                  (into (class-moved-merge-seeds kb region (:merge asked))))
         ;; the datums whose belief came back, and the targets a removed defeat gave back;
         ;; `reseeded` seeds each once per settle, since the touched set spans the settle.  A
         ;; given-back target is re-chained only when the taxonomy derives from it
@@ -995,7 +1001,7 @@
         ;; halves of the subsumption question
         rsx     (delay (into [] (keep #(p/get-sentex (:records kb) %))
                              (-> (set @region) (into (:gone dmoves)) (into (:back dmoves)))))
-        [was-in believed?] (pass-belief kb dmoves)
+        [was-in believed?] (pass-reading kb dmoves)
         mnew    (-> mnew
                     (into (released-subsumed kb rsx was-in believed? (:release asked)
                                              @(:withdrawn asked)))
@@ -1176,10 +1182,10 @@
       {:id :no-preserving-declaration :cost :index :arms #{#'chain/place-inherited!}
        :idle? (fn [kb _] (empty? (inherit/preserved-pairs kb)))}
       {:id :no-defeat-read :cost :index
-       :arms #{#'post-defeat-moves! #'defeat-moves #'defeat-belief-moves}
+       :arms #{#'post-defeat-moves! #'defeat-moves #'withdrawal-moves}
        :idle? (fn [kb _] (not (exc/placed-reads? kb)))}
       {:id :no-removed-defeat :cost :index
-       :arms #{#'defeat-moves #'defeat-belief-moves #'revived-mark-seeds #'revived-edge-seeds}
+       :arms #{#'defeat-moves #'withdrawal-moves #'revived-mark-seeds #'revived-edge-seeds}
        :idle? (fn [kb _] (empty? (removed-moves kb (jtms/touched-in (reasoning/tms kb)))))}
       {:id :no-mint :cost :index :arms #{#'subsumed-blocks #'drop-surplus-placements!}
        :idle? (fn [kb _] (zero? (reads/stored-mint-count-global (:index kb))))}
@@ -1193,7 +1199,8 @@
   "The calls of `pass-work` that read the KB or note a move and owe nothing, so no row of
   `idle-conditions` names them.  Read by `vaelii.settle-skip-test` alone."
   #{#'reasoning/tms #'reasoning/taxonomy #'jtms/touched #'p/get-sentex #'tax/derives-from?
-    #'special/conviction-generations #'special/note-producer-moves! #'pass-belief})
+    #'special/conviction-generations #'special/note-producer-moves! #'pass-reading
+    #'special/slot-moves-pending? #'special/note-defeat-moved-slots!})
 
 (defn- owes-nothing-up-front?
   "Does every row of `idle-conditions` hold over `region`, the touched set as a delay?
@@ -1425,16 +1432,16 @@
           h   (observe/new-hold)]
       (when (jtms/hold! tms h)
         (observe/hold-atom! sd h)
-        (observe/open-hold! h)
-        [tms h sd]))))
+        (observe/open-hold! h (:clock kb))
+        [tms h sd (:clock kb)]))))
 
 (defn- publish-belief!
   "Publish what the settle decided under `held` (`hold-belief!`'s answer): close the hold,
   so every reader reads the belief the settle reached in one step, then drop what the
   network and the candidate index kept for it."
   [held]
-  (when-let [[tms h sd] held]
-    (observe/close-hold! h)
+  (when-let [[tms h sd clock] held]
+    (observe/close-hold! h clock)
     (jtms/release! tms h)
     (observe/release-atom! sd)))
 

@@ -167,13 +167,16 @@ RAM store of its own but derives the directory of the number or symbol it prints
 missing key, and opens neither space 0 nor anything else anyone named. `:dir` is a
 non-blank path string or a `java.io.File`: a blank path resolves against the JVM's working
 directory. `:base-stores` is the `{:records :index}` pair of open stores `fork` hands over
-from a live KB, and anything else is refused before a protocol call throws on it.
+from a live KB, with that KB's `:clock`, and anything else is refused before a protocol call
+throws on it.
 
 **A second in-RAM KB defaulting onto space 0 warns**, because both readings are
 legitimate and nothing else could tell them apart. `(open-kb {})` twice in one process is
 one set of records behind two KB values: the second recovers the first's facts, and from
 then on a write through either is invisible to the other, since belief is per-KB and only
-the writer's is relabelled. That is also the REPL's ordinary gesture for starting clean.
+the writer's is relabelled. Both values read one change count for the store
+(`observe/store-counts`), so a write through either retires the cached answers of both.
+That is also the REPL's ordinary gesture for starting clean.
 So the second such open logs a `:warn` naming both fixes — give the KB its own number
 (`{:space 2}`), or name `{:space 0}` explicitly to say the sharing is meant and silence
 it. A warning rather than a refusal: sharing the space is how `recover` sees the same
@@ -937,7 +940,7 @@ is not running. A `recover` clears the record and rebuilds belief on the calling
 Measured on a large `:disk-snapshot` store by `lein bench-recoverphase beliefimage <dir>`:
 the open that installed the image took under a tenth of the time of the open that ran a
 full recover and wrote it, and writing the image took under 3% of that recover. The two
-opens agreed on `in?` for every handle and held the same clash pairs.
+opens agreed on `believed?` for every handle and held the same clash pairs.
 
 **A dump carries one too.** `export!` writes the same three files under `<dump>/reasoning/`
 by default (`:belief? false` omits them), and `import!` with `{:belief? true}` installs
@@ -1691,15 +1694,13 @@ still releases: every component gets its close attempt, the lock release and the
 registry removal run even when one throws, and the first component failure is rethrown
 *after* that cleanup — so a throw from `close!` means the directory is handed back but
 the close was not clean.  After the directory's close, `close!` runs the operation log's
-close, the record store's close and the memo drop.  Each of the three runs when a step
-before it throws, and `close!` rethrows the first failure after the last step.  Within one
+close and the record store's close.  Each of the two runs when a step before it throws,
+and `close!` rethrows the first failure after the last step.  Within one
 process, stores are shared per canonical
 directory (`disk.backend`, a registry mirroring the memory backend's db registry), so
 two KBs over one directory share the durable store — the restart contract the recovery
 tests rely on — and the lock, file handles, and durability registration are taken once;
-closing either KB closes both. `close!` also empties the process-wide memos the nogood
-readers fill (`decide/drop-memos`), which hold the last KB read, so a closed KB's records
-and index are collectable once its caller drops the KB value.
+closing either KB closes both.
 
 ### A store that stops
 
@@ -2784,8 +2785,9 @@ writes:
   a relabel moves as it was when the settle began, the standing nogoods keep their
   value, and a thread other than the writer reads those — belief, a defeat class, the
   blocked and superseded sets, and the placed nogoods. When the
-  settle ends it publishes what it decided in one step, which is one swap of the open
-  holds (`vaelii.impl.observe`). A reader beside the writer therefore reads, for every
+  settle ends it publishes what it decided in one step, which is one swap of the KB's open
+  holds (`vaelii.impl.observe`). The registry of open holds is the KB's own, so a thread
+  inside one KB's settle reads another KB's settle as any other reader does. A reader beside the writer therefore reads, for every
   settle, the belief before it and then the belief after it, and never one in between
   (`kb_concurrency_test`). Three things keep that exact:
   - **The caches.** A thread reading a hold's belief reads the change clock as

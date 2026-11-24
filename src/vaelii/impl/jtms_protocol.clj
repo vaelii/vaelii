@@ -29,7 +29,7 @@
   (docs/nmtms.md, \"The forced-monotonic set\"): `:mono`, `:out`, `:void` and `:held`.
   `blocked` and `superseded` are caller-computed sets replaced whole every settle, because
   the network holds no KB. `blocked` enters inside `valid?` and moves `in`; `superseded` is
-  subtracted at the read and moves nothing. A reader's verdict and a visibility `except` are
+  subtracted at the read and moves nothing. A reader's verdict and an `except` are
   applied per reading context by `vaelii.impl.resolution`, not on this protocol.
 
   `roles` assigns every method one of seven roles (`:graph` `:attribute` `:blocked`
@@ -73,10 +73,11 @@
   (-premise-strength [tms datum] "Its assumption strength, or nil.  Read once per
     in-region node by the class fixpoint, which is what obligation 4 requires to be a
     memory read on every representation.")
-  (-restrength-informant [tms informant strength]
+  (-restrength-informant [tms informant strength capped]
     "Set `strength` as the rule-contribution slot of every justification whose
-    informant is `informant`, and relabel the region their consequences span.  Cost is
-    that region, plus the scan for the informant's justifications.")
+    informant is `informant`, `:default` for one whose id is in the set `capped`, and
+    relabel the region their consequences span.  Cost is that region, plus the scan for
+    the informant's justifications.")
   (-forced?          [tms kind x] "Is `x` a member of forced set `kind`?  A set lookup,
     read on the relabel path.")
   (-forced-members   [tms kind] "Every member of forced set `kind`, as a set.  Read by a
@@ -106,13 +107,13 @@
     costs its size.")
 
   ;; ---- :output — what a relabel writes ---------------------------------------
-  (-believed?        [tms datum] "Is `datum` believed (IN, minus supersession and the
-    `:held` forced set)?  Reads `:superseded` and `:attribute` as well as `:output`,
-    because `believed = in - superseded - held` is the definition rather than a filter
-    over it.  An empty `:held` set costs one emptiness check.")
-  (-believed         [tms]       "Seq of the believed datums, or nil when none.")
-  (-any-belief?      [tms]       "Is any datum believed (IN, minus supersession and `:held`)?  Like
-    `-any-node?`, terminates at the first believed datum rather than draining `-believed`.")
+  (-believed?        [tms datum] "Is `datum` IN, minus supersession and the `:held`
+    forced set?  A defeated datum answers true: a label reads no `defeat`.  Reads
+    `:superseded` and `:attribute` as well as `:output`, because `in - superseded - held`
+    is the definition rather than a filter over it.  An empty `:held` set costs one emptiness check.")
+  (-believed         [tms]       "Seq of the datums `-believed?` answers, or nil when none.")
+  (-any-belief?      [tms]       "Is any datum IN, minus supersession and `:held`?  Like
+    `-any-node?`, terminates at the first such datum rather than draining `-believed`.")
   (-defeat-class     [tms datum] "Defeat-class of an IN datum, nil when OUT.  Reads
     `:graph`-resident IN-ness too: `:classes` holds only the datums above the lattice's
     bottom, so being IN is what separates OUT from IN at the default class.")
@@ -147,7 +148,9 @@
     the first move, and a read on a thread other than `h`'s owner answers from those while
     `vaelii.impl.observe/reads-held?` is true of `h`.")
   (-release          [tms h]     "Close hold `h` on this network, when it is the one open.")
-  (-held             [tms]       "The hold open on this network, or nil."))
+  (-held             [tms]       "The hold open on this network, or nil.")
+  (-clock            [tms]       "The change clock (`vaelii.impl.observe/new-clock`) this
+    network's mutations move: its KB's, or its own when no KB made it."))
 
 (def roles
   "Which role each `Tms` method is in, as `{role #{method-name}}`: the protocol docstring's
@@ -166,4 +169,4 @@
     :output     #{-believed? -believed -any-belief? -defeat-class -snapshot}
     :touched    #{-touched -touched-in -touched-new -touched-out -touched-down -touched-up -reset-touched
                   -touch-mark -touched-since}
-    :hold       #{-hold -release -held}})
+    :hold       #{-hold -release -held -clock}})

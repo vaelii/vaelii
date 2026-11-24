@@ -94,6 +94,8 @@
                     [:nonplacing :label-only])
         (or (seq (:readers old-roles)) (seq (:readers added-roles)))
         (assoc :readers (into (or (:readers old-roles) #{}) (:readers added-roles)))
+        (or (seq (:separated old-roles)) (seq (:separated added-roles)))
+        (assoc :separated (into (or (:separated old-roles) #{}) (:separated added-roles)))
         (or (seq (:rewrite-reads old-roles)) (seq (:rewrite-reads added-roles)))
         (assoc :rewrite-reads (into (or (:rewrite-reads old-roles) #{})
                                     (:rewrite-reads added-roles)))))))

@@ -231,7 +231,7 @@
     (let [h (v/assert kb (list canFly10 Clark) CxB)]
       (v/assert kb (list 'rewriteOf Superman Clark) CxA)
       (testing "B keeps believing its fact"
-        (is (v/in? kb h))
+        (is (v/believed? kb h))
         (is (= h (v/handle-of kb (list canFly10 Clark) CxB))))
       (testing "...and can still retrieve it, under the only spelling B knows"
         (is (seq (v/sentexes-matching kb (list canFly10 Clark) CxB)))
@@ -249,7 +249,7 @@
     (siblings! kb CxA CxB)
     (let [h (v/assert kb (list canFly11 Clark) CxB)]
       (v/assert kb (list 'rewriteOf Superman Clark) 'CxUniverse)
-      (is (not (v/in? kb h)) "the retired spelling stops being believed")
+      (is (not (v/believed? kb h)) "the retired spelling stops being believed")
       (is (= [CxB] (vec (v/contexts-of kb (list canFly11 Superman))))
           "the twin is placed where the fact lives")
       (is (= [(list canFly11 Superman)]

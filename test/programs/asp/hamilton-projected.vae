@@ -1,0 +1,8 @@
+; The directed Hamiltonian cycles of hamilton.vae, projected onto the edge leaving Q0.
+; Each of the 12 cycles leaves Q0 by one of its three edges, so the projection has three
+; answer sets. Twin: hamilton-projected.lp.
+#base core
+#include "hamilton.vae"
+#context CxTour
+#solve {:project true}
+#models (tourEdge Q0 ?y)

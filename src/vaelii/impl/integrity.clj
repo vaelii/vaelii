@@ -14,6 +14,7 @@
             [vaelii.impl.checks :as checks]
             [vaelii.impl.clashes :as clashes]
             [vaelii.impl.decide.arity :as arity]
+            [vaelii.impl.defining :as defining]
             [vaelii.impl.except :as exc]
             [vaelii.impl.inherit :as inherit]
             [vaelii.impl.jtms :as jtms]
@@ -161,15 +162,36 @@
 
 ;; ---- not-under-thing: a candidate type with no genl path to thing ----
 
+(defn- term-defining-contexts
+  "`term`'s maximal ordinary defining contexts (`defining/defining-contexts`), in print
+  order.  A term whose defining-context support is incomplete has none, so only the
+  reader's context is read for it."
+  [kb term]
+  (try
+    (sort-by nm/print-key (budget/checked-call #(defining/defining-contexts kb term)))
+    (catch clojure.lang.ExceptionInfo e
+      (if (= :incomplete-defining-contexts (:type (ex-data e)))
+        []
+        (throw e)))))
+
 (defn- unrooted-type?
   "Is `term` a type `context` sees declared `unary_predicate` that reaches `thing` by no
-  `genl` path visible from `context`?  `thing` itself is the root, never unrooted."
+  `genl` path, read from `context` and from each of `term`'s defining contexts
+  (`defining/defining-contexts`, the homes `typeAllSpecified`'s eligibility reads)?  A
+  type declared everywhere, as `(decontextualized_predicate unary_predicate)` makes every
+  type declaration, keeps its `genl` edges in the context that defines it, so that
+  context, not the reader's, says whether it is rooted.  `thing` itself is the root,
+  never unrooted."
   [kb tx term context]
   (and (not= 'thing term)
        (do (budget/spend!)
            (seq (res/matches-visible kb (list 'unary_predicate term) context)))
        (do (budget/spend!)
-           (not (tax/genl? tx term 'thing context)))))
+           (not (tax/genl? tx term 'thing context)))
+       (not-any? (fn [home]
+                   (budget/spend!)
+                   (tax/genl? tx term 'thing home))
+                 (remove #{context} (term-defining-contexts kb term)))))
 
 (defn- not-under-thing-findings
   "Audit each ground symbol of `candidate-terms` in print order, one term at a time,
@@ -333,19 +355,23 @@
   "Is the believed record `h` held by a premise, or concluded by a justification other
   than an argument declaration's entailment from a use of the term it types: a mint
   (`kb/mint-informant?`) or the `declaredType` mark of a type a declaration names?
-  A record a rule concludes counts as stated whatever the rule's antecedents rest on."
-  [kb h]
+  A justification counts when `believed?` holds of each of its antecedents, whatever those
+  antecedents rest on."
+  [kb believed? h]
   (let [tms (reasoning/tms kb)]
     (or (jtms/premise? tms h)
-        (some #(let [i (:informant (jtms/justification tms %))]
-                 (not (or (kb/mint-informant? kb i) (= kv/declared-type-informant i))))
+        (some #(let [{i :informant as :antecedents} (jtms/justification tms %)]
+                 (not (or (kb/mint-informant? kb i) (= kv/declared-type-informant i)
+                          (not-every? believed? as))))
               (jtms/supports tms h)))))
 
 (defn- stated-membership?
-  "Does `context` see a believed membership `(T term)` that is `stated?`?  One work unit
-  per predicate `term` holds a stored unary fact of, and one per handle read."
+  "Does `context` see a membership `(T term)` that is `stated?`, neither defeated nor
+  excepted there (`exc/hidden-fn`)?  One work unit per predicate `term` holds a stored
+  unary fact of, and one per handle read."
   [kb tx term context]
-  (let [recs (:records kb)]
+  (let [recs    (:records kb)
+        hidden? (or (exc/hidden-fn kb context) (constantly false))]
     (some (fn [pred]
             (budget/spend!)
             (some (fn [h]
@@ -353,8 +379,9 @@
                     (let [s (p/get-sentex recs h)]
                       (and s (= (list pred term) (:sentence s))
                            (tax/sees? tx context (:context s))
-                           (stated? kb h))))
-                  (sort (reads/believed-with-args kb pred {1 term}))))
+                           (stated? kb #(res/supporter-visible? kb % context) h)
+                           (not (hidden? h)))))
+                  (sort (reads/in-with-args kb pred {1 term}))))
           (sort-by nm/print-key (reads/as-stored-unary-predicates (:index kb) term)))))
 
 (defn- argument-symbols
@@ -399,7 +426,8 @@
   (when-not (stated-membership? kb tx term context)
     (let [{n :exact via :via grounds :grounds} (do (budget/spend!)
                                                    (arity/relation-length kb term true))]
-      (when-not (and (= term via) (some #(stated? kb %) (sort grounds)))
+      (when-not (and (= term via)
+                     (some #(stated? kb (partial exc/believed-own? kb) %) (sort grounds)))
         (when (used-in? kb tx term context)
           (cond-> {:term term} n (assoc :arity n)))))))
 
@@ -433,7 +461,7 @@
          vec)))
 
 (defn- visible-orthogonals
-  "Every believed `(f a b)` over two ground symbols that `context` sees, `f` being
+  "Every `(f a b)` over two ground symbols believed at `context`, `f` being
   `orthogonal` or a predicate the `genl` edges `context` sees place under it
   (`siblingDisjointException`), as `[a b record]` in content order: the one open read of
   this pass, a census of declarations, which are few, rather than of any extent."
@@ -1017,7 +1045,7 @@
           (map #(list % pred) relation-property-marks)))
 
 (defn- decided-property?
-  "Does `context` see a believed sentex answering one of `relation-property-goals`?  One
+  "Does `context` believe a sentex answering one of `relation-property-goals`?  One
   work unit per goal read and per handle matched, stopping at the first."
   [kb pred context]
   (let [tms (reasoning/tms kb)]

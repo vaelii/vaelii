@@ -228,11 +228,21 @@ The pass has these limits:
 - **Only proven skeletal population is exempt.** An answer with no stored defining home
   is still audited unless its support proves it skeletal-only. Incomplete live defining
   support reports `{:status :gap :gap :incomplete-defining-contexts :classifier c
-  :term t :handles #{…}}` rather than silently exempting the term.
+  :term t :handles #{…}}` rather than silently exempting the term. Eligibility is read
+  for every instance before its classification. A classified instance with incomplete
+  support reports no gap, since it is no violation whatever its eligibility.
+- **One open read per member, then bound asks.** In each reader the pass asks `(K ?x)`
+  once for each member `K` before it classifies its first instance. An exempt instance is
+  not classified, so a reader whose instances are all exempt asks no open read. An
+  eligible instance one of those answers names is classified. Every other eligible
+  instance asks `(K x)` of each member in turn. When any member's open read throws
+  something other than a budget or deadline signal, no instance is classified from the
+  open reads. A budget or deadline signal stops the pass, as it stops a bound ask.
 
-Each instance and membership question is metered as the specified pass's are, and each
-declaration with a finding counts once against `:max-results`, after the specified
-category.
+The instance question, each member's open read and each remaining bound membership
+question are metered as the specified pass's are; an instance an open read classifies
+takes no membership question of its own. Each declaration with a finding counts once
+against `:max-results`, after the specified category.
 
 ## What a rigidity-correspondence finding means
 
@@ -335,8 +345,16 @@ each candidate:
 ```
 
 One finding is reported for each candidate term, in print order. The path is the
-transitive `genl` closure read from the audit context, so `(genl nested_kind placed_kind)`
-with `(genl placed_kind thing)` places `nested_kind` under `thing`.
+transitive `genl` closure, so `(genl nested_kind placed_kind)` with `(genl placed_kind
+thing)` places `nested_kind` under `thing`.
+
+The closure is read from the audit context and from each of the type's defining
+contexts (`defining-contexts`, the ordinary defining homes the `typeAllSpecified` audit
+reads). A type is rooted when any of those contexts reaches `thing`. `core.txt` states
+`(decontextualized_predicate unary_predicate)`, so a type declared in a middle theory
+such as CxTra is declared in CxUniverse too, and every context sees the declaration. The
+type's `genl` edges stay in CxTra, its defining context, so the sweep reads them there.
+A reader that does not see CxTra still finds the type rooted.
 
 The pass has these limits:
 
@@ -347,12 +365,19 @@ The pass has these limits:
 - **`unary_predicate` only.** A binary or wider predicate is not a type, so a predicate
   `genl` edge between two binary predicates is not a finding however its chain ends.
 - **`thing` is the root.** `thing` itself is never a finding.
-- **Visible from the audit context.** A `unary_predicate` declaration or a `genl` edge
-  asserted in a context the audit context cannot see contributes nothing, so a type whose
-  only edge to `thing` is asserted below the audit context is a finding there.
+- **The audit context and the defining contexts.** A `unary_predicate` declaration the
+  audit context cannot see contributes nothing. A `genl` edge counts when the audit
+  context or one of the type's defining contexts sees it. The defining contexts are the
+  maximal ones, so a type declared in CxUniverse whose only edge to `thing` is asserted
+  below CxUniverse is a finding from CxUniverse.
+- **Incomplete defining support reads the audit context alone.** A type whose believed
+  mentions include one with no supporting justification has no defining contexts read
+  (`:incomplete-defining-contexts`), so only the audit context decides it.
 
-Reading the declaration and testing the `genl` path each spend one work unit, and
-`:max-results` counts these findings last, after the widening category.
+Reading the declaration and testing the `genl` path from the audit context each spend one
+work unit, and so does testing the path from each defining context. The defining contexts
+are read only for a type the audit context does not place under `thing`. `:max-results`
+counts these findings last, after the widening category.
 
 ## What an implicit-genl finding means
 
@@ -491,13 +516,15 @@ the finding.
 
 A candidate is declared by one of these:
 
-- **A stated membership.** A believed `(T term)` the audit context sees, for any `T`,
-  held by a premise or concluded by a justification whose informant is not an argument
-  declaration: neither a mint (`arg`, `genlArg`, `argAndRest` and the other kinds
+- **A stated membership.** A `(T term)` the audit context sees, for any `T`, neither
+  defeated nor excepted there. The membership is held by a premise or concluded by a
+  justification whose informant is not an argument declaration: neither a mint (`arg`, `genlArg`, `argAndRest` and the other kinds
   `kb/mint-informant?` names) nor the `declaredType` mark a declaration gives the
-  type it names. A membership a rule concludes counts as stated.
+  type it names. A membership a rule concludes counts as stated where the audit context
+  believes and sees each antecedent of the firing.
 - **A stated arity.** An arity binding of the term's own (`(arity P n)`, `arityMin`, an
-  exact-arity class or `variable_arity`) held the same way, read the same at every context
+  exact-arity class or `variable_arity`) held the same way, with each antecedent believed
+  at its own context, and read the same at every context
   as `kb/relation-arity` reads it ([taxonomy.md](taxonomy.md#arity)). A length the term
   inherits through `genl` is a use and declares nothing.
 
@@ -559,8 +586,8 @@ clash's grounds in, so the author can drop whichever is wrong: the declaration w
 separation was meant, the separating declaration when the overlap is. The sweep asserts
 and retracts nothing.
 
-One finding is reported for each visible, believed orthogonal declaration over two ground
-symbols that some stated separation divides, in content order of the declaration.
+One finding is reported for each orthogonal declaration believed at the audit context over
+two ground symbols that some stated separation divides, in content order of the declaration.
 `:separated-by` holds every believed declaration the audit context sees that separates
 the pair, as `disjoint?` would read it with no exception stated: for a
 `disjoint_metatype`, the mark and the two memberships.
@@ -1118,13 +1145,13 @@ How each pass decides, and its limits:
   member of the group rather than suppressing it.
 - **Derivable edges are structural, not a re-proof.** The engine has no query that asks
   whether a goal derives with one premise set aside, so the pass reads the taxonomy. A
-  stated `(genl a b)` is redundant when the edge has another believed visible supporter
+  stated `(genl a b)` is redundant when the edge has another supporter believed there
   (the same edge stated again, a whole-and-parts declaration installing it, a rule deriving
   it), or when a
   breadth-first walk over the visible direct edges reaches `b` from `a` without the edge
   `a`→`b`; the walk runs only after a cheaper test finds a direct parent of `a` other
   than `b` under `b`. A stated `(disjoint a b)` is redundant when the pair has another
-  believed visible supporter, or when `separating-keys` names any other separation of
+  supporter believed there, or when `separating-keys` names any other separation of
   `a`, or a supertype of it, from `b`, or a supertype of it: a `disjoint` over two
   supertypes, a `partition` or `separating` declaration, a `sibling_disjoint` parent or a
   `disjoint_metatype`. Only premises are read as stated, so a rule's conclusion is never a
@@ -1227,7 +1254,7 @@ Handbook ch. 19 asks that each relation property a binary predicate could carry 
 weighed, and a declined one banked as a stated negation (**bank the decision** in
 [oe-principles.md](oe-principles.md)). `:undecided-relation-property` reports each
 predicate the audit context sees declared arity 2, through an `(arity P 2)` or
-`binary_predicate` or another exact-arity class, that no believed visible sentence
+`binary_predicate` or another exact-arity class, that no sentence believed there
 decides:
 
 ```clojure
@@ -1368,8 +1395,8 @@ not an expiring grant.
 
 Whole-event participation (`actor` and all its binary specializations), causes,
 sub-situations, provenance and biological genealogy describe fixed history and are
-eternal. Generic kinship predicates, including `kinOf`, are time-agnostic and
-non-eternal. `BloodKinFn` qualifies their eternal blood readings; `ChosenKinFn`
+eternal. Unqualified kinship predicates, including `kinOf`, are time-agnostic and
+non-eternal. `GeneticKinFn` qualifies their eternal genetic readings; `ChosenKinFn`
 qualifies their time-varying chosen readings. Qualification does not transfer eternity
 back to the common predicate. These marks do not implement cross-slice projection (#272). The current RCC region relations describe
 fixed extents and are eternal; this does not promote compass relations between moving

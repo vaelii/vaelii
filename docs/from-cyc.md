@@ -196,7 +196,7 @@ you wanted a set. Which entry point answers what, and what each costs, is
 | TMS retract | `(v/retract! kb handle)`, tearing down whatever rested solely on it |
 | `why` | `(v/why kb handle)` — the justification graph down to premises, each handle once |
 | `why-not` | `(v/why-not kb handle)` → `:defeated` / `:withdrawn` / `:superseded` / `:unsupported` / `:not-stored`; the sentence arity adds `:excepted` |
-| — | `(v/in? kb handle)`, `(v/believed kb handles)` — a stored sentex is not a believed one |
+| — | `(v/believed? kb handle)`, `(v/believed kb handles)` — a stored sentex is not a believed one |
 | — | `(v/settle-stats kb)`, `(v/with-deferred-settle kb & body)` |
 
 Two strength classes and no third: `:monotonic` and `:default`, total-ordered, with a
@@ -242,8 +242,8 @@ position. Nesting is not capped. → [generators.md](generators.md)
 - Defeasible defaults with exceptions → [exceptions.md](exceptions.md)
 - The relation-property marks, enforced rather than recorded: `symmetric`, `asymmetric`,
   `transitive`, `reflexive`, `functional`, `functionalInArg`, `inverse`, `negates`,
-  `irreflexive`, `anti_symmetric`, `anti_transitive`, `equivalence_relation`, `injection`, `surjection`,
-  `bijection`, `arity` and `variable_arity` → [taxonomy.md](taxonomy.md). `functionalInArg` is the one with no Cyc
+  `irreflexive`, `anti_symmetric`, `anti_transitive`, `equivalence_relation`, `injective_predicate`, `surjective_predicate`,
+  `bijective_predicate`, `arity` and `variable_arity` → [taxonomy.md](taxonomy.md). `functionalInArg` is the one with no Cyc
   counterpart to map from: it names the *determined* argument rather than fixing it at 2,
   so a composite determinant — `(namespace, path) → object` — is sayable in one declaration
   → [taxonomy.md](taxonomy.md)

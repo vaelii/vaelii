@@ -27,7 +27,7 @@
 (defn- held?
   "Is `sentence` stored in `context` and believed?"
   [kb sentence context]
-  (boolean (some->> (v/handle-of kb sentence context) (v/in? kb))))
+  (boolean (some->> (v/handle-of kb sentence context) (v/believed? kb))))
 
 (defn- reports
   "Every reported clash, dilemmas and conflicts alike, as `{:kind … :sentences #{…}}`."

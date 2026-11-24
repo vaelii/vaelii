@@ -80,7 +80,7 @@
             "the members are the two memberships")
         (is (not (contains? (:nogood c) decl))
             "the declaration convicts the pair; it is not one of the convicted")
-        (is (v/in? kb decl)
+        (is (v/believed? kb decl)
             "and it is believed, which is what makes the conviction re-derivable")))))
 
 (tu/deftest-kb acting-on-a-definitional-clash-leaves-its-verdict-stable
@@ -102,17 +102,17 @@
             winner (v/handle-of kb (list dog_t Rex) U)
             loser  (v/handle-of kb (list fish_t Rex) U)]
         (testing "the weakest member loses, and only it"
-          (is (v/in? kb winner))
-          (is (not (v/in? kb loser)))
-          (is (v/in? kb decl) "the declaration is not a member, so nothing defeats it"))
+          (is (v/believed? kb winner))
+          (is (not (v/believed? kb loser)))
+          (is (v/believed? kb decl) "the declaration is not a member, so nothing defeats it"))
         (testing "and the verdict survives the settles that follow"
           ;; every assert re-settles, and the reader decides the pair again from
           ;; current state.  A declaration defeated along with the loser would leave
           ;; nothing able to do that.
           (dotimes [_ 3] (v/assert kb (list dog_t Bystander) U))
-          (is (v/in? kb decl))
-          (is (v/in? kb winner))
-          (is (not (v/in? kb loser))
+          (is (v/believed? kb decl))
+          (is (v/believed? kb winner))
+          (is (not (v/believed? kb loser))
               "the loser came back, so the clash stopped being derivable"))))))
 
 ;; ---- an inherited clash names its reasons, deliberately -----------------

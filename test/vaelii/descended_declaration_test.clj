@@ -41,7 +41,7 @@
   every record, index entry and TMS node into the failure report."
   [kb sentence ctx]
   (let [h (v/handle-of kb sentence ctx)]
-    (boolean (and h (v/in? kb h)))))
+    (boolean (and h (v/believed? kb h)))))
 
 (defn- same-class? [kb x y] (boolean (v/same-class? kb x y)))
 

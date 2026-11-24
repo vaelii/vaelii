@@ -71,7 +71,7 @@
       (let [neg (v/assert kb (list 'not (list p A)) CxA {:strength :monotonic})]
         (testing "defeated: stored, OUT, and not answered"
           (is (some? (v/handle-of kb (list p A) CxA)))
-          (is (false? (v/in? kb (v/handle-of kb (list p A) CxA))))
+          (is (false? (v/believed? kb (v/handle-of kb (list p A) CxA))))
           (is (= #{} (aw)) "ask-within answered a defeated fact")
           (is (= #{} (pw)) "prove-within answered a defeated fact")
           (is (nil? (agw)) "ground ask-within answered a defeated fact")
@@ -105,14 +105,14 @@
           goal (list flies Tweety)]
       (testing "premise: stored and defeated"
         (is (some? (v/handle-of kb goal C)))
-        (is (false? (v/in? kb (v/handle-of kb goal C)))))
+        (is (false? (v/believed? kb (v/handle-of kb goal C)))))
       (let [defeated (level-counts kb goal)]
         (is (zero? (defeated 7)) "level 7 answered the defeated fact")
         (testing "levels 2-6 (belief-filtered per docs/levels.md) are empty too"
           (is (= {2 0 3 0 4 0 5 0 6 0} (select-keys defeated [2 3 4 5 6])))))
       (v/retract! kb pr)
       (testing "the defeater retracted, the fact revives"
-        (is (true? (v/in? kb (v/handle-of kb goal C))))
+        (is (true? (v/believed? kb (v/handle-of kb goal C))))
         (let [revived (level-counts kb goal)]
           (is (pos? (revived 7)) "level 7 does not answer the revived fact"))))))
 
@@ -192,7 +192,7 @@
         (is (v/ask? kb pos C)))
       (v/assert kb (list 'not (list flies Tweety)) cx {:strength :monotonic})
       (testing "defeated in the agent's context, the belief is not projected"
-        (is (false? (v/in? kb (v/handle-of kb (list flies Tweety) cx))) "premise: OUT")
+        (is (false? (v/believed? kb (v/handle-of kb (list flies Tweety) cx))) "premise: OUT")
         (is (not (v/ask? kb pos C)) "ask projected a defeated belief")
         (is (not (v/provable? kb pos C)) "provable? projected a defeated belief")
         (is (v/ask? kb neg C) "control: the negation is projected")))))

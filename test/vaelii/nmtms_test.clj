@@ -74,7 +74,7 @@
           foo-h (handle-of (list foo x))
           bar-h (handle-of (list bar x))]
       (is (some? bar-h))
-      (is (not (v/in? kb bar-h)))                                      ; defeated, OUT
+      (is (not (v/believed? kb bar-h)))                                      ; defeated, OUT
       (let [result (v/retract! kb foo-h)]
         (testing "the defeated conclusion had no surviving derivation and is swept"
           (is (nil? (v/sentex kb bar-h)))                              ; gone from the store
@@ -95,8 +95,8 @@
     (let [pos (v/handle-of kb (list pacifist nixon)             'CxUniverse)
           neg (v/handle-of kb (list 'not (list pacifist nixon)) 'CxUniverse)]
       (testing "both sides survive settle — neither is defeated"
-        (is (true? (v/in? kb pos)))
-        (is (true? (v/in? kb neg)))
+        (is (true? (v/believed? kb pos)))
+        (is (true? (v/believed? kb neg)))
         (is (= :default (v/defeat-class kb pos)))
         (is (= :default (v/defeat-class kb neg))))
       (testing "the pair is reported once, as a dilemma"

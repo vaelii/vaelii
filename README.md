@@ -28,8 +28,8 @@ with forward/backward inference and JTMS truth maintenance.
 
 ## Quick start
 
-As a dependency — Leiningen `[com.vaelii/vaelii "0.34.0"]`, or deps.edn
-`com.vaelii/vaelii {:mvn/version "0.34.0"}` — from [Clojars](https://clojars.org/com.vaelii/vaelii).
+As a dependency — Leiningen `[com.vaelii/vaelii "0.35.0"]`, or deps.edn
+`com.vaelii/vaelii {:mvn/version "0.35.0"}` — from [Clojars](https://clojars.org/com.vaelii/vaelii).
 To work on it instead:
 
 ```sh
@@ -87,8 +87,12 @@ consequent predicates, so it gets a handle, truth maintenance and retraction for
 A **handle** is the integer id a stored sentex or justification is referenced by,
 allocated in assertion order. A **justification** is antecedent handles plus an informant,
 pointing at a conclusion and carrying the strength it confers; the JTMS reads these to
-compute belief. Sentences identical up to variable names, antecedent order, symmetric
-argument order or comparison direction dedup to one handle.
+label each sentex IN or OUT. Sentences identical up to variable names, antecedent order,
+symmetric argument order or comparison direction dedup to one handle.
+
+A sentex is **believed** at a context C when it is IN, no `defeat` in force at C removes
+it, no `except` C sees hides it, and C sees its context through `genlCx`. A read that names
+no context answers at the sentex's own context ([glossary](docs/glossary.md)).
 
 Transitivity is not done with rules. The `genl` closure over types and the `genlCx`
 closure over contexts are cached and recomputed when an edge changes, as is the equality
@@ -113,7 +117,8 @@ Five properties hold across the engine:
   facts, rules, taxonomy edges and definitional checks alike.
 - **Belief filtering** — a stored sentex is not a believed one. Matching, closures and
   cached relations answer from belief, and a raw index read goes through
-  `reads/believed-…` or `reads/as-stored-…`, which name the reading the caller gets.
+  `reads/in-…` (the IN label alone) or `reads/as-stored-…`, which name the reading the
+  caller gets.
 - **Separated state** — knowledge lives in the KB, belief-free indexes live in the
   IndexStore, and belief and every structure that reads it live outside both. The
   IndexStore holds only what is stored. A cache filled at a read may sit anywhere, and

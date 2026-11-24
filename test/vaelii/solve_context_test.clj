@@ -67,7 +67,7 @@
           (is (some? (sentex-of kb h)))
           (is (some #(= (:id %) h) (v/sentexes-in-context kb CxBox))))
         (testing "but not a premise, so not believed"
-          (is (not (v/in? kb h)))
+          (is (not (v/believed? kb h)))
           (is (empty? (v/sentexes-matching kb (list p Tom) CxBox))))
         (testing "and retract! tears it down directly, though it was never a TMS datum"
           (is (= {:removed-sentexes 1 :removed-justifications 0} (v/retract! kb h)))
@@ -82,11 +82,11 @@
             _  (v/assert kb (list 'set/forwardRule (list 'implies (list q '?x) (list p '?x))) CxBox)
             hq (v/assert kb (list q Tom) CxBox)]
         (testing "a firing concluding the inert record's sentence makes the record believed"
-          (is (v/in? kb h)))
+          (is (v/believed? kb h)))
         (v/retract! kb hq)
         (testing "and the retraction of the firing's premise keeps the record, inert and OUT"
           (is (= (list p Tom) (:sentence (sentex-of kb h))))
-          (is (not (v/in? kb h)))
+          (is (not (v/believed? kb h)))
           (is (not (jtms/known-datum? (reasoning/tms kb) h))))))))
 
 (deftest an-inert-negation-forms-no-nogood
@@ -134,6 +134,40 @@
           ;; two truth values plus the labelingOf ownership marker
           (doseq [l (:labelings r)]
             (is (= 3 (count (v/sentexes-in-context kb (:context l)))))))))))
+
+(deftest answer-sets-read-the-program-with-no-keep-belief-objective-and-write-nothing
+  (when asp?
+    (tu/with-cleared-kb [kb tu/fresh]
+      (let [{:keys [color item]} (color-choices kb)
+            fact   #(list color item %)
+            before (count (v/sentexes-in-context kb 'CxUniverse))
+            all    (v/answer-sets kb 'CxUniverse)
+            read   #(:consequences (v/answer-sets kb 'CxUniverse {:reading %}))]
+        (testing "the empty choice is an optimum beside each color, since only the soft
+                  functional clash costs"
+          (is (= #{#{} #{(fact 'red)} #{(fact 'blue)}} (set (:answer-sets all))))
+          (is (= [:optimum [0]] ((juxt :status :costs) all))))
+        (testing "no color is cautious, and both are brave"
+          (is (= #{} (read :cautious)))
+          (is (= #{(fact 'red) (fact 'blue)} (read :brave))))
+        (is (= 1 (count (:answer-sets (v/answer-sets kb 'CxUniverse {:reading :one})))))
+        (is (= before (count (v/sentexes-in-context kb 'CxUniverse))))))))
+
+(deftest answer-sets-refuses-an-option-its-reading-does-not-read-and-a-query-context
+  (tu/with-neutral-kb [kb tu/fresh]
+    (doseq [[opts mismatch] [[[:limit 3] :not-a-map]
+                             [{:reading :brave :limit 3} :unknown-key]
+                             [{:reading :every} :bad-value]
+                             [{:among [1.5]} :bad-value]
+                             [{:opt-strategy :oll} :bad-value]
+                             [{:project 'tourEdge} :bad-value]]]
+      (is (= [:unknown-option mismatch]
+             (try (v/answer-sets kb 'CxUniverse opts)
+                  (catch clojure.lang.ExceptionInfo e ((juxt :type :mismatch) (ex-data e)))))
+          (pr-str opts)))
+    (is (= :unsupported-context
+           (try (v/answer-sets kb 'CxEverything)
+                (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))))))
 
 (deftest label-with-no-constraint-keeps-every-choice
   (when asp?
@@ -435,13 +469,13 @@
           (v/assert kb '(do/classify CxOwnPlan) 'CxUniverse)
           (v/assert kb '(do/classify CxOwnPlan) 'CxUniverse)
           (testing "two classifications later the user's edge stands"
-            (is (v/in? kb edge))
+            (is (v/believed? kb edge))
             (is (seq (v/sentexes-matching kb '(genlCx CxOwnPlanClass CxUniverse) 'CxUniverse))))
           (testing "and the classification and its marker were written beside it"
             (is (= 3 (count (v/sentexes-in-context kb 'CxOwnPlanClass)))))
           (v/assert kb '(do/label CxUniverse CxOwnPlan) 'CxUniverse)
           (testing "a re-run replaces the labeling but leaves the claim about it"
-            (is (v/in? kb claim))
+            (is (v/believed? kb claim))
             (is (= 3 (count (v/sentexes-in-context kb 'CxOwnPlan1)))
                 "two truth values plus the marker, freshly written")))))))
 
@@ -453,10 +487,10 @@
       (let [users (mapv #(v/assert kb (list 'genlCx 'CxHangPlan1 %) 'CxUniverse
                                    {:strength :monotonic})
                         '[CxHangA CxHangB CxHangC])]
-        (is (every? #(v/in? kb %) users) "the user's three edges are believed")
+        (is (every? #(v/believed? kb %) users) "the user's three edges are believed")
         (let [r (v/assert kb '(do/label CxUniverse CxHangPlan) 'CxUniverse)]
           (testing "a re-run replaces the labeling and leaves the user's edges standing"
-            (is (every? #(v/in? kb %) users))
+            (is (every? #(v/believed? kb %) users))
             (is (= 3 (count (v/sentexes-matching kb '(genlCx CxHangPlan1 ?up)
                                                  'CxUniverse)))))
           (testing "while its own placement edge and truth values went with the run"

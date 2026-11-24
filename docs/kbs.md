@@ -158,11 +158,11 @@ findable by term and countable and has no type hierarchy at all — catalog.md's
 costs to hold* says why that is one switch and not two, and why it is the failure that
 looks like success.
 
-Heap is the other thing this corpus is sensitive to, and the numbers sit close together:
-6 GB is not enough for the checked `:ontology` load, and the JVM default on a large
-machine is. Neither `lein browser` nor `lein run -m vaelii.web` sets `-Xmx`, so both
-get that default; a profile that sets a smaller heap wants the `:dir` instead. The
-three `scripts/start-vaelii*.sh` set `-Xmx` from `VAELII_HEAP`, else half of physical
+Heap is the other thing this corpus is sensitive to: 6 GB is not enough for the checked
+`:ontology` load. `lein browser` and `lein run -m vaelii.web` run under the project
+JVM's 8g cap (`project.clj`'s `:jvm-opts`), and a `JVM_OPTS` naming `-Xmx` replaces it:
+`JVM_OPTS=-Xmx16g lein browser`. A heap too small for the load wants the `:dir` instead.
+The three `scripts/start-vaelii*.sh` set `-Xmx` from `VAELII_HEAP`, else half of physical
 memory up to `31g`. A full recover of a store of millions of sentexes, whose TMS and
 taxonomy grow with it, sets how much a KB needs.
 The recover's heap peak is about twice the import's

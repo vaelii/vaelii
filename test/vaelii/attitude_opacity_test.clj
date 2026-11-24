@@ -176,7 +176,7 @@
       (v/assert kb (list 'sameAs Jocasta MotherOf) ask-ctx)
       (let [h (v/handle-of kb fact ask-ctx)]
         (is (some? h) "the stored sentex is still under the spelling it was asserted in")
-        (is (v/in? kb h) "and still believed — no migration retired it"))
+        (is (v/believed? kb h) "and still believed — no migration retired it"))
       (is (v/ask? kb fact ask-ctx) "so the question that stored it still answers"))))
 
 (tu/deftest-kb a-quoted-term-is-not-reported-displaced

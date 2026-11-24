@@ -42,6 +42,9 @@
   (v/assert kb '(conversionFactor Minute Second 60) C)
   (v/assert kb '(conversionFactor Hour Second 3600) C))
 
+(defn- metric-entries [kb]
+  (filterv #(= :metric-temporal-inconsistency (:violation %)) (v/violations kb)))
+
 (defn- bound [kb goal] (get (tu/sole-answer (v/ask kb goal C)) '?d))
 
 ;; ---- the algorithm, without a KB ----------------------------------------
@@ -312,6 +315,25 @@
       (testing "reaching exactly what the pass from nothing reaches"
         (is (= from-scratch answer))))))
 
+(tu/deftest-kb a-closed-state-holds-only-the-instants-its-network-names
+  ;; an instant a read names stays in every warm-started state after it, so a resident
+  ;; matrix asked about a new instant per write grows without bound
+  (load-time-units kb)
+  (tu/with-terms [P Q R S T]
+    (let [states   (atom [])
+          keeping  (fn [f] (fn [& args] (let [st (apply f args)] (swap! states conj st) st)))
+          gap      #(v/assert kb (list 'temporalDistance %1 %2 '(QuantityFn 30 Minute)) C)]
+      (with-redefs [stp/close-state      (keeping stp/close-state)
+                    stp/close-state-from (keeping stp/close-state-from)]
+        (gap P Q)
+        (is (= stp/unbounded (rest (stp/separation kb C P S))) "no constraint names S")
+        (gap Q R)
+        (is (= stp/unbounded (rest (stp/separation kb C P T))) "no constraint names T")
+        (is (= [3600 3600] (rest (stp/separation kb C P R)))))
+      (is (some #(= #{P Q R} (set (:node-vec %))) @states) "a warm start ran over all three")
+      (is (every? #(every? #{P Q R} (:node-vec %)) (filter map? @states))
+          "no state holds S or T"))))
+
 (tu/deftest-kb a-gap-nothing-reaches-has-no-measure
   (load-time-units kb)
   (tu/with-terms [P Q R S]
@@ -382,22 +404,70 @@
       (is (not (inconsistent? kb C)))
       (is (= '(QuantityFn 7200 Second) (bound kb (list 'temporalDistance P R '?d)))))))
 
-(tu/deftest-kb a-metric-clash-is-filed-by-the-first-read-of-the-closure
-  ;; no `:allen` here, so the settle reads no metric closure
+(tu/deftest-kb a-metric-clash-is-placed-at-the-write-in-every-arrival-order
+  ;; the fixture registers the metric prover alone, so no calculus reads the closure at
+  ;; the settle: the write's own settle places the region (docs/stp.md)
   (load-time-units kb)
-  (v/clear-violations! kb)
-  (tu/with-terms [P Q R]
-    (let [filed #(filter (fn [e] (= :metric-temporal-inconsistency (:violation e)))
-                         (v/violations kb))]
-      (v/assert kb (list 'temporalDistance P Q '(QuantityFn 1 Hour)) C)
-      (v/assert kb (list 'temporalDistance Q R '(QuantityFn 1 Hour)) C)
-      (testing "try-assert stores the constraint that closes the cycle"
-        (is (nat-int? (v/try-assert kb (list 'temporalDistance P R '(QuantityFn 1 Hour)) C))))
-      (testing "the write files nothing"
-        (is (empty? (filed))))
-      (testing "a metric goal files one entry"
-        (v/ask kb (list 'temporalDistance P Q '?d) C)
-        (is (= 1 (count (filed))))))))
+  (doseq [order (tu/permutations [0 1 2])]
+    (v/clear-violations! kb)
+    (tu/with-terms [P Q R]
+      (let [facts   [(list 'temporalDistance P Q '(QuantityFn 1 Hour))
+                     (list 'temporalDistance Q R '(QuantityFn 1 Hour))
+                     (list 'temporalDistance P R '(QuantityFn 1 Hour))]
+            [a b c] (mapv facts order)]
+        (v/assert kb a C)
+        (v/assert kb b C)
+        (testing (str order ": try-assert refuses the constraint that closes the cycle")
+          (let [e (try (v/try-assert kb c C) nil
+                       (catch clojure.lang.ExceptionInfo e (ex-data e)))]
+            (is (= [:definitional-clash :unsatisfiable-network] [(:type e) (:violation e)]))
+            (is (= #{a b} (set (map :sentence (:clashes-with e)))))
+            (is (nil? (v/handle-of kb c C)))
+            (is (empty? (metric-entries kb)))))
+        (v/assert kb c C)
+        (let [hs (mapv #(v/handle-of kb % C) facts)
+              es (metric-entries kb)
+              s  (:sentence (first es))]
+          (testing (str order ": the write places one contradiction over the three and files one entry naming it")
+            (is (= 1 (count es)))
+            (is (= #{s} (tu/contradictions-naming kb hs)))
+            (is (= (set (map #(list 'sentexHandle %) hs)) (set (rest s)))))
+          (testing (str order ": a member retracted takes it out, as a KB without that member holds none")
+            (doseq [f facts]
+              (v/retract! kb (v/handle-of kb f C))
+              (is (empty? (tu/contradictions-naming kb (keep #(v/handle-of kb % C) facts))))
+              (v/assert kb f C)
+              (is (= 1 (count (tu/contradictions-naming kb (mapv #(v/handle-of kb % C) facts))))))))))))
+
+(tu/deftest-kb a-dated-clash-is-placed-over-its-own-dates-in-every-arrival-order
+  ;; the calendar epoch joins every dated instant into one strongly connected part, so the
+  ;; region is read in the stated component with its own dates (docs/stp.md)
+  (load-time-units kb)
+  (tu/with-terms [D A B X]
+    (v/assert kb (list 'includesInstant '(DayFn 2000 1 1) D) C)
+    (doseq [[label facts]
+            [["one frame" [(list 'includesInstant '(DayFn 2000 2 1) A)
+                           (list 'includesInstant '(DayFn 2000 2 2) B)
+                           (list 'temporalDistance B A '(QuantityFn 1 Hour))]]
+             ["two frames" [(list 'includesInstant '(DayFn 2000 1 1) X)
+                            (list 'includesInstant '(DatetimeFn "2000-03-01T00Z") X)]]]
+            order (tu/permutations (range (count facts)))]
+      (v/clear-violations! kb)
+      (doseq [i (butlast order)] (v/assert kb (facts i) C))
+      (let [last-fact (facts (last order))
+            e         (try (v/try-assert kb last-fact C) nil
+                           (catch clojure.lang.ExceptionInfo e (ex-data e)))]
+        (testing (str label " " order ": try-assert refuses the fact that closes the clash")
+          (is (= :unsatisfiable-network (:violation e))))
+        (v/assert kb last-fact C))
+      (let [hs (mapv #(v/handle-of kb % C) facts)
+            es (metric-entries kb)]
+        (testing (str label " " order ": one region over the clash and its dates, not the other dated instant")
+          (is (= 1 (count es)))
+          (is (= (set (map #(list 'sentexHandle %) hs)) (set (rest (:sentence (first es)))))))
+        (doseq [h hs] (v/retract! kb h))
+        (testing (str label " " order ": the retraction takes the region out")
+          (is (empty? (tu/contradictions-naming kb hs))))))))
 
 (tu/deftest-kb constraints-of-two-dimensions-are-refused-and-reported
   (load-time-units kb)
@@ -524,10 +594,11 @@
           (is (inconsistent? kb CxInner))
           (is (inconsistent? kb C)))
         (is (<= @passes 1))))
-    (testing "and each context is reported, once"
-      (let [es (filter #(= :metric-temporal-inconsistency (:violation %)) (v/violations kb))]
-        (is (= #{CxInner C} (set (map :context es))))
-        (is (= 2 (count es)))))))
+    (testing "one contradiction is placed where both contexts see it, and filed once"
+      (let [es (metric-entries kb)]
+        (is (= [C] (map :context es)))
+        (is (v/ask? kb (:sentence (first es)) C))
+        (is (v/ask? kb (:sentence (first es)) CxInner))))))
 
 (tu/deftest-kb a-second-kb-holding-the-same-constraints-is-told-so-too
   (load-time-units kb)

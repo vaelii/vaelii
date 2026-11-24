@@ -8,7 +8,6 @@
   docs/labeling.md, \"Reading brave/cautious without committing\"."
   (:require
    [vaelii.impl.asp.label :as label]
-   [vaelii.impl.except :as exc]
    [vaelii.impl.kb :as kb]
    [vaelii.impl.resolution :as res]
    [vaelii.impl.sentex :as sx]
@@ -24,14 +23,13 @@
 
 (defn- visible-handles
   "The handles of `s` stored in `context`'s `genlCx` ancestor set that `context` believes
-  (`res/believed-at?`) and sees (`exc/hidden-fn`): what a ground `ask` of `s` reads at
-  `ask`'s level (what is stored, no rule expansion).  Empty at a variable context."
+  (`res/believed-at?`): what a ground `ask` of `s` reads at `ask`'s level (what is
+  stored, no rule expansion).  Empty at a variable context."
   [kb s context]
   (when-not (sx/variable? context)
-    (let [hidden? (or (exc/hidden-fn kb context) (constantly false))]
-      (into [] (comp (keep #(kb/find-sentex-handle kb s %))
-                     (filter #(and (res/believed-at? kb % context) (not (hidden? %)))))
-            (tax/context-up (reasoning/taxonomy kb) context)))))
+    (into [] (comp (keep #(kb/find-sentex-handle kb s %))
+                   (filter #(res/believed-at? kb % context)))
+          (tax/context-up (reasoning/taxonomy kb) context))))
 
 (defn- class-at
   "The class of `s` at `context`: the strongest (`:true` over `:supportable` over

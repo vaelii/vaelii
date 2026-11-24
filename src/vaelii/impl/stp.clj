@@ -11,6 +11,7 @@
             [taoensso.trove :as trove]
             [vaelii.impl.caches :as caches]
             [vaelii.impl.datetime :as dt]
+            [vaelii.impl.graph :as graph]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.provers :as provers]
@@ -191,9 +192,9 @@
 
 (defn close-state
   "All-pairs shortest paths over `net` across `nodes`, as a closed state
-  `{:net {[p q] → [lo hi]} :node-vec [instant …] :d ^doubles}`, or `:inconsistent` on a
-  constraint unsatisfiable as given or a negative cycle.  `:d` is written once; every
-  function taking a state copies it before an update."
+  `{:net {[p q] → [lo hi]} :node-vec [instant …] :idx {instant → position} :d ^doubles}`,
+  or `:inconsistent` on a constraint unsatisfiable as given or a negative cycle.  `:d` is
+  written once; every function taking a state copies it before an update."
   [net nodes]
   (if (some unsatisfiable-as-given? net)
     :inconsistent
@@ -201,7 +202,8 @@
           closed   (shortest-paths! (distance-matrix net node-vec) (count node-vec))]
       (if (seq (negative-cycle-nodes closed node-vec))
         :inconsistent
-        {:net (read-back closed node-vec) :node-vec node-vec :d closed}))))
+        {:net (read-back closed node-vec) :node-vec node-vec :idx (node-index node-vec)
+         :d closed}))))
 
 (defn close
   "`close-state`'s `:net`, or `:inconsistent`.  The caller passes every node `net`
@@ -224,109 +226,117 @@
           prior))
 
 (defn- relax-edge!
-  "Add the edge `ip → iq` of weight `w` to the closed matrix `d` in place, marking every
-  moved cell in `dirty`.  Column p and row q are snapshotted first: in the inconsistent case
-  the sweep can move them mid-update.  The positions are cast in the body because a fn
-  taking primitives is capped at four arguments."
-  [^doubles d ^booleans dirty n' ip' iq' w']
+  "Add the edge `ip → iq` of weight `w` to the closed matrix `d` in place, adding every
+  moved cell's unordered pair to `dirty` (`i·n + j`, `i < j`).  In a closed matrix a cell
+  `[i j]` moves only when the edge shortens both `i → q` and `p → j`, so the sweep reads
+  those rows and columns alone: a leaf instant arriving moves one row and one column.
+  Column p and row q are snapshotted first: in the inconsistent case the sweep can move
+  them mid-update.  The positions are cast in the body because a fn taking primitives is
+  capped at four arguments."
+  [^doubles d ^java.util.Set dirty n' ip' iq' w']
   (let [n   (long n')
         ip  (long ip')
         iq  (long iq')
         w   (double w')
         col (double-array n)                                ; col[i] = d[i][p]
-        row (double-array n)]                               ; row[j] = d[q][j]
+        row (double-array n)                                ; row[j] = d[q][j]
+        is  (int-array n)
+        js  (int-array n)]
     (dotimes [i n] (aset col i (aget d (+ (* i n) ip))))
     (dotimes [j n] (aset row j (aget d (+ (* iq n) j))))
-    (dotimes [i n]
-      (let [dip (aget col i)]
-        (when (Double/isFinite dip)
-          (let [base (+ dip w)
-                in   (* i n)]
-            (dotimes [j n]
-              (let [dqj (aget row j)]
-                (when (Double/isFinite dqj)
-                  (let [cand (+ base dqj)
-                        k    (+ in j)]
-                    (when (< cand (aget d k))
-                      (aset d k cand)
-                      (aset dirty k true))))))))))
+    (let [ni (loop [i 0, k 0]
+               (if (= i n)
+                 k
+                 (let [dip (aget col i)]
+                   (if (and (Double/isFinite dip) (< (+ dip w) (aget d (+ (* i n) iq))))
+                     (do (aset is k (int i)) (recur (inc i) (inc k)))
+                     (recur (inc i) k)))))
+          nj (loop [j 0, k 0]
+               (if (= j n)
+                 k
+                 (let [dqj (aget row j)]
+                   (if (and (Double/isFinite dqj) (< (+ w dqj) (aget d (+ (* ip n) j))))
+                     (do (aset js k (int j)) (recur (inc j) (inc k)))
+                     (recur (inc j) k)))))]
+      (dotimes [a ni]
+        (let [i    (long (aget is a))
+              base (+ (aget col i) w)
+              in   (* i n)]
+          (dotimes [b nj]
+            (let [j    (long (aget js b))
+                  cand (+ base (aget row j))
+                  k    (+ in j)]
+              (when (< cand (aget d k))
+                (aset d k cand)
+                (when-not (= i j)
+                  (.add dirty (Long/valueOf (if (< i j) (+ in j) (+ (* j n) i)))))))))))
     d))
 
 (defn- read-back-changed
-  "`prior` with every pair `dirty` marks rewritten off `d`.  The scan runs over unordered
-  pairs because one pair's two entries are read off two cells that move independently."
-  [prior ^doubles d ^booleans dirty node-vec]
+  "`prior` with every unordered pair `dirty` holds (`relax-edge!`) rewritten off `d`, both
+  of its entries, since one pair's two entries are read off two cells that move
+  independently."
+  [prior ^doubles d ^java.util.Set dirty node-vec]
   (let [n (long (count node-vec))]
     (persistent!
-     (loop [i 0, acc (transient prior)]
-       (if (= i n)
-         acc
-         (let [p  (nth node-vec i)
-               in (* (long i) n)]
-           (recur
-            (inc i)
-            (loop [j (inc i), acc acc]
-              (if (= j n)
-                acc
-                (let [jn (* (long j) n)]
-                  (if (or (aget dirty (+ in (long j))) (aget dirty (+ jn (long i))))
-                    (let [q  (nth node-vec j)
-                          pq (aget d (+ in (long j)))
-                          qp (aget d (+ jn (long i)))]
-                      (recur (inc j)
-                             (-> acc
-                                 (assoc! [p q] [(magnitude (- qp)) (magnitude pq)])
-                                 (assoc! [q p] [(magnitude (- pq)) (magnitude qp)]))))
-                    (recur (inc j) acc))))))))))))
+     (reduce (fn [acc k]
+               (let [k  (long k)
+                     i  (quot k n)
+                     j  (rem k n)
+                     p  (nth node-vec i)
+                     q  (nth node-vec j)
+                     pq (aget d (+ (* i n) j))
+                     qp (aget d (+ (* j n) i))]
+                 (-> acc
+                     (assoc! [p q] [(magnitude (- qp)) (magnitude pq)])
+                     (assoc! [q p] [(magnitude (- pq)) (magnitude qp)]))))
+             (transient prior) dirty))))
 
-(defn- relaid-matrix
-  "A copy of the prior state's matrix laid out over `node-vec`; an instant the prior never
-  held starts isolated.  Quadratic in the prior's size."
-  ^doubles [prior node-vec]
+(defn- grown-matrix
+  "A copy of the prior state's `m×m` matrix as the top-left block of an `n×n` one, `n ≥ m`,
+  copied a row at a time; the instants past `m` start isolated."
+  ^doubles [prior n']
   (let [^doubles old (:d prior)
-        old-vec      (:node-vec prior)
-        n            (long (count node-vec))]
-    (if (= old-vec node-vec)
+        m            (long (count (:node-vec prior)))
+        n            (long n')]
+    (if (= m n)
       (aclone old)
-      (let [m     (long (count old-vec))
-            idx   (node-index node-vec)
-            d     (double-array (* n n) ##Inf)
-            remap (int-array m -1)]
+      (let [d (double-array (* n n) ##Inf)]
+        (dotimes [i m] (System/arraycopy old (* i m) d (* i n) m))
         (dotimes [i n] (aset d (+ (* i n) i) 0.0))
-        (dotimes [i m] (when-let [ni (idx (nth old-vec i))] (aset remap i (int ni))))
-        (dotimes [i m]
-          (let [ni (long (aget remap i))]
-            (when (>= ni 0)
-              (dotimes [j m]
-                (let [nj (long (aget remap j))]
-                  (when (>= nj 0)
-                    (aset d (+ (* ni n) nj) (aget old (+ (* i m) j)))))))))
         d))))
 
 (defn close-state-from
   "`close-state`, warm-started off `prior`, a closed state for a network `net` tightens
   (`tightening-of?`): each moved constraint is relaxed in, and only moved bounds are read
-  back.  At `n` or more moved edges it runs the full pass instead.
+  back.  At `n` or more moved edges it runs the full pass instead.  An instant new to the
+  state is placed after the prior's, so the prior's matrix is the new one's top-left block.
 
   `nodes` must name every instant of `prior` as well as of `net`.  A `prior` that `net` does
   not tighten gives a wrong network, not an error."
   [net prior nodes]
   (if (some unsatisfiable-as-given? net)
     :inconsistent
-    (let [node-vec   (nm/by-print-key nodes)
+    (let [old-vec    (:node-vec prior)
+          old-idx    (or (:idx prior) (node-index old-vec))
+          m          (count old-vec)
+          added      (nm/by-print-key (remove #(contains? old-idx %) nodes))
+          node-vec   (into old-vec added)
+          idx        (into old-idx (map-indexed (fn [i x] [x (+ m i)])) added)
           n          (long (count node-vec))
-          ^doubles d (relaid-matrix prior node-vec)
+          ^doubles d (grown-matrix prior n)
           moved      (filterv (fn [[ip iq w]]
                                 (< (double w) (aget d (+ (* (long ip) n) (long iq)))))
-                              (edges net (node-index node-vec)))]
+                              (edges net idx))]
       (if (>= (count moved) n)
         (close-state net nodes)
-        (let [dirty (boolean-array (* n n))]
+        (let [dirty (java.util.HashSet.)]
           (doseq [[ip iq w] moved] (relax-edge! d dirty n ip iq (double w)))
           (if (seq (negative-cycle-nodes d node-vec))
             :inconsistent
             {:net      (read-back-changed (:net prior) d dirty node-vec)
              :node-vec node-vec
+             :idx      idx
              :d        d}))))))
 
 ;; ---- reading a bound back as an ordering ---------------------------------
@@ -485,29 +495,37 @@
           [(epochs frame) (provers/round-magnitude (* factor s))])))))
 
 (defn- stated-constraints
-  "Every believed, visible `(temporalDistance P Q M)` over two metric terms as `[[dimension
+  "Every `(temporalDistance P Q M)` believed at `context` over two metric terms as `[[dimension
   base-unit] P Q lo hi support]`, the magnitudes in the base unit and snapped by
   `provers/round-magnitude`.  `support` is the fact's handle plus the unit-table rows it
-  converted through."
-  [kb context]
-  (vec
-   (for [m (res/matches-visible kb '(temporalDistance ?p ?q ?m) context)
-         :let  [b (second m), p (get b '?p), q (get b '?q), measure (get b '?m)]
-         :when (and (metric-term? p) (metric-term? q) (provers/measure? measure))
-         :let  [[[k lo hi] sup] (provers/measure-with-support kb measure context)]]
-     [k p q
-      (provers/round-magnitude lo) (provers/round-magnitude hi)
-      (conj sup (first m))])))
+  converted through.  `[pos node]` keeps the facts holding `node` at argument `pos`, read
+  off its argument index."
+  ([kb context] (stated-constraints kb context nil))
+  ([kb context [pos node]]
+   (vec
+    (for [m (res/matches-visible kb (list 'temporalDistance (if (= 1 pos) node '?p)
+                                          (if (= 2 pos) node '?q) '?m)
+                                 context)
+          :let  [b (second m)
+                 p (if (= 1 pos) node (get b '?p))
+                 q (if (= 2 pos) node (get b '?q))
+                 measure (get b '?m)]
+          :when (and (metric-term? p) (metric-term? q) (provers/measure? measure))
+          :let  [[[k lo hi] sup] (provers/measure-with-support kb measure context)]]
+      [k p q
+       (provers/round-magnitude lo) (provers/round-magnitude hi)
+       (conj sup (first m))]))))
 
 (defn- instant-constraints
-  "Every believed, visible `(includesInstant T X)` with `T` a calendar term or range and `X`
+  "Every `(includesInstant T X)` believed at `context` with `T` a calendar term or range and `X`
   a node term, as a stated constraint (`stated-constraints`) under the key `k` from the
   epoch node of `T`'s frame to `X`: between `T`'s start and end offsets (`anchor`), closed
-  at both ends, resting on the fact and `sup`."
-  [kb context k factor sup]
+  at both ends, resting on the fact and `sup`.  A node `x` keeps the facts dating `x`, read
+  off its argument index."
+  [kb context [k factor sup] x]
   (vec
-   (for [m (res/matches-visible kb '(includesInstant ?t ?x) context)
-         :let  [b (second m), t (get b '?t), x (get b '?x)
+   (for [m (res/matches-visible kb (list 'includesInstant '?t (or x '?x)) context)
+         :let  [b (second m), t (get b '?t), x (or x (get b '?x))
                 [n lo] (anchor factor (list 'StartFn t))
                 [_ hi] (anchor factor (list 'EndFn t))]
          :when (and n hi (sx/plain-symbol? x))]
@@ -563,7 +581,7 @@
   (let [[sk :as unit] (second-key kb context)
         stated        (into [] (keep #(placed unit %)) (stated-constraints kb context))
         stated        (if (every? #(= sk (first %)) stated)
-                        (let [s (into stated (apply instant-constraints kb context unit))]
+                        (let [s (into stated (instant-constraints kb context unit nil))]
                           (if-let [eb (epoch-bound unit s)] (conj s eb) s))
                         stated)
         dims          (set (map first stated))]
@@ -587,7 +605,7 @@
   and the refusal reported once per KB and context.  Resident on the KB's `:qcn` atom,
   keyed by the change clock and on the tolerance the magnitudes are snapped to."
   [kb context]
-  (let [prob (observe/cached (reasoning/qcn kb) [::problem context provers/*quantity-tolerance*]
+  (let [prob (observe/cached (:clock kb) (reasoning/qcn kb) [::problem context provers/*quantity-tolerance*]
                              (fn [_stale] (build-problem kb context)))]
     (when-let [dims (:mixed prob)]
       (when (observe/newly-seen? (reasoning/qcn kb) [::reported-mixed context] dims)
@@ -595,7 +613,7 @@
     prob))
 
 (defn problem
-  "Every `temporalDistance` and calendar `includesInstant` believed and visible from
+  "Every `temporalDistance` and calendar `includesInstant` believed at
   `context`, as
   `{:dimension :unit :net :support}`.  nil when nothing is stated, and nil — reported once
   per KB and context — when the constraints span more than one dimension."
@@ -624,43 +642,24 @@
              (shortest-paths! (distance-matrix net node-vec) (count node-vec))
              node-vec)}))
 
-(defn- report-inconsistency!
-  "File `:metric-temporal-inconsistency` for `prob` in the violations ledger, naming any
-  pair unsatisfiable as written and the instants on a negative cycle, and log it at :warn.
-  docs/stp.md gives the reasons this is a report and not a `wff` check."
-  [kb context {:keys [net unit]}]
-  (let [{bad :pairs cycle-nodes :cycle} (inconsistency-detail net)
-        entry {:violation :metric-temporal-inconsistency
-               :context   context
-               :sentence  nil
-               :detail    (cond-> {:message (str "the temporalDistance constraints visible"
-                                                 " from " context " cannot all be"
-                                                 " satisfied, so no metric temporal goal"
-                                                 " is answered there")
-                                   :unit  unit
-                                   :nodes (nm/by-print-key (nodes net))}
-                            (seq bad)         (assoc :pairs (nm/by-print-key bad))
-                            (seq cycle-nodes) (assoc :cycle (nm/by-print-key cycle-nodes)))}]
-    (trove/log! {:level :warn :id ::metric-temporal-inconsistency :data entry})
-    (violations/report-without-run kb entry)))
-
 (defn- resident-closure
   "`(build stale)` held on the KB under `k` and the change clock beside `net`, where `stale`
   is the entry it replaces (`{:for net :result state}` or nil).  A resident hit is an
   `identical?` compare; a caller asking about another network gets `(build nil)`."
   [kb k net build]
-  (let [entry (observe/cached (reasoning/qcn kb) k (fn [stale] {:for net :result (build stale)}))]
+  (let [entry (observe/cached (:clock kb) (reasoning/qcn kb) k (fn [stale] {:for net :result (build stale)}))]
     (if (identical? net (:for entry)) (:result entry) (build nil))))
 
 (defn closure
-  "The closed network of `prob` across its nodes and `extra-nodes`, or `:inconsistent`.
+  "The closed network of `prob` across the instants its constraints name, or
+  `:inconsistent`.  An instant it names nothing about reads unbounded (`constraint`).
 
-  Memoized on `[net provers/*quantity-tolerance*]`, and resident per context and tolerance:
-  `extra-nodes` are isolated and stay out of the key, so contexts and KBs holding one
-  network share one pass.  Warm-started (`close-state-from`) when the network last
-  resident for `context` is one this network tightens.  An inconsistency is reported once per KB, context and network
-  (`observe/newly-seen?`), never on the memoized path."
-  [kb context {:keys [net] :as prob} extra-nodes]
+  Memoized on `[net provers/*quantity-tolerance*]`, and resident per context and tolerance,
+  so contexts and KBs holding one network share one pass.  Warm-started
+  (`close-state-from`) when the network last resident for `context` is one this network
+  tightens.  A read files nothing: the settle places a negative cycle
+  (`unsatisfiable-regions`)."
+  [kb context {:keys [net]}]
   (let [state (resident-closure
                kb [::pass context provers/*quantity-tolerance*] net
                (fn [stale]
@@ -668,25 +667,157 @@
                   closure-cache (caches/limit-of :metric-closures closure-cache-limit)
                   [net provers/*quantity-tolerance*]
                   (fn []
-                    (let [all  (into (nodes net) extra-nodes)
+                    (let [all  (nodes net)
                           warm (when (and (map? (:result stale))
                                           (tightening-of? net (:for stale)))
                                  (:result stale))]
                       (if warm
                         (close-state-from net warm all)
-                        (close-state net all)))))))
-        result (if (map? state) (:net state) state)]
-    (when (and (= :inconsistent result)
-               (observe/newly-seen? (reasoning/qcn kb) [::reported context] net))
-      (report-inconsistency! kb context prob))
-    result))
+                        (close-state net all)))))))]
+    (if (map? state) (:net state) state)))
 
 (defn closed-network
   "The closed metric network visible from `context`: nil when `problem` is, else `closure`'s
   answer."
   [kb context]
   (when-let [prob (problem kb context)]
-    (closure kb context prob nil)))
+    (closure kb context prob)))
+
+(defn- net-regions
+  "The regions of the metric network `net` (`unsatisfiable-regions`), its `support` and
+  `unit` given."
+  [net support unit touched]
+  (let [adj   (reduce-kv (fn [m [p q] [_ hi]]
+                           (if (< (double hi) ##Inf) (update m p (fnil conj []) q) m))
+                         {} net)
+        found (volatile! [])]
+    (graph/scc (if touched (filter #(contains? adj %) touched) (keys adj))
+               #(get adj % [])
+               #(when (or (< 1 (count %)) (some-> (find net [(first %) (first %)]) unsatisfiable-as-given?))
+                  (vswap! found conj (set %))))
+    (into []
+          (keep (fn [ns]
+                  (when (or (nil? touched) (some #(contains? ns %) touched))
+                    (let [sub (into {} (filter (fn [[[p q]]] (and (contains? ns p) (contains? ns q))))
+                                    net)
+                          {:keys [pairs cycle]} (inconsistency-detail sub)]
+                      (when (or (seq pairs) (seq cycle))
+                        {:nodes ns :pairs pairs :cycle cycle :unit unit
+                         :members (into #{} (mapcat #(get support %)) (keys sub))})))))
+          @found)))
+
+(def ^:private epoch-frames (set/map-invert epochs))
+
+(defn- component-rows
+  "The stated component holding the instant `seed` at `context`, read off each term's
+  argument index.  Its constraints are `placed` with `unit` (`second-key`): the
+  `temporalDistance` facts linking instants, and each instant's facts to a calendar moment
+  and its `includesInstant` dates, which join no two instants.  `build-problem`'s rule
+  decides whether the dates are kept."
+  [kb context [sk :as unit] seed]
+  (let [stated (loop [seen #{seed}, todo [seed], rows #{}]
+                 (if-let [n (peek todo)]
+                   (let [found (into [] (mapcat #(stated-constraints kb context [% n])) [1 2])
+                         ends  (into [] (comp (mapcat (fn [[_ p q]] [p q])) (filter sx/plain-symbol?)
+                                              (distinct) (remove seen))
+                                     found)]
+                     (recur (into seen ends) (into (pop todo) ends) (into rows found)))
+                   rows))
+        terms  (into #{seed} (comp (mapcat (fn [[_ p q]] [p q])) (filter sx/plain-symbol?)) stated)
+        rows   (into [] (keep #(placed unit %)) stated)]
+    {:terms terms
+     :rows  (if (every? #(= sk (first %)) rows)
+              (into rows (mapcat #(instant-constraints kb context unit %)) (sort-by nm/name-key terms))
+              rows)}))
+
+(defn- moment-rows
+  "The constraints between the calendar moment `seed` and another calendar moment visible
+  from `context`, each `placed` with `unit` and read as a component of its own."
+  [kb context unit seed]
+  (into []
+        (comp (remove (fn [[_ p q]] (or (sx/plain-symbol? p) (sx/plain-symbol? q))))
+              (keep #(placed unit %))
+              (map (fn [row] {:terms #{} :rows [row]})))
+        (distinct (mapcat #(stated-constraints kb context [% seed]) [1 2]))))
+
+(defn- rows-regions
+  "The regions of the network the stated constraints `rows` make, `[]` when they span more
+  than one dimension."
+  [rows]
+  (let [dims (into #{} (map first) rows)]
+    (if (= 1 (count dims))
+      (let [{:keys [net support]}
+            (reduce (fn [state [_ p q lo hi sup]]
+                      (-> state
+                          (update :net narrow p q lo hi)
+                          (update-in [:support [p q]] (fnil into #{}) sup)
+                          (update-in [:support [q p]] (fnil into #{}) sup)))
+                    {:net {} :support {}} rows)]
+        (net-regions net support (second (first dims)) nil))
+      [])))
+
+(defn- two-frame-regions
+  "The regions of the stated components visible from `context` dated in both frames, read
+  together over `problem` with the two epoch nodes and the bound between them: a cycle
+  through both epochs can cross two such components.  `[]` when `problem` is nil."
+  [kb context]
+  (if-let [{:keys [net support unit]} (problem kb context)]
+    (let [ep?    epoch-frames
+          adj    (reduce-kv (fn [m [p q] _] (if (or (ep? p) (ep? q)) m (update m p (fnil conj []) q)))
+                            {} net)
+          frames (reduce-kv (fn [m [p q] _] (if (and (ep? p) (not (ep? q))) (update m q (fnil conj #{}) (ep? p)) m))
+                            {} net)
+          group  (loop [todo (keys frames), seen #{}, group #{}]
+                   (if-let [[x & more] (seq todo)]
+                     (if (contains? seen x)
+                       (recur more seen group)
+                       (let [comp (graph/reach-all [x] #(get adj % []))]
+                         (recur more (into seen comp)
+                                (if (= 2 (count (into #{} (mapcat frames) comp))) (into group comp) group))))
+                     (into group (vals epochs))))
+          sub    (into {} (filter (fn [[[p q]]] (and (contains? group p) (contains? group q)
+                                                     (not (and (= p q) (ep? p))))))
+                       net)]
+      (net-regions sub support unit nil))
+    []))
+
+(defn region-seeds
+  "The metric terms the fact `body` names that `unsatisfiable-regions` starts from: a
+  `temporalDistance`'s metric terms and the instant an `includesInstant` dates, or nil for
+  a fact every component reads, a unit-table row."
+  [body]
+  (let [[f a b] body]
+    (case f
+      temporalDistance (into #{} (filter metric-term?) [a b])
+      includesInstant  (if (sx/plain-symbol? b) #{b} #{})
+      nil)))
+
+(defn unsatisfiable-regions
+  "The conflicted regions of the metric network visible from `context`, each `{:nodes
+  #{instant} :pairs #{[p q]} :cycle #{instant} :unit unit :members #{handle}}`, `:members`
+  the support of its pairs.  A region is a strongly connected part of the distance graph
+  holding a negative cycle, or one node whose own constraint excludes zero.  It is read in
+  the stated component of a term of `touched` (every one when nil): `component-rows`,
+  `moment-rows`, and `two-frame-regions` for the components dated in both frames.  See
+  docs/stp.md."
+  [kb context touched]
+  (let [unit  (second-key kb context)
+        seeds (or touched
+                  (into #{} (comp (mapcat (fn [[_ p q]] [p q])) (filter metric-term?))
+                        (into (stated-constraints kb context) (instant-constraints kb context unit nil))))
+        [comps _]
+        (reduce (fn [[comps covered :as acc] seed]
+                  (cond
+                    (contains? covered seed) acc
+                    (sx/plain-symbol? seed)  (let [c (component-rows kb context unit seed)]
+                                               [(conj comps c) (into covered (:terms c))])
+                    :else                    [(into comps (moment-rows kb context unit seed)) covered]))
+                [[] #{}] (sort-by nm/print-key seeds))
+        two?  (fn [{:keys [rows]}]
+                (= 2 (count (into #{} (comp (mapcat (fn [[_ p q]] [p q])) (keep epoch-frames)) rows))))
+        {two true one false} (group-by two? comps)]
+    (cond-> (into [] (mapcat (comp rows-regions :rows)) one)
+      (seq two) (into (two-frame-regions kb context)))))
 
 ;; ---- what a derived bound rests on ---------------------------------------
 ;; The support of a bound is the constraints on its shortest chain each way, not the whole
@@ -741,7 +872,7 @@
   when nothing is stated or the network is inconsistent."
   [kb context p q]
   (when-let [{:keys [dimension unit] :as prob} (problem kb context)]
-    (let [closed (closure kb context prob [p q])]
+    (let [closed (closure kb context prob)]
       (when-not (= :inconsistent closed)
         (into [[dimension unit]] (constraint closed p q))))))
 
@@ -887,8 +1018,7 @@
         sat   (qcn/drop-nodes net gone)
         free  (into {} (remove (fn [[_ [e]]] (some #(contains? gone %) e))) ends)
         rest  (when (>= (count free) 2)
-                (let [closed (closure kb context (assoc prob :net sat)
-                                      (mapcat (comp first val) free))]
+                (let [closed (closure kb context (assoc prob :net sat))]
                   (when (map? closed)
                     (pairwise-narrowing closed sat (qcn/drop-nodes support gone) free))))]
     (merge-narrowings
@@ -919,7 +1049,7 @@
                                    {:source     :metric
                                     :dimensions (nm/by-print-key (map first mixed))
                                     :support    handles})
-          (let [closed (closure kb context prob (mapcat (comp first val) ends))]
+          (let [closed (closure kb context prob)]
             (cond
               (= :inconsistent closed)  (per-component-narrowing kb context prob ends)
               (>= (count ends) 2)       (pairwise-narrowing closed net support ends))))))))
@@ -939,7 +1069,7 @@
     (let [[e1 h1] (endpoints-with-support kb i1 context)
           [e2 h2] (endpoints-with-support kb i2 context)]
       (when (and e1 e2)
-        (let [closed (closure kb context prob (concat e1 e2))]
+        (let [closed (closure kb context prob)]
           (when-not (= :inconsistent closed)
             (let [[lo hi] (overlap-bounds-from-endpoints closed e1 e2)]
               (when-not (and (zero? lo) (not (Double/isFinite (double hi))))
@@ -963,7 +1093,7 @@
         prob      (problem kb context)
         key       (if prob [(:dimension prob) (:unit prob)] sk)]
     (when (and np nq (or prob (and (not nodes?) (= np nq))) (or nodes? (= key sk)))
-      (let [closed (if prob (closure kb context prob [np nq]) {})]
+      (let [closed (if prob (closure kb context prob) {})]
         (when-not (= :inconsistent closed)
           (let [[lo hi] (map #(+ % (- oq op)) (constraint closed np nq))
                 sup     (delay (cond-> (if prob (path-support (:net prob) (:support prob) np nq) #{})

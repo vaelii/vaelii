@@ -209,7 +209,7 @@
                    adds)]
     {:memo-hit-ms (mean hits)
      :query-ms    (mean asks)
-     :kb-read-ms  (let [rs (mapv (fn [_] (observe/note-change)
+     :kb-read-ms  (let [rs (mapv (fn [_] (observe/note-change (:clock kb))
                                    (first (ms #(stp/problem kb C))))
                                  (range 10))]
                     (mean rs))}))

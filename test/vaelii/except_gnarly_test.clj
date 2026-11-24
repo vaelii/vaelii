@@ -44,7 +44,7 @@
         (testing "visible in CxTop (the ancestor) and CxSibling (does not see CxMid)"
           (is (v/ask? kb (list shiny gold) CxTop))
           (is (v/ask? kb (list shiny gold) CxSibling)))
-        (testing "retract the except — visibility returns everywhere"
+        (testing "retract the except — belief returns everywhere"
           (v/retract! kb eh)
           (is (v/ask? kb (list shiny gold) CxMid))
           (is (v/ask? kb (list shiny gold) CxLeaf)))))))
@@ -53,7 +53,7 @@
 
 (tu/deftest-kb cross-context-meta-except
   ;; Fact in CxTop, excepted in CxMid, meta-excepted in CxLeaf.  The meta-except
-  ;; restores visibility only from CxLeaf's vantage — CxMid still sees the except.
+  ;; restores belief only from CxLeaf's vantage — CxMid still sees the except.
   (tu/with-terms [bright gem CxTop CxMid CxLeaf]
     (v/assert kb (list 'genlCx CxTop 'CxWell) 'CxUniverse {:strength :monotonic})
     (v/assert kb (list 'genlCx CxMid CxTop) 'CxUniverse {:strength :monotonic})
@@ -66,7 +66,7 @@
           (is (not (v/ask? kb (list bright gem) CxLeaf))))
 
         (let [m (v/assert kb (list 'except (sx/sentex-handle e)) CxLeaf {:strength :monotonic})]
-          (testing "meta-except in CxLeaf restores visibility there"
+          (testing "meta-except in CxLeaf restores belief there"
             (is (v/ask? kb (list bright gem) CxLeaf)
                 "the meta-except suppresses E's effect from CxLeaf's vantage"))
           (testing "CxMid still sees the except — the meta-except is below it"
@@ -236,17 +236,18 @@
   (is (= excepted-edge-expected (excepted-edge-readings kb (excepted-edge-orders)))))
 
 (defn- hidden-super-except-reading
-  "CxTop and CxSub see CxUniverse; E2 = (genlCx CxSup CxTop) with an except of E2 stated in
-  CxSup.  (ff Aa) in CxSub, the forward rule (ff ?x) ⇒ (gg ?x) in CxSub, an except of
-  (ff Aa) stated in CxTop and E = (genlCx CxSub CxSup) arrive in `order`.  Reads [(gg Aa)
-  stored at CxSub, (gg Aa) asked at CxSub, (ff Aa) asked at CxSub] after the writes and
-  again after retracting E, then retracts the rest."
-  [kb order]
+  "CxTop and CxSub see CxUniverse; E2 = (genlCx CxSup CxTop), with an except of E2 stated in
+  CxSup when `cut?`.  (ff Aa) in CxSub, the forward rule (ff ?x) ⇒ (gg ?x) in CxSub, an
+  except of (ff Aa) stated in CxTop and E = (genlCx CxSub CxSup) arrive in `order`.  Reads
+  [(gg Aa) stored at CxSub, (gg Aa) asked at CxSub, (ff Aa) asked at CxSub] after the
+  writes and again after retracting E, then retracts the rest."
+  [kb order cut?]
   (tu/with-terms [ff gg Aa CxTop CxSup CxSub]
     (let [M       {:strength :monotonic}
           hs      (volatile! (mapv #(v/assert kb (list 'genlCx % 'CxUniverse) 'CxUniverse M) [CxTop CxSub]))
           e2      (v/assert kb (list 'genlCx CxSup CxTop) 'CxUniverse M)
-          _       (vswap! hs conj e2 (v/assert kb (list 'except (sx/sentex-handle e2)) CxSup M))
+          _       (vswap! hs conj e2)
+          _       (when cut? (vswap! hs conj (v/assert kb (list 'except (sx/sentex-handle e2)) CxSup M)))
           f       (volatile! nil)
           e       (volatile! nil)
           reading (fn []
@@ -267,15 +268,16 @@
           (doseq [h (rseq @hs)] (when (and (not= h @e) (v/sentex kb h)) (v/retract! kb h)))
           [with without])))))
 
-(tu/deftest-kb an-except-in-a-context-the-sub-reaches-past-a-hidden-edge-is-rechecked-when-the-edge-arrives
-  ;; CxSup does not see CxTop (its edge is excepted there), but CxSub's raw ancestor set
-  ;; holds CxTop once E arrives, and the excepts in force are read off the raw set: the
-  ;; except of (ff Aa) hides the fact and sweeps the firing at CxSub in every order, and
-  ;; retracting E gives both back.
-  (is (= #{[[false false false] [true true true]]}
-         (into #{} (map #(hidden-super-except-reading kb %))
-               (remove #(< (.indexOf ^java.util.List % :exf) (.indexOf ^java.util.List % :fact))
-                       (oi/permutations [:edge :fact :exf :rule]))))))
+(tu/deftest-kb an-except-the-sub-sees-once-the-edge-arrives-is-rechecked-and-one-past-a-hidden-edge-hides-nothing
+  ;; E makes CxSub see CxSup, and through E2 CxTop.  With E2 believed at CxSup, the except
+  ;; of (ff Aa) in CxTop hides the fact and sweeps the firing at CxSub in every order, and
+  ;; retracting E gives both back.  With E2 excepted in CxSup, CxSub sees CxSup and not
+  ;; CxTop, so the except in CxTop removes nothing at CxSub, before E or after it.
+  (let [orders (remove #(< (.indexOf ^java.util.List % :exf) (.indexOf ^java.util.List % :fact))
+                       (oi/permutations [:edge :fact :exf :rule]))
+        read   (fn [cut?] (into #{} (map #(hidden-super-except-reading kb % cut?)) orders))]
+    (is (= #{[[false false false] [true true true]]} (read false)))
+    (is (= #{[[true true true] [true true true]]} (read true)))))
 
 (defn- reader-below-sub-reading
   "CxY, CxSub under CxUniverse; CxSup under CxY; CxR under CxSub; E' = (genlCx CxSub CxY)
@@ -548,13 +550,13 @@
             (is (= #{CxParent CxChild CxOther} (down)))))))))
 
 (tu/deftest-kb context-down-under-a-genlCx-except-is-held-per-reading
-  ;; A belief search (`tax/*search*` :belief) reads no except, so CxChild sees CxParent
-  ;; there and not under the visibility or the network reading.  In every order of the
+  ;; A withdrawal search (`tax/*search*` :withdrawn) reads no except, so CxChild sees
+  ;; CxParent there and not under the belief or the network reading.  In every order of the
   ;; three reads, each answers what a fresh memo answers.
   (doseq [order (oi/permutations [:plain :network :search])]
     (tu/with-terms [CxChild CxParent CxOther]
       (let [M     {:strength :monotonic}
-            in    {:plain {} :network {#'tax/*network-belief* true} :search {#'tax/*search* :belief}}
+            in    {:plain {} :network {#'tax/*network-belief* true} :search {#'tax/*search* :withdrawn}}
             down  (fn [r tx] (with-bindings (in r) (tax/context-down tx CxParent)))]
         (v/assert kb (list 'genlCx CxParent 'CxWell) 'CxUniverse M)
         (v/assert kb (list 'genlCx CxOther CxParent) 'CxUniverse M)
@@ -638,7 +640,7 @@
 
 ;; ---- 4b. an except a rule concluded ------------------------------------
 ;;
-;; A visibility `except` is one of the structural integrate arms — nothing about its
+;; An `except` is one of the structural integrate arms — nothing about its
 ;; functor is in the special-predicate table, so it is dispatched on the sentence's
 ;; shape (`special/structural-integrate`).  The derivation path has to reach that arm
 ;; too, and the two halves of what it does there are what these assert: `recheck-except`
@@ -726,8 +728,10 @@
         (testing "the genl sentex and interpreted edge are absent"
           (is (empty? (v/sentexes-matching kb (list 'genl dog animal) CxTax)))
           (is (not (v/genl? kb dog animal CxTax)))
-          (is (v/genl? kb dog animal)
-              "the unscoped cache remains a global superset, not a false retraction"))
+          (is (tax/genl?-global (reasoning/taxonomy kb) dog animal)
+              "the unscoped cache remains a global superset, not a false retraction")
+          (is (not (v/genl? kb dog animal))
+              "a read naming no context reads the edge at CxTax, where the except hides it"))
         (testing "retract the except — the genl sentex and edge return"
           (v/retract! kb eh)
           (is (seq (v/sentexes-matching kb (list 'genl dog animal) CxTax)))
@@ -760,7 +764,7 @@
 ;; special behavior is active, except the sentex handle, verify the sentex is
 ;; hidden from query, retract the except, verify the special behavior returns.
 
-(tu/deftest-kb except-blocks-genl-sentex-visibility
+(tu/deftest-kb an-except-hides-a-genl-sentex-until-retracted
   ;; genl: the taxonomy closure.
   (tu/with-terms [dog animal pet CxG]
     (v/assert kb (list 'genlCx CxG 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -777,7 +781,7 @@
           (is (seq (v/sentexes-matching kb (list 'genl dog animal) CxG)))
           (is (v/genl? kb dog animal CxG)))))))
 
-(tu/deftest-kb except-blocks-genlCx-sentex-visibility
+(tu/deftest-kb an-except-hides-a-genlCx-sentex-until-retracted
   ;; genlCx: the context inheritance closure.
   (tu/with-terms [shiny gold CxA CxB]
     (v/assert kb (list 'genlCx CxA 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -793,7 +797,7 @@
           (v/retract! kb eh)
           (is (seq (v/sentexes-matching kb (list 'genlCx CxB CxA) 'CxUniverse))))))))
 
-(tu/deftest-kb except-blocks-disjoint-sentex-visibility
+(tu/deftest-kb an-except-hides-a-disjoint-sentex-until-retracted
   ;; disjoint: pairwise type separation.
   (tu/with-terms [dog cat Muffet CxD]
     (v/assert kb (list 'genlCx CxD 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -808,7 +812,7 @@
           (is (seq (v/sentexes-matching kb (list 'disjoint dog cat) CxD)))
           (is (v/disjoint? kb dog cat)))))))
 
-(tu/deftest-kb except-blocks-disjointMetatype-sentex-visibility
+(tu/deftest-kb an-except-hides-a-disjointMetatype-sentex-until-retracted
   ;; disjoint_metatype: members of the metatype become pairwise disjoint.
   (tu/with-terms [animal_species dog cat CxDM]
     (v/assert kb (list 'genlCx CxDM 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -824,7 +828,7 @@
           (v/retract! kb eh)
           (is (seq (v/sentexes-matching kb (list 'disjoint_metatype animal_species) CxDM))))))))
 
-(tu/deftest-kb except-blocks-transitive-sentex-visibility
+(tu/deftest-kb an-except-hides-a-transitive-sentex-until-retracted
   ;; transitive: the transitive closure prover.
   (tu/with-terms [insideOf Gem Box Vault CxT]
     (v/assert kb (list 'genlCx CxT 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -842,7 +846,7 @@
           (is (seq (v/sentexes-matching kb (list 'transitive insideOf) CxT)))
           (is (v/has-prop? kb :transitive insideOf)))))))
 
-(tu/deftest-kb except-blocks-symmetric-sentex-visibility
+(tu/deftest-kb an-except-hides-a-symmetric-sentex-until-retracted
   ;; symmetric: both directions of a symmetric predicate are provable.
   (tu/with-terms [siblingOf Alice Bob CxS]
     (v/assert kb (list 'genlCx CxS 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -859,7 +863,7 @@
           (is (seq (v/sentexes-matching kb (list 'symmetric siblingOf) CxS)))
           (is (v/has-prop? kb :symmetric siblingOf)))))))
 
-(tu/deftest-kb except-blocks-asymmetric-sentex-visibility
+(tu/deftest-kb an-except-hides-a-asymmetric-sentex-until-retracted
   ;; asymmetric: the converse of an asymmetric predicate forms a nogood with the claim.
   (tu/with-terms [olderThan Alice Bob CxAs]
     (v/assert kb (list 'genlCx CxAs 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -876,7 +880,7 @@
           (is (seq (v/sentexes-matching kb (list 'asymmetric olderThan) CxAs)))
           (is (v/has-prop? kb :asymmetric olderThan)))))))
 
-(tu/deftest-kb except-blocks-reflexive-sentex-visibility
+(tu/deftest-kb an-except-hides-a-reflexive-sentex-until-retracted
   ;; reflexive: a reflexive predicate holds of everything with itself.
   (tu/with-terms [sameGroupAs Alice CxR]
     (v/assert kb (list 'genlCx CxR 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -891,7 +895,7 @@
           (is (seq (v/sentexes-matching kb (list 'reflexive sameGroupAs) CxR)))
           (is (v/has-prop? kb :reflexive sameGroupAs)))))))
 
-(tu/deftest-kb except-blocks-functional-sentex-visibility
+(tu/deftest-kb an-except-hides-a-functional-sentex-until-retracted
   ;; functional: a functional predicate has at most one value per subject.
   (tu/with-terms [motherOf Alice Mom CxF]
     (v/assert kb (list 'genlCx CxF 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -906,7 +910,7 @@
           (is (seq (v/sentexes-matching kb (list 'functional motherOf) CxF)))
           (is (v/has-prop? kb :functional motherOf)))))))
 
-(tu/deftest-kb except-blocks-irreflexive-sentex-visibility
+(tu/deftest-kb an-except-hides-a-irreflexive-sentex-until-retracted
   ;; irreflexive: a :default self tuple is OUT at a reader that reads the mark, and a
   ;; reader the mark is excepted from believes it.
   (tu/with-terms [before Alice CxIr]
@@ -926,7 +930,7 @@
           (is (v/has-prop? kb :irreflexive before))
           (is (not (v/believed? kb th CxIr))))))))
 
-(tu/deftest-kb except-blocks-antiSymmetric-sentex-visibility
+(tu/deftest-kb an-except-hides-a-antiSymmetric-sentex-until-retracted
   ;; anti_symmetric: a believed converse merges the two arguments via equals.
   (tu/with-terms [subsumes CxAnti]
     (v/assert kb (list 'genlCx CxAnti 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -941,7 +945,7 @@
           (is (seq (v/sentexes-matching kb (list 'anti_symmetric subsumes) CxAnti)))
           (is (v/has-prop? kb :anti-symmetric subsumes)))))))
 
-(tu/deftest-kb except-blocks-arity-sentex-visibility
+(tu/deftest-kb an-except-hides-a-arity-sentex-until-retracted
   ;; arity: the declared arity is cached and checked on every assertion.
   (tu/with-terms [myRel CxAr]
     (v/assert kb (list 'genlCx CxAr 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -956,7 +960,7 @@
           (is (seq (v/sentexes-matching kb (list 'arity myRel 2) CxAr)))
           (is (= 2 (tax/declared-arity (reasoning/taxonomy kb) myRel))))))))
 
-(tu/deftest-kb except-blocks-inverse-sentex-visibility
+(tu/deftest-kb an-except-hides-a-inverse-sentex-until-retracted
   ;; inverse: the inverse relation.
   (tu/with-terms [parentOf childOf CxInv]
     (v/assert kb (list 'genlCx CxInv 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -972,7 +976,7 @@
           (is (seq (v/sentexes-matching kb (list 'inverse parentOf childOf) CxInv)))
           (is (= childOf (v/inverse-of kb parentOf))))))))
 
-(tu/deftest-kb except-blocks-genlArg-sentex-visibility
+(tu/deftest-kb an-except-hides-a-genlArg-sentex-until-retracted
   ;; the constraint-only reading: the refusal is the subject
   (tu/without-entailing
    ;; genlArg: argument subtype constraint.
@@ -994,7 +998,7 @@
            (v/retract! kb eh)
            (is (seq (v/sentexes-matching kb (list 'genlArg typeRel 1 root) CxAG)))))))))
 
-(tu/deftest-kb except-blocks-interArgIsa-sentex-visibility
+(tu/deftest-kb an-except-hides-a-interArgIsa-sentex-until-retracted
   ;; interArgIsa: conditional argument type declaration.
   (tu/with-terms [eats carnivore meat CxIA]
     (v/assert kb (list 'genlCx CxIA 'CxWell) 'CxUniverse {:strength :monotonic})

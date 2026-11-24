@@ -35,24 +35,65 @@
   *clasp-binary* (configured-binary))
 
 (def ^:private mode-args
-  "The argv tail per mode.  The enumerating modes run `--opt-mode=optN`, over optimal
-   models only.  `:label` runs `--opt-mode=opt -n 0`, which streams each improving witness,
-   so a run the limit stops still has its best one (`:best-effort`) where `optN` yields
-   none before the proof.  `:sat` is `-n 1`, the first model of a program with no
-   objective."
-  {:label                ["--opt-mode=opt"  "-n" "0"]
-   :sat                  ["-n" "1"]
-   :all-optima           ["--opt-mode=optN" "-n" "0"]
-   :classify-true        ["--opt-mode=optN" "-e" "cautious" "-n" "0"]
-   :classify-supportable ["--opt-mode=optN" "-e" "brave"    "-n" "0"]})
+  "The argv tail per mode, in the long spelling clasp and clingo's control both read.  The
+   enumerating modes run `--opt-mode=optN`, over optimal models only.  `:label` runs
+   `--opt-mode=opt --models=0`, which streams each improving witness, so a run the limit
+   stops still has its best one (`:best-effort`) where `optN` yields none before the proof.
+   `:sat` is `--models=1`, the first model of a program with no objective."
+  {:label                ["--opt-mode=opt"  "--models=0"]
+   :sat                  ["--models=1"]
+   :all-optima           ["--opt-mode=optN" "--models=0"]
+   :classify-true        ["--opt-mode=optN" "--enum-mode=cautious" "--models=0"]
+   :classify-supportable ["--opt-mode=optN" "--enum-mode=brave"    "--models=0"]})
+
+(defn mode-flags
+  "`mode`'s flags under solve options `opts`, or nil for a mode `mode-args` lacks.
+   `:among` sets which models count: `:optimal` (the mode's own), `:all`
+   (`--opt-mode=ignore`), or a cost vector (`--opt-mode=enum,…`, every model whose cost is
+   lexicographically at most it).  A positive `:models` caps an `:all-optima` enumeration,
+   and `:project?` adds `--project`, one model per distinct projection."
+  [mode {:keys [among models project?]}]
+  (when-let [flags (mode-args mode)]
+    (let [opt-mode (cond (contains? #{nil :optimal} among) nil
+                         (= :all among)                  "--opt-mode=ignore"
+                         :else                           (str "--opt-mode=enum," (str/join "," among)))]
+      (cond-> (if opt-mode
+                (conj (filterv #(not (str/starts-with? % "--opt-mode=")) flags) opt-mode)
+                flags)
+        (and (= :all-optima mode) (pos-int? models))
+        (->> (mapv #(if (= "--models=0" %) (str "--models=" models) %)))
+        project? (conj "--project")))))
+
+(defn optimal-only?
+  "Do solve options `opts` count optimal models only, as `mode-flags` reads `:among`?"
+  [opts]
+  (contains? #{nil :optimal} (:among opts)))
+
+(defn without-optimum
+  "`result` of a solve under `opts`, which claims no optimum when `opts` admit non-optimal
+   models (`optimal-only?`): its `:optimum` status reads `:sat` and its `:cost` and `:costs`
+   are nil.  Under `:among :all` each `:witness-costs` entry is nil too: clasp reports no
+   cost when it ignores the objective."
+  [result opts]
+  (if (optimal-only? opts)
+    result
+    (cond-> (assoc result :cost nil :costs nil
+                   :status (if (= :optimum (:status result)) :sat (:status result)))
+      (and (= :all (:among opts)) (:witness-costs result))
+      (update :witness-costs #(mapv (constantly nil) %)))))
+
+(defn solve-seconds
+  "The seconds one solve under `opts` may run: `:time-limit`, else `config/asp-time-limit`."
+  [opts]
+  (or (:time-limit opts) (config/asp-time-limit)))
 
 (defn- deadline-ms
   "Milliseconds the JVM waits on one clasp process before killing it: the time limit
-   plus the larger of the time limit and 10 s, so 120 s at the default.  Nil when
-   `config/asp-time-limit` is 0, which lifts both.  clasp stops itself at
+   plus the larger of the time limit and 10 s, so 120 s at the default.  Nil when the
+   time limit (`solve-seconds`) is 0, which lifts both.  clasp stops itself at
    `--time-limit`, so this fires only on a process that did not."
-  []
-  (let [n (long (config/asp-time-limit))]
+  [opts]
+  (let [n (long (solve-seconds opts))]
     (when (pos? n) (* 1000 (+ n (max n 10))))))
 
 (defn- kill-tree!
@@ -64,7 +105,8 @@
   (.waitFor p))
 
 (defn- run-clasp
-  "Run `*clasp-binary*` with `args` and `in` on stdin: `{:exit :out :err}`.
+  "Run `*clasp-binary*` with `args` and `in` on stdin, under solve options `opts`' time
+   limit: `{:exit :out :err}`.
 
    The process is exec'd directly (no shell), so a missing binary is an IOException,
    never the shell's exit-127 convention.  Both are `:solver-unavailable`: a missing
@@ -72,7 +114,7 @@
    descendants first.  stdin is written and stdout and stderr read on their own
    threads, so a process that reads nothing or writes more than a pipe buffer cannot
    block the wait."
-  [args ^String in]
+  [args ^String in opts]
   (let [^Process p (try
                      (.start (ProcessBuilder. ^java.util.List (into [*clasp-binary*] args)))
                      (catch java.io.IOException e
@@ -82,7 +124,7 @@
                                        {:type :solver-unavailable :binary *clasp-binary*} e))))
         out (future (slurp (.getInputStream p) :encoding "UTF-8"))
         err (future (slurp (.getErrorStream p) :encoding "UTF-8"))
-        ms  (deadline-ms)]
+        ms  (deadline-ms opts)]
     ;; a process that exits without reading all of stdin breaks the pipe; its answer is
     ;; on stdout, and the write has nothing to add
     (future (try (with-open [w (io/writer (.getOutputStream p) :encoding "UTF-8")]
@@ -103,8 +145,8 @@
   "Run clasp with `argv` and `aspif-text` on stdin. Returns parsed JSON.
    Throws when clasp cannot be run or does not exit by its deadline (`run-clasp`), or
    produces unparseable output — UNSAT is a valid outcome, not an error."
-  [argv aspif-text]
-  (let [{:keys [exit out err]} (run-clasp (into ["--outf=2"] argv) aspif-text)]
+  [argv aspif-text opts]
+  (let [{:keys [exit out err]} (run-clasp (into ["--outf=2"] argv) aspif-text opts)]
     (if (str/blank? out)
       (throw (ex-info (str "clasp produced no output (exit " exit ") — a solve answers"
                            " JSON on stdout under --outf=2, so an empty body is clasp"
@@ -126,15 +168,14 @@
 (defn- stopped-short?
   "Did clasp stop before its search finished: the solve limit, the time limit, or a
    signal?  The time limit and a signal are flags beside `Result`; the solve limit shows
-   only as `More: yes`.  Under `-n 1` (`sat?`) a search with a model says `More: yes` by
-   design, so there only a search with no model stopped short."
-  [parsed sat?]
+   only as `More: yes`.  A search that holds every model its `--models` cap asks for says
+   `More: yes` by design (`capped?`), so it did not stop short."
+  [parsed capped?]
   (boolean (or (some #(= 1 (get parsed (keyword %))) ["TIME LIMIT" "INTERRUPTED"])
-               (and (= "yes" (-> parsed :Models :More))
-                    (not (and sat? (seq (all-witnesses parsed))))))))
+               (and (= "yes" (-> parsed :Models :More)) (not capped?)))))
 
-(defn- status-of [parsed sat?]
-  (if (stopped-short? parsed sat?)
+(defn- status-of [parsed capped?]
+  (if (stopped-short? parsed capped?)
     :interrupted
     (case (:Result parsed)
       "OPTIMUM FOUND" :optimum
@@ -143,23 +184,26 @@
       :unknown)))
 
 (defn- time-limit-args
-  "`--time-limit=N` for a positive `config/asp-time-limit`, nothing for 0."
-  []
-  (let [n (config/asp-time-limit)]
+  "`--time-limit=N` for a positive time limit under `opts` (`solve-seconds`), nothing for 0."
+  [opts]
+  (let [n (solve-seconds opts)]
     (when (pos? n) [(str "--time-limit=" n)])))
 
 (defn search-args
   "The flags under which a solve's search is a function of its program alone: one
-   thread, clasp's own default seed (1) stated rather than assumed, the
-   `config/asp-opt-strategy` optimization strategy, and `--solve-limit=N` for a positive
-   `config/asp-solve-limit`.  The limit counts
+   thread, clasp's own default seed (1) stated rather than assumed, the optimization
+   strategy, and `--solve-limit=N` for a positive solve limit.  The strategy and the limit
+   are solve options `opts`' `:opt-strategy` (clasp's spelling) and `:solve-limit`, else
+   `config/asp-opt-strategy` and `config/asp-solve-limit`.  The limit counts
    conflicts, so it stops a search at the same point on any machine, where
    `--time-limit` stops it wherever the machine has got to.  In-process clingo's control
    takes the same flags (`vaelii.impl.asp.clingo`)."
-  []
-  (let [n (config/asp-solve-limit)]
-    (cond-> ["--parallel-mode=1" "--seed=1" (str "--opt-strategy=" (config/asp-opt-strategy))]
-      (pos? n) (conj (str "--solve-limit=" n)))))
+  ([] (search-args nil))
+  ([{:keys [opt-strategy solve-limit]}]
+   (let [n (or solve-limit (config/asp-solve-limit))]
+     (cond-> ["--parallel-mode=1" "--seed=1"
+              (str "--opt-strategy=" (or opt-strategy (config/asp-opt-strategy)))]
+       (pos? n) (conj (str "--solve-limit=" n))))))
 
 (defn- optimum-costs
   "clasp's optimum cost vector, one entry per minimize level, highest first; nil with no
@@ -193,58 +237,73 @@
   (boolean (re-find #"(?m)^2 -?\d+ [1-9]" aspif-text)))
 
 (defn solve
-  "Run clasp on `aspif-text` in one of the supported modes.
-
-   Modes:
-     :label                — one minimum-cost witness (for labeling output)
-     :sat                  — the first witness, for a program with no objective
-     :all-optima           — every minimum-cost witness (for inspection)
-     :classify-true        — atoms in every minimum-cost witness
-     :classify-supportable — atoms in at least one minimum-cost witness
+  "Run clasp on `aspif-text` in `mode` under solve options `opts` (`mode-flags`,
+   `search-args`, `time-limit`).  Modes: `:label` one minimum-cost witness, `:sat` the
+   first witness, `:all-optima` every minimum-cost witness (every witness `:among` admits),
+   and `:classify-true` / `:classify-supportable` the atoms in every / some such witness.
 
    Returns:
      :status    — :optimum | :sat | :best-effort | :unsat | :interrupted | :unknown
      :atoms     — vector of atom-name strings
-     :cost      — optimum cost (nil if no minimize statement or unsat)
-     :witnesses — vector of value vectors (only populated for :all-optima)
+     :cost      — optimum cost, `:costs` its vector by level, highest first (nil if none)
+     :witnesses — vector of value vectors, `:witness-costs` their costs (`:all-optima`)
      :raw       — full parsed JSON (for diagnostics)
 
-   A `:label` solve of a program with no objective runs under `:sat`'s flags.
+   A `:label` solve runs under `:sat`'s flags for a program with no objective, and for
+   `opts` admitting non-optimal models (`optimal-only?`).
    `:interrupted` is a search the solve limit, the time limit or a signal stopped; a
    stopped `:label` or `:sat` solve holding a witness is `:best-effort` instead."
-  [aspif-text mode]
-  (let [run    (if (and (= :label mode) (not (objective? aspif-text))) :sat mode)
-        argv   (or (mode-args run)
-                   (throw (ex-info (str "unknown clasp mode: " (pr-str mode) " — want one of "
-                                        (pr-str (vec (sort (keys mode-args)))))
-                                   {:type :unknown-option :mismatch :bad-value :mode mode :valid (keys mode-args)})))
-        parsed (invoke-clasp (concat argv (search-args) (time-limit-args)) aspif-text)
-        status (status-of parsed (= :sat run))]
-    (case mode
-      (:label :sat)
-      (let [best (first (optimal-witnesses parsed))]
-        {:status (if (and (= :interrupted status) best) :best-effort status)
-         :atoms  (value-of best)
+  ([aspif-text mode] (solve aspif-text mode nil))
+  ([aspif-text mode opts]
+   (let [run     (if (and (= :label mode) (not (and (objective? aspif-text) (optimal-only? opts))))
+                   :sat
+                   mode)
+         argv    (or (mode-flags run opts)
+                     (throw (ex-info (str "unknown clasp mode: " (pr-str mode) " — want one of "
+                                          (pr-str (vec (sort (keys mode-args)))))
+                                     {:type :unknown-option :mismatch :bad-value :mode mode :valid (keys mode-args)})))
+         parsed  (invoke-clasp (concat argv (search-args opts) (time-limit-args opts)) aspif-text opts)
+         capped? (case run
+                   :sat        (boolean (seq (all-witnesses parsed)))
+                   :all-optima (and (pos-int? (:models opts))
+                                    (>= (long (if (optimal-only? opts)
+                                                (or (-> parsed :Models :Optimal) 0)
+                                                (count (all-witnesses parsed))))
+                                        (long (:models opts))))
+                   false)
+         status  (status-of parsed capped?)]
+     (without-optimum
+      (case mode
+        (:label :sat)
+        (let [best (first (optimal-witnesses parsed))]
+          {:status (if (and (= :interrupted status) best) :best-effort status)
+           :atoms  (value-of best)
+           :cost   (optimum-cost parsed)
+           :costs  (optimum-costs parsed)
+           :raw    parsed})
+
+        :all-optima
+        (let [ws (if (optimal-only? opts) (optimal-witnesses parsed) (all-witnesses parsed))]
+          {:status        status
+           :atoms         (value-of (first ws))
+           :cost          (optimum-cost parsed)
+           :costs         (optimum-costs parsed)
+           :witnesses     (mapv value-of ws)
+           :witness-costs (mapv #(some-> (:Costs %) vec) ws)
+           :raw           parsed})
+
+        (:classify-true :classify-supportable)
+        ;; the last streamed witness is the converged consequence set
+        {:status status
+         :atoms  (value-of (last (all-witnesses parsed)))
          :cost   (optimum-cost parsed)
+         :costs  (optimum-costs parsed)
          :raw    parsed})
-
-      :all-optima
-      {:status    status
-       :atoms     (value-of (first (optimal-witnesses parsed)))
-       :cost      (optimum-cost parsed)
-       :witnesses (mapv value-of (optimal-witnesses parsed))
-       :raw       parsed}
-
-      (:classify-true :classify-supportable)
-      ;; the last streamed witness is the converged consequence set
-      {:status status
-       :atoms  (value-of (last (all-witnesses parsed)))
-       :cost   (optimum-cost parsed)
-       :raw    parsed})))
+      opts))))
 
 (defn available?
   "True if the clasp binary runs in the current environment."
   []
   (try
-    (zero? (long (:exit (run-clasp ["--version"] ""))))
+    (zero? (long (:exit (run-clasp ["--version"] "" nil))))
     (catch Exception _ false)))

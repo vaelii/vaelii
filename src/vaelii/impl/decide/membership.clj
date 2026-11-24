@@ -29,8 +29,8 @@
 ;; read off the index (`reads/as-stored-unary-kept-terms`, `reads/as-stored-unary-denied-terms`,
 ;; `listed-under`).  `::sep` holds, per kept term, the pairs of its types the unscoped taxonomy separates with no exception read,
 ;; `{x {[ta tb] how}}`, `how` `:spared` when a stored `siblingDisjointException` exempts the pair and
-;; `:sep` otherwise.  A pair is tested when its second type arrives at the term, and again
-;; when `tax/separation-inputs` or a `genl` edge moves over one of its types
+;; `:sep` otherwise.  `::reach` holds, per kept term, its types a separation reaches, `{x #{t}}`.
+;; A pair is tested when its second type arrives at the term, and again when `tax/separation-inputs` or a `genl` edge moves over one of its types
 ;; (`sync-memberships`), which reads no membership.  A term holding a separated pair, or a
 ;; membership beside a denial its nogoods convict, is live under `::live-mem`, and its
 ;; memberships and denials there are the family's candidates under `:membership`.
@@ -114,24 +114,36 @@
 (defn- pair-of [a b] (if (neg? (compare a b)) [a b] [b a]))
 
 (defn- untest
-  "`c` with the separated pairs of term `x` holding type `t` dropped."
+  "`c` with type `t` of term `x` dropped from `::reach`, and the separated pairs of `x`
+  holding `t` dropped."
   [c x t]
-  (let [left (into {} (remove #(some #{t} (key %))) (get-in c [::sep x]))]
+  (let [left  (into {} (remove #(some #{t} (key %))) (get-in c [::sep x]))
+        reach (disj (get-in c [::reach x] #{}) t)
+        c     (if (seq reach) (assoc-in c [::reach x] reach) (update c ::reach dissoc x))]
     (if (seq left) (assoc-in c [::sep x] left) (update c ::sep dissoc x))))
 
 (defn- test-type
-  "`c` with the pair of type `t` and each type of `bs` tested (`test`,
-  `separation-tests`), and the separated ones of term `x` under `::sep`; `bs` defaults to
-  every type `x` holds.  Tests no pair when no separation reaches `t` or the partner,
-  since the unscoped test is symmetric."
-  ([test c x t] (test-type test c x t (keys (get-in c [::types x]))))
+  "`c` with type `t` of term `x` under `::reach` when a separation reaches it.  The pair of
+  `t` and each type of `bs` is tested (`test`, `separation-tests`), and the separated ones
+  go under `::sep`.  `bs` defaults to the types of `x` under `::reach`, since the unscoped
+  test is symmetric and tests no pair a separation does not reach at both ends.  A term
+  holding one other type is tested against it and its `::reach` read again: the index
+  lists a term under its types only from two of them (`listed-under`), so a sync can miss
+  the other type's reach."
+  ([test c x t]
+   (let [others (keys (dissoc (get-in c [::types x]) t))]
+     (if (next others)
+       (test-type test c x t (get-in c [::reach x]))
+       (test-type test (reduce #(cond-> %1 (test %2) (update-in [::reach x] (fnil conj #{}) %2))
+                               c others)
+                  x t others))))
   ([test c x t bs]
    (if-let [f (test t)]
      (reduce (fn [c b]
                (if-let [how (and (not= b t) (test b) (f b))]
                  (assoc-in c [::sep x (pair-of t b)] how)
                  c))
-             c bs)
+             (update-in c [::reach x] (fnil conj #{}) t) bs)
      c)))
 
 (defn- add-entry
@@ -178,7 +190,7 @@
   "`c` with term `x` and every row naming it dropped."
   [c x]
   (-> c (update ::mem dissoc x) (update ::types dissoc x) (update ::denials dissoc x)
-      (update ::sep dissoc x)))
+      (update ::sep dissoc x) (update ::reach dissoc x)))
 
 (defn- combinations
   "The cartesian product of the collections `colls`, each product a vector."
@@ -329,10 +341,21 @@
   taxonomy's (docs/nmtms.md, \"How a settle finds the clashes\")."
   [tax c]
   (let [seen (::sep-inputs c)]
-    (and (some? seen)
+    (and (some? seen) (some? (::reach c))
          (let [st (tax/separation-inputs tax)]
            (and (= (count st) (count seen)) (every? true? (map identical? st seen))))
          (= (tax/relation-gen tax :genl) (::genl-seen c)))))
+
+(defn reached-types
+  "The types of term `x` a separation reaches, read off the candidate index (`::reach`),
+  or nil when the index does not keep `x` with two types or more, or is not read under the
+  taxonomy as it stands (`membership-synced?`).  Every type of a stored membership of `x`
+  that any reader's separation keeps apart from another type is in it."
+  [kb x]
+  (let [c @(reasoning/nogood-candidates kb)]
+    (when (and (next (keys (get-in c [::types x])))
+               (membership-synced? (reasoning/taxonomy kb) c))
+      (get-in c [::reach x] #{}))))
 
 (defn- sync-memberships
   "`c` with `::sep` and the kept nogoods read again under the taxonomy as it stands.  The
@@ -354,18 +377,20 @@
         g      (tax/relation-gen tax :genl)
         seen   (::genl-seen c)
         test   (separation-tests tax)
-        full   (or (nil? old) (nil? seen) (< g seen))
+        full   (or (nil? old) (nil? seen) (< g seen) (nil? (::reach c)))
         ;; an edge moving can move a nogood's routes with its members unmoved
         edge?  (or (nil? seen) (not= g seen))
         decl?  (not= st old)
         retest (fn [c x ts] (reduce #(test-type test (untest %1 x %2) x %2) c ts))
         lows   (when (and edge? (not full)) (tax/moves-since tax :genl seen))
         [c xs] (if full
-                 ;; each pair once, by its first type in the term's order
+                 ;; each reached pair once, by its first type in the term's order
                  [(reduce-kv (fn [c x ts]
-                               (loop [c c [t & bs] (keys ts)]
-                                 (if bs (recur (test-type test c x t bs) bs) c)))
-                             (assoc c ::sep {}) (::types c))
+                               (let [rs (filterv test (keys ts))]
+                                 (loop [c (cond-> c (seq rs) (assoc-in [::reach x] (set rs)))
+                                        [t & bs] rs]
+                                   (if bs (recur (test-type test c x t bs) bs) c))))
+                             (assoc c ::sep {} ::reach {}) (::types c))
                   (keys (::mem c))]
                  (let [ends   (cond-> (set lows) decl? (into (tax/separation-moves old st)))
                        hits   (holding c (listed-under kb w ends [:kept]))
@@ -776,7 +801,7 @@
                :settle-pass :K :recover :R :image-install :R}
   :computed :read :imaged? :state
   :at [[:nogood-candidates :membership] [:nogood-candidates ::mem]
-       [:nogood-candidates ::sep] [:nogood-candidates ::sep-inputs]
+       [:nogood-candidates ::sep] [:nogood-candidates ::reach] [:nogood-candidates ::sep-inputs]
        [:nogood-candidates ::live-mem] [:nogood-candidates ::denials]
        [:nogood-candidates ::ngs] [:nogood-candidates ::types]
        [:nogood-candidates ::genl-seen] [:nogood-candidates ::no-pos]

@@ -306,8 +306,14 @@
         (try
           (is (= :space (:option (refused {:backend :overlay
                                            :base-stores {:records (:records base)
-                                                         :index   (:index base)}
+                                                         :index   (:index base)
+                                                         :clock   (:clock base)}
                                            :overlay {:backend :memory :space "7"}}))))
+          (is (= :base-stores (:option (refused {:backend :overlay
+                                                 :base-stores {:records (:records base)
+                                                               :index   (:index base)}
+                                                 :overlay {:backend :memory :space 189}})))
+              "a pair with no :clock, whose fork would read none of its base's writes")
           (is (= :space (:option (try (v/fork base {:space nil}) nil
                                       (catch clojure.lang.ExceptionInfo e (ex-data e))))))
           (is (= :dir (:option (refused {:backend :overlay

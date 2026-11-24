@@ -77,7 +77,7 @@
                      (is (= (p/kv-increment m k) (p/kv-increment d k)) "incr reply"))
           (< r 92) (let [k (tu/pick rng fallback-keys)]
                      (is (= (p/kv-decrement m k) (p/kv-decrement d k)) "decr reply"))
-          :else    (let [ks (vec (take (inc (.nextInt rng 3)) (shuffle index-keys)))]
+          :else    (let [ks (vec (take (inc (.nextInt rng 3)) (tu/shuffled rng index-keys)))]
                      (is (= (p/kv-intersect m ks) (p/kv-intersect d ks)) (str "sinter " ks))))))
     ;; members + cardinality agree for every key
     (doseq [k (concat index-keys node-keys)]

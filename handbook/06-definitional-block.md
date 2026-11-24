@@ -122,12 +122,12 @@ relation properties.
 
 ```clojure
 (comment siblingOf
-         "(siblingOf ?first ?second) means ?first and ?second are siblings, by blood or by choice. Half-siblings count.")
+         "(siblingOf ?first ?second) means ?first and ?second are siblings, genetically or by choice. Half-siblings count.")
 (implementationNote siblingOf "Declared symmetric, so one assertion answers both orders and the two spellings store as one sentex.")
 (set/monotonic (instance_relation_predicate siblingOf))
 (arg siblingOf 1 causal)
 (arg siblingOf 2 causal)
-(generic_kinship_predicate siblingOf)
+(unqualified_kinship_predicate siblingOf)
 (set/monotonic (symmetric siblingOf))
 ```
 
@@ -150,5 +150,6 @@ declaration does to storage describes the engine, so it is an `implementationNot
   written under it are typed by nothing until someone declares the types and the
   declarations reach back over them.
 
-**Audit.** `describe` on a new relation answers `:arity`, `:arg-declarations` and `:props`.
-Each empty one is a part of the block the change either supplies or explains.
+**Audit.** `describe` on a new relation answers `:arity` and `:arg-declarations`, and its
+`:definitional-block` lists its relation properties under `:props`. Each empty one is a part
+of the block the change either supplies or explains.

@@ -314,10 +314,12 @@
           (noted (conj ps h) [h])))))
 
 (defn- add-det-member
-  "`c` with `h`, filling `v` in context `cx`, a member of determinant `key`."
+  "`c` with `h`, filling `v` in context `cx`, a member of determinant `key`, and queued
+  under `::slot-moved` for its merges to be asked (`take-slot-moves!`)."
   [w c key h v cx]
   (as-> c c
     (assoc-in c [::det key h] [v cx])
+    (update c ::slot-moved (fnil conj #{}) h)
     (update-in c [::det-ctx key cx] (fnil conj #{}) h)
     (link c [h] [::det key])
     (classify-det-member w c key h)))
@@ -439,7 +441,9 @@
 
 (defn- drop-det-member
   "`c` with `h` gone from determinant `key`: the determinant goes when one filler is
-  left, and a partner left with none is no longer live."
+  left, and a partner left with none is no longer live.  The members left are queued
+  under `::slot-moved`, since a rival leaving can leave a proxy filler one
+  constant to merge onto (`take-slot-moves!`)."
   [w c key h]
   (let [[_ cx] (get-in c [::det key h])
         ps     (det-partners w c key h)
@@ -453,7 +457,8 @@
       (reduce (fn [c h'] (if (seq (det-partners w c key h'))
                            c
                            (update-in c [::live key] disj h')))
-              c ps)
+              (update c ::slot-moved (fnil into #{}) (keys g))
+              ps)
       (-> c
           (update ::det dissoc key)
           (update ::det-ctx dissoc key)
@@ -472,12 +477,29 @@
           (update c ::member-of dissoc h)
           (get-in c [::member-of h])))
 
+(defn- determinacy-term
+  "The term `sx` makes a member of `proxy_term` or a subkind, either part among them
+  (unscoped), else nil."
+  [w sx]
+  (let [s (:sentence sx)]
+    (when (and (nil? (:antecedent sx)) (seq? s) (= 2 (count s)) (symbol? (first s)))
+      (when (or (= 'proxy_term (first s))
+                (contains? ((:specs-global w) 'proxy_term) (first s)))
+        (second s)))))
+
 (defn- note-tuple!
   "Keep the tuple-mark candidates in step with the fact `sx` arriving (`stored?` true) or
   leaving.  An arriving tuple reads its determinants and chains (`found-for`) while the
-  taxonomy holds a tuple mark; a leaving one reads nothing."
+  taxonomy holds a tuple mark; a leaving one reads nothing.  A membership moving a term's
+  level queues the term under `::determinacy-moved` and its members under `::moved`."
   [kb w sx stored?]
   (let [cands (reasoning/nogood-candidates kb)]
+    (when-let [t (and (tuple-marks? (:tax w)) (determinacy-term w sx))]
+      (let [hs (reads/as-stored-with-term (:index kb) t)]
+        (swap! cands (fn [c]
+                       (let [in (filterv #(contains? (::member-of c) %) hs)]
+                         (cond-> (update c ::determinacy-moved (fnil conj #{}) t)
+                           (seq in) (noted in)))))))
     (if stored?
       (when (tuple-marks? (:tax w))
         (when-let [[q args] (fact-tuple sx)]
@@ -616,6 +638,66 @@
   (let [[old _] (swap-vals! (reasoning/nogood-candidates kb) dissoc ::moved)]
     (::moved old #{})))
 
+(defn slot-moves?
+  "Has the candidate index queued a slot `take-slot-moves!` hands back?"
+  [kb]
+  (let [c @(reasoning/nogood-candidates kb)]
+    (boolean (or (seq (::slot-moved c)) (seq (::determinacy-moved c))))))
+
+(defn take-slot-moves!
+  "`[handles terms]` queued since the last call, and both queues emptied: the members a
+  departed determinant member left behind (`drop-det-member`), and the terms a membership
+  moved the determinateness of (`note-tuple!`).  `special/class-moved-merges` re-asks
+  the functional merges of their slots."
+  [kb]
+  (let [[old _] (swap-vals! (reasoning/nogood-candidates kb) dissoc ::slot-moved ::determinacy-moved)]
+    [(::slot-moved old #{}) (::determinacy-moved old #{})]))
+
+(defn note-slots-moved!
+  "Queue under `::slot-moved` the handles of `hs` the index keeps in a determinant, whose
+  visibility moved with no relabel (`special/class-moved-merges`)."
+  [kb hs]
+  (when (seq hs)
+    (let [cands (reasoning/nogood-candidates kb)
+          in    (into #{} (filter #(some (fn [[kind]] (= ::det kind)) (get-in @cands [::member-of %]))) hs)]
+      (when (seq in)
+        (swap! cands update ::slot-moved (fnil into #{}) in)))))
+
+(defn note-contexts-moved!
+  "Queue under `::slot-moved` the determinant members stored in a context of `ctxs`,
+  whose visibility a `genlCx` move changed: a rival there can reach a merge it did not
+  reach, or stop reaching one (`special/class-moved-merges`)."
+  [kb ctxs]
+  (when (seq ctxs)
+    (swap! (reasoning/nogood-candidates kb)
+           (fn [c]
+             (let [hs (into #{} (comp (mapcat (fn [by] (keep #(get by %) ctxs))) cat)
+                            (vals (::det-ctx c)))]
+               (cond-> c (seq hs) (update ::slot-moved (fnil into #{}) hs)))))))
+
+(defn determinant-member?
+  "Does the candidate index keep the stored fact `h` in a determinant: does another
+  filler share a slot `h` fills?"
+  [kb h]
+  (boolean (some (fn [[kind]] (= ::det kind)) (get-in @(reasoning/nogood-candidates kb) [::member-of h]))))
+
+(defn determinant-slots
+  "`{key {h [filler context]}}` for every determinant the candidate index keeps a handle
+  of `hs` in, holding the members a functional merge can join or a rival can withdraw.
+  Both need two fillers some context sees together, so these are the live members while
+  `::live` is read at the current `genlCx` generation, and every member otherwise."
+  [kb hs]
+  (let [c     @(reasoning/nogood-candidates kb)
+        live? (= (tax/relation-gen (reasoning/taxonomy kb) :genlCx) (::ts-gen c 0))]
+    (reduce (fn [m h]
+              (reduce (fn [m [kind key]]
+                        (if (or (not= ::det kind) (contains? m key))
+                          m
+                          (let [g (get-in c [::det key])]
+                            (assoc m key (if live? (select-keys g (get-in c [::live key])) g)))))
+                      m (get-in c [::member-of h])))
+            {} hs)))
+
 (defn- note-placement-left!
   "Queue the tuple members a `(contradicts …)` sentex `sx` leaving the store names, so the
   settle places their nogoods where they stand (`take-moved!`): a `genlCx` edge under the
@@ -705,14 +787,14 @@
   chain the `anti_transitive` ones, and a converse pair the `asymmetric` ones and the
   `anti_symmetric` ones unless it merges (`merges?`,
   `special/derive-antisymmetric-equalities`), and a `negates` set the declarations over
-  its functors (`negates-routes`).  A determinant pair reads the determinant's
-  own `functional` and `functionalInArg` marks; two symbol fillers both `:monotonic` merge
-  (`special/derive-functional-equalities`) and give no route.  Two symbol fillers one class
-  at a reader form no nogood there, which the read reads (`exempt-at?`).  A determinant
-  pair's routes carry `:excluded-at`, the contexts at which `agree?`, `(fn [v1 v2
-  context])`, reads its two fillers as one value (`chain/route-placements`).  `w` is
-  `decide/unscoped-closures`'s."
-  [kb w c {:keys [members specs]} agree?]
+  its functors (`negates-routes`).  A determinant pair reads the determinant's own
+  `functional` and `functionalInArg` marks; two symbols both `:monotonic` merge and give
+  no route.  Two symbols one class at a reader form no nogood there (`exempt-at?`).  A
+  determinant pair's routes carry `:excluded-at` (`chain/route-placements`).  For two
+  symbols it holds where `indeterminate?`, `(fn [v context])`, reads either as not
+  determinate.  For another pair it holds where `agree?`, `(fn [v1 v2 context])`, reads
+  the two fillers as one value.  `w` is `decide/unscoped-closures`'s."
+  [kb w c {:keys [members specs]} agree? indeterminate?]
   (let [tax   (:tax w)
         tms   (reasoning/tms kb)
         recs  (:records kb)
@@ -738,8 +820,11 @@
                               sym?    (mergeable-values? v1 v2)]
                           (when-not (and sym? (every? #(monotonic-member? tms %) members))
                             (for [mk (cond-> [[:functional-in-arg q n]] (= 2 k n) (conj [:prop :functional q]))]
-                              (cond-> {:keys #{mk} :links (links q)}
-                                (not sym?) (assoc :excluded-at #(agree? v1 v2 %)))))))))
+                              {:keys        #{mk}
+                               :links       (links q)
+                               :excluded-at (if sym?
+                                              #(or (indeterminate? v1 %) (indeterminate? v2 %))
+                                              #(agree? v1 v2 %))}))))))
             (sort-by nm/print-key specs)))))
 
 (defn kind-of

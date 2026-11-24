@@ -11,6 +11,8 @@
             [vaelii.core :as v]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
+            [vaelii.impl.settle :as settle]
+            [vaelii.impl.wiring :as wiring]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :each (tu/neutral-fresh tu/fresh))
@@ -119,8 +121,8 @@
         (doseq [f facts]
           (is (seq (v/sentexes-matching kb f CxBulk)))
           (is (seq (v/sentexes-matching kb f CxSlow)))
-          (is (v/in? kb (v/handle-of kb f CxBulk)))
-          (is (v/in? kb (v/handle-of kb f CxSlow)))))
+          (is (v/believed? kb (v/handle-of kb f CxBulk)))
+          (is (v/believed? kb (v/handle-of kb f CxSlow)))))
       (testing "same index — each argument root holds both halves' handles"
         (doseq [t inds, pos [1 2]]
           (is (= (count (filter #(= CxBulk (:context (v/sentex kb %)))
@@ -163,7 +165,7 @@
       (is (= stored (mapv #(v/handle-of kb % CxBulkStop) (take (count stored) facts)))
           "the stored handles are the facts before the stop, in input order")
       (is (= (into before stored) (tu/sentex-ids kb)) "no other record")
-      (is (every? #(v/in? kb %) stored) "the closing settle ran over what the load kept"))))
+      (is (every? #(v/believed? kb %) stored) "the closing settle ran over what the load kept"))))
 
 ;; ---- nesting composes: only the outermost settles ------------------------
 
@@ -179,3 +181,34 @@
         (is (seq (v/sentexes-matching kb (list flies Opus) CxBird)))))
     (testing "the outermost settle swept it"
       (is (empty? (v/sentexes-matching kb (list flies Opus) CxBird))))))
+
+(defn- settles-inside-batch
+  "The `settle/settle` calls made while `with-deferred-settle` defers, running `f`."
+  [f]
+  (let [n      (atom 0)
+        settle settle/settle]
+    (with-redefs [settle/settle (fn [kb] (when wiring/*defer-settle?* (swap! n inc)) (settle kb))]
+      (f))
+    @n))
+
+(tu/deftest-kb no-write-path-settles-inside-a-deferred-batch
+  (tu/with-terms [FruitFn AppleTree Gala Doc dog holdsIn tagged ripe heardOf fruitOf]
+    (let [marks [(list 'reifiable_function FruitFn) (list 'binary_predicate fruitOf)
+                 (list fruitOf AppleTree Gala) (list tagged Gala)]
+          rows  {:correspondence
+                 [(list 'set/forwardRule (list 'implies (list tagged (list FruitFn '?t)) (list ripe '?t)))
+                  (list 'functionCorrespondingPredicate FruitFn fruitOf 2)]
+                 :formula-position
+                 [(list 'functionCorrespondingPredicate FruitFn fruitOf 2)
+                  (list holdsIn Doc (list dog AppleTree))
+                  (list 'set/forwardRule
+                        (list 'implies (list 'and (list holdsIn '?c (list '?p '?x)) (list tagged (list FruitFn '?x)))
+                              (list heardOf '?c '?p)))
+                  (list 'arg holdsIn 2 'formula)]}]
+      (doseq [[row steps] rows]
+        (let [hs (volatile! [])]
+          (is (zero? (settles-inside-batch
+                      #(v/with-deferred-settle kb
+                         (doseq [s (concat marks steps)] (vswap! hs conj (v/assert kb s 'CxUniverse))))))
+              (str row))
+          (run! #(v/retract! kb %) (rseq @hs)))))))

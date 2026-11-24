@@ -10,7 +10,8 @@
             [vaelii.impl.orientation :as dir]
             [vaelii.impl.qcn :as qcn]
             [vaelii.impl.space :as space]
-            [vaelii.qcn-test :as qt]))
+            [vaelii.qcn-test :as qt]
+            [vaelii.test-util :as tu]))
 
 ;; the toy point algebra beside three that ship
 (def ^:private algebras
@@ -105,7 +106,7 @@
       (let [net (rand-network rnd algebra nodes 10)
             ns  (vec (nodes-of net))]
         (is (= 1 (count (set (for [_ (range 6)]
-                               (qcn/path-consistent net (shuffle ns) algebra))))))))))
+                               (qcn/path-consistent net (tu/shuffled rnd ns) algebra))))))))))
 
 (deftest a-network-a-sweep-cannot-report-is-refused-by-both
   (let [algebra (:point algebras)]

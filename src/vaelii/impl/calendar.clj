@@ -109,26 +109,30 @@
           :open)))))
 
 (defn- solve-goal
-  "`goal`'s solutions as `[bindings handles]`, at most one: a ground check, a negated ground
-  check, which holds when the check fails, or one variable bound to the one term the
-  calendar gives it.  The handles are the time vocabulary's declaration
-  (`time-vocabulary-visible?`) and a named interval's stated bounds; an `:open` goal has
+  "`goal`'s solutions as `[bindings handles]`, one binding at most: a ground check, a
+  negated ground check, which holds when the check fails, or one variable bound to the one
+  term the calendar gives it.  The handles are one believed statement of the time
+  vocabulary's declaration (`time-vocabulary-visible?`), a solution per statement
+  (`res/declaration-supports`), and a named interval's stated bounds; an `:open` goal has
   none."
   [kb goal context]
   (let [[pred a b] goal
-        vocab #(res/declared-by kb :transitive 'instantBefore context)]
+        with (fn [bnd base]
+               (map #(vector bnd %)
+                    (res/declaration-supports
+                     kb (res/declared-by kb :transitive 'instantBefore context) base)))]
     (case (shape goal)
       :endpoint (let [i (dt/instant-term (nth (dt/bounds a) (endpoint-slot pred)))]
                   (if (sx/variable? b)
-                    [[{b i} (vocab)]]
-                    (when (= i b) [[{} (vocab)]])))
-      :instant  (when (contains? (point/instant-denotation pred) (instant-order a b)) [[{} (vocab)]])
-      :interval (when (contains? (stp/interval-denotation pred) (relation a b)) [[{} (vocab)]])
+                    (with {b i} #{})
+                    (when (= i b) (with {} #{}))))
+      :instant  (when (contains? (point/instant-denotation pred) (instant-order a b)) (with {} #{}))
+      :interval (when (contains? (stp/interval-denotation pred) (relation a b)) (with {} #{}))
       :stated   (when-let [[ea ha] (extent-in kb context a)]
                   (when-let [[eb hb] (extent-in kb context b)]
                     (when (contains? (stp/interval-denotation pred) (relation-of [ea eb]))
-                      [[{} (-> (vocab) (into ha) (into hb))]])))
-      :negated  (when (empty? (solve-goal kb (second goal) context)) [[{} (vocab)]])
+                      (with {} (into (set ha) hb)))))
+      :negated  (when (empty? (solve-goal kb (second goal) context)) (with {} #{}))
       nil)))
 
 ;; ---- the prover ---------------------------------------------------------
@@ -147,7 +151,7 @@
   (est-bindings [_ _ goal _] (if (= :open (shape goal)) provers/deferred-est 1))
   (cost         [_ _ _ _] :lookup)
   (completeness [_ _ _ _] 50)
-  (solve [_ kb goal context] (map first (solve-goal kb goal context)))
+  (solve [_ kb goal context] (distinct (map first (solve-goal kb goal context))))
   prover-types/SupportingProver
   (support-functors [_] clock-predicates)
   (support-sources [_] (conj stp/endpoint-predicates 'transitive))

@@ -24,6 +24,7 @@
             [vaelii.impl.datetime :as dt]
             [vaelii.impl.interval :as iv]
             [vaelii.impl.point :as pt]
+            [vaelii.impl.point-order :as po]
             [vaelii.impl.qcn-kb :as qkb]
             [vaelii.impl.stp :as stp]
             [vaelii.impl.timepoint :as tp]
@@ -580,3 +581,107 @@
       (is (= #{} (tightest-start-bounds kb Party c)))
       (v/assert kb (list 'instantNotBefore (list 'StartFn Party) Dawn) c)
       (is (= #{Dawn} (tightest-start-bounds kb Party c))))))
+
+(defn- clock-facts
+  "Three known lower bounds on Now: A at or before a 2000 moment, B at or after a 2001 one
+  and at or before a 2002 one, C at or after a 2003 one.  The first two moments are local,
+  the later two UTC when `utc?`, so A then reaches no moment in C's frame."
+  [utc? Now A B C]
+  (let [at #(if utc?
+              (list 'StartFn (list 'DatetimeFn (str % "-01-01T00:00Z")))
+              (list 'InstantFn % 1 1 0 0 0))]
+    [(list 'instantNotBefore Now A) (list 'instantNotBefore Now B) (list 'instantNotBefore Now C)
+     (list 'instantNotAfter A '(InstantFn 2000 1 1 0 0 0))
+     (list 'instantNotAfter '(InstantFn 2001 1 1 0 0 0) B)
+     (list 'instantNotAfter B (at 2002)) (list 'instantNotAfter (at 2003) C)]))
+
+(tu/deftest-kb a-tightest-start-bound-compares-each-pair-of-bounds-within-one-calendar-frame
+  (doseq [utc? [false true], order [identity reverse]]
+    (tu/with-terms [Now A B C CxClock CxWithout]
+      (let [fs  (clock-facts utc? Now A B C)
+            row (pr-str {:utc utc? :reversed (= reverse order)})]
+        (doseq [s (order fs)] (v/assert kb s CxClock))
+        (is (= (if utc? #{} #{C}) (tightest-start-bounds kb Now CxClock)) row)
+        (when (= identity order)
+          (v/retract! kb (v/handle-of kb (peek fs) CxClock))
+          (run! #(v/assert kb % CxWithout) (pop fs))
+          (is (= (tightest-start-bounds kb Now CxWithout) (tightest-start-bounds kb Now CxClock)) row))))))
+
+(defn- tightest-by-path
+  "The `tightestStartBoundOf` answers for `x` read from `c` by the definition, one
+  `point-order/path` per pair of bounds: each bound every other one lies at or before."
+  [kb x c]
+  (binding [po/*context* c]
+    (po/with-memo
+      (let [starts (into #{} (map first) (po/readings x))
+            bounds (into #{} (for [s starts, [[n _] facts] (po/reach kb false s)
+                                   :when (and (seq facts) (not (starts n)))]
+                               n))]
+        (set (filter (fn [n] (every? #(po/path kb false % n) (disj bounds n))) bounds))))))
+
+(defn- start-of [x] (list 'StartFn x))
+(defn- end-of [x] (list 'EndFn x))
+
+(def ^:private chain-shapes
+  "time/07's four shapes at size `n`, each `(fn [kb c n])` asserting its facts in `c` and
+  returning the things to ask about.  The story chains n events, every four a trick.  The
+  clues place n events inside n/4 years and two holders.  The periods bound n periods on
+  calendar years ten years apart from two contexts, so bounds share year points.  The
+  questions chain n events after one stated calendar moment."
+  {:story     (fn [kb c n]
+                (let [e (vec (repeatedly n #(tu/tmp-ind "Ev"))) t (vec (repeatedly (quot n 4) #(tu/tmp-ind "Trick")))]
+                  (doseq [i (range (dec n))]
+                    (v/assert kb (list 'instantBefore (start-of (e i)) (start-of (e (inc i)))) c)
+                    (v/assert kb (list 'instantEqual (end-of (e i)) (start-of (e (inc i)))) c))
+                  (doseq [j (range (count t))]
+                    (v/assert kb (list 'instantEqual (start-of (t j)) (start-of (e (* 4 j)))) c)
+                    (v/assert kb (list 'instantEqual (end-of (t j)) (end-of (e (+ 3 (* 4 j))))) c)
+                    (when (pos? j) (v/assert kb (list 'instantBefore (end-of (t (dec j))) (start-of (t j))) c)))
+                  (concat e t)))
+   :clues     (fn [kb c n]
+                (let [e (vec (repeatedly n #(tu/tmp-ind "Ev"))) h (vec (repeatedly 2 #(tu/tmp-ind "Holder")))]
+                  (doseq [i (range n) :let [y (list 'YearFn (+ 1900 (mod i (quot n 4)))) p (h (mod i 2))]]
+                    (v/assert kb (list 'instantNotAfter (start-of y) (start-of (e i))) c)
+                    (v/assert kb (list 'instantNotAfter (end-of (e i)) (end-of y)) c)
+                    (if (zero? (mod i 3))
+                      (v/assert kb (list 'instantBefore (end-of (e i)) (start-of p)) c)
+                      (do (v/assert kb (list 'instantNotAfter (start-of p) (start-of (e i))) c)
+                          (v/assert kb (list 'instantNotAfter (end-of (e i)) (end-of p)) c))))
+                  (concat h (take 6 e))))
+   :periods   (fn [kb c n]
+                (let [r (vec (repeatedly n #(tu/tmp-ind "Period"))) b (vec (repeatedly n #(tu/tmp-ind "Battle")))
+                      other (tu/tmp-ctx "Authority")
+                      y #(list 'YearFn %)]
+                  (v/assert kb (list 'genlCx c other) 'CxUniverse)
+                  (doseq [i (range n) :let [y0 (+ 1000 (* 10 i))], [cx d] [[other 0] [c 5]]]
+                    (v/assert kb (list 'instantEqual (list 'EarliestStartFn (r i)) (start-of (y (+ y0 d)))) cx)
+                    (v/assert kb (list 'instantEqual (list 'LatestStartFn (r i)) (end-of (y (+ y0 d 3)))) cx)
+                    (v/assert kb (list 'instantEqual (list 'EarliestEndFn (r i)) (start-of (y (+ y0 d 40)))) cx)
+                    (v/assert kb (list 'instantEqual (list 'LatestEndFn (r i)) (end-of (y (+ y0 d 45)))) cx)
+                    (when (= cx c)
+                      (v/assert kb (list 'instantNotAfter (list 'EarliestEndFn (r i)) (start-of (b i))) cx)))
+                  (concat r b)))
+   :questions (fn [kb c n]
+                (let [e (vec (repeatedly n #(tu/tmp-ind "Ev")))]
+                  (doseq [i (range (dec n))]
+                    (v/assert kb (list 'instantEqual (end-of (e i)) (start-of (e (inc i)))) c))
+                  (v/assert kb (list 'instantNotBefore (start-of (e 0)) '(InstantFn 1990 1 1 0 0 0)) c)
+                  e))})
+
+(defn- tightest-by-path-row
+  "Each thing `shape` at size `n` returns, against its `tightestStartBoundOf` answers when
+  they differ from `tightest-by-path`'s."
+  [kb shape n]
+  (let [c  (tu/tmp-ctx "Shape")
+        xs (doall ((chain-shapes shape) kb c n))]
+    (into {} (for [x xs
+                   :let [want (tightest-by-path kb x c) got (tightest-start-bounds kb x c)]
+                   :when (not= want got)]
+               [x [want got]]))))
+
+(tu/deftest-kb a-tightest-start-bound-answers-as-one-path-per-pair-of-bounds
+  (is (= {} (tightest-by-path-row kb :story 8))))
+
+(tu/deftest-kb ^:slow a-tightest-start-bound-answers-as-one-path-per-pair-of-bounds-in-four-shapes
+  (doseq [[shape n] [[:story 12] [:clues 16] [:periods 6] [:questions 10]]]
+    (is (= {} (tightest-by-path-row kb shape n)) (str shape))))

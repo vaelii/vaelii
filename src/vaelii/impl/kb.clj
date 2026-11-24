@@ -606,6 +606,20 @@
                                "naming it) or :base-stores (already-open stores)")
                           {:type :no-base}))))
 
+(defn- store-counts-of
+  "The counts every KB value open over the records `record-kind` and `opts` name shares
+  (`observe/store-counts`), keyed as the derived index over those records is."
+  [record-kind opts]
+  (observe/store-counts [record-kind (derived-index-space record-kind opts)]))
+
+(defn- base-counts
+  "A fork's base's counts: those of the base KB's clock `:base-stores` carries, else those
+  of the store the `:base` opts name."
+  [{:keys [base base-stores]}]
+  (if base-stores
+    (observe/own-counts (:clock base-stores))
+    (store-counts-of (:records (backend-axes base)) base)))
+
 (defn- create-tms
   "The truth-maintenance network `:tms` selects: `:dense` (default) is the
   bitmap/primitive-map representation (`vaelii.impl.dense-jtms`); `:reference` is the
@@ -614,10 +628,10 @@
   network in ~3.8× less RAM at corpus scale (docs/density.md, Phase 3) at no wall cost,
   which is why the engine — built for KBs that must fit a single large node — defaults
   to it.  `:reference` stays the simpler baseline a caller can select."
-  [kind]
+  [kind clock]
   (case kind
-    :reference (jtms/create-tms)
-    :dense     (dense-jtms/create-dense-tms)
+    :reference (jtms/create-tms clock)
+    :dense     (dense-jtms/create-dense-tms clock)
     (throw (ex-info (str "unknown TMS " (pr-str kind) " — want :reference or :dense")
                     {:type :unknown-backend :mismatch :unknown-name
                      :axis :tms :kind kind :tms kind}))))
@@ -673,10 +687,12 @@
     :else                     false))
 
 (defn- base-stores?
-  "Is `stores` the `{:records :index}` pair of open stores `resolve-base` mounts — a
-  `RecordStore` and an `IndexStore`, as `core/fork` hands over from a live KB?"
+  "Is `stores` the `{:records :index :clock}` of a live KB, as `core/fork` hands them over:
+  the `RecordStore` and `IndexStore` `resolve-base` mounts, and the clock whose counts the
+  fork adds to its own (`base-counts`)?"
   [stores]
   (and (map? stores)
+       (observe/clock? (:clock stores))
        (satisfies? p/RecordStore (:records stores))
        (satisfies? p/IndexStore (:index stores))))
 
@@ -693,7 +709,7 @@
                         [:fork-dirs #(and (sequential? %) (every? store-dir? %))
                          "a sequence of fork directories, each a non-blank path string or a java.io.File"]
                         [:base-stores base-stores?
-                         "the {:records :index} pair of open stores a live KB holds (fork passes it)"]]]
+                         "the {:records :index :clock} of a live KB (fork passes it)"]]]
     (when (contains? opts k)
       (let [v (get opts k)]
         (when-not (ok? v)
@@ -1004,13 +1020,13 @@
   (`vaelii.impl.types.reasoning`): the belief network of kind `tms`, the taxonomy, and every
   atom a recover or a settle fills.  `open-kb` builds a KB holding one, and `rebuild-kb`
   builds a second KB over the same stores holding another, so a field added to `Reasoning`
-  and here starts empty in both."
-  [tms]
+  and here starts empty in both.  The network and the taxonomy move `clock`, the KB's."
+  [tms clock]
   ;; by name rather than positionally: every field is an atom, so a miscount would hand one
   ;; subsystem another's state unnoticed.
   (reasoning/map->Reasoning
-   {:tms     (create-tms tms)
-    :taxonomy (tax/create-taxonomy)
+   {:tms     (create-tms tms clock)
+    :taxonomy (tax/create-taxonomy clock)
     :program   (atom nil)
     :violations (atom [])
     :recheck   (atom {})
@@ -1023,7 +1039,7 @@
     ;; the read-decided families' candidates (`decide/note-candidate!`), kept at the store and removal
     ;; choke points and rebuilt by `recover`, and the inherited clashes each settle re-finds
     ;; (`inherited/install-inherited!`).  A held atom (`observe/hold-atom!`).
-    :nogood-candidates (observe/held-atom {})
+    :nogood-candidates (observe/held-atom clock {})
     ;; the arity family's length entries (`vaelii.impl.decide.arity`), a weighted LRU
     ;; the family makes on its first read
     :arity-lengths (atom nil)
@@ -1046,11 +1062,13 @@
     ;; for `chain/reconcile-spellings!`; `[:reifiable f]`, for `chain/reconcile-reified!`.  Empty at rest.
     :respell   (atom #{})
     ;; `{:pending {handle #{context}} :whole #{handle} :scoped {handle #{[sub super]}} :extra [[datum
-    ;; reason]] :region #{datum} :moved #{handle}}`: the handles a visibility `except` began or stopped
+    ;; reason]] :region #{datum} :moved #{handle}}`: the handles an `except` began or stopped
     ;; hiding since the last settle (`special/note-except-move!`, `special/except-move-sweeps`,
     ;; `special/except-move-region`), and `special/note-reasks!`' `:reask`.  Empty at rest.
     :except-moves (atom {})
     :owed-drops (atom #{})
+    :sync-memo (caches/tallied (atom nil) [:X1])
+    :crossing-reads (caches/tallied (atom nil) [:R6])
     :qcn       (caches/tallied (atom {}) [:R3])
     ;; the join baselines, beside the network cache and never inside it (docs/qcn.md,
     ;; "The network is resident, and the clock is what makes that sound")
@@ -1158,7 +1176,7 @@
         k      [rel (mapv key entries)]
         mark   (jtms/touch-mark-if-kept tms)
         g      (first mark)
-        writes (exc/frame-write-count)
+        writes (exc/frame-write-count kb)
         e      (some-> memo deref (get k))
         tl     (caches/tally-of memo :T12)
         held   (fn [targets w]
@@ -1287,13 +1305,13 @@
     ;; are memoized where the writer reads them, so they describe the network the writer
     ;; holds now, and a reader beside a settle reads the taxonomy as the writer moves it.
     (tax/install-supporter-visibility! (:taxonomy b)
-                                       #(observe/live (exc/supporter-entries copy))
+                                       #(observe/live (:clock copy) (exc/supporter-entries copy))
                                        (fn [handle context]
-                                         (observe/live (res/supporter-believed? copy handle context)))
-                                       #(observe/live (exc/except-entries copy))
+                                         (observe/live (:clock copy) (res/supporter-unhidden? copy handle context)))
+                                       #(observe/live (:clock copy) (exc/except-entries copy))
                                        (fn [handle context]
-                                         (observe/live (res/supporter-believed? copy handle context false)))
-                                       (fn [entries sv defeats?] (observe/live (supporter-reaches? copy entries sv defeats? reach)))
+                                         (observe/live (:clock copy) (res/supporter-unhidden? copy handle context false)))
+                                       (fn [entries sv defeats?] (observe/live (:clock copy) (supporter-reaches? copy entries sv defeats? reach)))
                                        (fn [handle] (some-> (p/get-sentex (:records copy) handle) sx/sentence-of)))))
 
 (defn with-context-edges
@@ -1310,6 +1328,7 @@
         ix (:index @tx)
         b' (assoc b
                   :taxonomy tx
+                  :sync-memo (caches/tallied (atom nil) [:X1])
                   :qcn (caches/tallied (atom {}) [:R3])
                   :qcn-joined (atom {})
                   :matches (caches/tallied (atom {}) [:R1])
@@ -1389,7 +1408,8 @@
         b'    (assoc b
                      :tms (prior-tms (:tms b))
                      :taxonomy (tax/before-copy (:taxonomy b))
-                     :nogood-candidates (observe/held-atom (or (observe/recorded cands) @cands))
+                     :nogood-candidates (observe/held-atom (:clock kb) (or (observe/recorded cands) @cands))
+                     :sync-memo (caches/tallied (atom nil) [:X1])
                      :arity-lengths (atom nil)
                      :qcn (caches/tallied (atom {}) [:R3])
                      :qcn-joined (atom {})
@@ -1401,10 +1421,12 @@
 
 (def rebuild-shared
   "The KB fields a rebuild KB (`rebuild-kb`) takes from the KB it rebuilds: the two
-  stores, and the configuration the stores are read under.  Every KB field other than
+  stores, the configuration the stores are read under, and the change clock.  Sharing the
+  clock keeps the entries the rebuild's readers fill keyed on the clock its install moves.
+  Every KB field other than
   `:reasoning` is in exactly one of `rebuild-shared` and `rebuild-own`, `:reasoning` holds a
   new `empty-reasoning`, and `background_rebuild_test` fails on a field in none of them."
-  [:records :index :provers :reasoners :solver :naming])
+  [:records :index :provers :reasoners :solver :naming :clock])
 
 (def rebuild-own
   "The KB fields a rebuild KB holds for itself.  `:dir`, `:snapshot-dir`, `:index-space`
@@ -1427,7 +1449,7 @@
                                     {:records     (wrap-records (:records kb))
                                      :feed        (feed/create-feed)
                                      :unrecovered (atom {})
-                                     :reasoning   (volatile! (empty-reasoning :dense))}))]
+                                     :reasoning   (volatile! (empty-reasoning :dense (:clock kb)))}))]
      (attach-visibility! r (reasoning/of r))
      r)))
 
@@ -1696,6 +1718,7 @@
           (let [merged (mount/mount-index own-istore (:index base))]
             [merged (pos? (long (reads/stored-count-at merged [])))])
           (index-store-for ikind rkind opts))
+        _         (mount/link-halves! rstore istore)
         snapshot? (snapshot-mode? rkind ikind)
         ;; The images carry what the record store answers, so a store that answers nothing (an adapter older
         ;; than the protocol) is refused before anything is written.  Over server records the image
@@ -1727,9 +1750,14 @@
         reasoner-at    (reasoner-locus opts rkind ovr ov-opts kb-dir)
         reasoner-names (open-reasoners! opts reasoner-at
                                         (when overlay? (base-reasoner-locus opts)))
+        clock (observe/new-clock (if (= :overlay rkind)
+                                   (store-counts-of ovr ov-opts)
+                                   (store-counts-of rkind opts))
+                                 (when overlay? (base-counts opts)))
         kb (kb-types/map->KB
             (merge
              {:records rstore
+              :clock   clock
               :index   istore
               ;; The directory `close!` releases, when the records are durable.  A fork's is its own writable
               ;; half's, since that directory holds the exclusive lock; the base's is mounted read-only and shared.
@@ -1762,7 +1790,7 @@
               :unrecovered (atom {})
               ;; the derived state, as one value: a background rebuild's install
               ;; replaces it whole (`vaelii.impl.types.reasoning`)
-              :reasoning (volatile! (empty-reasoning tms))}))]
+              :reasoning (volatile! (empty-reasoning tms clock))}))]
     ;; Install the observer only after the mutually-referential KB exists, and before recovery can ask
     ;; a scoped cache question.
     (attach-visibility! kb (reasoning/of kb))
@@ -2084,15 +2112,17 @@
 
 (defn isa?
   "Is individual `x` (transitively) of type `t`?  Considers only type memberships visible
-  from `context` (default: any).  Reads `x`'s own memberships and climbs from each (see
+  from `context` (default: any).  `tax/own-reading` reads each membership and edge at
+  the context it is stated in.  Reads `x`'s own memberships and climbs from each (see
   `memberships`).  A non-symbol `x` falls back to the matcher.  Lazy in the memberships;
   `memberships` is the batch form."
   ([kb x t] (isa? kb x t '?ctx))
   ([kb x t context]
-   (if (sx/plain-symbol? x)
-     (let [tax (reasoning/taxonomy kb)]
-       (boolean (some #(tax/genl? tax % t context) (types-of kb x context))))
-     (exists-in? kb (list t x) context))))
+   (let [read-at (if (tax/own-reading? context) '?ctx context)]
+     (if (sx/plain-symbol? x)
+       (let [tax (reasoning/taxonomy kb)]
+         (boolean (some #(tax/genl? tax % t context) (types-of kb x read-at))))
+       (exists-in? kb (list t x) read-at)))))
 
 (defn reach-strength
   "The defeat class of the **strongest** route `sub →* super` in `rel-key` (`:genl` for the
@@ -2126,7 +2156,7 @@
   under genl) — anywhere, or (with `context`) using only the declarations and
   genl edges visible from it?
 
-  The 3-arity is the KB-wide reading `vaelii.core/disjoint?` documents."
+  The 3-arity reads every declaration and edge the taxonomy holds."
   ([kb a b] (tax/disjoint? (reasoning/taxonomy kb) a b))
   ([kb a b context] (tax/disjoint? (reasoning/taxonomy kb) a b context)))
 
@@ -2252,11 +2282,11 @@
 ;; names which handle, in which context; `jtms/in?` on its own handle is the reader's filter.
 
 (defn except-target
-  "The handle a visibility `(except (sentexHandle H))` sentence hides, or nil for any
+  "The handle an `(except (sentexHandle H))` sentence hides, or nil for any
   other sentence — including `(not (except …))`, whose functor is `not`.
 
   A **meta-exception** — `(except (sentexHandle E))` where E is itself an `(except …)` —
-  cascades: hiding an except suppresses its effect, restoring visibility of the target
+  cascades: hiding an except suppresses its effect, restoring belief in the target
   the inner except was hiding.  The cascade is evaluated at read time by
   `exc/excepted-handles`, which checks whether each except-handle is itself
   hidden before counting it as active."
@@ -2490,7 +2520,7 @@
      ;; and the coarse clock a *derived, resident* structure records itself under: this
      ;; is one of the two points the stored content moves at, the other being
      ;; `integrate/sentex-removed!`
-     (observe/note-change)
+     (observe/note-change (:clock kb))
      (exc/note-stored! kb s true)
      ;; a run with the handle cache engaged learns the handle here, keyed on the canonical sentence;
      ;; another spelling misses and fills its own key off the index
@@ -2538,8 +2568,8 @@
     (p/index-sentex idx s' h)
     (refresh-index-image! kb)
     (observe/notify-add kb s' h)
-    (observe/note-change)
-    (observe/note-respell)
+    (observe/note-change (:clock kb))
+    (observe/note-respell (:clock kb))
     (exc/note-stored! kb sx false)
     (exc/note-stored! kb s' true)
     (observe/cache-handle! (handle-cache-key kb) (sx/sentence-of s') (:context s') h)
@@ -2759,7 +2789,7 @@
 
 (caches/register-derived
  {:id :T12 :label "Supporter reach memo" :kind :cache :keyed-by :value
-  :reads [:index :justifications]
+  :reads [:index :justifications :X5]
   :holds-content? false
   :retired-by {:stored :G :removed :G :respelled :G :relabelled :K :held :K :settle-exit :K
                :recover :R :image-install :R}
@@ -2769,7 +2799,7 @@
   :note "per relation and entry functors, the handles a forward walk from the stored `except`s' and placed `defeat`s' targets read and met no supporter of, with those targets and a mark of the touched sets: a read walks on from the handles touched since and, once `except/frame-write-count` moves, from the targets new since, and `note-reach-touched!` feeds it the touched sets a settle exit empties; or, for a walk that met a supporter, a path to it from a target, which a read checks against the network (`held-forward-reach`)"})
 
 (caches/register-derived
- {:id :R12 :label "Call-scoped memos" :kind :pass :keyed-by :value :reads [:index :T1]
+ {:id :R12 :label "Call-scoped memos" :kind :pass :keyed-by :value :reads [:index :T1 :X5]
   :holds-content? false
   :retired-by {} :computed :pass :imaged? false
   :note "volatiles and memoized fns one call holds: `memberships`, `membership-reader` here; `checks/declaration-reader`, `stratification-readers` (held for a write or a settle in `rules/*stratification-memo*`, and the stored rules' negated antecedent keys in `rules/*negated-keys-memo*` (`rules/stored-negated-keys`), both emptied by a rule-index write); `except/reader-state`, held for a pass in `except/*reader-states*` while the change clock stands and its frame while `frames-hold?`; `plan/memoizing`, `plan-pairs`; `special/visibility-seeds`, `edges-subsumption-seeds`, `supersession-map`, `lift-statements`; `inherit/rejoin-rules`; `asp.label/local-analysis`, `component-classifier`"})

@@ -120,7 +120,7 @@
   [kb]
   (into #{} (keep (fn [h]
                     (when-let [sx (p/get-sentex (:records kb) h)]
-                      [(pr-str (:sentence sx)) (pr-str (:context sx)) (boolean (v/in? kb h))])))
+                      [(pr-str (:sentence sx)) (pr-str (:context sx)) (boolean (v/believed? kb h))])))
         (p/sentex-ids (:records kb))))
 
 (defn- reference

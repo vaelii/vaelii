@@ -173,7 +173,7 @@
         (is (= [(list 'not (list flies Tweety))] (remove placed? (sentences (:believed-added r)))))
         (is (= '[contradicts defeat] (map first (filter placed? (sentences (:believed-added r)))))))
       (testing "belief is unchanged afterwards — the defeat was hypothetical"
-        (is (true? (v/in? kb h))))
+        (is (true? (v/believed? kb h))))
       (is (= before (content kb))))))
 
 (tu/deftest-kb a-batch-whose-mark-a-reader-decides-reports-the-removal
@@ -201,8 +201,8 @@
         (is (= #{h ch} (set (map :handle (:believed-removed r)))))
         (is (every? #{:unsupported} (map :reason (:believed-removed r)))))
       (testing "both are believed again afterwards, at the same handles"
-        (is (true? (v/in? kb h)))
-        (is (true? (v/in? kb ch))))
+        (is (true? (v/believed? kb h)))
+        (is (true? (v/believed? kb ch))))
       (testing "a removal is previewed by suspending the premise, never by deleting"
         (is (= before (content kb)))))))
 
@@ -234,8 +234,8 @@
           before (content kb)
           orig   @#'settle/drain-recheck!
           seen   (atom [])
-          read   #(vector (v/in? kb edge) (v/genl? kb puppy dog)
-                          (v/in? kb cxe) (v/sees? kb CxLow CxTop))]
+          read   #(vector (v/believed? kb edge) (v/genl? kb puppy dog)
+                          (v/believed? kb cxe) (v/sees? kb CxLow CxTop))]
       ;; read in each pass, where the passes' re-chains read the closures too
       (with-redefs-fn {#'settle/drain-recheck! (fn [k] (swap! seen conj (read)) (orig k))}
         #(v/preview kb {:remove [edge cxe]}))
@@ -260,7 +260,7 @@
         (is (= ch (:handle (first (:believed-removed r))))))
       (testing "and it is still there, at the same handle, still believed"
         (is (= ch (v/handle-of kb (list flies Opus) CxStory)))
-        (is (true? (v/in? kb ch))))
+        (is (true? (v/believed? kb ch))))
       (testing "the sweep is suppressed for the preview, so nothing was deleted"
         (is (= before (content kb)))))))
 
@@ -302,6 +302,8 @@
     (let [nodes  [N0 N1 N2 N3]
           eh     (excepted-chain! kb linkA reached startp nodes CxStory)
           chain  (set (map #(list reached %) nodes))
+          ;; the excepted start itself, believed again once its except goes
+          added  (conj chain (list startp N0))
           tms    (reasoning/tms kb)
           labels #(into {} (map (juxt identity (partial jtms/in? tms))) (tu/sentex-ids kb))
           _      (is (every? #(nil? (v/handle-of kb % CxStory)) chain)
@@ -309,14 +311,14 @@
           before (content kb)
           lab0   (labels)
           r      (v/preview kb {:remove [eh]})]
-      (testing "removing the except would derive the whole chain"
-        (is (= chain (set (sentences (:believed-added r))))))
+      (testing "removing the except would derive the whole chain and believe its start"
+        (is (= added (set (sentences (:believed-added r))))))
       (testing "and the rollback refuses the released firings again"
         (is (every? #(nil? (v/handle-of kb % CxStory)) chain))
         (is (= before (content kb)))
         (is (= lab0 (labels))))
       (testing "the removal itself reports the release the preview reported"
-        (is (= chain (set (sentences (:believed-added (v/edit-with-consequences! kb {:remove [eh]}))))))))))
+        (is (= added (set (sentences (:believed-added (v/edit-with-consequences! kb {:remove [eh]}))))))))))
 
 ;; ---- 5. the derivation path's own refusals -------------------------------
 
@@ -581,7 +583,7 @@
   "Every datum its own context believes as `{handle sentence}`, read off the whole network
   rather than a region, so the oracle shares no code with `preview`."
   [kb]
-  (into {} (comp (filter #(v/in? kb %)) (map (fn [h] [h (v/readable-sentence (v/sentex kb h))])))
+  (into {} (comp (filter #(v/believed? kb %)) (map (fn [h] [h (v/readable-sentence (v/sentex kb h))])))
         (jtms/in-datums (reasoning/tms kb))))
 
 (defn- diff-key
@@ -707,7 +709,7 @@
           r      (v/preview kb {:add [[(list 'not (list flies Tweety)) CxStory]]})]
       (testing "nothing was withdrawn, because nothing was defeated"
         (is (empty? (:believed-removed r)))
-        (is (true? (v/in? kb h))))
+        (is (true? (v/believed? kb h))))
       (testing "but the clash the batch would open is named, with both sides"
         (is (= 1 (count (:contradictions r))))
         (is (= #{(list flies Tweety) (list 'not (list flies Tweety))}
@@ -940,7 +942,7 @@
           (is (= 'rewriteOf (:informant (:justification e))))
           (is (not (contains? (:justification e) :rule)))))
       (testing "the merge is undone: the original spelling is believed again"
-        (is (true? (v/in? kb h)))
+        (is (true? (v/believed? kb h)))
         (is (false? (v/same-class? kb Rex Rexy))))
       (is (= before (content kb))))))
 
@@ -973,7 +975,7 @@
     (v/assert kb s 'CxUniverse))
   (v/handle-of kb (list dog Fred) 'CxUniverse))
 
-(defn- stored-in? [kb s] (some->> (v/handle-of kb s 'CxUniverse) (v/in? kb)))
+(defn- stored-in? [kb s] (some->> (v/handle-of kb s 'CxUniverse) (v/believed? kb)))
 
 (tu/deftest-kb a-preview-keeps-a-withheld-mint-owed-and-the-rollback-discards-the-debt
   (binding [argument/*assertive-arg-types?* true checks/*prune-subsumed-mints?* true]

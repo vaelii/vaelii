@@ -12,12 +12,14 @@
             [clojure.walk]
             [vaelii.core :as v]
             [vaelii.impl.budget :as budget]
+            [vaelii.impl.caches :as caches]
             [vaelii.impl.chain :as chain]
             [vaelii.impl.checks :as checks]
             [vaelii.impl.decide :as decide]
             [vaelii.impl.decide.argument :as argument]
             [vaelii.impl.decide.membership :as membership]
             [vaelii.impl.except :as exc]
+            [vaelii.impl.journal :as journal]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
@@ -104,8 +106,8 @@
       (place! kb #{l w} #{g})
       (testing "a contradicts naming the members in content order and the defeat of the loser"
         (is (= #{[(list 'contradicts L W) CxD] [(list 'defeat L) CxD]} (placed kb)))
-        (is (every? #(v/in? kb (:id %)) (concat (v/sentexes-with-functor kb 'contradicts)
-                                                (v/sentexes-with-functor kb 'defeat)))))
+        (is (every? #(v/believed? kb (:id %)) (concat (v/sentexes-with-functor kb 'contradicts)
+                                                      (v/sentexes-with-functor kb 'defeat)))))
       (testing "a second detection, members in another order, stores nothing new"
         (let [before (v/sentex-count kb)]
           (is (empty? (place! kb [w l] [g])))
@@ -303,7 +305,8 @@
 
 (defn- exemption-row
   "Self-hiding's nogood, with CxR below CxD asserting `(except H)` for the handle `pick`
-  chooses: `[L believed at CxR, L believed at CxD, contradicts believed at CxR]`."
+  chooses: `[L believed at CxR, L at CxD, contradicts at CxR, L believed at CxR]`, the
+  last read by `res/believed-at?`."
   [pick]
   (tu/with-neutral-kb [kb tu/fresh]
     (tu/with-terms [cat dog Rex excludesType CxA CxD CxR]
@@ -311,15 +314,30 @@
                                  'CxA CxA 'CxD CxD})]
         (v/assert kb (list 'genlCx CxR CxD) 'CxUniverse)
         (v/assert kb (list 'except (list 'sentexHandle (pick hs))) CxR {:strength :monotonic})
-        [(v/believed? kb (:l hs) CxR) (v/believed? kb (:l hs) CxD) (v/believed? kb (:c hs) CxR)]))))
+        [(v/believed? kb (:l hs) CxR) (v/believed? kb (:l hs) CxD) (v/believed? kb (:c hs) CxR)
+         (res/believed-at? kb (:l hs) CxR)]))))
 
 (tu/deftest-kb the-exemption-table-at-a-context-below-the-placement
   (testing "excepting the winner, the ground or the defeat brings the loser back at CxR alone"
-    (is (= [true false false] (exemption-row :w)))
-    (is (= [true false false] (exemption-row :g)))
-    (is (= [true false true] (exemption-row :d))))
-  (testing "excepting the loser hides it and the nogood at CxR"
-    (is (= [false false false] (exemption-row :l)))))
+    (is (= [true false false true] (exemption-row :w)))
+    (is (= [true false false true] (exemption-row :g)))
+    (is (= [true false true true] (exemption-row :d))))
+  (testing "excepting the loser hides it and the nogood at CxR, and leaves it unbelieved"
+    (is (= [false false false false] (exemption-row :l)))))
+
+(tu/deftest-kb an-except-below-the-defeat-leaves-its-target-unbelieved-in-either-order
+  (tu/with-terms [likes Ann Bo CxA CxB]
+    (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+    (doseq [except-first? [false true]]
+      (let [s     (list likes Ann Bo)
+            h     (v/assert kb s CxA)
+            steps [#(v/assert kb (list 'not s) CxA {:strength :monotonic})
+                   #(v/assert kb (list 'except (list 'sentexHandle h)) CxB {:strength :monotonic})]
+            ws    (mapv #(%) (cond-> steps except-first? reverse))]
+        (is (= [false false] [(res/believed-at? kb h CxA) (res/believed-at? kb h CxB)])
+            (if except-first? "the except stated first" "the denial stated first"))
+        (run! #(v/retract! kb %) (conj ws h))))))
 
 (tu/deftest-kb a-defeat-hides-at-read-time-and-sweeps-nothing
   ;; The rule in CxA places M there, the rule in CxD
@@ -1295,6 +1313,98 @@
              (for [[step write] steps]
                (do (write) [step (held) (whole)])))))))
 
+(tu/deftest-kb a-write-to-another-kb-keeps-this-kb-s-reader-frame-and-yield-answer
+  (tu/with-terms [pf qf Ann Bob CxA CxB]
+    (v/assert kb (list 'forced_monotonic_predicate pf) CxB)
+    (v/assert-rule kb [(list pf '?x '?y)] (list qf '?x '?y) CxA)
+    (let [h     (v/assert kb (list pf Ann Bob) CxA)
+          mine? #(identical? (:reasoning %) (:reasoning kb))
+          built (atom 0)
+          whole (atom 0)
+          held  #(@#'exc/yielding-reads? kb (reasoning/taxonomy kb))
+          frame @#'exc/reader-frame
+          opp   @#'exc/opposed-forced?]
+      (held)
+      (tu/with-neutral-kb [kb2 tu/isolated-fresh]
+        (tu/with-terms [rf sf Cy Dee]
+          (v/assert kb2 (list 'forced_monotonic_predicate rf))
+          (with-redefs-fn {#'exc/reader-frame    (fn [k ctx] (when (mine? k) (swap! built inc)) (frame k ctx))
+                           #'exc/opposed-forced? (fn [k t] (when (mine? k) (swap! whole inc)) (opp k t))}
+            #(exc/with-reader-states
+               (exc/excepted? kb h CxA)
+               (binding [exc/*reader-states* nil]
+                 (v/assert-rule kb2 [(list rf '?x '?y)] (list sf '?x '?y) 'CxUniverse)
+                 (v/retract! kb2 (v/assert kb2 (list rf Cy Dee))))
+               (exc/excepted? kb h CxA)
+               (held)))))
+      (testing (str "the reader of `a-pass-keeps-a-context-s-reader-frame-…`, beside a KB that"
+                    " stores a rule and stores and retracts a forced-monotonic fact under a pass"
+                    " memo of its own")
+        (is (= 1 @built) "kb's frame at CxA, built once")
+        (is (zero? @whole) "kb's held yield answer, read with no whole pass")))))
+
+(deftest a-write-through-another-value-over-one-store-moves-this-value-s-yield-answer
+  (doseq [shape [:another-value :fork]]
+    (tu/with-terms [probe_kind Pa CxA]
+      (let [space [::yield-store (gensym)]
+            b     (v/open-kb {:backend :memory :space space :recover? false})
+            mono  {:strength :monotonic}]
+        (try
+          (v/assert b (list 'genlCx CxA 'CxUniverse) 'CxUniverse mono)
+          (v/assert b (list 'forced_monotonic_predicate probe_kind) 'CxUniverse)
+          (v/assert b (list probe_kind Pa) 'CxUniverse)
+          (let [d    (v/assert b (list 'not (list probe_kind Pa)) CxA)
+                a    (if (= :fork shape) (v/fork b) (v/open-kb {:backend :memory :space space}))
+                both #(vector (boolean (@#'exc/yielding-reads? a (reasoning/taxonomy a)))
+                              (boolean (@#'exc/opposed-forced? a (reasoning/taxonomy a))))]
+            (is (= [true true] (both)) (str (name shape) ": held and whole, before"))
+            (v/retract! b d)
+            (is (= [false false] (both)) (str (name shape) ": held and whole, after"))
+            (when (= :fork shape) (v/close! a)))
+          (finally (v/clear! b) (v/close! b)))))))
+
+(deftest a-yield-answer-reads-a-write-of-a-functor-only-the-reader-declares-forced
+  (doseq [shape [:fork :another-value]]
+    (tu/with-terms [probe_kind Pa CxA CxB]
+      (let [space [::reader-forced (gensym)]
+            b     (v/open-kb {:backend :memory :space space :recover? false})
+            a     (if (= :fork shape) (v/fork b) (v/open-kb {:backend :memory :space space}))
+            both  #(vector (boolean (@#'exc/yielding-reads? a (reasoning/taxonomy a)))
+                           (boolean (@#'exc/opposed-forced? a (reasoning/taxonomy a))))]
+        (try
+          (v/assert a (list 'forced_monotonic_predicate probe_kind) 'CxUniverse)
+          (v/assert (if (= :fork shape) b a) (list probe_kind Pa) CxB)
+          (is (= [false false] (both)) (str (name shape) ": one polarity stored"))
+          (let [d (v/assert b (list 'not (list probe_kind Pa)) CxA)]
+            (is (= [true true] (both)) (str (name shape) ": the writer stored the other"))
+            (v/retract! b d)
+            (is (= [false false] (both)) (str (name shape) ": the writer retracted it")))
+          (finally (v/close! a) (v/clear! b) (v/close! b)))))))
+(tu/deftest-kb another-kb-s-read-or-close-keeps-this-kb-s-sync-memo
+  (let [cands  (reasoning/nogood-candidates kb)
+        misses (atom 0)
+        orig   journal/indexed
+        k2     (tu/engine-space-kb)]
+    (try
+      (with-redefs [journal/indexed (fn [c & args]
+                                      (when (identical? c @cands) (swap! misses inc))
+                                      (apply orig c args))]
+        (decide/synced kb)
+        (let [n @misses]
+          (decide/synced k2)
+          (is (empty? (tu/vars-holding 'vaelii.impl.decide k2))
+              "no var of `decide` holds the other KB after its read")
+          (decide/synced kb)
+          (is (= n @misses) "another KB's read leaves this KB's memo standing"))
+        (let [n @misses]
+          (v/close! k2)
+          (decide/synced kb)
+          (is (= n @misses) "another KB's close leaves this KB's memo standing"))
+        (let [[t c] (caches/value-at kb [:sync-memo])]
+          (is (and (identical? t @(reasoning/taxonomy kb)) (identical? c @cands))
+              "this KB's `Reasoning` value holds the memo")))
+      (finally (v/close! k2)))))
+
 (tu/deftest-kb an-edit-builds-each-reader-frame-once
   (tu/with-terms [q_dog q_cat q_animal q_fed PO CxA CxB]
     (doseq [c [CxA CxB]] (v/assert kb (list 'genlCx c 'CxUniverse) 'CxUniverse))
@@ -1331,7 +1441,7 @@
                                 (tu/handle-free kb [(v/sentence-of sx) (:context sx)]))
                          hs  (tu/sentex-ids kb)]
                      {:stored   (set (map row hs))
-                      :in       (set (map row (filter #(v/in? kb %) hs)))
+                      :in       (set (map row (filter #(v/believed? kb %) hs)))
                       :believed (set (for [h hs, c [U CxA CxB CxC] :when (v/believed? kb h c)]
                                        (conj (row h) c)))
                       :moving   (set (filter #(moving (first (v/sentence-of (v/sentex kb %)))) hs))}))
@@ -1440,7 +1550,7 @@
   "`membership-placements` read by `chain/route-placements` in one reading pass, as the
   placement pass reads them: one neighbour cache and one witness memo over every nogood."
   [kb reverse?]
-  (binding [chain/*witnesses* (volatile! nil)]
+  (binding [chain/*witnesses* (volatile! {:source (:clock kb)})]
     (tax/with-neighbours
       (atom {})
       #(membership-placements kb (fn [ms rs] (@#'chain/route-placements kb ms rs nil)) reverse?))))

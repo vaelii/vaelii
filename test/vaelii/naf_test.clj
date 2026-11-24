@@ -423,7 +423,7 @@
   (doseq [alt-base ['aalt_t 'zalt_t] order (oi/permutations [:chain :alt :rule])]
     (tu/with-terms [low_t mid_t top_t gm_t go_t sw_t On]
       (let [alt_t   (tu/tmp-type alt-base)
-            held?   #(boolean (some->> (v/handle-of kb (list go_t low_t) 'CxWell) (v/in? kb)))
+            held?   #(boolean (some->> (v/handle-of kb (list go_t low_t) 'CxWell) (v/believed? kb)))
             why     (pr-str alt-base order)
             premise (atom nil)]
         (v/assert kb (list gm_t low_t) 'CxWell)
@@ -1067,7 +1067,7 @@
         h (v/handle-of kb (list 'set/inertRule r) 'CxUniverse)]
     (testing "the defining rule is stored in CxUniverse, believed, and run by neither engine"
       (is (some? h))
-      (is (v/in? kb h))
+      (is (v/believed? kb h))
       (is (= #{} (:engines (v/sentex kb h)))))
     (tu/with-terms [accountOn Alice HostA CxHosts]
       (v/assert kb (list 'genlCx CxHosts 'CxUniverse) 'CxUniverse)

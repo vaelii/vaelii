@@ -29,23 +29,24 @@
     (into ["core.txt"] (remove #{"core.txt"}) fs)))
 
 (defn load-into
-  "Assert the upper ontology into `kb`: every file of `upper-files`, all into CxUniverse,
-  as one `seed/load-sentences` batch, so a sentence one file states over a term another
-  file defines is retried until that term arrives.  Returns kb."
-  [kb]
-  ;; One settle at the end, not one per sentence: the whole upper ontology is a batch, and
-  ;; `settle` computes belief from current state, so N per-assert reconciliations reach
-  ;; the same beliefs as one closing reconciliation (`v/with-deferred-settle`).
-  (v/with-deferred-settle kb
-    (seed/load-sentences kb (let [fs (upper-files)]
-                              (with-open [r (progress/start ::upper-files
-                                                            "starter: read the upper files"
-                                                            (count fs))]
-                                (into [] (mapcat (fn [f]
-                                                   (progress/tick! r)
-                                                   (seed/read-sentences f "upper")))
-                                      fs)))
-                         sx/root-context)))
+  "Assert the upper ontology into `kb`: every file of `upper-files`, or the upper files
+  `fs` names, all into CxUniverse.  The files load as one `seed/load-sentences` batch, so a
+  sentence one file states over a term another file defines is retried until that term
+  arrives.  Returns kb."
+  ([kb] (load-into kb (upper-files)))
+  ([kb fs]
+   ;; One settle at the end, not one per sentence: the whole upper ontology is a batch, and
+   ;; `settle` computes belief from current state, so N per-assert reconciliations reach
+   ;; the same beliefs as one closing reconciliation (`v/with-deferred-settle`).
+   (v/with-deferred-settle kb
+     (seed/load-sentences kb (with-open [r (progress/start ::upper-files
+                                                           "starter: read the upper files"
+                                                           (count fs))]
+                               (into [] (mapcat (fn [f]
+                                                  (progress/tick! r)
+                                                  (seed/read-sentences f "upper")))
+                                     fs))
+                          sx/root-context))))
 
 (defn comment-of
   "The documentation attached to `term` by `comment` sentexes, in **content order**.

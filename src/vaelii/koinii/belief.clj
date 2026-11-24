@@ -3,7 +3,7 @@
 (ns vaelii.koinii.belief
   "Koinii belief projection and own-statement disregard — reasoning about what agents
   hold, built on modal belief projection (`vaelii.impl.modal`, `docs/belief.md`) and
-  `except` visibility masking.
+  `except` masking.
 
   Two capabilities, and a boundary between them that matters:
 
@@ -19,14 +19,13 @@
   - **Disregard — an agent reversibly withdraws its OWN statement.**  `disregard` puts
     an `(except (sentexHandle H))` in the agent's own context, hiding `H` for reads and
     derivations, reversibly (`restore!`), without deleting it.  It is restricted to the
-    agent's own statements **by construction**, and that restriction is the point:
-    `except` is an **index-layer** mask — it removes a sentex from *view* — so using it
+    agent's own statements **by construction**, and that restriction is the point: an
+    `except` hides its target from belief at every context that sees it, so using it
     across agents (agent B hiding agent A's claim) would make a common-descendant context
-    unable to *argue*: argumentation needs both a claim and its rebuttal visible so the
-    TMS can weigh them, and an index-layer removal takes the claim out of view entirely.
-    Cross-agent disagreement is therefore `dispute` / argue (speech-acts + adjudication), which
-    keeps both sides visible; `except` is only ever an agent editing the visibility of
-    what it *itself* said.
+    unable to *argue*: argumentation needs both a claim and its rebuttal believed there
+    for the TMS to weigh them.  Cross-agent disagreement is therefore `dispute` / argue
+    (speech-acts + adjudication), which leaves both sides for the TMS to weigh; `except`
+    is only ever an agent removing from belief what it *itself* said.
 
   Additive, like the other koinii modules: only the public core API plus koinii
   `identity` and `types` — nothing under `vaelii.impl`, and nothing in core loads it."
@@ -140,9 +139,9 @@
   than `retracts` (a real teardown): nothing is deleted and no cascade runs (`except` is
   deliberately not `target_following_predicate`).
 
-  **Own statements only, enforced.**  `except` is an index-layer visibility mask, so
-  hiding *another* agent's claim would take it out of view where argumentation needs it
-  visible — a common-descendant context could no longer weigh the claim against its
+  **Own statements only, enforced.**  An `except` hides its target from belief at every
+  context that sees it, so hiding *another* agent's claim would take it from a
+  common-descendant context, which could no longer weigh the claim against its
   rebuttal.  Cross-agent disagreement is `dispute` / argue, not this.  A `target-handle`
   whose provenance creator is not `agent` is refused (`:koinii/not-own-statement`).
   Returns the except's handle."
@@ -159,7 +158,7 @@
 
 (defn restore!
   "Undo a `disregard`: retract the except at `handle`, so the withdrawn statement counts
-  again.  `except` is belief-following, so retracting it restores visibility.  Returns
+  again.  Retracting the except restores the statement to belief.  Returns
   `retract!`'s counts."
   [kb handle]
   (koinii-types/needs-kb! `restore! kb)

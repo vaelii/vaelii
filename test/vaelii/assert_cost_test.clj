@@ -14,13 +14,13 @@
   declaration-carrying predicate.  It was found by hand, against a worktree at the
   parent commit.
 
-  This counted test closes that gap from the other side.  It runs eighteen fixed workloads with
+  This counted test closes that gap from the other side.  It runs nineteen fixed workloads with
   `vaelii.impl.profile` collecting and asserts the **exact** index-operation counts each one
   costs: every `IndexStore` read by family, every `index-sentex` batch op by family, and
-  every `unindex-sentex!` batch op by family.  Thirteen of the eighteen assert and five retract,
+  every `unindex-sentex!` batch op by family.  Fourteen of the nineteen assert and five retract,
   so a constant added to either write path lands here.
 
-  **Nine of the thirteen write a fact and four write the vocabulary**, which is the split to
+  **Ten of the fourteen write a fact and four write the vocabulary**, which is the split to
   read the assert half by.  A check that grows costs a fact nothing and a `genl` edge or
   an `(arity P n)` everything: a binding or an edge queues the functors below it for the
   settle's inert-tuple refresh (`arity/drain!`), which reads their lengths off the length
@@ -102,9 +102,9 @@
 (use-fixtures :each (fn [t] (try (t) (finally (prof/stop)))))
 
 (def ^:private n
-  "Operations per workload — asserts in the thirteen assert workloads, retractions in the five
+  "Operations per workload — asserts in the fourteen assert workloads, retractions in the five
   teardowns.  Large enough that a per-operation constant lands as a three-digit difference
-  rather than a rounding one, small enough that eighteen workloads are a few seconds."
+  rather than a rounding one, small enough that nineteen workloads are a few seconds."
   100)
 
 (def ^:private ^:dynamic *index*
@@ -439,6 +439,22 @@
 (defn- preserved-edges-4 [] (preserved-edges 4))
 (defn- preserved-edges-32 [] (preserved-edges 32))
 
+(defn- separated-membership
+  "A membership of a type separated from a preserved predicate that holds 32 claims and
+  carries a forward rule, at an argument no claim reaches.  The membership re-joins no
+  rule (`inherit/rejoin-channels`)."
+  []
+  (let [kb (fresh)]
+    (v/assert kb '(disjoint ac_down_kind ac_plain_kind) 'CxPerf {:strength :monotonic})
+    (v/assert kb '(transitiveInArgInverse ac_down_kind 1 genl) 'CxPerf {:strength :monotonic})
+    (dotimes [j 32]
+      (let [w (symbol (str "acsep_w" j))]
+        (v/assert kb (list 'genl (symbol (str "acsep_v" j)) w) 'CxPerf {:strength :monotonic})
+        (v/assert kb (list 'ac_down_kind w) 'CxPerf {})))
+    (v/assert kb '(set/forwardRule (implies (ac_down_kind ?x) (ac_sep_noted ?x))) 'CxPerf {})
+    (fn [] (dotimes [i n]
+             (v/assert kb (list 'ac_plain_kind (symbol (str "acsep_m" i))) 'CxPerf {})))))
+
 ;; ---- the budgets ---------------------------------------------------------
 ;;
 ;; Measured, not designed.  Each is what the engine does today at `n` = 100; the point of
@@ -772,7 +788,15 @@
     :reads   {:arity-binding 100 :argument-root 2 :argument-slot 700 :exception-index 300 :opposed 100
               :predicate-extent 3800 :rule-index 800 :term-index 200 :trie-counts 900
               :trie-lookup 100 :mint 100}
-    :writes  {:levels 500 :terms 400 :roots 1300 :term-names 200 :slots 300}}])
+    :writes  {:levels 500 :terms 400 :roots 1300 :term-names 200 :slots 300}}
+
+   {:name    :separated-membership
+    :build   separated-membership
+    :sentexes 100
+    :reads   {:arity-binding 2 :argument-root 2100 :argument-slot 400 :exception-index 100
+              :opposed 100 :predicate-extent 5300 :rule-index 300 :tax-support 200
+              :term-index 200 :trie-counts 4900 :trie-lookup 100 :mint 100}
+    :writes  {:levels 400 :terms 300 :roots 1000 :term-names 100 :slots 300}}])
 
 ;; The retraction half. `:unindexed` is the retraction budgets' `:sentexes`, checked first
 ;; because a budget compared against a different number of teardowns compares two workloads.

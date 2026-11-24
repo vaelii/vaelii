@@ -64,7 +64,7 @@
         "expected a hot posting past the promotion threshold")
     ;; kv-intersect over random handle-key subsets agrees
     (dotimes [_ 40]
-      (let [ks (vec (take (inc (.nextInt rng 4)) (shuffle hkeys)))]
+      (let [ks (vec (take (inc (.nextInt rng 4)) (tu/shuffled rng hkeys)))]
         (is (= (p/kv-intersect mem ks) (p/kv-intersect den ks)) (str "sinter " ks))))))
 
 (deftest intersect-tiers-and-leaves-the-postings-alone

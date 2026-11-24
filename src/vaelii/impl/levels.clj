@@ -33,7 +33,7 @@
     *subset* of level 1 — which is one of the two reasons `escalate` floors at 2.
 
     3 -> 4 can **drop** an answer.  Level 4 is `res/matches-visible`, which reads the
-    `except` visibility filter that `res/raw-match` does not, so a sentex a believed
+    `except` filter that `res/raw-match` does not, so a sentex a believed
     `(except (sentexHandle H))` hides from the view context is matched at levels 2 and
     3 and gone from level 4 up.  Level 4 is right and the engine agrees — `ask` denies
     that goal too.  What it costs is `escalate`, which will name level 2 as the
@@ -97,7 +97,7 @@
   therefore name the wrong mechanism.  Pass an explicit floor of 0 to include them.
 
   A floor is the coarse half of that guard and the only half a constant can supply.
-  Levels 2 and 3 match against the store without the `except` visibility filter (see
+  Levels 2 and 3 match against the store without the `except` filter (see
   the ns docstring), so a goal whose only stored answer is excepted is reported here at
   level 2 while `ask` denies it.  That depends on the KB rather than on the level, so
   no floor rules it out — read `explain`, where the drop at level 4 is visible."
@@ -209,10 +209,10 @@
   sentence, belief-filtered, with the symmetric mirror probed.  No inheritance of any
   kind — the context is an exact trie token and a type predicate is not fanned out.
 
-  Belief is read as `context` reads it: a handle scoped-defeated at a vantage `context`
-  sees, or resting only on one, is dropped (`exc/belief-hidden-fn`)."
+  Withdrawal is read as `context` reads it: a handle scoped-defeated at a vantage
+  `context` sees, or resting only on one, is dropped (`exc/withdrawn-fn`)."
   [kb goal context]
-  (let [hid (exc/belief-hidden-fn kb context)]
+  (let [hid (exc/withdrawn-fn kb context)]
     (map (fn [[h b s]] (stored-result 2 h b s))
          (cond->> (res/without-unbelieved-spellings kb context goal (res/raw-match kb goal context))
            hid (remove #(hid (first %)))))))
@@ -231,19 +231,19 @@
   denote one thing (`res/without-retired`, docs/equality.md).  That is an artifact of
   the fan-out, not something the fan-out found.
 
-  The `except` visibility filter is deliberately **not** here: it lives in
+  The `except` filter is deliberately **not** here: it lives in
   `res/matches-visible`, which is level 4, so an excepted handle is matched at this
   level and gone at the next — that difference is level 4's contribution made visible,
   and `an-excepted-fact-is-the-one-answer-that-falls-out-of-the-stack` asserts it.
 
-  A scoped defeat **is** here, because it is belief and not visibility: the view context
-  is the reader, and a handle defeated at a vantage it sees, or resting only on one, is
-  dropped from every ancestor's answer (`exc/belief-hidden-fn`)."
+  A scoped defeat **is** here: the view context is the reader, and a handle defeated at a
+  vantage it sees, or resting only on one, is dropped from every ancestor's answer
+  (`exc/withdrawn-fn`)."
   [kb goal context]
   (map (fn [[h b s]] (stored-result 3 h b s))
        (if (sx/variable? context)
          (res/raw-match kb goal context)
-         (let [hid (exc/belief-hidden-fn kb context)]
+         (let [hid (exc/withdrawn-fn kb context)]
            (cond->> (->> (tax/context-up (reasoning/taxonomy kb) context)
                          (res/lazy-mapcat #(res/raw-match kb goal %))
                          (res/without-retired kb context)

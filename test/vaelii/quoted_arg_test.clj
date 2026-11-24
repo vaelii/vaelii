@@ -325,3 +325,35 @@
         (is (= :not-ground (refusal kb '(comment (genl ?x animal) "a note")))))
       (testing "a bare variable is refused, by the same ground check"
         (is (= :not-ground (refusal kb '(comment ?x "a note"))))))))
+
+(def ^:private value-literals
+  "One literal of each value kind below unrepresented_term (core.txt's partition, and
+  integer below number), keyed by the kind it is written in.  A value denotes itself, so
+  `arg` and `quotedArg` give a literal one verdict: both admit it where its kind is the
+  declared kind or below it, and both refuse it where the KB separates the two kinds."
+  {'boolean true 'character \a 'keyword :a-keyword 'number 1.5 'integer 7 'string "text"})
+
+(defn- admits?
+  "Does a unary relation declared `(decl R 1 kind)` admit `(R literal)` under `try-assert`?"
+  [kb decl kind literal]
+  (tu/with-terms [valueHeldBy]
+    (let [hs (mapv #(v/assert kb % 'CxUniverse)
+                   [(list 'unary_predicate valueHeldBy) (list decl valueHeldBy 1 kind)])]
+      (try (nil? (refusal kb (list valueHeldBy literal)))
+           (finally (doseq [h (rseq hs)] (v/retract! kb h)))))))
+
+(tu/deftest-kb arg-and-quotedarg-agree-on-every-value-kind
+  (doseq [k (keys value-literals)]
+    (is (v/genl? kb k 'unrepresented_term) (str k " is a value kind")))
+  (doseq [entail? [true false]
+          k       (keys value-literals)
+          [l lit] value-literals]
+    ((if entail? #(tu/with-entailing (%)) #(tu/without-entailing (%)))
+     (fn []
+       (let [by-arg    (admits? kb 'arg k lit)
+             by-quoted (admits? kb 'quotedArg k lit)
+             label     (str (pr-str lit) " (" l ") against " k ", entailing " entail?)]
+         (is (= by-quoted by-arg) (str label ": arg and quotedArg agree"))
+         (cond
+           (v/genl? kb l k)     (is (true? by-arg) (str label ": admitted"))
+           (v/disjoint? kb l k) (is (false? by-arg) (str label ": refused"))))))))

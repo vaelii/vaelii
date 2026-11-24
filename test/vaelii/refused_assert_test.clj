@@ -21,7 +21,7 @@
   and the handles believed."
   [kb]
   (let [b (tu/baseline kb)]
-    (assoc b :believed (into #{} (filter #(v/in? kb %)) (:sentexes b)))))
+    (assoc b :believed (into #{} (filter #(v/believed? kb %)) (:sentexes b)))))
 
 (def ^:private ^:dynamic *write*
   "The write entry point `refusal-type` calls: `assert`, or `try-assert` for a refusal

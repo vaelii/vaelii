@@ -573,13 +573,13 @@
       (do (observe/note-neighbours! false) (compute)))))
 
 (defn- succs
-  "y such that (pred x y) is believed, visible from context (memoized per query) — the
+  "y such that (pred x y) is believed at context (memoized per query) — the
   neighbour terms alone, the handles beside them being the support walk's business."
   [kb pred x context]
   (keys (memo-neighbours kb :succ pred x context)))
 
 (defn- preds-of
-  "x such that (pred x y) is believed, visible from context (memoized per query)."
+  "x such that (pred x y) is believed at context (memoized per query)."
   [kb pred y context]
   (keys (memo-neighbours kb :pred pred y context)))
 
@@ -688,7 +688,7 @@
   which entry to look for.  Belief *mode* is not: see `closure-key`."
   [kb dir pred node context step]
   (let [k     (closure-key dir pred node context)
-        clock (observe/change-clock)
+        clock (observe/change-clock (:clock kb))
         t     (some-> (reasoning/closures kb) (caches/tally-of :R2))]
     (if-let [v (closure-hit kb k clock)]
       (do (caches/hit t) v)
@@ -698,7 +698,7 @@
          (when (caches/tallying?)
            (when-let [old (get (:entries @(reasoning/closures kb)) k)]
              (caches/compared t (= old v))))
-         (when (== (observe/change-clock) clock) (hold-closure kb k v clock))
+         (when (== (observe/change-clock (:clock kb)) clock) (hold-closure kb k v clock))
          v)))))
 
 (defn- reaches?
@@ -839,7 +839,7 @@
          ;; store would charge a two-hop question for the entire extent, the early exit
          ;; `reaches?` exists for.
          (and (ground? a) (ground? b))
-         (let [clock (observe/change-clock)
+         (let [clock (observe/change-clock (:clock kb))
                from  (closure-hit kb (closure-key :succ pred a context) clock)
                into' (closure-hit kb (closure-key :pred pred b context) clock)]
            (cond
@@ -883,9 +883,9 @@
   ;; cache included, and the chain from one breadth-first pass with parent pointers that
   ;; shares `memo-neighbours`.  A cycle answer is walked per node, since the condensation
   ;; holds no edges.  Both arguments open answers nothing, as in `solve`.  A chain of more
-  ;; than one handle also rests on the declaration, so the support names every believed
-  ;; `(transitive P)` that `context` sees (`res/declared-by`); a declaration stated
-  ;; apart from the hops licenses the pair only below both.
+  ;; than one handle also rests on the declaration, so it is answered once per believed
+  ;; `(transitive P)` that `context` sees (`res/declaration-supports`); a declaration
+  ;; stated apart from the hops licenses the pair only below both.
   (solve-with-support [_ kb goal context]
     (unblocked
      kb goal context
@@ -893,29 +893,29 @@
            fwd   #(succs kb pred % context)
            back  #(preds-of kb pred % context)
            decls (delay (res/declared-by kb :transitive pred context))
-           with  (fn [sup] (when sup (if (next sup) (into sup @decls) sup)))
+           with  (fn [sup] (when sup (if (next sup) (res/declaration-supports kb @decls sup) [sup])))
            chain (fn [dir root node]
                    (with (support-chain (support-parents kb dir pred root context) node)))]
        (cond
          (and (ground? a) (ground? b))
-         (if-let [sup (and (reaches? (fwd a) fwd b) (chain :succ a b))]
-           [[{} sup]]
+         (if (reaches? (fwd a) fwd b)
+           (mapv #(vector {} %) (chain :succ a b))
            [])
 
          (ground? a)
          (let [parents (support-parents kb :succ pred a context)]
-           (keep (fn [y] (when-let [sup (with (support-chain parents y))] [{b y} sup]))
-                 (cached-reach kb :succ pred a context fwd)))
+           (mapcat (fn [y] (map #(vector {b y} %) (with (support-chain parents y))))
+                   (cached-reach kb :succ pred a context fwd)))
 
          (ground? b)
          (let [parents (support-parents kb :pred pred b context)]
-           (keep (fn [x] (when-let [sup (with (support-chain parents x))] [{a x} sup]))
-                 (cached-reach kb :pred pred b context back)))
+           (mapcat (fn [x] (map #(vector {a x} %) (with (support-chain parents x))))
+                   (cached-reach kb :pred pred b context back)))
 
          (= a b)
-         (keep (fn [x] (when-let [sup (chain :succ x x)] [{a x} sup]))
-               (nm/sort-by-content-key nm/print-key compare
-                                       (on-a-cycle (walk-sources kb pred context) fwd)))
+         (mapcat (fn [x] (map #(vector {a x} %) (chain :succ x x)))
+                 (nm/sort-by-content-key nm/print-key compare
+                                         (on-a-cycle (walk-sources kb pred context) fwd)))
 
          :else [])))))
 
@@ -1411,6 +1411,31 @@
   `predAllSpecified` audit, which asks the same question of a filler."
   [kb term context]
   (class-indeterminate? kb (res/visible-supporter-fn kb context) term context))
+
+(defn- proxy-term?
+  "Is `term` a believed member of `proxy_term` at `context`, a member of either part or
+  of a subkind?  A reified constant is one without a stored membership.  One indexed
+  point-read, as `category-indeterminate?` reads: `res/matches-visible` fans the functor
+  over its genl-spec closure."
+  [kb term context]
+  (or (nat-read/reified-nat-symbol? term)
+      (boolean (seq (res/matches-visible kb (list 'proxy_term term) context)))))
+
+(defn determinateness
+  "The determinateness level of `term` as mentioned at `context`, read off the term and
+  not its equality class (core.txt, \"three levels of determinateness\").  A term that is
+  no `proxy_term` is `:determinate`.  A `proxy_term` is `:indeterminate` when it is a
+  skolem constant or a believed member of `indeterminate_term` or a subkind, and
+  `:placeholder` otherwise: a reified constant such as `(<MomFn Muffet>)` for
+  `(MomFn Muffet)`, or a believed member of `placeholder_term` or a subkind.
+  `checks/functional-merges?` merges a filler that is not `:determinate`."
+  [kb term context]
+  (cond
+    (not (symbol? term)) :determinate
+    (not (proxy-term? kb term context)) :determinate
+    (or (skolem-indeterminate? kb term context)
+        (category-indeterminate? kb term context)) :indeterminate
+    :else :placeholder))
 
 (defn indeterminacy-supports
   "The handles of the stored sentexes, in any context, that make `term` an indeterminate
@@ -3233,6 +3258,14 @@
        (every? (fn [p] (believed-literal? kb (list 'not (list p member)) context))
                (remove #(= % part) parts))))
 
+(def ^:private ^:dynamic *covering-goals*
+  "The `[goal context]` pairs a `CoveringProver` solve is already inside.  A denial the
+  cover asks for can ask the cover's own goal again: with two parts `B` and `C` closed,
+  `ClosedExtentProver` answers `(not (B x))` by asking `(B x)`, whose cover asks
+  `(not (C x))`.  The prover declines a pair already in the set, as `*defn-stack*` bounds
+  the defn provers' walks."
+  #{})
+
 (defrecord CoveringProver []
   Prover
   ;; A ground unary membership goal `(Part a)` for a `Part` some visible cover names.
@@ -3244,6 +3277,7 @@
          (symbol? (first goal))
          (= 1 (count (rest goal)))
          (ground? goal)
+         (not (contains? *covering-goals* [goal context]))
          (seq (tax/covers-naming-visible (reasoning/taxonomy kb) (first goal) context))))
   (est-bindings [_ _ _ _] 1)                    ; a ground membership test: it holds or not
   (cost         [_ _ _ _] :compute)             ; one bounded level-6 subquery per part
@@ -3254,11 +3288,12 @@
   (solve [_ kb goal context]
     (let [part   (first goal)
           member (second goal)]
-      (if (some (fn [[whole parts _]]
-                  (cover-leaves-only kb whole parts part member context))
-                (tax/covers-naming-visible (reasoning/taxonomy kb) part context))
-        [{}]
-        []))))
+      (binding [*covering-goals* (conj *covering-goals* [goal context])]
+        (if (some (fn [[whole parts _]]
+                    (cover-leaves-only kb whole parts part member context))
+                  (tax/covers-naming-visible (reasoning/taxonomy kb) part context))
+          [{}]
+          [])))))
 
 ;; ---- negates: a denial read off the other side -----------------------------
 ;;
@@ -4150,7 +4185,7 @@
   ([kb preds] (source-contexts kb preds nil))
   ([kb preds also]
    (observe/cached
-    (reasoning/qcn kb) [::source-contexts preds also]
+    (:clock kb) (reasoning/qcn kb) [::source-contexts preds also]
     (fn [_stale]
       (tax/meet-closure (reasoning/taxonomy kb) (held-contexts kb preds also))))))
 
@@ -4321,8 +4356,7 @@
   Empty is the complete support for a prover that reads nothing stored: `EvaluableProver`
   compares two numbers, `EvaluateProver` computes one.  A prover that reads stored facts
   without implementing `SupportingProver` (`FactProver`, `SymmetricProver`,
-  `InverseProver`) gets an empty support too, which names none of the facts it read;
-  `solve-goal-reporting-support` marks which answers a `SupportingProver` gave."
+  `InverseProver`) gets an empty support too, which names none of the facts it read."
   [pr kb goal context]
   (if (cap/has? SupportingProver pr)
     (solve-with-support pr kb goal context)
@@ -4341,15 +4375,14 @@
   (dispatch-provers kb (registry kb) goal context #(answers-with-support % kb goal context)))
 
 (defn solve-goal-reporting-support
-  "`solve-goal-with-support`'s answers as `[bindings support reported?]`, `reported?` true
-  when a `SupportingProver` gave the answer.  An empty support it reports means the answer
-  read nothing stored; an empty support from any other prover says nothing about what it
-  read, `FactProver`'s among them."
+  "The answers the `SupportingProver`s among `solve-goal-with-support`'s provers give `goal`,
+  as `[bindings support]`.  An empty support means the answer read nothing stored.  A sole
+  complete prover that does not implement `SupportingProver` leaves `goal` unanswered.  No
+  other prover is asked, since its empty support says nothing about what it read
+  (`answers-with-support`)."
   [kb goal context]
   (dispatch-provers kb (registry kb) goal context
-                    (fn [pr] (let [r (cap/has? SupportingProver pr)]
-                               (map (fn [[b sup]] [b sup r])
-                                    (answers-with-support pr kb goal context))))))
+                    #(when (cap/has? SupportingProver %) (solve-with-support % kb goal context))))
 
 (def ^:private ^:dynamic *mirror-depth*
   "How many mirror delegations are on the stack.  `solve-mirrored` re-enters the
@@ -4806,7 +4839,7 @@
   :retired-by (assoc (caches/on-every :G*) :caches-cleared :W)
   :computed :read :imaged? false :at [[:closures]]
   :live (fn [kb] (let [c (some-> (reasoning/closures kb) deref)]
-                   (if (== (observe/change-clock) (long (:clock c -1))) (count (:entries c)) 0)))
+                   (if (== (observe/change-clock (:clock kb)) (long (:clock c -1))) (count (:entries c)) 0)))
   :note "one clock for the whole map: a write retires every entry"})
 
 (caches/register-derived

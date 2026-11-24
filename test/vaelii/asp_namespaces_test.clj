@@ -38,15 +38,19 @@
   #{'vaelii.asp-aspif-test
     'vaelii.asp-edge-test
     'vaelii.asp-label-test
+    'vaelii.asp-programs-test
     'vaelii.asp-prover-test
     'vaelii.asp-solver-test
     'vaelii.cardinality-solve-test
+    'vaelii.cli-test
     'vaelii.constraint-solve-test
     'vaelii.koinii-schedule-test
     'vaelii.labeling-test
     'vaelii.minimize-solve-test
+    'vaelii.run-test
     'vaelii.solve-context-test
-    'vaelii.solve-rule-test})
+    'vaelii.solve-rule-test
+    'vaelii.web-vantage-test})
 
 (def ^:private availability-call
   "How the availability call is spelled, in the one place both the scan and the script read it."

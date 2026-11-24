@@ -32,7 +32,7 @@
   (is (v/genl? kb 'function 'relation))
   (is (v/genl? kb 'relation 'thing))
   (is (v/isa? kb 'lessThan 'relation))
-  (is (v/isa? kb 'MotherFn 'relation)))
+  (is (v/isa? kb 'StartFn 'relation)))
 
 (tu/deftest-kb starter-distinguishes-type-nodes-from-binary-predicate-nodes
   (doseq [mapping '[relationTypeByArity predicateTypeByArity functionTypeByArity]]
@@ -70,7 +70,7 @@
     (let [h (generated-inert kb 'predicate four_place_predicate 4)]
       (is (some? h) "the mapping generates its rule")
       (when h
-        (is (v/in? kb h) "believed")
+        (is (v/believed? kb h) "believed")
         (is (= #{} (:engines (v/sentex kb h))) "and run by neither engine")))
     (is (empty? (v/query kb (list four_place_predicate fourPlacePredicate) 'CxUniverse
                          {:max-depth 3}))
@@ -87,10 +87,30 @@
     (let [h (generated-inert kb 'function four_place_function 4)]
       (is (some? h))
       (when h
-        (is (v/in? kb h))
+        (is (v/believed? kb h))
         (is (= #{} (:engines (v/sentex kb h))))))
     (is (empty? (v/query kb (list four_place_function fourPlaceFn) 'CxUniverse {:max-depth 3})))
     (is (empty? (v/sentexes-matching kb (list four_place_function fourPlaceFn) 'CxUniverse)))))
+
+(tu/deftest-kb the-arity-policy-intersections-are-stated-inert
+  (doseq [[kind policy class] '[[predicate fixed_arity fixed_arity_predicate]
+                                [function fixed_arity fixed_arity_function]
+                                [predicate variable_arity variable_arity_predicate]
+                                [function variable_arity variable_arity_function]]]
+    (let [h (v/handle-of kb (list 'set/inertRule
+                                  (list 'implies
+                                        (list 'and (list kind '?relation) (list policy '?relation))
+                                        (list class '?relation)))
+                         'CxUniverse)]
+      (is (some? h) (str "stated: " class))
+      (when h
+        (is (v/believed? kb h) (str class "'s rule is believed"))
+        (is (= #{} (:engines (v/sentex kb h))) (str class "'s rule runs in neither engine")))))
+  (tu/with-terms [policyOnlyPredicate]
+    (v/assert kb (list 'predicate policyOnlyPredicate) 'CxUniverse)
+    (v/assert kb (list 'fixed_arity policyOnlyPredicate) 'CxUniverse)
+    (is (empty? (v/query kb (list 'fixed_arity_predicate policyOnlyPredicate) 'CxUniverse
+                         {:max-depth 3})))))
 
 (tu/deftest-kb the-shipped-exact-arity-class-rules-are-inert
   (doseq [[kind type n] '[[predicate unary_predicate 1] [predicate binary_predicate 2]
@@ -99,7 +119,7 @@
     (let [h (generated-inert kb kind type n)]
       (is (some? h) (str "generated: " type))
       (when h
-        (is (v/in? kb h))
+        (is (v/believed? kb h))
         (is (= #{} (:engines (v/sentex kb h))) (str type "'s generated rule runs in neither engine")))))
   (tu/with-terms [undeclaredBinary]
     (v/assert kb (list 'predicate undeclaredBinary) 'CxUniverse)
@@ -234,7 +254,7 @@
 (defn- concluded?
   "Is `s` stored and believed in CxUniverse?"
   [kb s]
-  (boolean (when-let [h (v/handle-of kb s 'CxUniverse)] (v/in? kb h))))
+  (boolean (when-let [h (v/handle-of kb s 'CxUniverse)] (v/believed? kb h))))
 
 (defn- guarded-on-arity
   "A forward rule concluding `(marked ?r)` from `(markArg ?r ?p)` guarded on
@@ -327,7 +347,7 @@
                  quaternary_function quinary_function]]
     (is (v/genl? kb type 'fixed_arity_function)))
   (is (v/isa? kb 'parentOf 'fixed_arity_predicate))
-  (is (v/isa? kb 'MotherFn 'fixed_arity_function)))
+  (is (v/isa? kb 'StartFn 'fixed_arity_function)))
 
 (defn- conflict-between?
   "Whether `conflicts` reports one nogood whose members are exactly `a` and `b`."
@@ -497,8 +517,8 @@
     (is (v/genl? kb 'variable_arity_function 'variable_arity))
     (is (v/genl? kb 'variable_arity_function 'function)))
   (testing "the shipped functions use their exact relation-wide specializations"
-    (doseq [[function type] '[[FatherFn unary_function]
-                              [MotherFn unary_function]
+    (doseq [[function type] '[[GeneticKinFn unary_function]
+                              [StartFn unary_function]
                               [YearFn unary_function]
                               [DatetimeFn unary_function]
                               [MonthFn binary_function]
@@ -595,7 +615,7 @@
       (let [h (v/handle-of kb (list 'set/backwardRule r) 'CxUniverse)]
         (is (some? h) (str "stored: " (pr-str r)))
         (when h
-          (is (v/in? kb h))
+          (is (v/believed? kb h))
           (is (= #{:backward} (:engines (v/sentex kb h))))))))
   (testing "and none forward-chains: no admitsArgnum fact is stored"
     (is (empty? (v/sentexes-matching kb '(admitsArgnum ?r ?n) 'CxWell))))
@@ -1627,7 +1647,7 @@
             dh   (v/assert kb decl CxBelow)
             h    (v/handle-of kb m 'CxUniverse)]
         (is (= ['CxUniverse] (homes kb m)) "one sentex, in CxUniverse, and none in CxBelow")
-        (is (and h (v/in? kb h)) "believed where it is stored")
+        (is (and h (v/believed? kb h)) "believed where it is stored")
         (is (= #{['declaredType #{decl}]} (universe-support kb m))
             "justified by the declaration alone")
         (doseq [cx ['CxUniverse CxBelow]]

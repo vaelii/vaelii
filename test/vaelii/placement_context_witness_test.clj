@@ -45,7 +45,7 @@
     (v/assert kb (list 'implies (list bird '?x) (list flies '?x)) CxHigh {:direction :forward})
     (v/assert kb (list bird Tweety) CxLow)
     (let [derived (v/handle-of kb (list flies Tweety) CxLow)]
-      (is (v/in? kb derived) "the rule was inherited into the context holding the fact")
+      (is (v/believed? kb derived) "the rule was inherited into the context holding the fact")
       (testing "the edge is an antecedent, beside the fact and the rule"
         (is (contains? (antecedent-sentences kb derived) (list 'genlCx CxLow CxHigh))))
       (testing "so `why` shows it, rather than a proof that skips how the rule was seen"
@@ -81,7 +81,7 @@
     (v/assert kb (list bird Tweety) CxLow)
     (let [derived (v/handle-of kb (list flies Tweety) CxLow)
           antes   (antecedent-sentences kb derived)]
-      (is (v/in? kb derived))
+      (is (v/believed? kb derived))
       (is (contains? antes (list 'genlCx CxLow CxMid)))
       (is (contains? antes (list 'genlCx CxMid CxHigh))))))
 
@@ -237,10 +237,10 @@
       (v/assert kb (list 'implies (list bird '?x) (list flies '?x)) CxHigh {:direction :forward})
       (v/assert kb (list bird Tweety) CxLow)
       (let [before (v/handle-of kb (list flies Tweety) CxLow)]
-        (is (v/in? kb before))
+        (is (v/believed? kb before))
         (v/retract! kb via-one)
         (let [after (v/handle-of kb (list flies Tweety) CxLow)]
-          (is (v/in? kb after)
+          (is (v/believed? kb after)
               "Low still sees High by the other route, so the rule still reaches the fact")
           (is (not= before after)
               "as a re-derivation, not a survival: the sweep took the old record")))
@@ -262,13 +262,13 @@
       (v/assert kb (list 'implies (list bird '?x) (list flies '?x)) CxRule {:direction :forward})
       (v/assert kb (list bird Tweety) CxFact)
       (let [before (v/handle-of kb (list flies Tweety) CxPlace)]
-        (is (v/in? kb before)
+        (is (v/believed? kb before)
             "CxPlace sees the rule one way and the fact the other, so it holds the conclusion")
         (is (contains? (set (map :id (edge-sentexes kb before))) direct)
             "and it named the direct edge as the witness for seeing CxFact")
         (v/retract! kb direct)
         (let [after (v/handle-of kb (list flies Tweety) CxPlace)]
-          (is (v/in? kb after)
+          (is (v/believed? kb after)
               "CxPlace still reaches CxFact through CxVia, so the conclusion is still licensed")
           (is (not= before after)
               "as a re-derivation: the sweep took the record the named edge held up"))))))
@@ -349,7 +349,7 @@
       (is (contains? before (list 'genlCx CxLow CxHigh)))
       (v/recover kb)
       (is (= before (antecedent-sentences kb derived)))
-      (is (v/in? kb derived) "and it is still believed")
+      (is (v/believed? kb derived) "and it is still believed")
       (v/retract! kb (v/handle-of kb (list 'genlCx CxLow CxHigh) 'CxUniverse))
       (is (empty? (v/sentexes-matching kb (list flies Tweety) '?ctx))
           "so the rebuilt dependency still withdraws"))))

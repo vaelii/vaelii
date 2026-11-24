@@ -42,16 +42,18 @@
   <message>` (`refusal-line`), so a script branches on the keyword and not on the prose.
 
   **One writer.**  A `--dir` KB takes the single-writer file lock (docs/storage.md), so
-  the CLI and a daemon cannot own the same directory at once — by design.  `diff` and
-  `upgrade` open no KB of the run's (`without-a-kb`), so `diff` answers beside a daemon
-  that holds `--dir`."
+  the CLI and a daemon cannot own the same directory at once — by design.  `diff`,
+  `upgrade` and `run` open no KB the driver flags name (`without-a-kb`), so `diff` and
+  `run` answer beside a daemon that holds `--dir`."
   (:require [clojure.edn :as edn]
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [taoensso.trove :as trove]
             [vaelii.core :as v]
+            [vaelii.host.run :as run-file]
             [vaelii.host.starter :as starter]
             [vaelii.host.sync :as sync]
+            [vaelii.impl.config :as config]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.reasoning-image :as ri])
   (:import [java.io File PushbackReader StringReader]))
@@ -191,8 +193,8 @@
         (:nearest o) (v/why-not kb g (or c '?ctx) (:nearest o))
         (nil? c)     (v/why-not kb g)
         :else        (v/why-not kb g c)))]
-   ["in"          1 1   "<handle>"                      "is it believed?"
-    (fn [kb [h] _] (v/in? kb h))]
+   ["believed"    1 2   "<handle> [<CxName>]"           "is it believed, at its own context or CxName?"
+    (fn [kb args _] (apply v/believed? kb args))]
    ["isa"         2 3   "<Individual> <type> [<CxName>]" "type membership, via genl"
     (fn [kb args _] (apply v/isa? kb args))]
    ["types-of"    1 2   "<Individual> [<CxName>]"      "the types asserted of it, not their supertypes"
@@ -239,6 +241,11 @@
       (throw (ex-info (str "upgrade opens and closes its own KB — run `lein cli"
                            " upgrade --dir <path>` from the shell, not inside the repl")
                       {:type :unknown-command :cmd "upgrade"
+                       :commands (mapv first command-table)})))]
+   ["run"         1 1   "<file.vae>"                    "assert a run file over its #base and print its #show and #truth answers"
+    (fn [_ _ _]
+      (throw (ex-info "run opens a KB of its own — run `lein cli run <file>` from the shell, not inside the repl"
+                      {:type :unknown-command :cmd "run"
                        :commands (mapv first command-table)})))]
    ["repl"        0 0   ""                              "the interactive loop" nil]])
 
@@ -292,7 +299,8 @@
    "export"      #{:variant :compression :format}
    "describe"    #{:context}
    "why-not"     #{:nearest}
-   "upgrade"     #{:verify :trust :sync}})
+   "upgrade"     #{:verify :trust :sync}
+   "run"         #{:depth :format}})
 
 (defn- flag-names [ks] (str/join ", " (map #(str "--" (name %)) (sort ks))))
 
@@ -353,6 +361,12 @@
                              " — those describe an export dump")
                         {:type :unknown-option :mismatch :conflict :unknown (vec ignored)
                          :options [:format]}))))
+    "run"
+    (when-let [f (:format opts)]
+      (when (not= "edn" f)
+        (throw (ex-info (str "unknown --format " f " — run prints text, or EDN with --format edn")
+                        {:type :unknown-option :mismatch :bad-value
+                         :flag "--format" :value f :takes ["edn"]}))))
     nil))
 
 (defn check-flags!
@@ -399,11 +413,13 @@
          "  --memory              the in-memory KB, said explicitly\n"
          "  --starter             load the shipped starter schema\n"
          "  --strength <s>        assert, assert-rule: :monotonic instead of :default\n"
-         "  --depth <n>           query, query?: how far to expand rules\n"
+         "  --depth <n>           query, query?, run: how far to expand rules (run: default\n"
+         "                        VAELII_MAX_QUERY_DEPTH, 256)\n"
          "  --variant <v>         export: records | records+index\n"
          "  --compression <c>     export: gzip | xz | none\n"
          "  --format text         export: a text KB instead of a dump — one Cx<Name>.txt\n"
-         "                        per context, the format `load` reads\n"
+         "                        per context, the format `load` reads; run: --format edn\n"
+         "                        prints each read with its answer as EDN\n"
          "  --context <CxName>    describe: the vantage to read from; absent, every context\n"
          "  --nearest <n>         why-not: run a bounded search and name the n rules that\n"
          "                        came closest, with the antecedent each is missing\n"
@@ -663,15 +679,57 @@
     :else (do (v/install-memory-guard! {:kbs (constantly nil)})
               (upgrade! (:dir opts) (select-keys opts [:verify :trust :sync])))))
 
+(defn- run-from-the-shell
+  "`run`'s arm of `without-a-kb`: read the run file, restore its base, assert its forms and
+  print each read's answer.  A `#show`, `#brave` or `#cautious` prints its instances one per
+  line, a `#truth` `<verdict> <sentence>`, and a `#models` or `#model` an `Answer <i>:` line
+  per answer set, then `Optimization:` and the optimum's cost per level.  A read under a
+  non-optimal `:among` prints each answer set's cost after it instead.  A solve with no
+  answer set prints `unsatisfiable`.  Returns exit 1 after one `<file>:<line>: error: …`
+  line on stderr per refused form, 3 after one stderr line per read that stopped short
+  (`run-file/stopped-short?`), else 0."
+  [[path] opts]
+  (when-let [named (seq (filter opts [:dir :memory :starter]))]
+    (throw (ex-info (str "run starts from the base its file names, so "
+                         (flag-names named) " names a KB it does not open")
+                    {:type :unknown-option :mismatch :conflict
+                     :flags (mapv #(str "--" (name %)) named)})))
+  (let [program (run-file/read-run-file (str path))
+        depth   (if-let [d (:depth opts)] (count-option "--depth" d) (config/max-query-depth))
+        kb      (run-file/base-kb (or (:base program) run-file/default-base))
+        {:keys [refused answers]} (try (run-file/run-in kb program depth) (finally (v/close! kb)))
+        short   (filter run-file/stopped-short? answers)]
+    (doseq [{:keys [file line error]} refused]
+      (err! (str file ":" line ": " (refusal-line error))))
+    (if (= "edn" (:format opts))
+      (when-not refused (pp/pprint answers))
+      (doseq [{:keys [arg verdict answer-sets answer-set-costs status costs] :as a} answers]
+        (cond
+          verdict     (println (name verdict) (pr-str arg))
+          answer-sets (do (doseq [[i as] (map-indexed vector answer-sets)
+                                  :let [c (get answer-set-costs i)]]
+                            (println (str/join " " (cons (str "Answer " (inc i) ":") (map pr-str as))))
+                            (when (and c (not costs)) (println "Optimization:" (str/join " " c))))
+                          (cond (= :unsat status) (println "unsatisfiable")
+                                costs             (println "Optimization:" (str/join " " costs))))
+          (= :unsat status) (println "unsatisfiable")
+          :else       (run! (comp println pr-str) (:answers a)))))
+    (doseq [{:keys [file line directive arg status]} short]
+      (err! (str file ":" line ": #" directive " " (pr-str arg) " stopped short of its answer: "
+                 status)))
+    (cond refused 1 (seq short) 3 :else 0)))
+
 (def ^:private without-a-kb
   "The commands `run` answers without opening the run's KB, each with the fn that answers it
-  from `[args opts]`.  Opening a `--dir` KB takes the directory's single-writer lock, so a
-  command that reads no KB would be refused whenever a daemon owns the directory.
-  `upgrade` opens and closes a store of its own (`upgrade!`); `diff` reads two text KBs into
-  KBs of their own.  `--dir`, `--memory` and `--starter` name the run's KB and change
-  nothing they print."
-  {"upgrade" upgrade-from-the-shell
-   "diff"    (fn [args _opts] (diff-text-kbs args))})
+  from `[args opts]`, prints the answer and returns the exit status.  Opening a `--dir` KB
+  takes the directory's single-writer lock, so a command that reads no KB would be refused
+  whenever a daemon owns the directory.  `upgrade` opens and closes a store of its own
+  (`upgrade!`); `diff` reads two text KBs into KBs of their own; `run` opens the KB its file
+  names.  `--dir`, `--memory` and `--starter` name the run's KB and change nothing the
+  first two print."
+  {"upgrade" (fn [args opts] (show (upgrade-from-the-shell args opts)) 0)
+   "diff"    (fn [args _opts] (show (diff-text-kbs args)) 0)
+   "run"     run-from-the-shell})
 
 (defn run
   "Parse `argv`, open the KB, run the command and print its result; return the exit status.
@@ -703,7 +761,7 @@
                            (check-args! cmd args opts)
                            args))]
               (if-let [answer (without-a-kb cmd)]
-                (show (answer args opts))
+                (answer args opts)
                 (let [kb (open-kb-from opts)]
                   (try
                     (if session?
@@ -712,8 +770,8 @@
                     (catch Throwable t
                       (try (v/close! kb) (catch Throwable _ nil))
                       (throw t)))
-                  (v/close! kb)))
-              0)))))
+                  (v/close! kb)
+                  0)))))))
     (catch Throwable e
       (err! (refusal-line e))
       1)))

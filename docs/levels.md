@@ -79,7 +79,7 @@ none of which `sentexes-matching` has to know about.
 It adds exactly three things level 2 does not, all **questions about truth** rather than
 about storage:
 
-- the **`except` visibility filter** (`exc/without-excepted`) — a believed
+- the **`except` filter** (`exc/without-excepted`) — a believed
   `(except (sentexHandle H))` visible from the query context hides `H` there and in
   every context that sees it ([contexts.md](contexts.md));
 - the **retired-spelling filter** (`res/without-retired`) — the reader-scoped half of
@@ -139,7 +139,7 @@ arguments; level 2 unifies. So for any goal that binds an argument, level 2 is a
 *subset* of level 1 — which is one of the two reasons `escalate` floors at 2.
 
 **3 → 4 can drop an answer.** Level 4 is `res/matches-visible`, which reads the
-`except` visibility filter that `res/raw-match` does not. A sentex a believed
+`except` filter that `res/raw-match` does not. A sentex a believed
 `(except (sentexHandle H))` hides from the view context is therefore matched at levels
 2 and 3 and gone from level 4 up. Level 4 is right and the engine agrees — `ask` denies
 that goal too. What it costs is `escalate`, which will name level 2 as the machinery

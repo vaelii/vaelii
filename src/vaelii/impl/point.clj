@@ -7,6 +7,7 @@
   `IncludesInstantProver`, which reads a thing against a moment off the network.  See
   docs/time.md and docs/qcn.md."
   (:require [clojure.set :as set]
+            [vaelii.impl.graph :as graph]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.qcn :as qcn]
             [vaelii.impl.qcn-kb :as qkb]
@@ -109,6 +110,33 @@
                  :node?      tp/node-term?
                  :sources    (set (keys stp/interval-denotation))
                  :contexts   (set (keys stp/interval-denotation))}))
+
+(defn unsatisfiable-regions
+  "The conflicted regions of the point network visible from `context`.  The graph has an
+  edge `a → b` for every pair that rules out `:after`.  A region is a strongly connected
+  component of it (`graph/scc`) holding a node of `touched` (any node when nil) and a pair
+  that rules out `:equal`.  Every node of such a component is at or before every other,
+  so they are equal, and the pair contradicts that.  As `qkb/unsatisfiable-regions`
+  answers: `{:nodes :pairs :members}`, `:members` the support of the component's pairs."
+  [kb context touched]
+  (let [net     (qkb/network kb instants context)
+        support (qkb/network-support kb instants context)
+        adj     (reduce-kv (fn [m [a b] rels]
+                             (if (contains? rels :after) m (update m a (fnil conj []) b)))
+                           {} net)
+        found   (volatile! [])]
+    (graph/scc (if touched (filter #(contains? adj %) touched) (keys adj))
+               #(get adj % [])
+               #(when (< 1 (count %)) (vswap! found conj (set %))))
+    (into []
+          (keep (fn [ns]
+                  (when (or (nil? touched) (some #(contains? ns %) touched))
+                    (let [sub (qcn/select-nodes net ns)]
+                      (when (some #(not (contains? (val %) :equal)) sub)
+                        {:nodes   ns
+                         :pairs   (qcn/unsatisfiable-pairs sub point-algebra)
+                         :members (into #{} (mapcat #(get support %)) (keys sub))})))))
+          @found)))
 
 (defn possible-point-relations
   "The base relations still possible between instants `i1` and `i2` given everything

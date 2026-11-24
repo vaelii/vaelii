@@ -94,7 +94,7 @@
                          (when (and (seq? b) (symbol? (first b)))
                            (for [sx (kb/sentexes-matching kb (list 'result (first b) '?t) universal-context)
                                  :let [t (nth (:sentence sx) 2)]
-                                 :when (and (symbol? t) (exc/believed-own? kb (:id sx)))]
+                                 :when (and (symbol? t) (exc/unwithdrawn-own? kb (:id sx)))]
                              [(:id sx) t])))
            :let [rt (some #(provers/membership-route kb h s % universal-context) unbroken-types)]
            :when rt]
@@ -168,12 +168,12 @@
 (defn- subrelation-declarations
   "Believed `(contextArgSubrelation F pos R)` declarations as `[F pos R handle]`, kept
   where `(pred? F)` — all of them, or only those for one function.  A declaration is read
-  as its own context believes it (`exc/believed-own?`): a computed edge is seen from every
-  context, so a declaration a defeat hides where it is stated builds none."
+  unwithdrawn at its own context (`exc/unwithdrawn-own?`): a computed edge is seen from
+  every context, so a declaration a defeat hides where it is stated builds none."
   [kb pred?]
   (for [sx  (kb/sentexes-matching kb '(contextArgSubrelation ?f ?pos ?r) '?ctx)
         :let [[_ f pos r] (:sentence sx)]
-        :when (and (pred? f) (exc/believed-own? kb (:id sx)))]
+        :when (and (pred? f) (exc/unwithdrawn-own? kb (:id sx)))]
     [f pos r (:id sx)]))
 
 (defn- context-nat-entry
@@ -186,7 +186,7 @@
    (let [[_ k e] (:sentence sx)]
      (when (and (= universal-context (:context sx))
                 (= 'natFormula (nm/functor (:sentence sx)))
-                (jtms/in? (reasoning/tms kb) (:id sx))
+                (exc/unwithdrawn-own? kb (:id sx))
                 (if named? (and (symbol? k) (not (sx/variable? k))) (nat-read/reified-context-symbol? k))
                 (sequential? e) (= f (first e)))
        [k e (:id sx)]))))
@@ -251,11 +251,11 @@
 
 (defn- arg-genlcx-declarations
   "`f`'s believed `(contextArgGenlCx F pos)` declarations as `[pos handle]`, in position
-  order, each read as its own context believes it, as `subrelation-declarations` reads
+  order, each read unwithdrawn at its own context, as `subrelation-declarations` reads
   its own."
   [kb f]
   (sort (for [sx (kb/sentexes-matching kb (list 'contextArgGenlCx f '?pos) '?ctx)
-              :when (exc/believed-own? kb (:id sx))]
+              :when (exc/unwithdrawn-own? kb (:id sx))]
           [(nth (:sentence sx) 2) (:id sx)])))
 
 (defn- arg-context
@@ -412,8 +412,8 @@
                                          [(when one? (drop-pair-edges! kb ksub ksup))]))
           one?       (any-built? [(drop-produced! kb [both]) (drop-pair-edges! kb ksub ksup)])
           (seq back) (let [made  (any-built? (map #(materialize kb both %) (pairs any?)))
-                           held  (exc/believed-own? kb (kb/find-sentex-handle kb both universal-context))
-                           live? (fn [rt] (every? #(exc/believed-own? kb %) rt))]
+                           held  (exc/unwithdrawn-own? kb (kb/find-sentex-handle kb both universal-context))
+                           live? (fn [rt] (every? #(exc/unwithdrawn-own? kb %) rt))]
                        (any-built? [made (if held
                                            (drop-pair-edges! kb ksub ksup)
                                            (edges (filter live? routes)))]))
@@ -631,7 +631,7 @@
   resident values under the change clock (`observe/cached`), so the reads between two
   writes share one read copy and its caches."
   [kb expr]
-  (observe/cached (reasoning/qcn kb) [::unwritten-read expr tax/*search* tax/*network-belief*]
+  (observe/cached (:clock kb) (reasoning/qcn kb) [::unwritten-read expr tax/*search* tax/*network-belief*]
                   (fn [_]
                     (when-let [supers (seq (unminted-supers kb expr))]
                       (let [k (nat/constant-for nat-read/context-namespace expr)]
@@ -727,21 +727,21 @@
 
 (defn- calendar-candidates
   "The contexts of `f` a comparison of calendar fields can order against one of the times
-  `ts`, each read at the positions `ps`.  For each reading
-  `[s e]` of each time, the walks from `s` and `e` give the calendar bounds: a
-  context inside has its points between the earliest moment `s` reaches forward and the
-  latest `e` reaches back, read off the calendar index's months between them; a context
-  around has its start at or before the latest moment `s` reaches back and its end at or
-  after the earliest `e` reaches forward, read off the months on the side holding fewer.
-  The contexts at a time the walks reach are among them."
+  `ts`, each read at the positions `ps`: those at a time the walks from a reading's start
+  and end reach, and those the calendar index files in the months between or beyond the
+  calendar bounds the walks give (docs/context-nat.md, \"The structural genlCx
+  producer\")."
   [kb f ps ts]
   (let [months (delay (calendar-months kb))
-        fewer  (fn [fr before after]
-                 (let [n (fn [pick] (count (filter (fn [[_ [fr' y m]]] (and (= fr fr') (pick [y m]))) @months)))]
-                   (if (<= (n #(<= (compare % (subvec (vec before) 0 2)) 0))
-                           (n #(<= (compare (subvec (vec after) 0 2) %) 0)))
-                     (calendar-handles kb @months fr nil before)
-                     (calendar-handles kb @months fr after nil))))]
+        ym     #(subvec (vec %) 0 2)
+        held   (fn [[fr from to]]
+                 (count (filter (fn [[_ [fr' y m]]] (and (= fr fr')
+                                                         (or (nil? from) (<= (compare (ym from) [y m]) 0))
+                                                         (or (nil? to) (<= (compare [y m] (ym to)) 0))))
+                                @months)))
+        fewer  (fn [one other]
+                 (let [[fr from to] (if (<= (held one) (held other)) one other)]
+                   (calendar-handles kb @months fr from to)))]
     (set
      (for [t ts
            [s en] (po/readings t)
@@ -749,11 +749,13 @@
                  fe (po/reach kb true en) be (po/reach kb false en)
                  in-lo (calendar-extreme false fs) in-hi (calendar-extreme true be)
                  out-lo (calendar-extreme true bs) out-hi (calendar-extreme false fe)
-                 hs (concat (for [[fr a] in-lo :let [b (in-hi fr)] :when b
-                                  h (calendar-handles kb @months fr a b)]
+                 hs (concat (for [[fa a] in-lo, [fb b] in-hi
+                                  h (if (= fa fb)
+                                      (calendar-handles kb @months fa a b)
+                                      (fewer [fa a nil] [fb nil b]))]
                               h)
-                            (for [[fr a] out-lo :let [b (out-hi fr)] :when b
-                                  h (fewer fr a b)]
+                            (for [[fa a] out-lo, [fb b] out-hi
+                                  h (fewer [fa nil a] [fb b nil])]
                               h))]
            c (concat (contexts-at kb f ps (first (side (merge fs bs fe be))))
                      (bridged-contexts kb f ps (set hs)))]
@@ -889,7 +891,9 @@
 
         (and (= 'natFormula head) (symbol? x) (sequential? y) (seq y))
         (let [f (first y)]
-          (any-built? [(when (nat-read/reified-context-symbol? x) (reconcile-pairs kb f (pairs-with kb f x)))
+          (any-built? [(when (nat-read/reified-context-symbol? x)
+                         (binding [po/*focus* (into #{} (comp (mapcat po/readings) cat) (rest y))]
+                           (reconcile-pairs kb f (pairs-with kb f x))))
                        (reconcile-arg-edges kb f (some-> (context-nat-of kb x true) vector))]))
 
         :else
@@ -949,20 +953,39 @@
                        (when (and (seq? s) (= both-ways (first s))) s)))
           hs)))
 
+(defn- drop-departed!
+  "Drop the producer's justifications over each `natFormula` map and `contextArgGenlCx`
+  declaration of `departed` that is IN and that its own context withdraws
+  (`exc/unwithdrawn-own?`), and apply the removals.  A defeat moves no label, so an edge built
+  over its target keeps its label until then.  Returns true when one went."
+  [kb departed]
+  (let [tms (reasoning/tms kb)
+        sources #{'natFormula 'contextArgGenlCx}]
+    (any-built?
+     (for [h     departed
+           :when (and (jtms/in? tms h) (not (exc/unwithdrawn-own? kb h))
+                      (contains? sources (some-> (p/get-sentex (:records kb) h) :sentence nm/functor)))
+           jid   (vec (jtms/dependents tms h))
+           :when (= 'contextArgSubrelation (:informant (jtms/justification tms jid)))]
+       (let [r (jtms/drop-justification! tms jid)]
+         (p/delete-justification! (:records kb) jid)
+         (integrate/apply-removals! kb r)
+         true)))))
+
 (defn- reconcile-moves*
   "`reconcile-moves` past its presence checks."
   [kb {:keys [edges arrived derived departed]}]
   (let [recs  (:records kb)
-        tms   (reasoning/tms kb)
         heads (when (or (seq arrived) (seq derived)) (declared-heads kb))
         ss    (for [h (into (set arrived) (mapcat #(get derived %)) heads)
                     :let [s (some-> (p/get-sentex recs h) sx/sentence-of)]
-                    :when (and (seq? s) (contains? heads (first s)) (jtms/in? tms h))]
+                    :when (and (seq? s) (contains? heads (first s)) (exc/unwithdrawn-own? kb h))]
                 s)
         gone  (departed-pairs kb departed)]
     (po/with-memo
       (any-built?
-       (concat (map #(reconcile-arrival kb %) (nm/sort-by-content-key identity (set ss)))
+       (concat [(drop-departed! kb departed)]
+               (map #(reconcile-arrival kb %) (nm/sort-by-content-key identity (set ss)))
                (map (fn [[_ a b]] (reorder-pair kb a b)) (nm/sort-by-content-key identity gone))
                (map #(reconcile-edge-move kb %) (sort-by (fn [e] (mapv nm/name-key e)) (set edges))))))))
 
@@ -971,9 +994,10 @@
   (`special/take-producer-moves!`), read in content order.  `reconcile-edge-move` takes
   each of the `:edges`.  Each `:arrived` or `:derived` handle believed and of a functor
   `declared-heads` names is read as an arrival.  Each `contextsOrderedBothWays`
-  `departed-pairs` finds among the `:departed` orders its pair again (`reorder-pair`).
-  Local: the cost follows the moves and the contexts they name.  Returns true when an edge
-  gained a justification, which the caller settles."
+  `departed-pairs` finds among the `:departed` orders its pair again (`reorder-pair`), and
+  a `:departed` handle its own context does not believe loses the producer's justifications
+  over it (`drop-departed!`).  Local: the cost follows the moves and the contexts they
+  name.  Returns true when an edge gained or lost a justification, which the caller settles."
   [kb {:keys [edges arrived derived departed] :as moves}]
   (when (and (or (seq edges) (seq arrived) (seq derived) (seq departed)) (any-context-declarations? kb))
     (reconcile-moves* kb moves)))

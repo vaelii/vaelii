@@ -643,6 +643,44 @@
         (doseq [kb [a b]] (v/clear! kb)))
       (finally (tu/rm-rf! dir)))))
 
+(deftest a-dump-written-while-another-kb-moved-carries-its-image
+  (let [dir  (tu/tmpdir "vaelii-reasoning-image-")
+        dump (str dir "/dump")
+        open (fn [tag] (v/open-kb {:backend :memory :space [::other-moved tag] :recover? false}))
+        a    (open :a)
+        b    (open :b)
+        _    (v/assert-rule a '[(dog ?x)] '(animal ?x) 'CxUniverse {:direction :forward})
+        _    (mapv #(v/assert a (list 'dog (symbol (str "Dog" %))) 'CxUniverse) (range 3))
+        done (atom false)]
+    (try
+      (let [ex (v/export! a dump {:chunk-size 1
+                                  :on-progress (fn [{:keys [phase]}]
+                                                 (when (and (= :justifications phase)
+                                                            (compare-and-set! done false true))
+                                                   (v/assert b '(dog Rex) 'CxUniverse)))})]
+        (is @done "the write to the other KB ran mid-export")
+        (is (= :written (:reasoning-image ex))))
+      (finally (doseq [kb [a b]] (v/clear! kb)) (tu/rm-rf! dir)))))
+
+(deftest a-dump-written-while-its-stores-moved-carries-no-image
+  (doseq [shape [:another-value :fork]]
+    (let [dir   (tu/tmpdir "vaelii-reasoning-image-")
+          space [::stores-moved (gensym)]
+          b     (v/open-kb {:backend :memory :space space :recover? false})
+          _     (v/assert-rule b '[(dog ?x)] '(animal ?x) 'CxUniverse {:direction :forward})
+          _     (mapv #(v/assert b (list 'dog (symbol (str "Dog" %))) 'CxUniverse) (range 3))
+          a     (if (= :fork shape) (v/fork b) (v/open-kb {:backend :memory :space space}))
+          done  (atom false)]
+      (try
+        (let [ex (v/export! a (str dir "/dump")
+                            {:chunk-size 1
+                             :on-progress (fn [{:keys [phase]}]
+                                            (when (and (= :justifications phase)
+                                                       (compare-and-set! done false true))
+                                              (v/assert b '(dog Rex) 'CxUniverse)))})]
+          (is @done (str (name shape) ": the write ran mid-export"))
+          (is (= :not-writable (:reasoning-image ex)) (name shape)))
+        (finally (when (= :fork shape) (v/close! a)) (v/clear! b) (tu/rm-rf! dir))))))
 (deftest the-records-fingerprint-covers-the-justifications
   (tu/with-snapshot-platform
     (let [dir (tu/tmpdir "vaelii-reasoning-image-")]

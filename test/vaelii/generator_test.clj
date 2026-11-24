@@ -145,7 +145,7 @@
         (is (some? minted))
         (v/retract! kb fill)
         (testing "the mint is no longer believed"
-          (is (not (v/in? kb minted))))
+          (is (not (v/believed? kb minted))))
         (testing "and neither is what it concluded"
           (is (empty? (v/sentexes-matching kb (list dst Fido) 'CxUniverse))))))))
 
@@ -165,9 +165,9 @@
         (let [c      (v/handle-of kb (list dst Fido) 'CxUniverse)
               minted (some #(when (= (list dst '?var0) (:consequent %)) (:id %))
                            (generated-rules kb 'CxUniverse))]
-          (is (and c minted (v/in? kb c) (v/in? kb minted)) generator-first?)
+          (is (and c minted (v/believed? kb c) (v/believed? kb minted)) generator-first?)
           (v/assert kb (list 'not (list marker src)) 'CxUniverse {:strength :monotonic})
-          (is (= [false false] [(v/in? kb minted) (v/in? kb c)]) generator-first?))))))
+          (is (= [false false] [(v/believed? kb minted) (v/believed? kb c)]) generator-first?))))))
 
 (tu/deftest-kb a-disbelieved-rule-does-not-fire
   ;; the belief filter on its own, with no generator in sight: this is the property
@@ -363,6 +363,150 @@
                              (list 'implies (list bb '?o) (list 'implies (list '?o '?x) (list cc '?x)))
                              (list 'implies (list cc '?o) (list 'implies (list '?o '?x) (list dd '?x)))]))))))))
 
+(defn- lift-generator
+  "A generator over an edge between two `generic` inputs, generating the rule that lifts
+  the edge to their readings under the function `qualify`: the conclusion is the predicate
+  the generator reads, so the functors alone make it a self-feed."
+  [generic qualify]
+  (list 'implies (list 'and (list generic '?p) (list generic '?g) (list 'genl '?p '?g))
+        (list 'implies (list 'genl '?p '?g)
+              (list 'genl (list qualify '?p) (list qualify '?g)))))
+
+(tu/deftest-kb a-feed-whose-applications-cannot-satisfy-a-typed-read-closes-no-cycle
+  (testing "an application whose result type is disjoint from the type read of its variable feeds nothing"
+    (tu/with-terms [generic_kind qualified_kind QualifyFn]
+      (is (= :not-stratified (refusal kb (lift-generator generic_kind QualifyFn)))
+          "with no result type, the conclusion can be an edge the generator reads")
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (is (= :not-stratified (refusal kb (lift-generator generic_kind QualifyFn)))
+          "a result type not known disjoint from the read type can still meet it")
+      (v/assert kb (list 'disjoint qualified_kind generic_kind) 'CxUniverse {:strength :monotonic})
+      (is (= :accepted (refusal kb (lift-generator generic_kind QualifyFn)))))))
+
+(tu/deftest-kb one-position-a-typed-read-cannot-satisfy-cuts-the-feed
+  (testing "one position a typed read refuses is enough, and a type read of another variable is not"
+    (tu/with-terms [generic_kind other_kind qualified_kind QualifyFn]
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (v/assert kb (list 'disjoint qualified_kind generic_kind) 'CxUniverse {:strength :monotonic})
+      (is (= :accepted
+             (refusal kb (list 'implies (list 'and (list generic_kind '?p) (list 'genl '?p '?g))
+                               (list 'implies (list 'genl '?p '?g)
+                                     (list 'genl (list QualifyFn '?p) '?g))))))
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list 'and (list other_kind '?p) (list generic_kind '?g)
+                                              (list 'genl '?p '?g))
+                               (list 'implies (list 'genl '?p '?g)
+                                     (list 'genl (list QualifyFn '?p) '?g)))))
+          "?g is read generic, and the conclusion's second argument is a variable"))))
+
+(tu/deftest-kb a-feed-between-two-generators-is-cut-at-the-readers-typed-read
+  (testing "across two generators, the feed is cut where the reader's typed read is"
+    (tu/with-terms [generic_kind qualified_kind marker QualifyFn]
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (v/assert kb (list 'disjoint qualified_kind generic_kind) 'CxUniverse {:strength :monotonic})
+      (is (= :accepted
+             (refusal kb (list 'implies (list marker '?p)
+                               (list 'implies (list '?p '?x) (list 'genl (list QualifyFn '?p) '?x))))))
+      (is (= :accepted
+             (refusal kb (list 'implies (list 'and (list generic_kind '?q) (list 'genl '?q '?w))
+                               (list 'implies (list '?q '?y) (list marker '?y)))))
+          "the first generator's edges start at an application no generic input is"))))
+
+(tu/deftest-kb a-type-read-of-the-conclusion-s-own-predicate-cuts-no-feed
+  (testing "a conclusion of a typed read's predicate is that read, so it feeds the generator"
+    (tu/with-terms [qualified_kind marker trigger QualifyFn]
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (v/assert kb (list 'disjoint qualified_kind marker) 'CxUniverse {:strength :monotonic})
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list marker '?y)
+                               (list 'implies (list trigger '?x) (list marker (list QualifyFn '?y))))))))))
+
+(tu/deftest-kb a-type-read-above-the-conclusion-s-predicate-cuts-no-feed
+  (testing "a conclusion of a predicate below a typed read's predicate arrives as that read too"
+    (tu/with-terms [qualified_kind marker sub trigger QualifyFn]
+      (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+      (v/assert kb (list 'disjoint qualified_kind marker) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'genl sub marker) 'CxUniverse {:strength :monotonic})
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list 'and (list sub '?y) (list marker '?y))
+                               (list 'implies (list trigger '?x) (list sub (list QualifyFn '?y))))))))))
+
+(tu/deftest-kb a-conclusion-feeds-a-read-of-a-genl-of-its-predicate
+  (testing "with no cut at all, a conclusion arrives as a read of each predicate above its own"
+    (tu/with-terms [marker sub trigger QualifyFn]
+      (v/assert kb (list 'genl sub marker) 'CxUniverse {:strength :monotonic})
+      (is (= :not-stratified
+             (refusal kb (list 'implies (list marker '?y)
+                               (list 'implies (list trigger '?x) (list sub (list QualifyFn '?y))))))))))
+
+(tu/deftest-kb a-conclusion-feeds-a-read-across-a-swap-edge
+  (testing "under genlInverse or inverse, a conclusion arrives with its first two arguments exchanged"
+    (doseq [edge ['genlInverse 'inverse]]
+      (tu/with-terms [marker sub trigger QualifyFn]
+        (v/assert kb (list edge sub marker) 'CxUniverse {:strength :monotonic})
+        (is (= :not-stratified
+               (refusal kb (list 'implies (list marker '?x '?y)
+                                 (list 'implies (list trigger '?z)
+                                       (list sub (list QualifyFn '?y) '?x)))))
+            (str edge))))))
+
+(tu/deftest-kb a-swap-edge-feeds-only-a-binary-read
+  (testing "a swapped match needs a binary pattern and a binary fact, so a ternary pair never meets"
+    (tu/with-terms [marker3 sub3 trigger QualifyFn]
+      (v/assert kb (list 'inverse sub3 marker3) 'CxUniverse {:strength :monotonic})
+      (is (= :accepted
+             (refusal kb (list 'implies (list marker3 '?x '?y '?z)
+                               (list 'implies (list trigger '?w)
+                                     (list sub3 '?x '?y (list QualifyFn '?z))))))))))
+
+(tu/deftest-kb a-separation-cut-reads-the-swapped-arguments
+  (testing "the cut applies at the position the application arrives in, not where it is written"
+    (doseq [[written expected] [[:second :not-stratified] [:first :accepted]]]
+      (tu/with-terms [marker sub trigger QualifyFn qualified_kind generic_kind]
+        (let [app   (list QualifyFn '?y)
+              concl (if (= :first written) (list sub app '?x) (list sub '?x app))]
+          (v/assert kb (list 'genlInverse sub marker) 'CxUniverse {:strength :monotonic})
+          (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+          (v/assert kb (list 'disjoint qualified_kind generic_kind) 'CxUniverse {:strength :monotonic})
+          (is (= expected
+                 (refusal kb (list 'implies (list 'and (list marker '?x '?y) (list generic_kind '?y))
+                                   (list 'implies (list trigger '?z) concl))))
+              (str "application written " written)))))))
+
+(tu/deftest-kb only-a-separation-every-reader-reads-at-monotonic-cuts-a-feed
+  (testing "a default separation, or one stated below CxUniverse, can be overridden or unseen by a reader"
+    (doseq [[strength context] [[:default 'CxUniverse] [:monotonic :below]]]
+      (tu/with-terms [generic_kind qualified_kind QualifyFn CxBelow]
+        (v/assert kb (list 'genlCx CxBelow 'CxUniverse) 'CxUniverse {:strength :monotonic})
+        (v/assert kb (list 'result QualifyFn qualified_kind) 'CxUniverse)
+        (v/assert kb (list 'disjoint qualified_kind generic_kind)
+                  (if (= :below context) CxBelow context) {:strength strength})
+        (is (= :not-stratified (refusal kb (lift-generator generic_kind QualifyFn)))
+            (str strength " in " context))))))
+
+(tu/deftest-kb a-partition-route-cuts-a-feed-only-when-every-reader-reads-it
+  (testing "every climb monotonic, no exception and the result at CxUniverse cut; each weakening restores the feed, each case alone"
+    (doseq [weaken [nil :default-climb :exception-below :result-below]]
+      (tu/with-terms [whole part_a part_b generic_kind qualified_kind QualifyFn CxBelow]
+        (let [mono #(v/assert kb %1 %2 {:strength :monotonic})]
+          (mono (list 'genlCx CxBelow 'CxUniverse) 'CxUniverse)
+          (mono (list 'partition whole part_a part_b) 'CxUniverse)
+          (if (= :default-climb weaken)
+            (v/assert kb (list 'genl qualified_kind part_a) 'CxUniverse {:strength :default})
+            (mono (list 'genl qualified_kind part_a) 'CxUniverse))
+          (mono (list 'genl generic_kind part_b) 'CxUniverse)
+          (mono (list 'result QualifyFn qualified_kind)
+                (if (= :result-below weaken) CxBelow 'CxUniverse))
+          (when (= :exception-below weaken)
+            (v/assert kb (list 'siblingDisjointException part_a part_b) CxBelow))
+          (let [gen (lift-generator generic_kind QualifyFn)]
+            (is (= (if weaken :not-stratified :accepted) (refusal kb gen))
+                (str (or weaken "no weakening")))
+            (when-not weaken
+              (let [h (v/handle-of kb gen 'CxUniverse)]
+                (is (some? h) "the accepted generator is stored, to be retracted")
+                (v/retract! kb h)))))))))
+
 (tu/deftest-kb the-cycle-check-sees-a-wrapped-generator-too
   ;; every generator is filed under the one key `implies`, which means peeling the
   ;; wrapper off the generated rule first — it is the generated rule's, not the
@@ -503,8 +647,8 @@
         (testing "the conclusion goes"
           (is (empty? (v/ask kb (list able Tweety '?c) 'CxUniverse))))
         (testing "and so does every rule the chain minted, at both levels"
-          (is (every? #(not (v/in? kb %)) minted))
-          (is (= 1 (count (filter #(v/in? kb (:id %)) (rule-sentexes kb 'CxUniverse))))
+          (is (every? #(not (v/believed? kb %)) minted))
+          (is (= 1 (count (filter #(v/believed? kb (:id %)) (rule-sentexes kb 'CxUniverse))))
               "only the generator the author wrote is left"))))))
 
 (tu/deftest-kb both-arrival-orders-agree-under-nesting
@@ -659,7 +803,7 @@
           (is (= :monotonic (:strength (v/sentex kb h)))))
         (testing "so retracting the generator leaves the asserted rule standing"
           (v/retract! kb gh)
-          (is (v/in? kb (:id sx)))
+          (is (v/believed? kb (:id sx)))
           (v/assert kb (list src Fido) 'CxUniverse)
           (is (seq (v/sentexes-matching kb (list dst Fido) 'CxUniverse))
               "and still firing"))))))

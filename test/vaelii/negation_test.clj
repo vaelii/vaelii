@@ -55,7 +55,7 @@
     (v/assert kb (tu/default-rule [(list bird '?x)] (list flies '?x)) 'CxUniverse)
     (v/assert kb (list bird eagle) 'CxUniverse)
     (testing "with no contrary evidence the default conclusion holds"
-      (is (v/in? kb (v/handle-of kb (list flies eagle) 'CxUniverse))))))
+      (is (v/believed? kb (v/handle-of kb (list flies eagle) 'CxUniverse))))))
 
 ;; ---- nogood discovery is driven off the opposed bodies (settle F1) -------
 ;; The negation family reads a body's pairs only when the body is stored in both
@@ -88,7 +88,7 @@
       (is (= 1 (count (v/contradictions kb))))
       (let [{:keys [handles]} (first (v/contradictions kb))]
         (testing "both sides stay believed — a dilemma, not a silent miss"
-          (is (every? #(v/in? kb %) handles)))))))
+          (is (every? #(v/believed? kb %) handles)))))))
 
 (tu/deftest-kb a-symmetric-monotonic-negation-still-defeats-the-swapped-positive
   ;; Same pairing, but with a strength difference so the nogood resolves by defeat
@@ -185,7 +185,7 @@
     (testing "after recover the same clash is rediscovered from storage"
       (is (= 1 (count (v/contradictions kb))))
       (let [{:keys [handles]} (first (v/contradictions kb))]
-        (is (every? #(v/in? kb %) handles) "both sides believed — the dilemma stands")))))
+        (is (every? #(v/believed? kb %) handles) "both sides believed — the dilemma stands")))))
 
 (tu/deftest-kb a-pair-in-two-contexts-is-decided-by-each-reader-that-sees-both
   ;;   CxL  (flies Tweety) default        CxR  (not (flies Tweety)) monotonic
@@ -205,7 +205,7 @@
         (is (= [CxJ] (tu/defeat-vantages kb pos CxJ))))
       (testing "a context seeing one side believes it, and the network keeps it IN"
         (is (true? (v/believed? kb pos CxL)))
-        (is (true? (v/in? kb pos))))
+        (is (true? (v/believed? kb pos))))
       (testing "the default pair is a dilemma reported at the reader that sees both"
         (let [r (first (filter #(= #{pos dn} (:nogood %)) (v/contradictions kb)))]
           (is (some? r))

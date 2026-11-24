@@ -21,6 +21,7 @@
             [vaelii.impl.decide :as decide]
             [vaelii.impl.decide.argument :as argument :refer [*assertive-arg-types?*]]
             [vaelii.impl.decide.arity :as arity :refer [mintable-type?]]
+            [vaelii.impl.decide.membership :as membership]
             [vaelii.impl.decide.tuple :as tuple]
             [vaelii.impl.disk.durability :as dur]
             [vaelii.impl.except :as exc]
@@ -1348,7 +1349,7 @@
   "`membership-handles`' small side: lead from `x`'s own argument-1 postings and test each
   up via `genl?` (t'' ⊑ t ⟺ t'' ∈ specs(t), see `kb/memberships`), where `matches-visible`
   walks `specs(t)` down, which is unbounded for a broad t.  The candidate set, the filters
-  (believed, context-visible, `except`-hidden, retired) and `handle-namings` equal what
+  (IN, stored in a context `context` sees, `exc/without-excepted`, `res/without-retired`) and `handle-namings` equal what
   `matches-visible` feeds, so the answer set is identical.  `res/*lead-side*` can force the
   `matches-visible` reference that the two oracles compare against.
 
@@ -1393,7 +1394,7 @@
      target)))
 
 (defn- membership-handles
-  "The handles of the believed `(t x)` sentexes visible from `context`, the sentexes a
+  "The handles of the `(t x)` sentexes believed at `context`, the sentexes a
   disjointness clash is *with*.  Asked only once a clash has been found.
 
   Every exact membership when one is stored, and a content-ordered choice among the
@@ -1422,18 +1423,19 @@
   (when (= 1 (nm/arity sentence))
     (let [t (nm/functor sentence)
           x (first (nm/args sentence))]
-      ;; one question, asked of each type the term holds: `t` and the asserting context
-      ;; are fixed across the loop, and they are what most of the answer is a function
-      ;; of.  A `t` no declaration reaches reads none of the term's types.
+      ;; one question, asked of each type the term holds, with `t` and the context fixed.
+      ;; A `t` no declaration reaches reads none of the term's types, and neither does a
+      ;; kept term none of whose separated types answers (`membership/reached-types`).
       (when-let [disjoint? (and (checkable-term? x)
                                 (tax/separation-test (reasoning/taxonomy kb) t context))]
-        (for [t' (:types (types x))
-              :when (disjoint? t')
-              h    (membership-handles kb t' x context)]
-          {:type :disjoint :sentence sentence :types [t t']
-           :opposing-handle h
-           :message (str "disjointness violated: " x " cannot be both "
-                         t " and " t')})))))
+        (when-not (some->> (membership/reached-types kb x) (not-any? disjoint?))
+          (for [t' (:types (types x))
+                :when (disjoint? t')
+                h    (membership-handles kb t' x context)]
+            {:type :disjoint :sentence sentence :types [t t']
+             :opposing-handle h
+             :message (str "disjointness violated: " x " cannot be both "
+                           t " and " t')}))))))
 
 (defn- negation-handles
   "The handles of the believed sentexes visible from `context` that entail `(not (t x))`,
@@ -1441,10 +1443,12 @@
   `membership-handles` names one entailing match, and `negation-handles` names every one:
   a denial of a supertype rules out the part `t` and convicts under no part of its own,
   so each such denial is a member of its own `covering` nogood, and
-  `membership/term-nogoods` forms one nogood per choice of denials."
+  `membership/term-nogoods` forms one nogood per choice of denials.  The fan over the
+  supertypes of `t` is cut by the slot predicate sets (`res/*cut-every-fan?*`)."
   [kb t x context]
   (let [target (list 'not (list t x))]
-    (handle-namings (res/matches-visible kb target context) target true)))
+    (binding [res/*cut-every-fan?* true]
+      (handle-namings (res/matches-visible kb target context) target true))))
 
 (defn- separation-denial-handles
   "The handles of the believed memberships `(s x)` visible from `context` whose type a
@@ -1628,6 +1632,108 @@
   "The incoming filler a clash row is about: argument `n` of `sentence`."
   [sentence [_ _ _ n]]
   (nth (vec (nm/args sentence)) (dec n)))
+
+(defn- seen-together?
+  "Does some context see both `m` and `s`, over the unscoped `genlCx` closure?  Unscoped
+  on purpose: the context that sees both is a descendant of `m`, and a read scoped to `m`
+  does not answer for it."
+  [tax m s]
+  (or (= m s) (tax/root-context? m) (tax/root-context? s)
+      (let [down (tax/context-down-global tax s)]
+        (boolean (some #(contains? down %) (tax/context-down-global tax m))))))
+
+(defn- slot-candidates
+  "The determinate fillers of the slot `via` at position `n` under `args` that a merge
+  stored at `context` reaches.  They are the fillers of the stored facts visible at
+  `context` (`res/matches-visible`), and of those stored in a context some context sees
+  together with `context` (`seen-together?`), since a merge is read wherever `context` is.
+  The `genlCx` closures are read unscoped, since a descendant of `context` reads the merge.
+  A filler stands for every member of its class as `context` sees the merges, since a
+  merge electing a reified constant spells its members' facts with it.  A term counts
+  when `provers/determinateness` reads it `:determinate`."
+  [kb via n args context]
+  (let [tax   (reasoning/taxonomy kb)
+        vis   (res/visible-supporter-fn kb context)
+        probe (apply list via (assoc (vec args) (dec n) '?fv))
+        up    (tax/context-up-global tax context)
+        far   (fn [[h _]] (let [s (:context (p/get-sentex (:records kb) h))]
+                            (and s (not= s context) (not (contains? up s)) (seen-together? tax context s))))
+        names (fn [v] (if (and (symbol? v) (tax/merged? tax v)) (first (tax/scoped-class tax v vis)) [v]))]
+    (into #{} (comp cat
+                    (keep (fn [[_ b]] (get b '?fv)))
+                    (mapcat names)
+                    (filter #(= :determinate (provers/determinateness kb % context))))
+          [(res/matches-visible kb probe context)
+           (filter far (res/match-pattern kb probe '?ctx))])))
+
+(defn- names-determinate-terms-only?
+  "Does the equality supporter `h` name only terms `provers/determinateness` reads as
+  `:determinate` at `context`?  `sole-constant?` reads two constants as one only through
+  such a merge, so a proxy filler's own merges never make two rivals one."
+  [kb context h]
+  (every? #(= :determinate (provers/determinateness kb % context))
+          (some-> (p/get-sentex (:records kb) h) :sentence nm/args)))
+
+(defn sole-constant?
+  "Is no determinate filler of the functional slot `via` at position `n` under `args`
+  that `context` reaches outside the class of the constant `c` (`slot-candidates`)?  The
+  class is read over the merges `context` sees that name determinate terms only
+  (`names-determinate-terms-only?`).  The guard on a proxy filler's merge
+  (`functional-merges?`): with Mary and Jane in the slot, neither merges with it."
+  [kb c via n args context]
+  (let [admit? #(names-determinate-terms-only? kb context %)]
+    (every? #(or (= c %) (and (symbol? %) (res/same-class-in? kb c % context admit?)))
+            (slot-candidates kb via n args context))))
+
+(defn- stored-expression
+  "The expression a stored `natFormula` map gives the reified constant `k`, believed or
+  not, since a merge electing another spelling supersedes `k`'s own map."
+  [kb k]
+  (or (nat/nat-expression kb k)
+      (some #(let [s (:sentence %)]
+               (when (and (= 'natFormula (nm/functor s)) (= k (second s))) (nth s 2 nil)))
+            (kb/find-sentexes-all kb ['natFormula k]))))
+
+(defn- corresponding-default-pair?
+  "Is the collision between the fillers `a` and `b` of the members `h` and `o` a reified
+  constant `K` of `(F x…)` against a `:default` value of its own correspondence?  A
+  declaration `(functionCorrespondingPredicate F P n)` `context` sees, one member stating
+  `(P x… K …)`, and the other not `:monotonic`.  The value's copies carry such a pair
+  (docs/nat.md, \"The corresponding predicate\"), so no merge joins the two."
+  [kb a b h o context]
+  (let [recs (:records kb)
+        tms  (reasoning/tms kb)
+        decl (delay (res/correspondence-declarations kb context))]
+    (boolean
+     (some (fn [k]
+             (when-let [e (and (nat-read/reified-nat-symbol? k) (stored-expression kb k))]
+               (when (seq? e)
+                 (some (fn [[f pr pos]]
+                         (when (= f (first e))
+                           (let [proj (apply list pr (res/insert-at (rest e) pos k))
+                                 [mk mv] (cond (= proj (:sentence (p/get-sentex recs h))) [h o]
+                                               (= proj (:sentence (p/get-sentex recs o))) [o h])]
+                             (and mk (not (tuple/monotonic-member? tms mv))))))
+                       @decl))))
+           [a b]))))
+
+(defn functional-merges?
+  "Does a functional collision between the symbols `a` and `b` of the members `h` and `o`,
+  in the slot `via` at `n` under `args`, merge them at `context` (docs/equality.md)?  Yes
+  when both members are `:monotonic`.  Else one filler must not be `:determinate`
+  (`provers/determinateness`), and the other a constant that is the slot's one candidate
+  (`sole-constant?`).  No pair `corresponding-default-pair?` names merges that way."
+  [kb a b h o context via n args]
+  (and (tuple/mergeable-values? a b)
+       (let [tms (reasoning/tms kb)]
+         (or (and (tuple/monotonic-member? tms h) (tuple/monotonic-member? tms o))
+             (let [da (provers/determinateness kb a context)
+                   db (provers/determinateness kb b context)
+                   c  (cond (and (not= :determinate da) (= :determinate db)) b
+                            (and (not= :determinate db) (= :determinate da)) a)]
+               (boolean (and c
+                             (not (corresponding-default-pair? kb a b h o context))
+                             (sole-constant? kb c via n args context))))))))
 
 (defn functional-declaration-supporters
   "The handles of every declaration constraining `via` at position `n`: the
@@ -2892,6 +2998,30 @@
                            (and (nm/individual? x) (not (tax/genl?-global tax x 'thing)))))
     :quoted-arg-type (quoted-outside? kb tax x type context)))
 
+(defn- believed-reader
+  "A `(fn [handles vantage])`: does `vantage`, or a context below it, believe every handle
+  of `handles` (`res/believed-at?`)?  Below `vantage` an `except` can hide a handle or take
+  a defeat out of force, so the contexts read are one per reader class the contexts
+  stating an `except` split them into (`tax/reader-classes`).  One `exc/belief-hidden-fn` is held per context
+  for a caller's one pass over many handles."
+  [kb]
+  (let [tms  (reasoning/tms kb)
+        tax  (reasoning/taxonomy kb)
+        idx  (:index kb)
+        hid  (memoize #(exc/belief-hidden-fn kb %))
+        ex?  (reads/stores-any? idx sx/except-functor)
+        at   (memoize (fn [v]
+                        (if ex?
+                          (let [under (set (tax/context-down tax v))]
+                            (vals (tax/reader-classes
+                                   tax v under
+                                   (first (reads/as-stored-contexts-with-functor idx sx/except-functor under)))))
+                          [v])))]
+    (fn [handles v]
+      (and (every? #(jtms/in? tms %) handles)
+           (some (fn [c] (let [hidden? (hid c)] (not-any? #(and hidden? (hidden? %)) handles)))
+                 (at v))))))
+
 (defn- declaration-conflict
   "The definitional clash the argument declaration `chk` written in `context` forms with
   the believed tuples it constrains, as a violation of the declaration's kind naming up to
@@ -2912,15 +3042,15 @@
     (let [tax     (reasoning/taxonomy kb)
           idx     (:index kb)
           recs    (:records kb)
-          tms     (reasoning/tms kb)
+          held?   (believed-reader kb)
           up      (set (tax/context-up tax context))
           seen    (when-not (tax/root-context? context) (into up (tax/context-down tax context)))
           memo    (volatile! {})
           readers (fn [v] (or (get @memo v)
                               (let [r (kb/membership-reader kb v)] (vswap! memo assoc v r) r)))
           vantage (fn [c] (if (contains? up c) context c))
-          tuple?  (fn [s types]
-                    (and (sx/positive-fact? s) (jtms/in? tms (:id s))
+          tuple?  (fn [s v types]
+                    (and (sx/positive-fact? s) (held? [(:id s)] v)
                          (or (nil? trigger-pos)
                              (let [tr (arg-at (vec (nm/args (:sentence s))) trigger-pos)]
                                (if trigger-type
@@ -2945,7 +3075,7 @@
                         :when (and (under? p v) (breaks-demand? kb dm tax types x v))
                         h     (reads/as-stored-with-args-in idx p {pos x} #{c})
                         :let  [s (p/get-sentex recs h)]
-                        :when (tuple? s types)]
+                        :when (tuple? s v types)]
                     s)
           ;; a value has no argument root, so its tuples are read off the functor
           values  (for [p     specs
@@ -2958,7 +3088,7 @@
                         :when (contains? vs x)
                         :let  [v     (vantage (:context s))
                                types (readers v)]
-                        :when (and (under? p v) (breaks-demand? kb dm tax types x v) (tuple? s types))]
+                        :when (and (under? p v) (breaks-demand? kb dm tax types x v) (tuple? s v types))]
                     s)
           broken  (concat atoms values)
           n       (count broken)]
@@ -2988,9 +3118,11 @@
   (when-let [{pred :pred :as dm} (or (declaration-demand chk)
                                      (let [c (covering-demands chk)]
                                        (when (= :arg-type (:kind c)) c)))]
-    (let [tax  (reasoning/taxonomy kb)
-          recs (:records kb)
-          down (if (tax/root-context? context) (constantly true) (set (tax/context-down tax context)))]
+    (let [tax   (reasoning/taxonomy kb)
+          recs  (:records kb)
+          tms   (reasoning/tms kb)
+          held? (believed-reader kb)
+          down  (if (tax/root-context? context) (constantly true) (set (tax/context-down tax context)))]
       (first
        (for [rsx   (->> (for [p    (tax/specs-global tax pred)
                               rsx  (keep #(p/get-sentex recs %) (rules-on kb [p]))
@@ -2999,7 +3131,8 @@
                                          (or (= p pred) (tax/genl? tax p pred c)))]
                           rsx)
                         distinct
-                        (filter #(res/rule-believed? kb (:id %)))
+                        (filter #(or (not (jtms/known-datum? tms (:id %)))
+                                     (held? [(:id %)] (:context %))))
                         (nm/sort-by-content-key (juxt sx/sentence-of :context)))
              :let  [v (variable-clash-problem kb (rules/inner-rule (sx/sentence-of rsx)) (:context rsx) dm)]
              :when v]
@@ -3200,12 +3333,12 @@
   `:clashes-with` and their number in `:count`, or nil.  A relation's length is read the
   same at every context, so a declaration in any context counts, and the declaring
   predicates are read off the KB-wide `tax/props` sets, each declaration then read for
-  belief."
+  belief (`believed-reader`)."
   [kb chk mono?]
   (let [tax     (reasoning/taxonomy kb)
         idx     (:index kb)
         recs    (:records kb)
-        tms     (reasoning/tms kb)
+        held?   (believed-reader kb)
         memo    (volatile! {})
         readers (fn [c] (or (get @memo c)
                             (let [r (kb/membership-reader kb c)] (vswap! memo assoc c r) r)))
@@ -3216,7 +3349,7 @@
               k     positional-declaration-functors
               h     (reads/as-stored-with-args idx k {1 f})
               :let  [sx (p/get-sentex recs h)]
-              :when (and (sx/positive-fact? sx) (jtms/in? tms h))
+              :when (and (sx/positive-fact? sx) (held? [h] (:context sx)))
               :let  [d     (:sentence sx)
                      types (readers (:context sx))]
               :when (and (some #(false? (provers/admits-position? (variable-arity? types f) (:exact b) %))
@@ -3250,7 +3383,7 @@
         [f a b] (when (sequential? chk) chk)
         k       (when (sequential? chk) (nm/arity chk))
         ;; declarers and the types below irp are KB-wide supersets; `stored` keeps the
-        ;; candidates that are positive literals the JTMS labels in
+        ;; candidates that are IN, and `hits` those `believed-reader` reads as believed
         declarers (tax/props tax (tax/arg-declaration-props 'genlArg))
         write   (cond
                   (and (= 1 k) (sym? f) (sym? a) (contains? declarers a))   :membership
@@ -3261,6 +3394,7 @@
       (let [recs    (:records kb)
             idx     (:index kb)
             tms     (reasoning/tms kb)
+            held?   (believed-reader kb)
             seen    (when-not (tax/root-context? context)
                       (into (set (tax/context-up tax context)) (tax/context-down tax context)))
             in-seen (fn [pred m] (if seen
@@ -3291,7 +3425,8 @@
             hits    (for [[m d] pairs
                           :let  [t (if m (nm/functor (:sentence m)) f)
                                  v (tax/seeing-member tax (into #{context} (keep :context) [m d]))]
-                          :when (and v (under? t v))]
+                          :when (and v (under? t v)
+                                     (held? (keep :handle [m d]) v))]
                       (if (= :declaration write) m d))
             hs      (distinct hits)
             n       (count hs)]
@@ -3356,7 +3491,7 @@
              (symbol? (second chk)) (not (sx/variable? (second chk))))
     (let [q    (second chk)
           tax  (reasoning/taxonomy kb)
-          tms  (reasoning/tms kb)
+          held? (believed-reader kb)
           idx  (:index kb)
           up   (set (tax/context-up tax context))
           seen (when-not (tax/root-context? context) (into up (tax/context-down tax context)))
@@ -3366,11 +3501,11 @@
           hs   (into #{} (comp (mapcat #(if seen
                                           (reads/as-stored-self-tuples idx % seen)
                                           (reads/as-stored-self-tuples-global idx %)))
-                               (filter #(jtms/in? tms %))
                                (filter #(let [sx (p/get-sentex recs %)
                                               f  (nm/functor (:sentence sx))
                                               v  (if (contains? up (:context sx)) context (:context sx))]
-                                          (or (= f q) (tax/genl? tax f q v)))))
+                                          (and (or (= f q) (tax/genl? tax f q v))
+                                               (held? [%] v)))))
                      (tax/specs-global tax q))]
       (when (seq hs)
         (let [named (->> hs
@@ -3591,7 +3726,7 @@
   (check-sentex-ground (res/kb-sentex kb sentence context) sentence context))
 
 (defn check-except-target
-  "Refuse a visibility `(except (sentexHandle H))` when no sentex is stored under H
+  "Refuse an `(except (sentexHandle H))` when no sentex is stored under H
   (`:unknown-handle`), and when H stores a rule of `kv/mint-rules` (`:mint-rule`,
   `kb/mint-rule-refusal`).  Handles are allocated in assertion order, so every except this
   admits names a handle below its own, and the except graph `assert` builds is acyclic.
@@ -3652,48 +3787,66 @@
   ([kb literal] (decide/forced-literal? kb literal))
   ([kb literal on?] (decide/forced-literal? kb literal on?)))
 
+(defn union-reading
+  "The forced-monotonic reading over every reader: `decide/forced-monotonic?` on the
+  taxonomy of `kb`."
+  [kb]
+  (partial decide/forced-monotonic? (reasoning/taxonomy kb)))
+
 (defn unforced-antecedents
   "The predicates of the stored rule `rule-sentex`'s antecedents that are not
   `forced-monotonic?` literals (over every reader, or under the forced-monotonic reading `on?`),
   `unknown` antecedents aside, distinct and in antecedent order: the predicates a
   `(forced_monotonic_predicate P)` declaration would make forced-monotonic for the rule's
-  firings to conclude a forced-monotonic literal."
-  ([kb rule-sentex] (unforced-antecedents kb rule-sentex (partial decide/forced-monotonic? (reasoning/taxonomy kb))))
-  ([kb rule-sentex on?]
-   (into [] (comp (remove sx/unknown?) (remove #(forced-monotonic? kb % on?)) (map nm/functor)
-                  (distinct))
+  firings to conclude a forced-monotonic literal.  Given a firing's `bindings`, an
+  antecedent whose ground instance under them is forced-monotonic is not among them
+  (`decide/forced-instance?`)."
+  ([kb rule-sentex] (unforced-antecedents kb rule-sentex (union-reading kb)))
+  ([kb rule-sentex on?] (unforced-antecedents kb rule-sentex on? nil))
+  ([kb rule-sentex on? bindings]
+   (into [] (comp (remove sx/unknown?) (remove #(decide/forced-instance? kb % on? bindings))
+                  (map nm/functor) (distinct))
          (:antecedent rule-sentex))))
 
 (defn forced-rule?
   "Is the stored rule `rule-sentex` one whose firings conclude a forced-monotonic literal as an
   ordinary belief: not `set/defaultRule`, no `unknown` antecedent, and no
-  `unforced-antecedents`.  Its `exceptWhen` exceptions are meta-sentexes, which
-  `forced-conclusion-violation` reads at the firing."
-  [kb rule-sentex]
-  (let [antes (:antecedent rule-sentex)]
-    (boolean (and (seq antes) (not (:defeasible rule-sentex)) (not-any? sx/unknown? antes)
-                  (empty? (unforced-antecedents kb rule-sentex))))))
+  `unforced-antecedents`.  Given a firing's `bindings`, the question is of that firing: its
+  antecedents are read as the ground instances it matched.  Its `exceptWhen` exceptions are
+  meta-sentexes, which `forced-conclusion-violation` reads at the firing."
+  ([kb rule-sentex] (forced-rule? kb rule-sentex nil))
+  ([kb rule-sentex bindings]
+   (let [antes (:antecedent rule-sentex)]
+     (boolean (and (seq antes) (not (:defeasible rule-sentex)) (not-any? sx/unknown? antes)
+                   (empty? (unforced-antecedents kb rule-sentex (union-reading kb) bindings)))))))
+
+(defn firing-bindings
+  "The bindings of the stored firing `jid`, read off its record: the network keeps none
+  (`jtms/graph-just`).  nil when no record is stored."
+  [kb jid]
+  (:bindings (p/get-justification (:records kb) jid)))
 
 (defn forced-conclusion-violation
-  "The `:forced-conclusion` violation of a firing of the rule stored at `rule-handle` that
-  concludes the ground sentence `conseq`, or nil when the firing is admitted.  A firing
-  concluding a denial of a `forced-monotonic?` literal is convicted, and so is one
-  concluding a forced-monotonic literal unless its rule is a `forced-rule?` with no believed
-  `exceptWhen`.  A convicted firing is stored and held void (the `:void` forced set), and
-  the violation names the rule's `unforced-antecedents` (docs/nmtms.md, \"The
-  forced-monotonic set\").  The 3-arity reads the conclusion forced-monotonic over every
-  reader: the entry `forced-conclusion-entries` reads for a firing void at some reader.
-  The 4-arity reads the conclusion under the forced-monotonic reading `on?` (`network-void?`)."
+  "The `:forced-conclusion` violation of a firing of the rule at `rule-handle` concluding the
+  ground `conseq`, or nil when the firing is admitted.  A firing concluding a denial of a
+  `forced-monotonic?` literal is convicted.  A firing concluding a forced-monotonic literal
+  is convicted unless its rule is a `forced-rule?` at the firing's `bindings` with no
+  believed `exceptWhen`.  A convicted firing is held void (the `:void` forced set), and the
+  violation names the antecedents not forced-monotonic at the firing (docs/nmtms.md).  The
+  3-arity reads the conclusion over every reader and the rule as stored; `on?` is the
+  forced-monotonic reading of the conclusion (`network-void?`)."
   ([kb rule-handle conseq]
-   (forced-conclusion-violation kb rule-handle conseq (partial decide/forced-monotonic? (reasoning/taxonomy kb))))
+   (forced-conclusion-violation kb rule-handle conseq (union-reading kb) nil))
   ([kb rule-handle conseq on?]
+   (forced-conclusion-violation kb rule-handle conseq on? nil))
+  ([kb rule-handle conseq on? bindings]
    (let [neg? (sx/negation? conseq)
          body (if neg? (second conseq) conseq)]
      (when (forced-monotonic? kb body on?)
        (let [rsx (p/get-sentex (:records kb) rule-handle)]
-         (when (or neg? (nil? rsx) (not (forced-rule? kb rsx))
+         (when (or neg? (nil? rsx) (not (forced-rule? kb rsx bindings))
                    (seq (provers/rule-exception-entries kb rule-handle)))
-           (let [off (if rsx (unforced-antecedents kb rsx) [])]
+           (let [off (if rsx (unforced-antecedents kb rsx (union-reading kb) bindings) [])]
              {:violation :forced-conclusion
               :detail    {:not-forced-monotonic off
                           :message    (str (pr-str conseq) " is not concluded: " (nm/functor body)
@@ -3711,10 +3864,11 @@
   (`decide/global-reading`) and the antecedents on the union over every reader.  A
   conclusion forced-monotonic only by a declaration stated outside CxUniverse is valid in the
   network, and the read walk voids the firing at a reader that sees the declaration
-  (`exc/forced-void`)."
-  [kb rule-handle conseq]
-  (some? (forced-conclusion-violation kb rule-handle conseq
-                                      (decide/global-reading (reasoning/taxonomy kb)))))
+  (`exc/forced-void`).  `bindings` are the firing's (`forced-conclusion-violation`)."
+  ([kb rule-handle conseq] (network-void? kb rule-handle conseq nil))
+  ([kb rule-handle conseq bindings]
+   (some? (forced-conclusion-violation kb rule-handle conseq
+                                       (decide/global-reading (reasoning/taxonomy kb)) bindings))))
 
 (defn forced-premise?
   "Does a premise mark on the stored sentex `sx` confer `:monotonic` in the labeller (the
@@ -3831,8 +3985,11 @@
                                  c  (some->> (:consequence j) (p/get-sentex recs))]
                              ;; a mint held void is no firing (`special/hold-type-mints!`)
                              (when (and c (integer? rh) (not (kb/mint-informant? kb rh)))
-                               (let [s (sx/sentence-of c)]
-                                 (some-> (forced-conclusion-violation kb rh s)
+                               (let [s  (sx/sentence-of c)
+                                     on (union-reading kb)]
+                                 (some-> (when (forced-conclusion-violation kb rh s on nil)
+                                           (forced-conclusion-violation kb rh s on
+                                                                        (firing-bindings kb jid)))
                                          (assoc :sentence s :context (:context c) :rule rh))))))))
          (nm/sort-by-content-key (fn [e] [(:sentence e) (:context e)
                                           (some-> (p/get-sentex recs (:rule e)) sx/sentence-of)]))
@@ -3851,8 +4008,10 @@
                    acc
                    (update acc [kind on?] (fnil conj []) id))))
         void (fn [acc jid rh conclusion]
-               (put acc :void jid (and (forced-conclusion-violation kb rh (:sentence conclusion))
-                                       (network-void? kb rh (:sentence conclusion)))))
+               (let [s  (:sentence conclusion)
+                     v? #(and (forced-conclusion-violation kb rh s (union-reading kb) %)
+                              (network-void? kb rh s %))]
+                 (put acc :void jid (and (v? nil) (v? (firing-bindings kb jid))))))
         acc  (put acc :mono h (forced-premise? sx))]
     (cond
       ;; a mint is no firing, so a rule of `kv/mint-rules` holds none void
@@ -5318,39 +5477,133 @@
   (into #{} (comp (mapcat #(keep nm/functor (:antecedents %))) (remove sx/variable?))
         (butlast (rules/nesting sentence))))
 
+(defn- generator-read-literals
+  "The literals whose arrival makes this generator generate (`generator-reads`), as written,
+  with the variables each typed read restricts: `[literals {variable #{type …}}]`.  A typed
+  read is a unary literal `(T ?v)` of a constant `T` on a level the literals come from."
+  [sentence]
+  (let [antes (into [] (mapcat :antecedents) (butlast (rules/nesting sentence)))]
+    [(filterv #(let [f (nm/functor %)] (and f (not (sx/variable? f)))) antes)
+     (reduce (fn [m a]
+               (let [[f v & more] (when (sequential? a) a)]
+                 (if (and (nil? more) (symbol? f) (not (sx/variable? f)) (sx/variable? v))
+                   (update m v (fnil conj #{}) f)
+                   m)))
+             {} antes)]))
+
+(defn- separated-everywhere?
+  "Does every reader deny an instance of the type `a` membership of the type `b`?  True
+  for a separation route (`tax/separation-routes`) that CxUniverse reads through
+  `:monotonic` supporters alone (`tax/monotonic-route-witness`), and that no stored
+  `siblingDisjointException` exempts.  Every context sees CxUniverse, so no reader below
+  reads less of the route, and no exception a reader below sees spares the pair."
+  [kb a b]
+  (let [tax (reasoning/taxonomy kb)]
+    (boolean
+     (when (and (symbol? a) (symbol? b) (tax/pair-separated? tax a b))
+       (let [held (decide/holding-class kb)
+             cls  #(when (= :monotonic (held %)) :monotonic)]
+         (some #(and (not (tax/route-exempted? tax % nil))
+                     (tax/monotonic-route-witness tax % 'CxUniverse cls))
+               (tax/separation-routes-held tax a b)))))))
+
+(defn- unsatisfiable-argument?
+  "Is `c`, an argument of a generated conclusion, never a value of the read variable `r`?
+  True when `c` is an application whose function has a `result` type visible at
+  CxUniverse that is `separated-everywhere?` from a type `types` reads of `r`.  An
+  application denotes an instance of each result type of its function, at `:monotonic`
+  since `result` is forced-monotonic (core.txt).  A reader denies the application each
+  type separated from that result everywhere."
+  [kb types c r]
+  (boolean
+   (when (and (sx/variable? r) (seq (types r)) (sequential? c) (symbol? (first c))
+              (not (sx/variable? (first c))))
+     (some (fn [res] (some #(separated-everywhere? kb res %) (types r)))
+           (nat/result-types kb (first c) 'CxUniverse)))))
+
+(defn- predicates-above
+  "`[straight swapped]`: the predicates a conclusion of `p` arrives as, through the `genl`
+  and swap edges of every context as a forward trigger walks them (`rules/signed-reach`),
+  a `swapped` one with arguments 1 and 2 exchanged.  A generator fires at every context."
+  [kb p]
+  (let [[st sw] (tax/signed-closure (reasoning/taxonomy kb) :up p nil)]
+    [(set st) (set sw)]))
+
+(defn- swap-first-two
+  "`literal` with its arguments 1 and 2 exchanged, as a swap edge reads it."
+  [literal]
+  (let [v (vec literal)] (assoc v 1 (v 2) 2 (v 1))))
+
+(defn- feeds?
+  "Can the generated conclusion `concl` arrive as one of the read `literals` of a generator
+  whose typed reads are `types`?  True for a read of a predicate `concl` arrives as
+  (`predicates-above`), swapped as it is read, where no argument is
+  `unsatisfiable-argument?` or the lengths differ.  A swapped read meets only a binary
+  conclusion and a binary read, as a swapped match does.  A type read of a predicate
+  `concl` arrives as straight cuts nothing: `concl` arrives as that read."
+  [kb concl [literals types]]
+  (let [[st sw] (predicates-above kb (nm/functor concl))
+        types   (update-vals types #(into #{} (remove st) %))
+        arrives (fn [c l]
+                  (or (not= (count c) (count l))
+                      (not-any? (fn [[a r]] (unsatisfiable-argument? kb types a r))
+                                (map vector (rest c) (rest l)))))]
+    (boolean
+     (some (fn [l]
+             (let [g (nm/functor l)]
+               (or (and (st g) (arrives concl l))
+                   (and (sw g) (= 3 (count concl) (count l))
+                        (arrives (swap-first-two concl) l)))))
+           literals))))
+
+(defn- generated-conclusion
+  "The literal a generator eventually concludes (`generated-conclusion-predicate`), as
+  written, or nil when it is no sequential literal."
+  [sentence]
+  (let [c (rules/consequent (rules/innermost-rule sentence))]
+    (when (sequential? c) c)))
+
 (defn generator-cycle
   "A description of the cycle adding this generator would close in the rule set, or nil:
   the shortest path of feeds from `inner` over the stored generators back to `inner`, a
-  self-feed included.  One generator feeds another when its innermost conclusion is a
-  predicate the other generates from.  The walk is breadth-first over concluded
-  predicates, `via` mapping each one reached to the `[predicate handle]` step reaching it.
-  It starts at the arriving generator only, since every stored one passed it at its own
-  arrival (docs/generators.md)."
+  self-feed included.  A generator feeds another when its innermost conclusion `feeds?` a
+  literal the other generates from.  The walk is breadth-first, `via` mapping each
+  generator reached to the one reaching it, from the arriving generator only, since every
+  stored one passed it at its own arrival.  The `genl` and swap edges and a feed's cut
+  are read at the arrival, so a later change to them can open a cycle no arrival refuses
+  (docs/generators.md)."
   [kb inner context]
   (when (rules/generated-rule (rules/consequent inner))
     (when-let [concl (generated-conclusion-predicate inner)]
-      (let [reads (generator-reads inner)
-            gens  (mapv (fn [[h s]]
-                          (let [s (sx/sentence-of s)]
-                            [h (generator-reads s) (generated-conclusion-predicate s)]))
+      (let [own   [(generator-reads inner) (generator-read-literals inner)]
+            node  (into {::arriving [concl (generated-conclusion inner)]}
+                        (map (fn [[h s]]
+                               (let [s (sx/sentence-of s)]
+                                 [h [(generated-conclusion-predicate s) (generated-conclusion s)
+                                     (generator-reads s) (generator-read-literals s)]])))
                         (stored-generators kb))
-            path  (loop [frontier [concl] via {concl nil}]
-                    (if-let [hit (first (filter reads frontier))]
-                      (->> hit (iterate #(first (via %))) (take-while some?)
-                           (map #(vector % (second (via %)))) reverse)
-                      (let [steps (for [p frontier, [h r c] gens
-                                        :when (and c (r p) (not (contains? via c)))]
-                                    [c [p h]])
-                            via'  (reduce (fn [m [c step]] (if (contains? m c) m (assoc m c step)))
+            gens  (into [] (comp (map first) (filter #(first (node %)))) (stored-generators kb))
+            up    (memoize #(apply into (predicates-above kb %)))
+            fed?  (fn [n [reads lits]]
+                    (let [[p cl] (node n)]
+                      (and (some reads (up p)) (or (nil? cl) (feeds? kb cl lits)))))
+            path  (loop [frontier [::arriving] via {::arriving nil}]
+                    (if-let [hit (first (filter #(fed? % own) frontier))]
+                      (reverse (take-while some? (iterate via hit)))
+                      (let [steps (for [n frontier, h gens
+                                        :when (and (not (contains? via h))
+                                                   (fed? n (subvec (node h) 2 4)))]
+                                    [h n])
+                            via'  (reduce (fn [m [h n]] (if (contains? m h) m (assoc m h n)))
                                           via steps)]
                         (when (seq steps)
-                          (recur (into [] (distinct) (map first steps)) via')))))]
+                          (recur (into [] (comp (map first) (distinct)) steps) via')))))]
         (when path
           (str "the rule it generates concludes " concl
-               (apply str (for [[[read _] [p h]] (partition 2 1 path)]
-                            (str "; the generator at handle " h " reads " read
-                                 " and generates a rule concluding " p)))
-               "; this generator reads " (first (last path))
+               (apply str (for [[from h] (partition 2 1 path)]
+                            (str "; the generator at handle " h " reads " (first (node from))
+                                 " and generates a rule concluding " (first (node h)))))
+               "; this generator reads " (first (node (last path)))
                (when context (str " (asserting into " context ")"))))))))
 
 (defn check-generator!

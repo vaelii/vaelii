@@ -14,6 +14,7 @@
   edges from the edge that arrives."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [vaelii.core :as v]
+            [vaelii.impl.caches :as caches]
             [vaelii.impl.inherit :as inherit]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
@@ -177,6 +178,24 @@
     (is (= #{invRel} (moved (list 'genl mid_e high_e))))
     (is (= #{invRel} (moved (list 'not (list 'genl low_e mid_e)))))
     (is (= #{} (moved (list 'genl far_u far_v))))))
+
+(tu/deftest-kb a-kb-s-crossing-reads-survive-64-other-kbs
+  (tu/with-terms [aRel low_a mid_a high_a bRel low_b mid_b]
+    (chain! kb aRel low_a mid_a high_a)
+    (inherit/moved-predicates kb (list 'genl low_a mid_a))
+    (let [mine (caches/derived-value kb :R6)
+          held (atom #{})]
+      (dotimes [_ 64]
+        (let [k (tu/engine-space-kb)]
+          (try
+            (v/assert k (list 'transitiveInArgInverse bRel 1 'genl) 'CxUniverse)
+            (inherit/moved-predicates k (list 'genl low_b mid_b))
+            (finally (v/close! k)))
+          (swap! held into (tu/vars-holding 'vaelii.impl.inherit k))))
+      (is (some? mine) "the edge read this KB's declarations")
+      (is (identical? mine (caches/value-at kb [:crossing-reads]))
+          "this KB's `Reasoning` value holds its entry after 64 other KBs read theirs")
+      (is (empty? @held) "no var of `inherit` holds a closed KB's entry"))))
 
 (tu/deftest-kb an-edge-whose-closure-is-past-the-cap-moves-every-predicate-on-genl
   (let [{:syms [aRel bRel low_a mid_a high_a low_b mid_b high_b]}

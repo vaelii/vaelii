@@ -29,14 +29,14 @@
   what most of these tests are about."
   [kb sentence context]
   (let [h (v/handle-of kb sentence context)]
-    (boolean (and h (v/in? kb h)))))
+    (boolean (and h (v/believed? kb h)))))
 
 (defn- stored-not-believed?
   "The signature of a **blocked** spelling: the sentex is still there (handles callers
   hold stay valid) and `in?` reports it unbelieved."
   [kb sentence context]
   (let [h (v/handle-of kb sentence context)]
-    (and (some? h) (some? (v/sentex kb h)) (not (v/in? kb h)))))
+    (and (some? h) (some? (v/sentex kb h)) (not (v/believed? kb h)))))
 
 (defn- why-sentences
   "Every sentence mentioned anywhere in a `why` graph — the nodes' sentences and the
@@ -151,7 +151,7 @@
             twin (v/handle-of kb (list bornIn Pref Chicago) CxName)]
         (testing "the twin exists and is believed"
           (is (some? twin))
-          (is (true? (v/in? kb twin))))
+          (is (true? (v/believed? kb twin))))
         (testing "it is derived, not asserted"
           (is (false? (v/premise? kb twin)))
           (is (seq (v/supporting-justifications kb twin))))
@@ -173,7 +173,7 @@
           (is (= (list bornIn Dep Chicago) (:sentence (v/sentex kb h))))
           (is (= h (v/handle-of kb (list bornIn Dep Chicago) CxName))))
         (testing "but it is not believed"
-          (is (false? (v/in? kb h)))
+          (is (false? (v/believed? kb h)))
           (is (false? (:believed? (v/why-not kb h)))))
         (testing "and it does not match — a raw level-2 lookup sees no believed hit"
           (is (empty? (v/lookup kb 2 (list bornIn Dep Chicago) CxName))))))))
@@ -251,7 +251,7 @@
           (is (= pref-h (v/handle-of kb (list bornIn Pref Chicago) CxName))))
         (testing "it is still the premise the caller asserted"
           (is (true? (v/premise? kb pref-h)))
-          (is (true? (v/in? kb pref-h))))
+          (is (true? (v/believed? kb pref-h))))
         (testing "and it gained a justification rather than spawning a second sentex"
           (is (> (count (v/supporting-justifications kb pref-h)) before)))
         (testing "exactly one believed sentex carries the predicate"
@@ -377,8 +377,8 @@
           (is (nil? (v/handle-of kb (list bornIn  Pref Chicago) CxName)))
           (is (nil? (v/handle-of kb (list worksAt Pref Acme)    CxName))))
         (testing "and the originals are unblocked"
-          (is (true? (v/in? kb f1)))
-          (is (true? (v/in? kb f2)))
+          (is (true? (v/believed? kb f1)))
+          (is (true? (v/believed? kb f2)))
           (is (seq (v/sentexes-matching kb (list bornIn Dep Chicago) CxName))))
         (testing "so the two symbols are different again"
           (is (true? (v/ask? kb (list 'different Pref Dep) CxName))))))))
@@ -989,11 +989,11 @@
       (let [eq (v/handle-of kb '(sameAs EqcAa7 EqcHi7) merge-cost-ctx)
             f7 (v/handle-of kb '(eqcBorn EqcHi7 EqcPlace) merge-cost-ctx)
             f8 (v/handle-of kb '(eqcBorn EqcHi8 EqcPlace) merge-cost-ctx)]
-        (is (false? (v/in? kb f7)) "displaced while the merge stands")
+        (is (false? (v/believed? kb f7)) "displaced while the merge stands")
         (v/retract! kb eq)
-        (is (true? (v/in? kb f7))
+        (is (true? (v/believed? kb f7))
             "the un-merged spelling is believed again: the entry was re-examined")
-        (is (false? (v/in? kb f8))
+        (is (false? (v/believed? kb f8))
             "and the pair beside it, whose merge still stands, is still displaced")))))
 
 (deftest un-merging-a-derived-equality-revives-its-spelling-too
@@ -1008,10 +1008,10 @@
       (let [second-fact (v/assert kb '(eqcMotherOf EqcTom EqcMaryB) merge-cost-ctx {:strength :monotonic})]
         (v/assert kb '(eqcCaresFor EqcMaryB EqcTom) merge-cost-ctx)
         (let [orig (v/handle-of kb '(eqcCaresFor EqcMaryB EqcTom) merge-cost-ctx)]
-          (is (false? (v/in? kb orig))
+          (is (false? (v/believed? kb orig))
               "displaced by the derived merge, which elected the smaller spelling")
           (v/retract! kb second-fact)
-          (is (true? (v/in? kb orig))
+          (is (true? (v/believed? kb orig))
               "and believed again once the derived merge goes, twenty merges standing"))))))
 
 (deftest dropping-a-schematic-rewrite-revives-what-it-normalized
@@ -1026,9 +1026,9 @@
                               merge-cost-ctx)
             rule (v/assert kb '(equals (eqc_dad_of (eqc_dad_of ?x)) (eqc_grandad_of ?x))
                            merge-cost-ctx)]
-        (is (false? (v/in? kb orig)) "normalized away while the equation stands")
+        (is (false? (v/believed? kb orig)) "normalized away while the equation stands")
         (v/retract! kb rule)
-        (is (true? (v/in? kb orig))
+        (is (true? (v/believed? kb orig))
             "and believed again once nothing normalizes it")))))
 
 ;; The equality relations' arguments are mentions, so a merge does not rewrite a denial
@@ -1046,7 +1046,7 @@
             d     (if denial-first? (v/handle-of kb (list 'not (list 'sameAs A B)) 'CxUniverse) (deny))]
         (is (v/same-class? kb A B) (str "denial first: " denial-first?))
         (is (= :default (v/defeat-class kb merge)))
-        (is (not (v/in? kb d)) "the denial loses")))))
+        (is (not (v/believed? kb d)) "the denial loses")))))
 
 (deftest the-mention-set-mirrors-the-canonical-equality-predicate-set
   ;; `res/equality-mention-heads` is `rewrite/equality-relations`, a copy of

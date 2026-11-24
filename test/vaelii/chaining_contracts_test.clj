@@ -457,7 +457,7 @@
           before (kb-state kb)]
       (is (= [:stop? true]
              (interruption #(v/edit! kb {:add (mapv facts [:d1 :d2]) :remove [spare]}
-                                     {:progress-every-ms 0 :stop? (fn [] (not (v/in? kb spare)))}))))
+                                     {:progress-every-ms 0 :stop? (fn [] (not (v/believed? kb spare)))}))))
       (is (= before (kb-state kb)))))
   (testing "retract! of an except hiding a fact of the :monotonic firing, stopped once the firing is placed"
     (let [{:keys [facts c]} (intersection/drop-world kb :at)
@@ -524,7 +524,7 @@
     (is (= :interrupted (:type (ex-data e))))
     (is (< (count stored) 3))
     (is (= (count stored) (v/count-with-functor kb edge)))
-    (is (every? #(v/in? kb %) stored))
+    (is (every? #(v/believed? kb %) stored))
     (is (= (quot (* (count stored) (inc (count stored))) 2) (v/count-with-functor kb path))
         "each stored edge keeps its whole closure")))
 
@@ -552,7 +552,7 @@
     (is (= 21 (v/count-with-functor kb path)) "each stored edge keeps its whole closure")
     (is (nil? (v/handle-of kb (nth edges 6) ctx)) "the edge in flight left no record")
     (is (= (+ 8 21) (count added)))
-    (is (every? #(v/in? kb %) added) "the closing settle ran over what the batch kept")))
+    (is (every? #(v/believed? kb %) added) "the closing settle ran over what the batch kept")))
 
 (tu/deftest-kb an-interrupted-batch-keeps-the-closure-its-first-sentence-has-alone
   ;; The edge's `genlCx` move is settled by the batch, after the second sentence's chain
@@ -632,21 +632,21 @@
           opts     (fn [on-stop]
                      (cond-> {:progress-every-ms 0
                               :stop? #(when (>= (v/count-with-functor kb nextOf) 6)
-                                        (swap! at conj [(denied?) (v/in? kb hf)])
+                                        (swap! at conj [(denied?) (v/believed? kb hf)])
                                         true)}
                        on-stop (assoc :on-stop on-stop)))
           before   (kb-state kb)]
-      (is (v/in? kb hf))
+      (is (v/believed? kb hf))
       (is (= [:stop? false] (interruption #(v/forward-chain kb (opts nil)))))
       (is (not (denied?)))
-      (is (v/in? kb hf))
+      (is (v/believed? kb hf))
       (is (= before (kb-state kb)))
       (is (= {:truncated? true :bound :stop?}
              (select-keys (v/forward-chain kb (opts :keep)) [:truncated? :bound])))
       (is (= [[true true] [true true]] @at)
           "both runs had placed the denial, and believed the default, when they stopped")
       (is (denied?))
-      (is (not (v/in? kb hf))))))
+      (is (not (v/believed? kb hf))))))
 
 (tu/deftest-kb a-stopped-removal-leaves-the-kb-as-it-found-it
   (tu/with-terms [SuccFn num startq other Zero]
@@ -675,7 +675,7 @@
             (is (= [how rolled-back?] (with-redefs [budget/now (clock budget/now)]
                                         (interruption #(remove! opts)))))
             (is (= before (kb-state kb)))
-            (is (v/in? kb hiding)))))
+            (is (v/believed? kb hiding)))))
       (v/retract! kb hiding {})
       (is (nil? (v/sentex kb hiding)))
       (is (= (inc (:max-term-depth v/default-chain-opts)) (v/count-with-functor kb num))
@@ -722,7 +722,7 @@
                                                :retract #(v/retract! kb hiding {:max-ms 600000})
                                                :edit    #(v/edit! kb {:remove [hiding]}
                                                                   {:max-ms 600000})))))
-          (is (v/in? kb (v/handle-of kb (list reach_a N5) CxR))))))))
+          (is (v/believed? kb (v/handle-of kb (list reach_a N5) CxR))))))))
 
 (tu/deftest-kb a-removal-leaves-no-aggregate-conclusion-of-the-counts-it-moved
   (doseq [op [:retract :edit], opts [{} {:max-ms 600000}]]
@@ -874,7 +874,7 @@
           (v/assert kb (list 'genlCx CxM CxA) 'CxUniverse)
           (v/assert kb (list 'genlCx CxB CxM) 'CxUniverse))
         (testing (str (name how) (when route? " with a surviving route"))
-          (is (v/in? kb (v/handle-of kb (list qq Aa) CxB)))
+          (is (v/believed? kb (v/handle-of kb (list qq Aa) CxB)))
           (is (= [true :returned]
                  (with-full-heap
                    (fn [set-mark!]
@@ -882,7 +882,7 @@
                      [(caches/heap-critical?) (do (remove! h) :returned)]))))
           (is (nil? (v/handle-of kb edge 'CxUniverse)))
           (if route?
-            (is (v/in? kb (v/handle-of kb (list qq Aa) CxB)) "the settle's re-chain ran")
+            (is (v/believed? kb (v/handle-of kb (list qq Aa) CxB)) "the settle's re-chain ran")
             (is (= before (kb-state kb)))))))))
 
 (tu/deftest-kb forward-chain-over-a-nearly-full-heap-rolls-back-under-either-on-stop

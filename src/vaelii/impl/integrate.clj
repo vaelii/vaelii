@@ -84,7 +84,7 @@
     ;; add in `kb/create-sentex` — a no-op unless one is engaged
     (observe/notify-remove kb sentex)
     ;; and the change clock, mirroring the same line there
-    (observe/note-change)
+    (observe/note-change (:clock kb))
     (exc/note-stored! kb sentex false)
     ;; the handle cache holds "this sentence is stored at this handle", and this is the
     ;; one event that falsifies it — so the invalidation belongs beside the removal
@@ -323,6 +323,21 @@
         (jtms/add-premise tms survivor s)
         (p/mark-premise (:records kb) survivor s)))))
 
+(defn- copy-justification!
+  "Store and add a copy of justification `jid`, record `j`, with `antes`, `consequence` and
+  `reading`, and return the copy's id.  The copy is held void when `jid` is
+  (docs/canonicalization.md)."
+  [kb jid j antes consequence reading]
+  (let [tms  (reasoning/tms kb)
+        recs (:records kb)
+        nid  (p/next-id recs)
+        just (jtms/->just nid (:informant j) antes consequence
+                          (:bindings j) (:strength j) (:subsumptions j) reading)]
+    (when (jtms/forced? tms :void jid) (jtms/set-forced tms :void [nid] true))
+    (p/put-justification recs just)
+    (jtms/add-justification tms just)
+    nid))
+
 (defn- fold-dependents!
   "Re-hang every justification that uses `doomed` as an antecedent on `survivor`: same
   informant, bindings and strength, only the antecedent moves. A justification whose
@@ -343,11 +358,7 @@
                        (not (jtms/has-justification?
                              tms (:informant j) antes (:consequence j)
                              (jtms/justification-key (:informant j) antes (:subsumptions j) reading))))]
-      (let [nid  (p/next-id recs)
-            just (jtms/->just nid (:informant j) antes (:consequence j)
-                              (:bindings j) (:strength j) (:subsumptions j) reading)]
-        (p/put-justification recs just)
-        (jtms/add-justification tms just)
+      (let [nid (copy-justification! kb jid j antes (:consequence j) reading)]
         ;; the copy concludes what the original did, spelled as the original was
         (when-let [w (get-in (spellings kb (:consequence j)) [:derived jid])]
           (note-derived-spelling! kb (:consequence j) nid w))))))
@@ -370,12 +381,8 @@
                                tms (:informant j) (:antecedents j) survivor
                                (jtms/justification-key (:informant j) (:antecedents j)
                                                        (:subsumptions j) (:reading j)))))
-                  (let [nid  (p/next-id recs)
-                        just (jtms/->just nid (:informant j) (vec (:antecedents j)) survivor
-                                          (:bindings j) (:strength j) (:subsumptions j) (:reading j))]
-                    (p/put-justification recs just)
-                    (jtms/add-justification tms just)
-                    (assoc copied jid nid))
+                  (assoc copied jid (copy-justification! kb jid j (vec (:antecedents j)) survivor
+                                                         (:reading j)))
                   copied)))
             {}
             (vec (jtms/supports tms doomed)))))
@@ -468,7 +475,9 @@
 (defn move-row!
   "Bring one stored row `sx` to the spelling `want`: `{:at handle :new [handle …]
   :violations [v …]}`, the handle the row ends up at, followed in `:new` by the mints its
-  new spelling drew (`redraw-mints!`), or nil when it is spelled `want` already.
+  new spelling drew (`redraw-mints!`), or nil when it is spelled `want` already.  `:at` is
+  nil when the fold's `take-out!` swept the survivor: a survivor that is OUT and no premise
+  is collected like every such datum in a removal's region.
   `symmetrize-row!` below states the shape and the choice of survivor.  `witness` is the
   mark handle a folded row's metas are carried on, or nil.  `rewrite` re-spells the row's
   written spellings (`rewritten`), nil to keep them as written."
@@ -487,18 +496,26 @@
                        (and (bare? self)   (not (bare? mirror))) self
                        (and (bare? mirror) (not (bare? self)))   mirror
                        :else                                    (max self mirror))]
-      (let [at (cond
-                 ;; nothing to fold: the row is alone under this proposition and only
-                 ;; spelled the way the entry point used to spell it
-                 (nil? mirror)   (:id (respell! kb sx want rewrite))
-                 ;; this row is the one that leaves; the mirror is already the wanted
-                 ;; spelling
-                 (= doomed self) (do (fold-row! kb self mirror want witness rewrite) mirror)
-                 ;; the mirror leaves, and this row takes the spelling it vacated
-                 :else           (do (fold-row! kb mirror self want witness rewrite)
-                                     (:id (respell! kb (p/get-sentex (:records kb) self) want rewrite))))
-            {:keys [new violations]} (redraw-mints! kb at)]
-        {:at at :new (into [at] new) :violations violations}))))
+      (let [recs (:records kb)
+            at   (cond
+                   ;; nothing to fold: the row is alone under this proposition and only
+                   ;; its spelling differs from `want`
+                   (nil? mirror)   (:id (respell! kb sx want rewrite))
+                   ;; this row is the one that leaves; the mirror is already the wanted
+                   ;; spelling
+                   (= doomed self) (do (fold-row! kb self mirror want witness rewrite)
+                                       (when (p/get-sentex recs mirror) mirror))
+                   ;; the mirror leaves; this row takes its spelling and re-reads its supersession
+                   :else           (do (fold-row! kb mirror self want witness rewrite)
+                                       (when-let [s (p/get-sentex recs self)]
+                                         (let [h (:id (respell! kb s want rewrite))]
+                                           (when (jtms/superseded? tms h)
+                                             (special/refresh-supersessions kb nil #{h}))
+                                           h))))]
+        (if (nil? at)
+          {:at nil :new [] :violations []}
+          (let [{:keys [new violations]} (redraw-mints! kb at)]
+            {:at at :new (into [at] new) :violations violations}))))))
 
 (defn spelling-plan
   "`[home entries respelled]` for a piece of a fact written `w` in `ctx`, read through

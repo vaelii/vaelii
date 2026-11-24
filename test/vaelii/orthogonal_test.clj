@@ -613,7 +613,7 @@
   (doseq [s preservation-denials
           :let [h (v/handle-of kb s 'CxUniverse)]]
     (is (some? h) (str (pr-str s) " is stated in CxUniverse"))
-    (is (true? (v/in? kb h)) (str (pr-str s) " is believed")))
+    (is (true? (v/believed? kb h)) (str (pr-str s) " is believed")))
   (doseq [s preservation-denials]
     (is (false? (v/ask? kb (second s) 'CxUniverse))
         (str (pr-str (second s)) " does not hold"))))

@@ -97,6 +97,12 @@
    :priority priority
    :literals (vec weighted-literals)})
 
+(defn project
+  "Projection statement over `atom-ids`, rendered `3 <n> <atom_1> … <atom_n>`: under
+   `--project`, an enumeration yields one model per distinct assignment to these atoms."
+  [atom-ids]
+  {:type :project :atoms (vec atom-ids)})
+
 (defn show
   "Output mapping `atom-id` to `text` in solver output. `text` must be
    ASCII and must not contain newline characters."
@@ -148,6 +154,9 @@
   ;; 2 <priority> <n> <lit_1> <w_1> ... <lit_n> <w_n>
   (str "2 " priority " " (count literals)
        (str/join (for [[lit w] literals] (str " " lit " " w)))))
+
+(defmethod emit-line :project [{:keys [atoms]}]
+  (str "3 " (count atoms) (str/join (map #(str " " %) atoms))))
 
 (defmethod emit-line :show [{:keys [atom text]}]
   ;; 4 <len> <text> 1 <atom>   (always a single-atom condition)

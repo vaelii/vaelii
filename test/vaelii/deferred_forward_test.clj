@@ -131,11 +131,11 @@
                                   (list youngerThan '?x '?y))
                        'CxNaturalWorld)
           ch (handle-of kb youngerThan (list youngerThan Ann Bob))]
-      (is (v/in? kb ch))
+      (is (v/believed? kb ch))
       (v/retract! kb h1)
       (testing "the conclusion goes with the fact that bound the comparison's left side"
         (is (empty? (sentences kb youngerThan)))
-        (is (not (v/in? kb ch)))))))
+        (is (not (v/believed? kb ch)))))))
 
 ;; ---- the ordering invariant ----------------------------------------------
 

@@ -21,10 +21,9 @@
 ;; (`vaelii.impl.feed`).  A field rather than a bare key for the same reason as
 ;; `:naming`: every settle reads it to decide whether to accumulate anything, and a KB
 ;; nobody is listening to should pay a field read and not a hash lookup.
-;; `dir` is the record store's directory when the records are durable, else nil. It is
-;; here so `core/close!` can release the exclusive FileLock the disk backend takes:
-;; without it a long-running process could not hand a directory to another process, or
-;; reopen it elsewhere, until the JVM exited.
+;; `dir` is the record store's directory when the records are durable, else nil.
+;; `core/close!` reads it to release the disk backend's exclusive FileLock, so a process
+;; can hand the directory to another process, or reopen it, before the JVM exits.
 ;; `snapshot-dir` is that same directory again, and non-nil only on a KB whose index is
 ;; the mapped image — the write entry point's whole presence check on the image cadence
 ;; (`create-sentex`).  A separate field rather than a test on `dir`, because `dir` is set
@@ -44,7 +43,8 @@
 ;; into, or nil.  A field, because every public write reads it to decide whether to record.
 ;; `engine-space` is the private in-RAM space the engine allocated for this KB's own
 ;; stores (`vaelii.impl.memory/engine-space`), which `core/close!` drops, or nil.
+;; `clock` is the KB's change clock and respell count, shared as `observe/new-clock` states.
 ;; `reasoners` is `{:names <atom of a set> :at <locus or nil>}`: the shipped reasoners the
 ;; KB registered by name, and where its store records them (`vaelii.impl.kb/reasoners-of`).
 (defrecord KB [records index reasoning provers reasoners solver naming feed dir
-               snapshot-dir index-space unrecovered oplog engine-space])
+               snapshot-dir index-space unrecovered oplog engine-space clock])

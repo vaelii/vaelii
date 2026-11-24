@@ -3,7 +3,7 @@
 - **Covers:** the answer set programming vocabulary mapped onto this one — rules,
   choices, constraints, the three negations — and the two structural differences that
   matter more than any of the names: there is no grounding step, and belief is not a
-  model.
+  model. Eleven sample programs sit beside their clingo twins.
 - **Not here:** the clingo and clasp backend a contested edge is actually solved on,
   which is ASP the machinery rather than ASP the language → [asp.md](asp.md); the
   vocabulary that builds a program for it → [solving.md](solving.md),
@@ -172,7 +172,11 @@ a solve answers something surprising. → [asp.md](asp.md)
 
 | in ASP | here |
 |---|---|
-| `clingo prog.lp` | `(v/assert kb '(do/label Base Into) ctx)` |
+| `clingo -n 0 prog.lp` | `lein cli run prog.vae`, its `#models P` printing each answer set → [operations.md](operations.md#run-files) |
+| `clingo --enum-mode=brave` / `cautious` on a file | `#brave P` / `#cautious P` in the run file |
+| `--opt-mode=ignore`, `--opt-mode=enum,B`, `-n N`, `--project` | `#solve {:among :all}`, `{:among [B]}`, `{:limit N}`, `{:project true}` before the reads → [solving.md](solving.md#the-asp-reading-of-a-program) |
+| the same from a program | `(v/answer-sets kb ctx {:reading :all :among :all :limit N})` |
+| `clingo prog.lp`, keeping the labeling as contexts | `(v/assert kb '(do/label Base Into) ctx)` |
 | `clingo -n 0` | the `:all` mode, which is the default |
 | `clingo --enum-mode=cautious` | `(do/classify Into)`, reading `forced` |
 | the same, brave | `(do/classify Into)`, reading `supportable` |
@@ -181,6 +185,28 @@ a solve answers something surprising. → [asp.md](asp.md)
 | `#show p/1` | `(v/query kb goal ctx)` — an ordinary read → [api.md](api.md) |
 | grounding | nothing; there is no such step |
 | inspecting the ground program | `(v/last-program kb)` |
+
+## Sample programs
+
+`test/programs/asp/` holds eleven run files, each an ASP program written in vaelii beside
+its twin `<name>.lp` in clingo's language. `asp_programs_test` runs each over the core
+base and checks every read's answer count and cost vector. Where the clingo executable is
+on the PATH, the test also solves the twin and checks every read against it.
+`lein cli run test/programs/asp/<name>.vae` prints a program's answers.
+
+| program | answers | the technique it shows |
+|---|---|---|
+| [`queens-pairwise`](../test/programs/asp/queens-pairwise.vae) | 92 | generate and test: a choice per square, cardinality bounds, a hard constraint per pair of squares on a diagonal |
+| [`queens-diagonal`](../test/programs/asp/queens-diagonal.vae) | 92 | rule decomposition: a solve-only rule projects each queen onto its two diagonals, and 30 bounds replace 280 constraints |
+| [`colouring`](../test/programs/asp/colouring.vae) | 120 | three-colouring the Petersen graph, with a `#brave` read over one vertex |
+| [`colouring-symmetry`](../test/programs/asp/colouring-symmetry.vae) | 20 | symmetry breaking: two hard constraints fix the colours of two adjacent vertices |
+| [`hamilton`](../test/programs/asp/hamilton.vae) | 12 | recursion through solve-only rules: reachability from one vertex, the magic-sets specialisation of a reach relation |
+| [`assignment`](../test/programs/asp/assignment.vae) | 3 optima at cost 12 | `asp/minimize` over a weight datum, and brave and cautious reads under an objective |
+| [`sudoku`](../test/programs/asp/sudoku.vae) | 1 | four families of bounds, a projection of each cell onto its box, and 26 givens as hard constraints |
+| [`timetable`](../test/programs/asp/timetable.vae) | 2 optima at cost `1 2` | two objective levels: a soft constraint at level 2 and `asp/softAtMost` at level 1 |
+| [`knapsack`](../test/programs/asp/knapsack.vae) | 1 optimum | `asp/atMostSum`, default negation in a solve rule, and a maximum packed value as the minimum value left behind |
+| [`timetable-readings`](../test/programs/asp/timetable-readings.vae) | 15, 48 and 3 | `#solve`: a cost bound, the objective ignored, a limit, and the usc strategy |
+| [`hamilton-projected`](../test/programs/asp/hamilton-projected.vae) | 3 | `#solve {:project true}`: the 12 cycles projected onto the edge leaving one vertex |
 
 ## What you keep
 

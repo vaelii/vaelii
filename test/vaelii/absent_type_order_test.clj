@@ -37,7 +37,7 @@
          :let [sx (p/get-sentex (:records kb) h)]]
      [(str/replace (pr-str (:sentence sx)) #"\(sentexHandle \d+\)" "(sentexHandle _)")
       (str (:context sx))
-      (v/in? kb h)])))
+      (v/believed? kb h)])))
 
 (defn- in-both-orders
   "Run `steps` (a map of step name to a fn of the KB) in `first-steps` then the rest, and
@@ -144,7 +144,7 @@
                        :rest #(do (v/assert % (list 'arg rel 1 t) CxWorld)
                                   (v/assert % (list rel Rex Mary) CxWorld))}
                       [:rest :bind]
-                      (fn [kb] (boolean (some->> (v/handle-of kb (list t Rex) CxWorld) (v/in? kb)))))]
+                      (fn [kb] (boolean (some->> (v/handle-of kb (list t Rex) CxWorld) (v/believed? kb)))))]
         (is (= [false false] readings))))))
 
 (tu/deftest-kb a-length-arriving-after-a-mint-keeps-it-stored-inert
@@ -162,7 +162,7 @@
                         {:bind #(a-binary % t)
                          :rest #(do (v/assert % decl CxWorld) (v/assert % fact CxWorld))}
                         [:rest :bind]
-                        (fn [kb] {:minted (some->> (v/handle-of kb minted CxWorld) (v/in? kb))
+                        (fn [kb] {:minted (some->> (v/handle-of kb minted CxWorld) (v/believed? kb))
                                   :held   (held kb)}))]
           (is (= [false false] (mapv :minted readings)) (str decl " stores the mint OUT"))
           (is (apply = readings) (str decl " stores the same in both orders")))))))
@@ -181,7 +181,7 @@
                         :binary #(v/assert % (list 'binary_predicate t) 'CxUniverse)
                         :decl   #(v/assert % decl CxWorld)
                         :fact   #(v/assert % fact CxWorld)}
-              inert?   #(false? (some->> (v/handle-of % minted CxWorld) (v/in? %)))
+              inert?   #(false? (some->> (v/handle-of % minted CxWorld) (v/believed? %)))
               readings (for [order (oi/permutations [:unary :binary :decl :fact])]
                          (tu/with-neutral-kb [kb tu/fresh]
                            (a-context kb CxWorld 'CxUniverse)
@@ -237,7 +237,7 @@
         (let [rels   (into [] (repeatedly 4 #(tu/fresh-term :predicate 'usesKind)))
               dhs    (into #{} (map #(v/assert kb (list 'arg % 1 orphan) CxWorld)) rels)
               _      (v/assert kb (list (first rels) Bolt Widget) CxWorld)
-              minted #(some->> (v/handle-of kb (list orphan Bolt) CxWorld) (v/in? kb))
+              minted #(some->> (v/handle-of kb (list orphan Bolt) CxWorld) (v/believed? kb))
               fact   (sweeps dhs #(v/assert kb (list toolKind Widget) CxWorld))
               edge   (sweeps dhs #(v/assert kb (list 'genl partKind toolKind) CxWorld))
               prev   (sweeps dhs #(v/preview kb {:add [[(list 'genl qKind 'thing) CxWorld]]}))
@@ -295,14 +295,14 @@
                :rewrites '(rewriteOf ?target ?expression)
                :predicates '(predicate ?p)
                :chosen '(chosen_kinship_predicate ?p)
-               :blood '(blood_kinship_predicate ?p)
+               :genetic '(genetic_kinship_predicate ?p)
                :chosen-same-as '(sameAs chosenKinOf ?p)
                :chosen-equals '(equals chosenKinOf ?p)
-               :blood-same-as '(sameAs bloodRelativeOf ?p)
+               :genetic-same-as '(sameAs geneticRelativeOf ?p)
                :chosen-specs '(genl ?p chosenKinOf)
-               :blood-specs '(genl ?p bloodRelativeOf)
-               :chosen-correspondence '(chosenKinPredicateOf kinOf ?p)
-               :blood-correspondence '(bloodKinPredicateOf kinOf ?p)}]
+               :genetic-specs '(genl ?p geneticRelativeOf)
+               :chosen-correspondence '(chosenVersionOf kinOf ?p)
+               :genetic-correspondence '(geneticVersionOf kinOf ?p)}]
     {:answers (into {}
                     (for [reader ['CxUniverse 'CxKinship]
                           [label goal] goals]

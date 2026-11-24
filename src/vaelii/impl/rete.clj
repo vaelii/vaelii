@@ -50,9 +50,9 @@
   A per-KB atom, `{:by-functor {f {:all {id sentex}
                                     :by-arg {[pos val] {id sentex}}}}}`.  Only ground
   **facts** live here (rules are matched by the rule index, not as facts, and never
-  appear among a fact pattern's trie hits).  Belief is *not* baked in: a datum stays
-  in its memory when it is defeated or superseded, and `in?` is consulted at read
-  time exactly as `match-one` does — so a belief flip needs no memory update, and the
+  appear among a fact pattern's trie hits).  Belief is *not* baked in: a defeated or
+  superseded datum stays in its memory, and a read tests `jtms/in?` as `match-one`
+  does, the caller dropping what its reader hides.  So a belief flip updates no memory.  The
   only structural mutations are a stored fact arriving (`kb/create-sentex`) or leaving
   (`integrate/sentex-removed!`), routed here through `vaelii.impl.observe`.  Subtype
   and symmetric resolution also happen at read time (over the live taxonomy), so a

@@ -152,7 +152,7 @@
       (try
         (testing "a believed :default premise, justified by nothing"
           (is (integer? h))
-          (is (v/in? kb h))
+          (is (v/believed? kb h))
           (is (v/premise? kb h))
           (is (= :default (v/defeat-class kb h)))
           (is (true? (:premise? (tu/why-root kb h))))
@@ -164,7 +164,7 @@
             (is (= :vaelii.impl.abduce/hypothesis (:creator pv)))))
         (testing "the rule fired over it, placement put the conclusion in the scratch
                   context, and `why` names the hypothesis as its support"
-          (is (v/in? kb c))
+          (is (v/believed? kb c))
           (is (false? (:premise? (tu/why-root kb c))))
           (is (some (fn [s] (some #(= (list wabPremise N) (:sentence %)) (:because s)))
                     (:support (tu/why-root kb c)))))
@@ -182,15 +182,15 @@
           h (:handle (first (:hypotheses r)))
           c (v/handle-of kb (list wabGoal N) (:context r))]
       (try
-        (is (v/in? kb c))
+        (is (v/believed? kb c))
         (let [no (v/assert kb (list 'not (list wabPremise N)) CxTheory
                            {:strength :monotonic})]
           (testing "the hypothesis is defeated, and what it licensed goes out with it"
             (is (= :defeated (:reason (v/why-not kb h))))
-            (is (not (v/in? kb c))))
+            (is (not (v/believed? kb c))))
           (testing "retract the fact and the assumption comes back"
             (v/retract! kb no)
-            (is (v/in? kb h))))
+            (is (v/believed? kb h))))
         (finally (v/abduce-discard! kb r))))))
 
 ;; ---- isolation and cleanup -----------------------------------------------
@@ -280,7 +280,7 @@
           (testing "the exception is evaluated in the base conclusion's placement context,
                     which cannot see into the scratch one: same handle, still believed"
             (is (= c (v/handle-of kb (list wabConc N) CxTheory)))
-            (is (v/in? kb c)))
+            (is (v/believed? kb c)))
           (finally (v/abduce-discard! kb r)))))))
 
 ;; ---- the search ----------------------------------------------------------

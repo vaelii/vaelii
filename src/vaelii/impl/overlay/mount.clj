@@ -145,3 +145,12 @@
   namespace docstring on why the columnar index is not forkable this way."
   [overlay base]
   (kv/->KvIndexStore (okv/overlay-kv (base-kv overlay) (frozen/frozen-kv (base-kv base)))))
+
+(defn link-halves!
+  "Have a fork's index half `istore` hand its record half `rstore` each handle it posts or
+  removes, so the record half records the content of the base ones
+  (`ostore/note-base-handle`).  Does nothing unless both halves are a fork's own."
+  [rstore istore]
+  (let [b (kv-backend-of istore)]
+    (when (and (ostore/overlay-record-store? rstore) (okv/overlay-kv? b))
+      (okv/set-note! b (ostore/note-base-handle rstore)))))

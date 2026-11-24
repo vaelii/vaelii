@@ -755,10 +755,10 @@
 (def sentex-handle-functor 'sentexHandle)
 
 (def except-functor
-  "`(except <handle>)` — a meta-sentex removing visibility of the sentex the handle
-  names from the context it is asserted in and that context's descendants (everything
-  that *sees* it).  A ground fact — the handle is ground — belief-following like any
-  other, so retracting or defeating the `except` restores the hidden sentex."
+  "`(except <handle>)` — a meta-sentex removing the sentex the handle names from
+  belief at the context it is asserted in and that context's descendants (everything
+  that *sees* it).  An except is forced-monotonic, so no defeat removes it.  Retracting
+  it restores the hidden sentex, and so does an except of it (the meta-except cascade)."
   'except)
 
 (def defeat-functor

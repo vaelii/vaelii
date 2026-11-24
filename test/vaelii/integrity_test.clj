@@ -838,6 +838,31 @@
         "a genl edge asserted below the audit context is not seen from it")
     (is (= :audited (:status (v/kb-integrity kb #{orphan_kind_fixture} CxHidden))))))
 
+(tu/deftest-kb not-under-thing-reads-each-type-from-its-defining-contexts
+  ;; `(decontextualized_predicate unary_predicate)`, as core.txt states it, lifts a type
+  ;; declaration made in CxHome to CxUniverse, so CxUniverse sees the declaration while the
+  ;; type's genl edge stays in CxHome, where CxUniverse cannot see it.
+  (tu/with-terms [homed_kind_fixture bare_kind_fixture CxHome]
+    (declare-types! kb 'thing)
+    (v/assert kb (list 'genlCx CxHome 'CxUniverse) 'CxUniverse)
+    (v/assert kb '(decontextualized_predicate unary_predicate) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate homed_kind_fixture) CxHome)
+    (v/assert kb (list 'genl homed_kind_fixture 'thing) CxHome)
+    (v/assert kb (list 'unary_predicate bare_kind_fixture) CxHome)
+    (is (v/ask? kb (list 'unary_predicate homed_kind_fixture) 'CxUniverse)
+        "CxUniverse sees the lifted type declaration")
+    (is (not (v/ask? kb (list 'genl homed_kind_fixture 'thing) 'CxUniverse))
+        "CxUniverse does not see the genl edge")
+    (doseq [reader ['CxUniverse CxHome]]
+      (let [opts {:categories #{:not-under-thing}}]
+        (testing (str "from " reader)
+          (is (= [] (mapv :term (:not-under-thing
+                                 (v/kb-integrity kb #{homed_kind_fixture} reader opts))))
+              "a type whose genl edge to thing is in its defining context is rooted")
+          (is (= [{:term bare_kind_fixture}]
+                 (:not-under-thing (v/kb-integrity kb #{bare_kind_fixture} reader opts)))
+              "a type with no genl edge in any context is still a finding"))))))
+
 (tu/deftest-kb not-under-thing-findings-truncate-under-every-bound
   (tu/with-terms [orphan_kind_fixture stray_kind_fixture]
     (v/assert kb (list 'unary_predicate orphan_kind_fixture) 'CxUniverse)
@@ -2390,6 +2415,52 @@
         "a membership or a use stated below the audit context is not seen from it, and an
          arity binding stated anywhere declares its relation")
     (is (= [{:term Bob}] (undeclared-terms kb #{Ann Bob placed_kind} CxHidden)))))
+
+(tu/deftest-kb a-membership-the-audit-context-disbelieves-or-hides-declares-nothing
+  (tu/with-terms [owner_kind Ann CxA CxB]
+    (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+    (v/assert kb (list 'unary_predicate owner_kind) 'CxUniverse)
+    (v/assert kb (list 'comment Ann "Used.") CxA)
+    (let [fact    (list owner_kind Ann)
+          h       (v/assert kb fact CxA)
+          gap     [{:term Ann}]
+          audit   #(mapv (fn [c] (undeclared-terms kb #{Ann} c)) [CxA CxB])]
+      (is (= [nil nil] (audit)))
+      (doseq [[label sentence cx expected]
+              [["defeated below" (list 'not fact) CxB [nil gap]]
+               ["defeated where stored" (list 'not fact) CxA [gap gap]]
+               ["excepted below" (list 'except (list 'sentexHandle h)) CxB [nil gap]]
+               ["excepted where stored" (list 'except (list 'sentexHandle h)) CxA [gap gap]]]]
+        (let [w (v/assert kb sentence cx {:strength :monotonic})]
+          (is (= expected (audit)) label)
+          (v/retract! kb w)
+          (is (= [nil nil] (audit)) (str label ", retracted")))))))
+
+(tu/deftest-kb a-rule-conclusion-declares-a-term-only-where-the-audit-context-believes-its-antecedents
+  ;; `(owner_kind Ann)` has two routes: the `arg` entailment from the use, and the rule.
+  (tu/with-entailing
+    (tu/with-terms [owner_kind src_kind ownsX Ann Dover CxA CxB]
+      (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+      (v/assert kb (list 'unary_predicate owner_kind) 'CxUniverse)
+      (v/assert kb (list 'unary_predicate src_kind) 'CxUniverse)
+      (v/assert kb (list 'binary_predicate ownsX) 'CxUniverse)
+      (v/assert kb (list 'arg ownsX 1 owner_kind) 'CxUniverse)
+      (v/assert kb (list 'set/forwardRule (list 'implies (list src_kind '?x) (list owner_kind '?x))) CxA)
+      (v/assert kb (list ownsX Ann Dover) CxA)
+      (let [src   (v/assert kb (list src_kind Ann) CxA)
+            gap   [{:term Ann}]
+            audit #(mapv (fn [c] (undeclared-terms kb #{Ann} c)) [CxA CxB])]
+        (is (= [nil nil] (audit)))
+        (doseq [[label sentence cx expected]
+                [["antecedent defeated below" (list 'not (list src_kind Ann)) CxB [nil gap]]
+                 ["antecedent defeated where stored" (list 'not (list src_kind Ann)) CxA [gap gap]]
+                 ["antecedent excepted below" (list 'except (list 'sentexHandle src)) CxB [nil gap]]]]
+          (let [w (v/assert kb sentence cx {:strength :monotonic})]
+            (is (= expected (audit)) label)
+            (v/retract! kb w)
+            (is (= [nil nil] (audit)) (str label ", retracted"))))))))
 
 (tu/deftest-kb the-upper-ontology-declares-every-constant-it-uses
   (tu/with-cleared-kb [kb core-kb]

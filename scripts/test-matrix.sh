@@ -630,11 +630,9 @@ if (( covered )); then
 fi
 
 
-# Slots default from `scripts/lib/slots.sh` — the same rule `test-parallel.sh` shards by:
-# half the performance cores, less the vaelii JVMs already running on the box.  Each run is
-# about one core of test work, so a slot count near the core count keeps every core busy
-# while leaving the box usable; more slots than cores does not go faster and costs another
-# JVM's memory each.  slots.sh says why it is P/2 (not `cores - 2`) and load-aware.
+# Slots default from `scripts/lib/slots.sh`: the box's base less the vaelii JVMs already
+# running on it.  Each run takes about 4/3 cores and 2-4 GiB, so more slots than the cores
+# hold does not go faster and costs another JVM's memory each.
 # Without `--jobs` the count follows the load while the matrix runs (the scheduler below).
 AUTO_JOBS=0; [[ -z "$JOBS" ]] && AUTO_JOBS=1
 [[ -z "$JOBS" ]] && JOBS=$(default_slots)

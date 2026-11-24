@@ -103,8 +103,8 @@
       (let [{[pos neg] :handles} (nixon-diamond kb)
             c (label/classify kb)]
         (testing "the engine committed to neither side"
-          (is (true? (v/in? kb pos)))
-          (is (true? (v/in? kb neg))))
+          (is (true? (v/believed? kb pos)))
+          (is (true? (v/believed? kb neg))))
         (testing "so nothing was arbitrated and nothing is classified"
           (is (nil? (v/last-program kb)))
           (is (= {:true #{} :supportable #{} :false #{}} c)))
@@ -182,12 +182,12 @@
             before (v/contradictions kb)]
         (testing "open on both sides beforehand"
           (is (= 1 (count before)))
-          (is (true? (v/in? kb pos)))
-          (is (true? (v/in? kb neg))))
+          (is (true? (v/believed? kb pos)))
+          (is (true? (v/believed? kb neg))))
         (label/label-context kb ctx 'CxUniverse)
         (testing "and open on both sides afterwards — belief did not move"
-          (is (true? (v/in? kb pos)))
-          (is (true? (v/in? kb neg)))
+          (is (true? (v/believed? kb pos)))
+          (is (true? (v/believed? kb neg)))
           (is (= :default (v/defeat-class kb pos)))
           (is (= :default (v/defeat-class kb neg))))
         (testing "the dilemma is still reported, unchanged"
@@ -196,6 +196,60 @@
           (let [after (label/classify kb)]
             (is (= {:true #{} :supportable #{} :false #{}} after))
             (check-tms kb after)))))))
+
+(deftest label-context-copies-the-side-label-dilemmas-kept-while-its-own-context-believes-it
+  ;; copying every IN assumption would copy both sides of the dilemma
+  (tu/with-neutral-kb [kb tu/fresh]
+    (let [{hs :handles} (nixon-diamond kb)
+          [pick rec rec2] (repeatedly 3 tu/tmp-ctx)
+          sentences (fn [r] (mapv #(:sentence (v/sentex kb %)) (:handles r)))
+          kept      (sentences (label/label-dilemmas kb pick 'CxUniverse))
+          rival     (first (remove #(= kept [(:sentence (v/sentex kb %))]) hs))]
+      (is (= 1 (count kept)))
+      (let [r (label/label-context kb rec 'CxUniverse)]
+        (is (= kept (sentences r)))
+        (is (= [:monotonic] (mapv #(:strength (v/sentex kb %)) (:handles r)))
+            "each copy is monotonic, so it out-ranks the rival inside the labeling context")
+        (is (not (v/ask? kb (:sentence (v/sentex kb rival)) rec))))
+      (v/assert kb (:sentence (v/sentex kb rival)) 'CxUniverse {:strength :monotonic})
+      (is (= [] (sentences (label/label-context kb rec2 'CxUniverse)))
+          "the rival restated at monotonic defeats the kept side where it is stored"))))
+
+(deftest a-labeling-copy-and-a-monotonic-rival-are-a-hard-clash-in-the-labeling-context-in-either-order
+  ;; label-context's copy in rec, label-dilemmas' copy in pick and the rival restated in
+  ;; the base are each monotonic, so each copy clashes with the rival.  The rival-first
+  ;; order writes label-context's two sentences itself: label-context reads belief, and
+  ;; copies nothing once the rival is restated (the test above).
+  (let [reading
+        (fn [rival-first?]
+          (tu/with-neutral-kb [kb tu/fresh]
+            (let [{hs :handles} (nixon-diamond kb)
+                  [pick rec] (repeatedly 2 tu/tmp-ctx)
+                  M      {:strength :monotonic}
+                  picked (first (:handles (label/label-dilemmas kb pick 'CxUniverse)))
+                  kept   (:sentence (v/sentex kb picked))
+                  rival  (first (remove #{kept} (map #(:sentence (v/sentex kb %)) hs)))
+                  rival! #(v/assert kb rival 'CxUniverse M)
+                  copy   (if rival-first?
+                           (do (rival!)
+                               (v/assert kb (list 'genlCx rec 'CxUniverse) 'CxUniverse M)
+                               (v/assert kb kept rec M))
+                           (let [h (first (:handles (label/label-context kb rec 'CxUniverse)))]
+                             (rival!)
+                             h))
+                  rh     (v/handle-of kb rival 'CxUniverse)
+                  sides  (fn [c] (set (map :handle (:sides c))))]
+              {:at-rec   [(v/believed? kb copy rec) (v/believed? kb rh rec)
+                          (v/ask? kb kept rec) (v/ask? kb rival rec)]
+               :at-base [(v/ask? kb kept 'CxUniverse) (v/ask? kb rival 'CxUniverse)]
+               :conflicts (set (map sides (v/conflicts kb)))
+               :expected-sides #{#{picked rh} #{copy rh}}})))
+        readings (map reading [false true])]
+    (doseq [{:keys [at-rec at-base conflicts expected-sides]} readings]
+      (is (= [true true true true] at-rec) "both sides stay believed in the labeling context")
+      (is (= [false true] at-base) "the base believes the rival alone")
+      (is (= expected-sides conflicts) "conflicts reports each copy against the rival"))
+    (is (apply = (map #(dissoc % :expected-sides :conflicts) readings)))))
 
 (deftest label-context-is-additive-and-retractable
   ;; the neutral teardown retracts the `genlCx` edge, the one premise written
@@ -269,8 +323,8 @@
               (is (seq (v/sentexes-matching kb (list happy tom) 'CxUniverse)))
               (is (jtms/in? (reasoning/tms kb) monotonic)))
             (testing "and both sides of the dilemma stand, undecided by the plugin"
-              (is (true? (v/in? kb pos)))
-              (is (true? (v/in? kb neg)))
+              (is (true? (v/believed? kb pos)))
+              (is (true? (v/believed? kb neg)))
               (is (= 1 (count (v/contradictions kb)))))
             (testing "while classification claims nothing it cannot support"
               (let [c (label/classify kb)]

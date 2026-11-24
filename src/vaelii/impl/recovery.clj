@@ -296,7 +296,7 @@
   included, so the region relabels above already label unblocked.  Neither is stored
   (docs/nmtms.md), so a rebuild cannot read either back; it need not clear them because the
   two are re-derived **wholesale** rather than merged — `recheck-every-exception` queues
-  every exception-bearing rule and the settle *replaces* the blocked set (`jtms/set-blocked`),
+  every rule a block can hold and the settle *replaces* the blocked set (`jtms/set-blocked`),
   and `refresh-supersessions` replaces the supersession map — so not even a `core/reindex`
   over a live network can carry a stale one past the settle.
 
@@ -454,7 +454,7 @@
       ;; ...and the inherited-clash memo, so the settle's first discovery asks the whole
       ;; store's questions (`discovery/*whole-store-region?*`)
       (reset! (reasoning/preserved-clashes kb) {})
-      ;; The first cache reconcile ran before the visibility `except` set existed, so it
+      ;; The first cache reconcile ran before the `except` set existed, so it
       ;; could narrow only against JTMS belief. Re-run through the common transition
       ;; boundary now that recovery can also answer which declarations are excepted.
       (special/reconcile-belief-change kb)
@@ -551,7 +551,7 @@
         rebuilt   (reasoning/of from)]
     (vreset! (:reasoning kb) rebuilt)
     (swap! (:unrecovered kb) dissoc :install-pending)
-    (observe/note-change)
+    (observe/note-change (:clock kb))
     (dense/moved-between (:tms installed) (:tms rebuilt))))
 
 (defn- deliver-moved!

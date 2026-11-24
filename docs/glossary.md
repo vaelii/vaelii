@@ -165,21 +165,40 @@ one holds of any two terms and a *set* of them is the constraint on a pair —
 the whole universe meaning "unknown", `#{}` meaning "impossible". See
 [qcn.md](qcn.md).
 
-**Belief** ![tms](../.github/badges/cat-tms.svg): Whether a datum is IN or OUT.
-A node is IN if it is a premise or has a valid justification, unless it is
-defeated (forced OUT). Belief is computed from current state, never accumulated,
-so the same knowledge in any order yields the same beliefs. See
-[nmtms.md](nmtms.md). Stated over the other two: believed ⟺ (**Asserted**
-or **Derived**) and not defeated.
+**Belief** ![tms](../.github/badges/cat-tms.svg): Whether a context believes a sentex.
+Context `C` believes a datum that is **IN**, is neither **Superseded** nor held, is stored
+in a context `C` sees (**Visibility**), and that the **Read walk** at `C` does not remove.
+The walk removes a datum a `defeat` in force at `C` names, other than a guard defeat, and a
+datum an `except` in force at `C` names. It removes a member of a placed conflict that `C`
+decides against where `C`'s excepts lower a member's class, with no stored `defeat`. It
+removes a datum each of whose justifications is invalid at `C` or rests on a removed
+datum. A justification is invalid at `C` where a guard defeat in force there covers it,
+where `C`'s forced-monotonic reading voids it, or where `C` exempts its placement. An
+`except` removes belief in three ways. The read walk at a context that sees the except
+removes its target. An except of an antecedent that a justification's placement context
+sees blocks that justification in the network, so a conclusion resting on it alone is OUT
+for every context. An except of what gives a member its `:monotonic`
+class lowers that class at the contexts that see the except, where a placed conflict can
+then decide against the member. An `except` restores belief too: an except of a defeat's
+winner, of one of its grounds or of the defeat itself takes the defeat out of force at
+the except's context and below. An except of the datum a defeat names, stated below the
+defeat's context, leaves that datum unbelieved. One stated at that context or above it
+stops the nogood's placement, so no defeat removes the datum. A read that names no context
+asks the context the sentex is stored in. The withdrawal reading at `C` applies the
+defeats in force at `C` and no except (`exc/withdrawn-fn`). The settle's passes, the
+computed `genlCx` edges and `belief-status`'s `:withdrawn?` read it. Belief is computed
+from current state, never accumulated, so the same knowledge in any order yields the same
+beliefs. See [nmtms.md](nmtms.md#a-read-with-no-reader).
 
 **Belief (an agent's)** ![kb](../.github/badges/cat-kb.svg): A different question
 with the same word — `(believes Alice P)` proves `P` in Alice's own context and says
 nothing about whether the KB holds it. See [belief.md](belief.md).
 
-**`bijection`** ![kb](../.github/badges/cat-kb.svg): `(bijection P)` — the strongest of
+**`bijective_predicate`** ![kb](../.github/badges/cat-kb.svg): `(bijective_predicate P)` — the strongest of
 the three **function marks**: `P` is single-valued, one-to-one, total on its declared
-domain and onto its declared range. `core.txt` rules derive `(injection P)` and
-`(surjection P)`, and those derive the four marks the engine reads. See
+domain and onto its declared range. `core.txt` rules derive `(injective_predicate P)` and
+`(surjective_predicate P)`, and those derive the four marks the engine reads. A predicate that is
+both an `injective_predicate` and a `surjective_predicate` is concluded a `bijective_predicate`. See
 [taxonomy.md](taxonomy.md).
 
 **Brave / cautious** ![asp](../.github/badges/cat-asp.svg): The two readings of
@@ -262,6 +281,16 @@ variable-arity relation stay two claims. See
 relations still possible between *x* and *z* given `r1`(x,y) and `r2`(y,z). The
 one thing a calculus cannot derive from anything else. Three are transcribed and
 three computed. See [qcn.md](qcn.md).
+
+**Conflicted region** ![qr](../.github/badges/cat-qr.svg): The facts of a temporal,
+qualitative or sign network that one stored `(contradicts …)` names. In a calculus's
+network it is an unsatisfiable component. In the point network it is a strongly connected
+part holding a strict ordering. In the metric network it is a strongly connected part of
+one stated component holding a negative cycle, the epoch edges of the component's own
+instants included ([stp.md](stp.md#an-unsatisfiable-network-is-a-stored-contradiction)).
+In a sign reading it is the
+linked quantities that leave one quantity no sign. The settle places one per region. See
+[qcn.md](qcn.md#support-what-an-entailed-relation-rests-on).
 
 **Congruence** ![kb](../.github/badges/cat-kb.svg): Equality's substitutivity:
 when two names merge, every occurrence of the retired name at any nesting depth
@@ -366,8 +395,8 @@ placement stores one for the firing's conclusion, which removes that one firing.
 nogood's defeat is in force at a reader while one of its `nogood` justifications
 convicts `H` with the classes that reader reads; a **Defeat-dependency cycle** is broken
 in content order.
-`assert` refuses `defeat` in any literal (`:derived-only`). Contrast **`except`**, which removes `H` from visibility and
-sweeps the firings resting on `H` placed at or below it. See [nmtms.md](nmtms.md).
+`assert` refuses `defeat` in any literal (`:derived-only`). Contrast **`except`**, which a
+user asserts and which also sweeps the firings resting on `H` placed at or below it. See [nmtms.md](nmtms.md).
 
 **Defeat report** ![tms](../.github/badges/cat-tms.svg): The report of a placed nogood
 whose placements defeat one member: a clash report with `:verdict :defeat`, `:placed-in`,
@@ -557,10 +586,10 @@ evaluation — `(evaluate ?sum (+ 1 2))` binds `?sum` to 3 via a safe whitelist,
 not `eval`. A deferred literal. See [inference.md](inference.md).
 
 **`except`** ![tms](../.github/badges/cat-tms.svg): `(except (sentexHandle H))`, a
-meta-sentex a user asserts to remove `H` from visibility at its own context and every
+meta-sentex a user asserts to remove `H` from belief at its own context and every
 context that sees it, and to sweep the firings resting on `H` placed there. An except
 of an except takes it out of force (the meta-except cascade). Contrast **`defeat`**.
-See [contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree).
+See [contexts.md](contexts.md#except-removing-belief-down-a-context-subtree).
 
 **`exceptWhen`** ![inference](../.github/badges/cat-inference.svg): A wrapper
 letting a rule state its own exception. For a binding the closed level-6 query
@@ -570,7 +599,9 @@ arbitrate. Undercutting defeat. See [exceptions.md](exceptions.md).
 **Exemption** ![tms](../.github/badges/cat-tms.svg): The read walk's rule that a placed
 nogood's own `contradicts` and `defeat`, which rest on the loser they hide, read that
 loser at its network label when only the nogood's own reading hides it, so the
-placement does not hide itself. Any other `defeat` or `except` of the loser hides them.
+placement does not hide itself. Any other `defeat` of the loser hides them. An `except` of
+the loser hides them at a reader that sees the except, and leaves the defeat in force in
+the walk over the placed defeats.
 See [nmtms.md](nmtms.md#a-nogood-placed-as-a-conclusion).
 
 **`expression`** ![kb](../.github/badges/cat-kb.svg): The `reflection.txt` collection of written forms in this KB's own language, what a `(Quote …)` names — a symbol, a value, a variable, or a compound written from them. Below `linguistic`, and disjoint from `relation`, `context` and `language`, which an expression names rather than is. A natural-language sentence is `linguistic` but not an `expression`. See [taxonomy.md](taxonomy.md).
@@ -716,6 +747,12 @@ term, or where that implementation stops short. A sibling of `comment`, not a
 specialization of it: `comment` carries what a term means, and an implementation note
 carries how the meaning is carried out. No inference path reads it.
 
+**IN / OUT** ![tms](../.github/badges/cat-tms.svg): A datum's support label in the JTMS,
+one per datum for every context. A datum is IN when it is a premise or has a valid
+justification and is not in the `:out` forced set, and OUT otherwise. Neither a `defeat`
+nor an `except` moves its target's label, so an IN datum is not always believed
+(**Belief**). See [nmtms.md](nmtms.md).
+
 **`indeterminate_term`** ![kb](../.github/badges/cat-kb.svg): The extensible
 category of terms that stand for some object without determining which. A skolem
 constant is its built-in first member, read off the `SkolemFn` expression it was minted
@@ -763,7 +800,7 @@ inertia's `unknown` tests when the question is asked. Undercutting rather than
 defeat, so a terminating event heard of later leaves no conclusion to arbitrate.
 See [time.md](time.md).
 
-**`injection`** ![kb](../.github/badges/cat-kb.svg): `(injection P)` — a **function
+**`injective_predicate`** ![kb](../.github/badges/cat-kb.svg): `(injective_predicate P)` — a **function
 mark**: `P` is single-valued, one-to-one, and total on its declared domain, with nothing
 said about reaching every member of its range. Derives `(functional P)` and
 `(functionalInArg P 1)`, both enforced at the write, and `(predAllSpecified P D)` off
@@ -1146,9 +1183,10 @@ the product of the reaches. See [inherit.md](inherit.md).
 
 **Read walk** ![tms](../.github/badges/cat-tms.svg): What a belief-filtered read at a
 context runs (`exc/defeat-hidden-fn`): over the asked handle's justification
-ancestors, it forces OUT each target a **`defeat`** or **`except`** in force there
-names, drops the justifications a guard defeat covers, and reads the handle's label
-with `jtms/region-in`. Its memo lives for one read. See
+ancestors, it forces OUT each target a **`defeat`** in force there names, and for belief
+each target an **`except`** in force there names too, drops the
+justifications a guard defeat covers, and reads the handle's label with
+`jtms/region-in`. Its memo lives for one read. See
 [nmtms.md](nmtms.md#a-nogood-placed-as-a-conclusion).
 
 **Reasoning image** ![tms](../.github/badges/cat-tms.svg): The whole **reasoning state** a
@@ -1255,6 +1293,11 @@ implication: `[context id strength]` and the rule-only slots `[antecedent conseq
 varmap engines defeasible effect]`, and no `sentence` —
 `sentex/sentence-of` builds the `implies` form from the antecedent and consequent. Indexed
 additionally by antecedent/consequent predicates. See [inference.md](inference.md).
+
+**Run file** ![kb](../.github/badges/cat-kb.svg): A `.vae` file of KB forms in the text KB
+format and directives written as EDN tags (`#base`, `#context`, `#include`, `#show`,
+`#truth`). `lein cli run` runs one. See
+[operations.md](operations.md#run-files).
 
 ## S
 
@@ -1426,7 +1469,7 @@ subtracting from reported belief rather than forced OUT, so its justified twin
 survives. A superseded datum stays IN in the network and fires no rule, and a nogood
 naming one keeps its placement. See [equality.md](equality.md).
 
-**`surjection`** ![kb](../.github/badges/cat-kb.svg): `(surjection P)` — a **function
+**`surjective_predicate`** ![kb](../.github/badges/cat-kb.svg): `(surjective_predicate P)` — a **function
 mark**: `P` is single-valued, total on its declared domain, and onto its declared range,
 with nothing said about one-to-one. Derives `(functional P)`, enforced at the write, and
 the `(predAllSpecified P D)` and `(predSpecifiedAll P R)` requirements off the `arg`
@@ -1488,7 +1531,8 @@ it and leaves with the last. See [indexing.md](indexing.md).
 **`termsRelated`** ![kb](../.github/badges/cat-kb.svg): A curation grouping —
 `(termsRelated t1 t2 …)`, variable-arity, saying the named terms form one cluster so a
 reader meeting one is pointed at the rest. Documentation vocabulary beside `comment` and
-`seeAlso`, and inert: nothing in the engine reads it. See [predicates.md](predicates.md).
+`seeAlso`, read by `describe`'s definitional block and by no inference path. See
+[predicates.md](predicates.md).
 
 **`thereExists`** ![inference](../.github/badges/cat-inference.svg): The
 existential closer — `(thereExists ?x S)` projects `?x` out, so
@@ -1615,19 +1659,21 @@ and report: the two that say bounded work did not cover everything —
 a settle, over merges a `genlCx` edge's ancestor set did not reach; and
 `:genl-edge-revival-truncated`, over merges a revived `genl` edge's subtree walk did not
 reach; a `:non-confluent` pair of equations; and the provers' own —
-`:aggregate` for an extent that will not reduce, `:qualitative-inconsistency` and the two
-`:metric-temporal-*` for a network a context cannot satisfy, and `:sign-inconsistency`
-for sign facts that leave a quantity no sign at all. An entry about a term, a pair or
-a budget carries no `:sentence` or `:context`, and a network report or a
+`:aggregate` for an extent that will not reduce, `:metric-temporal-mixed-dimensions` for
+constraints of two dimensions, and `:qualitative-inconsistency`,
+`:metric-temporal-inconsistency` and `:sign-inconsistency` for a conflicted region, whose
+`:sentence` is the `(contradicts …)` placed over it. An entry about a term, a pair or a
+budget carries no `:sentence` or `:context`, and a mixed-dimension report or a
 `:post-join-ambiguous` carries a `:context` with no `:sentence`. Every kind, with the
 `:detail` keys each carries, is listed in the set of tables in `core/violations`'
 docstring, which `violation_kinds_test` checks against the sources. See [inference.md](inference.md),
 [nmtms.md](nmtms.md).
 
 **Visibility (genlCx up-closure)** ![kb](../.github/badges/cat-kb.svg):
-Which sentexes a context can use — those asserted in it or in any context it sees
-(its `genlCx` up-closure). Constraint checks and matching are visibility-
-scoped. See [contexts.md](contexts.md).
+Which sentexes a context sees. Context `C` sees a sentex stored in a context of its
+`genlCx` ancestor set. Seeing a sentex's context is one condition of **Belief** at `C`, so
+a context believes nothing it does not see. Constraint checks and matching read only what
+`C` sees. See [contexts.md](contexts.md).
 
 ## W
 

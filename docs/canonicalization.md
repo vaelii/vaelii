@@ -151,6 +151,18 @@ holding had the declaration come first, which is the claim being restored.
 Nothing keys belief on the handle number. It fixes which of two handles a caller can still
 name, so `(retract! h1)` means the same thing in both orders.
 
+A copy of a firing the network holds void is held void too
+(`integrate/copy-justification!`): the conviction reads the rule and the proposition
+concluded, and a fold changes neither.
+
+The `take-out!` sweep reaches the survivor as well. The survivor lies in the doomed row's
+region when one row concludes the other, or when the doomed row concludes itself through a
+third row, since the fold copies the third row's justification onto the survivor. A survivor
+there that is OUT and no premise is collected with the doomed row, as `jtms/sweep!` collects
+every such datum, and `integrate/move-row!` answers a nil `:at`. Each swept firing queues its
+rule's re-ask (`special/note-removed-firings!`), and the re-ask concludes the proposition
+again at the wanted spelling once its antecedents hold.
+
 The extent is `P`'s own stored rows and the rows applying `P` below the literal, not its
 spec subtree. `res/kb-sentex` reads the mark off the literal's exact functor, and a `genl`
 edge below a symmetric predicate does not make the sub-predicate symmetric
@@ -238,7 +250,7 @@ readers that see the defeat and from no other reader, and those readers read a f
 predicate as written. The four permuting marks stay visible from every context ([CxUniverse is the
 implicit root](contexts.md#cxuniverse-is-the-implicit-root)), so whether a
 reader believes one is read from the defeats and excepts it sees
-(`res/supporter-believed?`).
+(`res/supporter-unhidden?`).
 
 The store holds the spellings the readers of each fact read
 (`res/spelling-planner`). The readers are the fact's context and the contexts where it

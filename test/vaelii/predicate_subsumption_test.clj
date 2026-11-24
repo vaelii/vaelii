@@ -386,7 +386,7 @@
     (tu/with-terms [childOf parentOf parent_ C0 P0 CxTop]
       (v/assert kb (list 'genlCx CxTop 'CxUniverse) 'CxUniverse)
       (let [terms     [childOf parentOf parent_ C0 P0 CxTop]
-            believed? #(boolean (some->> (v/handle-of kb (list parent_ P0) CxTop) (v/in? kb)))]
+            believed? #(boolean (some->> (v/handle-of kb (list parent_ P0) CxTop) (v/believed? kb)))]
         (testing (str order " with the inverse beside the fact")
           (let [{:keys [inverse fact]} (inverse-join! kb order terms CxTop)]
             (is (believed?))
@@ -402,7 +402,7 @@
       (testing (str order " with the inverse in CxLow, a decontextualized_predicate's sentence")
         (inverse-join! kb order [childOf parentOf parent_ C0 P0 CxTop] CxLow)
         (is (v/ask? kb (list parentOf P0 C0) CxTop))
-        (is (some->> (v/handle-of kb (list parent_ P0) CxTop) (v/in? kb)))))))
+        (is (some->> (v/handle-of kb (list parent_ P0) CxTop) (v/believed? kb)))))))
 
 (tu/deftest-kb a-fact-the-fan-reaches-as-written-and-swapped-fires-each-reading-over-its-own-path
   (doseq [order (tu/permutations [:inverse :fact :rule])]
@@ -416,7 +416,7 @@
                                          :fact    (v/assert kb (list parentOf A B) 'CxUniverse {:strength :monotonic})
                                          :rule    (v/assert kb (list 'implies (list kinOf '?x '?y) (list kin_ '?x))
                                                             'CxUniverse {:direction :forward}))]))
-            believed? #(boolean (some->> (v/handle-of kb (list kin_ %) 'CxUniverse) (v/in? kb)))]
+            believed? #(boolean (some->> (v/handle-of kb (list kin_ %) 'CxUniverse) (v/believed? kb)))]
         (testing (str order " (parentOf A B) is (kinOf A B), and read as (childOf B A), (kinOf B A)")
           (is (believed? A))
           (is (believed? B)))
@@ -440,7 +440,7 @@
                                          :fact  (v/assert kb (list relOf A B) 'CxUniverse m)
                                          :rule  (v/assert kb (list 'implies (list relOf '?x '?y) (list out_ '?x))
                                                           'CxUniverse {:direction :forward}))]))
-            believed? #(boolean (some->> (v/handle-of kb (list out_ %) 'CxUniverse) (v/in? kb)))]
+            believed? #(boolean (some->> (v/handle-of kb (list out_ %) 'CxUniverse) (v/believed? kb)))]
         (testing (str cycle " " order)
           (is (believed? A))
           (is (believed? B))
@@ -475,7 +475,7 @@
           (is (rests-on? kb (list out_ B) (:edge hs)) "the firing names the departing edge")
           (depart! pOf qOf (:edge hs))
           (is (v/ask? kb (list qOf B A) 'CxUniverse))
-          (is (some->> (v/handle-of kb (list out_ B) 'CxUniverse) (v/in? kb))))))))
+          (is (some->> (v/handle-of kb (list out_ B) 'CxUniverse) (v/believed? kb))))))))
 
 (tu/deftest-kb a-retracted-swap-edge-leaves-the-firing-a-second-route-licenses
   (let [m {:strength :monotonic}]
@@ -554,7 +554,7 @@
       (let [hn (v/assert kb (list 'not (list 'genlInverse childOf parentOf)) 'CxUniverse
                          {:strength :monotonic})]
         (testing "defeated: neither the swapped goal nor the conclusion"
-          (is (not (v/in? kb edge)))
+          (is (not (v/believed? kb edge)))
           (is (not (v/ask? kb (list parentOf Tom Bob) 'CxUniverse)))
           (is (not (v/ask? kb (list hasChild Tom Bob) 'CxUniverse))))
         (testing "retracting the defeater revives both"

@@ -149,7 +149,7 @@
           (is (= :tie (:outcome r)))
           (is (nil? (:ruling r)) "nothing was upheld")
           (is (d/disputed? kb proposal 'CxApartment) "still disputed — nobody was decreed the winner")
-          (is (v/in? kb ph) "and both sides still stand")))
+          (is (v/believed? kb ph) "and both sides still stand")))
 
       (testing "the tiebreaker: Ciel votes for, and 2-1 carries it"
         (vote! kb 'AgentCiel :for ph)
@@ -337,7 +337,7 @@
           (is (= :forbidden-context (refusal #(vc/retract! ava-c ben-no))))
           (is (= :forbidden-context (refusal #(vc/assert ava-c (list 'registered_agent 'AgentAva) 'CxRegistry))))
           (is (= :creator-mismatch (refusal #(vc/assert ava-c (list 'memberOf 'AgentAva 'Apartment) 'CxAva {:creator 'AgentBen}))))
-          (is (v/in? kb ben-no) "Ben's claim stands"))
+          (is (v/believed? kb ben-no) "Ben's claim stands"))
         (testing "the admin token writes CxRegistry"
           (is (nil? (refusal #(vc/assert (conn "tok-op") (list 'registered_agent 'AgentAva) 'CxRegistry)))))
         (testing "ballots cast over each roommate's own connection carry the recorded principal,

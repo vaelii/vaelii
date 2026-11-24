@@ -158,11 +158,11 @@
                                    (map #(get % '?predicate)
                                         (v/query kb (list 'natFormula '?predicate
                                                           (list constructor 'siblingOf)) 'CxUniverse)))
-                                 '[BloodKinFn ChosenKinFn]))]
+                                 '[GeneticKinFn ChosenKinFn]))]
       (is (= 2 (count qualified)))
       (is (= (into '#{siblingOf marriedTo friendOf orthogonal siblingDisjointException
-                      kinOf bloodRelativeOf chosenKinOf sharesGenesWith
-                      romanticPartnerOf coworkerOf roommateOf nestingPartnerOf chosenSiblingOf
+                      kinOf geneticRelativeOf chosenKinOf sharesGenesWith
+                      romanticPartnerOf coworkerOf roommateOf nestingPartnerOf
                       headmateOf disjoint diachronicallyDisjoint negates inverse
                       contextsOrderedBothWays}
                    qualified)
@@ -456,6 +456,79 @@
                (forced-reading kb {:a CxA :b CxB :u CxU} world))
             (str "order " (vec order) (when retract ", declaration retracted")))))))
 
+(defn- relation
+  "A gensym'd temporary predicate spelled camelCase, so a literal of a
+  `forced_monotonic_between_predicates` functor between two of them is forced-monotonic
+  (docs/naming.md); `tu/with-terms` folds the capitals out."
+  [base]
+  (gensym (str base "Tmp")))
+
+(defn- lift-rule
+  "A forward rule concluding `(mark ?general)` from `(mark ?spec)` and `(edge ?spec ?general)`.
+  The antecedent `(edge ?spec ?general)` is no forced-monotonic literal as stored, whatever
+  `edge` is: its arguments are variables, never predicates."
+  [mark edge]
+  (list 'set/forwardRule
+        (list 'implies (list 'and (list mark '?spec) (list edge '?spec '?general))
+              (list mark '?general))))
+
+(tu/deftest-kb a-firing-whose-ground-antecedents-are-forced-monotonic-concludes-a-forced-monotonic-literal
+  (doseq [order (tu/orders [:rule :mark :edge])]
+    (tu/with-terms [lift_mark spec_kind general_kind]
+      (let [spec    (relation "specRel")
+            general (relation "generalRel")
+            writes  {:rule [(lift-rule lift_mark 'genl)]
+                     :mark [(list lift_mark spec) (list lift_mark spec_kind)]
+                     :edge [(list 'genl spec general) (list 'genl spec_kind general_kind)]}
+            why     (str "order " order)]
+        (v/assert kb (list 'forced_monotonic_predicate lift_mark) 'CxUniverse)
+        (doseq [k order, s (writes k)] (v/assert kb s 'CxUniverse))
+        (is (= [true false] (concluded? kb (list lift_mark general)))
+            (str why ": a genl between predicates is forced-monotonic at the firing"))
+        (is (= [false true] (concluded? kb (list lift_mark general_kind)))
+            (str why ": a genl between types is not, so its firing is void"))))))
+
+(tu/deftest-kb a-firing-follows-the-forcing-of-its-ground-antecedents
+  (tu/with-terms [lift_mark CxU CxA CxB]
+    (let [link    (relation "linkRel")
+          spec    (relation "specRel")
+          general (relation "generalRel")
+          c       (list lift_mark general)]
+      (doseq [[s ctx st] (scoped-contexts CxU CxA CxB)] (v/assert kb s ctx {:strength st}))
+      (v/assert kb (list 'forced_monotonic_predicate lift_mark) 'CxUniverse)
+      (v/assert kb (lift-rule lift_mark link) CxU)
+      (v/assert kb (list lift_mark spec) CxU)
+      (v/assert kb (list link spec general) CxU)
+      (is (= [false true] (concluded? kb c CxU)) "before the declaration the firing is void")
+      (let [d (v/assert kb (list 'forced_monotonic_between_predicates link) CxA)]
+        (is (= [true false false] (mapv #(v/ask? kb c %) [CxA CxB CxU]))
+            "the firing stands where the declaration of its ground antecedent is seen")
+        (is (empty? (forced-entries kb c CxU))
+            "an entry reads the antecedents over every reader, as for a rule forced as stored")
+        (v/retract! kb d))
+      (let [d (v/assert kb (list 'forced_monotonic_between_predicates link) 'CxUniverse)]
+        (is (= [[true true true] false]
+               [(mapv #(v/ask? kb c %) [CxA CxB CxU]) (boolean (seq (forced-entries kb c CxU)))]))
+        (v/retract! kb d))
+      (is (= [false true] (concluded? kb c CxU)) "and void again once it is retracted"))))
+
+(tu/deftest-kb a-firing-over-minted-constants-follows-their-length
+  (testing "a length bound after the firing forces the firing's ground genl, and its retraction voids it again"
+    (tu/with-terms [lift_mark KindFn ArgA ArgB]
+      (doseq [s [(list 'reifiable_function KindFn) (list 'unary_function KindFn)
+                 (list 'forced_monotonic_predicate lift_mark)]]
+        (v/assert kb s 'CxUniverse {:strength :monotonic}))
+      (v/assert kb (lift-rule lift_mark 'genl) 'CxUniverse)
+      (v/assert kb (list lift_mark (list KindFn ArgA)) 'CxUniverse)
+      (let [gh (v/assert kb (list 'genl (list KindFn ArgA) (list KindFn ArgB)) 'CxUniverse)
+            ks (rest (:sentence (v/sentex kb gh)))
+            c  (list lift_mark (second ks))]
+        (is (= [false true] (concluded? kb c)) "two constants of no length are no predicates")
+        (let [bs (mapv #(v/assert kb (list 'binary_predicate %) 'CxUniverse {:strength :monotonic}) ks)]
+          (is (= [true false] (concluded? kb c)) "bound, the firing's ground genl is between predicates")
+          (run! #(v/retract! kb %) bs))
+        (is (= [false true] (concluded? kb c)) "and void again once the length is retracted")))))
+
 (tu/deftest-kb a-declaration-forces-a-verdict-and-a-firing-only-where-it-is-seen
   (declaration-seen-reading kb sampled))
 
@@ -747,7 +820,7 @@
                            (fn [h] (when (some void? (.getStackTrace (Thread/currentThread)))
                                      (swap! read conj h)))]
                    (mapv #(reader % CxFoo) (concat ps fs)))]
-      (is (= [true true false false] (mapv :believed? out)))
+      (is (= [true true false false] (mapv :unwithdrawn? out)))
       (is (= [#{} #{} #{:void} #{:void}] (mapv (comp set vals :verdicts) out)))
       (is (empty? (filter (set ps) @read)) (str "premise records read: " (vec (filter (set ps) @read)))))))
 
@@ -1058,7 +1131,7 @@
       (w))
     (when at (v/retract! kb (v/handle-of kb decl 'CxUniverse)))
     (mapv (fn [s] (let [h (v/handle-of kb s 'CxUniverse)]
-                    [(boolean (and h (v/in? kb h))) (when h (v/defeat-class kb h))
+                    [(boolean (and h (v/believed? kb h))) (when h (v/defeat-class kb h))
                      (if h (count (v/supporting-justifications kb h)) 0)]))
           [(list likes Ann Bob) (list 'not (list likes Ann Cal)) (list likes Ann Dan)])))
 
@@ -1072,13 +1145,6 @@
             (str "declared before write " at))))))
 
 ;; ---- the declaration is a switch: an oracle over random histories -------------------
-
-(defn- shuffle-with
-  "`xs` in an order drawn from `rng`."
-  [^java.util.Random rng xs]
-  (let [l (java.util.ArrayList. ^java.util.Collection (vec xs))]
-    (java.util.Collections/shuffle l rng)
-    (vec l)))
 
 (defn- forced-world
   "A random history over abstract terms, from `seed`: writes of two predicates `:p` and
@@ -1101,7 +1167,7 @@
         rules [[(list 'set/forwardRule (list 'implies (list :k '?x '?y) (list :p '?x '?y))) :cx-top]
                [(list 'set/forwardRule (list 'implies (list :p '?x '?y) (list :q '?x '?y))) :cx-top]]
         ws    (mapv #(conj % (pick [:default :default :monotonic]))
-                    (shuffle-with rng (into rules (distinct) (repeatedly (+ 4 (.nextInt rng 6)) write))))
+                    (tu/shuffled rng (into rules (distinct) (repeatedly (+ 4 (.nextInt rng 6)) write))))
         decls (for [f [:p :q] :when (pos? (.nextInt rng 3))]
                 [(list 'forced_monotonic_predicate f) :cx-top :default])
         hist  (reduce (fn [h d]
@@ -1115,9 +1181,9 @@
                       decls)
         gone  (into #{} (comp (filter #(= :retract (first %))) (map #(subvec % 1))) hist)]
     {:history hist
-     :final   (shuffle-with rng (into [] (comp (filter #(= :assert (first %))) (map #(subvec % 1))
-                                               (remove gone))
-                                      hist))}))
+     :final   (tu/shuffled rng (into [] (comp (filter #(= :assert (first %))) (map #(subvec % 1))
+                                              (remove gone))
+                                     hist))}))
 
 (defn- run-world
   "Run `steps` (`[op form ctx strength]`) over fresh temporaries, `:cx-low` below
@@ -1173,7 +1239,7 @@
       (let [same  (v/assert kb (list 'not (list 'sameAs Ann Bob)) 'CxUniverse)
             fact  (v/assert kb (list 'not (list likes Cal Dan)) 'CxUniverse)
             decl  (list 'forced_monotonic_predicate likes)
-            in    #(mapv (partial v/in? kb) [same fact])]
+            in    #(mapv (partial v/believed? kb) [same fact])]
         (is (= [true true] (in)))
         (is (= 0 (switches #(v/assert kb '(forced_monotonic_predicate sameAs) 'CxUniverse))))
         (is (= 1 (switches #(v/assert kb decl 'CxUniverse))))
@@ -1202,7 +1268,7 @@
           e (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))]
       (is (= [:uncleared-forcing 'genlCx :unforced-context-edge]
              ((juxt :type :predicate :missing) e)))
-      (is (v/in? kb h))))
+      (is (v/believed? kb h))))
   (testing "a declaration whose predicate has no unforced semantics stays"
     (doseq [[s missing] [['(forced_monotonic_predicate sameAs) :unforced-equality]
                          ['(forced_monotonic_predicate except) :unforced-except]
@@ -1212,13 +1278,13 @@
                ((juxt :type :missing)
                 (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))))
             (pr-str s))
-        (is (v/in? kb h) (pr-str s)))))
+        (is (v/believed? kb h) (pr-str s)))))
   (testing "exceptWhen's declaration stays, as except's does"
     (let [h (v/handle-of kb '(forced_monotonic_predicate exceptWhen) 'CxUniverse)]
       (is (= [:uncleared-forcing :unforced-exception]
              ((juxt :type :missing)
               (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e))))))
-      (is (v/in? kb h))))
+      (is (v/believed? kb h))))
   (testing "an arity binding's forced-decontextualization stays: a retraction would leave
            the records it placed in CxUniverse"
     (doseq [p '[arity arityMin unary binary ternary quaternary quinary unary_predicate
@@ -1233,10 +1299,10 @@
                ((juxt :type :predicate :missing)
                 (try (v/retract! kb h) nil (catch clojure.lang.ExceptionInfo e (ex-data e)))))
             (pr-str s))
-        (is (v/in? kb h) (pr-str s)))))
-  (testing "injection, surjection, bijection and an author's own predicate are cleared"
+        (is (v/believed? kb h) (pr-str s)))))
+  (testing "injective_predicate, surjective_predicate, bijective_predicate and an author's own predicate are cleared"
     (tu/with-terms [likes]
-      (doseq [p ['injection 'surjection 'bijection likes]]
+      (doseq [p ['injective_predicate 'surjective_predicate 'bijective_predicate likes]]
         (is (not (contains? checks/uncleared-forcing ['forced_monotonic_predicate p]))
             (str p)))))
   (testing "an author's own forced_decontextualized_predicate is retracted"
@@ -1302,7 +1368,8 @@
     ;; The length bindings are lifted so a relation's length reads the same everywhere.
     (is (= (into '#{functional functionalInArg inverse reflexive symmetric asymmetric transitive
                     irreflexive anti_symmetric anti_transitive equivalence_relation
-                    injection surjection bijection
+                    injective_predicate surjective_predicate bijective_predicate
+                    injective_function surjective_function bijective_function
                     commutative commutativeInArgs commutativeInArgAndRest
                     associative idempotent meetFunctionOf distinctInArgAndRest}
                  sx/arity-binding-functors)

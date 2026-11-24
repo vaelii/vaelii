@@ -207,7 +207,8 @@
                    ;; `{:gen n :epochs [bitmap …]}`: the touched sets' marks, each epoch what
                    ;; the touched sets recorded from one `-touch-mark` to the next; empty
                    ;; until the first mark since a reset, and outdated by `-reset-touched`
-                   ^AtomicReference marks]
+                   ^AtomicReference marks
+                   clock]
   ;; `@tms` yields the canonical map the reference stores natively — materialized, so
   ;; this is a testing and debugging read, never an engine path.  It takes the shared read
   ;; lock `-snapshot` takes: the map is built field by field, and a writer that sweeps a
@@ -320,8 +321,8 @@
   (-add-premise [this datum strength] (with-write lock (begin-record! this) (premise! this datum strength)) nil)
   (-suspend-premise [this datum] (with-write lock (begin-record! this) (suspend-premise! this datum)) nil)
   (-add-justification [this just] (with-write lock (begin-record! this) (add-just! this just)) nil)
-  (-restrength-informant [this informant strength]
-    (with-write lock (begin-record! this) (restrength-informant! this informant strength)) nil)
+  (-restrength-informant [this informant strength capped]
+    (with-write lock (begin-record! this) (restrength-informant! this informant strength capped)) nil)
   (-forced? [this kind x] (opt-read lock (rb-has? (held-forced this kind) x)))
   (-forced-members [this kind] (with-read lock (rb-set (held-forced this kind))))
   (-set-forced [this kind xs on?] (with-write lock (begin-record! this) (set-forced! this kind xs on?)) nil)
@@ -336,7 +337,8 @@
   (-snapshot [this] (with-read lock (snapshot this)))
   (-hold [this h] (with-write lock (open-hold! this h)))
   (-release [_ h] (with-write lock (when (identical? h (:hold (.get hold))) (.set hold nil))) nil)
-  (-held [_] (:hold (.get hold))))
+  (-held [_] (:hold (.get hold)))
+  (-clock [_] clock))
 
 ;; ---- the hold ------------------------------------------------------------
 ;;
@@ -381,7 +383,7 @@
   (let [st (.get ^AtomicReference (.-hold this))]
     (when (and st
                (not (identical? (:owner (:hold st)) (Thread/currentThread)))
-               (observe/reads-held? (:hold st)))
+               (observe/reads-held? (.-clock this) (:hold st)))
       st)))
 
 (defn- held-in?
@@ -921,7 +923,7 @@
   adjacency (`add-just!` lists a justification under its rule's node), and the informant
   column filters out a justification that merely uses the handle as an ordinary
   antecedent.  Only a bit that actually moves seeds the relabel."
-  [^DenseTms this informant strength]
+  [^DenseTms this informant strength capped]
   (when (integer? informant)
     (let [inf   (int informant)
           jmono ^RoaringBitmap (.-j-mono this)
@@ -933,9 +935,9 @@
           (let [jid (aget ids i)]
             ;; an absent id reads `no-informant`, which no handle equals
             (if (and (== (j-informant-int this jid) inf)
-                     (not= mono? (rb-has? jmono jid)))
+                     (not= (and mono? (not (contains? capped jid))) (rb-has? jmono jid)))
               (do (keep-just! this jid)
-                  (if mono? (rb-add! jmono jid) (rb-del! jmono jid))
+                  (if (rb-has? jmono jid) (rb-del! jmono jid) (rb-add! jmono jid))
                   (let [c (j-consequence this jid)]
                     (recur (inc i) (if (neg? c) seeds (conj! seeds c)))))
               (recur (inc i) seeds)))
@@ -1192,6 +1194,7 @@
           (with-read lock (rb-set (kept (forced-hold-key kind) (forced-bitmap this kind)))))
         (-superseded [_] (:superseded st))
         (-held [_] nil)
+        (-clock [_] (.-clock this))
         (-datums [_] (no '-datums))
         (-any-node? [_] (no '-any-node?))
         (-justifications [_] (no '-justifications))
@@ -1211,7 +1214,7 @@
         (-add-premise [_ _ _] (no '-add-premise))
         (-suspend-premise [_ _] (no '-suspend-premise))
         (-add-justification [_ _] (no '-add-justification))
-        (-restrength-informant [_ _ _] (no '-restrength-informant))
+        (-restrength-informant [_ _ _ _] (no '-restrength-informant))
         (-set-forced [_ _ _ _] (no '-set-forced))
         (-relabel [_] (no '-relabel))
         (-set-blocked [_ _] (no '-set-blocked))
@@ -1519,19 +1522,22 @@
 
 (defn create-dense-tms
   "A fresh, empty dense truth-maintenance network — `vaelii.impl.jtms/create-tms`'s
-  counterpart, selected by `open-kb`'s `{:tms :dense}`."
-  []
-  (->DenseTms (StampedLock.)
-              (rb) (rb) (rb)                                   ; nodes premises mono-premises
-              (heap-columns)                                   ; cols
-              (rb)                                             ; jids
-              (Int2ObjectOpenHashMap.)                         ; j-inf-sym
-              (Int2ObjectOpenHashMap.)                         ; j-subs
-              (Int2ObjectOpenHashMap.)                         ; j-reading
-              (rb)                                             ; j-mono
-              (rb) (rb) (rb) (rb) (rb) (rb) (rb) (rb) (rb)     ; in blocked touched touched-in touched-new
+  counterpart, selected by `open-kb`'s `{:tms :dense}`.  Its mutations move `clock`, the
+  KB's change clock, or a clock of its own."
+  ([] (create-dense-tms (observe/new-clock)))
+  ([clock]
+   (->DenseTms (StampedLock.)
+               (rb) (rb) (rb)                                   ; nodes premises mono-premises
+               (heap-columns)                                   ; cols
+               (rb)                                             ; jids
+               (Int2ObjectOpenHashMap.)                         ; j-inf-sym
+               (Int2ObjectOpenHashMap.)                         ; j-subs
+               (Int2ObjectOpenHashMap.)                         ; j-reading
+               (rb)                                             ; j-mono
+               (rb) (rb) (rb) (rb) (rb) (rb) (rb) (rb) (rb)     ; in blocked touched touched-in touched-new
                                                                ; touched-out touched-down touched-up mono
-              (rb) (rb) (rb) (rb)                              ; f-mono f-out f-void f-held
-              (atom {})
-              (AtomicReference. nil)
-              (AtomicReference. {:gen 0 :epochs []})))
+               (rb) (rb) (rb) (rb)                              ; f-mono f-out f-void f-held
+               (atom {})
+               (AtomicReference. nil)
+               (AtomicReference. {:gen 0 :epochs []})
+               clock)))

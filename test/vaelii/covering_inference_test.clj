@@ -169,6 +169,21 @@
     (is (v/ask? kb (list animal Rex) 'CxUniverse))
     (is (empty? (v/contradictions kb)))))
 
+(tu/deftest-kb two-closed-parts-of-a-cover-deny-a-member-stated-in-neither
+  ;; `(not (dog Rex))` asks `(dog Rex)`, whose cover asks `(not (cat Rex))` before
+  ;; `(not (wolf Rex))` (parts in name order), which asks `(cat Rex)`, whose cover asks
+  ;; `(not (dog Rex))`.  `wolf` is open and not denied, so the cover proves neither closed
+  ;; part, each closed extent denies its own, and the two denials prove `wolf`.
+  (tu/with-terms [animal cat dog wolf Rex]
+    (v/assert kb (list 'partition animal cat dog wolf) 'CxUniverse)
+    (v/assert kb (list 'closed_extent_predicate dog) 'CxUniverse)
+    (v/assert kb (list 'closed_extent_predicate cat) 'CxUniverse)
+    (v/assert kb (list animal Rex) 'CxUniverse)
+    (is (= [true true false false true]
+           (mapv #(v/ask? kb % 'CxUniverse)
+                 [(list 'not (list dog Rex)) (list 'not (list cat Rex))
+                  (list dog Rex) (list cat Rex) (list wolf Rex)])))))
+
 (tu/deftest-kb a-refuted-cover-names-the-evidence-it-is-against
   (tu/with-terms [animal dog cat Rex]
     (let [c (v/assert kb (list 'covering animal dog cat) 'CxUniverse)

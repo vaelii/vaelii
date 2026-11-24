@@ -9,7 +9,7 @@
   `vaelii.koinii.*`; the change feed the channel rides →
   [feed.md](feed.md); the single-writer daemon and client → [operations.md](operations.md);
   modal belief projection → [belief.md](belief.md); paraconsistent contradiction and
-  strength defeat → [nmtms.md](nmtms.md); the `except` visibility mask →
+  strength defeat → [nmtms.md](nmtms.md); the `except` mask →
   [exceptions.md](exceptions.md); content-address canonicalization →
   [canonicalization.md](canonicalization.md).
 - **Assumes:** sentex, context, `genlCx`, provenance / `:creator`, meta-sentex,
@@ -504,11 +504,12 @@ descendant is convened on demand.
 A boundary here matters. An agent may **disregard** its own statement — `disregard` puts an
 `except` in the agent's own context, hiding the statement reversibly without deleting it — but
 this is restricted to *own* statements by construction, and the restriction is the point.
-`except` is an **index-layer** mask: it removes a sentex from *view*. Using it across agents
-(B hiding A's claim) would make a common-descendant context unable to *argue*, because
-argumentation needs both a claim and its rebuttal visible for the TMS to weigh them.
-Cross-agent disagreement is therefore `dispute` / `argue`, which keeps both sides visible;
-`except` is only ever an agent editing the visibility of what it *itself* said.
+An `except` hides its target from belief at every context that sees the except, and the
+target stays stored. Using it across agents (B hiding A's claim) would make a
+common-descendant context unable to *argue*, because argumentation needs both a claim and
+its rebuttal believed there for the TMS to weigh them. Cross-agent disagreement is therefore
+`dispute` / `argue`, which leaves both sides for the TMS to weigh; `except` is only ever an
+agent hiding what it *itself* said.
 
 ## Catch-up: snapshot + tail
 

@@ -50,16 +50,16 @@
   default is `:memory`, the store a KB opens with."
   (:require [clojure.string :as str]
             [clojure.walk :as walk]
-            [vaelii.core :as v]
-            [vaelii.impl.caches :as caches]
-            [vaelii.host.core-context :as core-context]
             [vaelii.browser.examples :as examples]
+            [vaelii.browser.sandbox :as sandbox]
+            [vaelii.core :as v]
+            [vaelii.host.core-context :as core-context]
+            [vaelii.host.starter :as starter]
+            [vaelii.impl.caches :as caches]
             [vaelii.impl.literal-cache :as lc]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.resolution :as res]
-            [vaelii.browser.sandbox :as sandbox]
-            [vaelii.host.starter :as starter]
             [vaelii.koinii.channel :as ch]
             [vaelii.koinii.dispute :as d]
             [vaelii.koinii.identity :as id]
@@ -115,7 +115,7 @@
   [f kb prs goal context]
   (let [[canon rename] (lc/canonicalize goal)
         k    [canon context (prover-set-key kb prs)]
-        now  (observe/change-clock)
+        now  (observe/change-clock (:clock kb))
         hit  (get @table k)]
     (if (and hit (== now (long (:clock hit))))
       (do (.incrementAndGet hits)
@@ -123,7 +123,7 @@
       (do (.incrementAndGet misses)
           (->> (f kb prs canon context)
                (storing (fn [vs]
-                          (when (== (observe/change-clock) now)
+                          (when (== (observe/change-clock (:clock kb)) now)
                             (swap! table caches/assoc-bounded table-limit
                                    k {:clock now :value vs}))))
                (keep #(lc/rename-bindings res/unify rename %)))))))
@@ -138,7 +138,7 @@
      (fn [kb prs goal context]
        (when-let [n @counting]
          (.add census [n [(first (lc/canonicalize goal)) context (prover-set-key kb prs)]
-                       (observe/change-clock)]))
+                       (observe/change-clock (:clock kb))]))
        (if @tabling
          (tabled f kb prs goal context)
          (f kb prs goal context))))))
@@ -419,7 +419,7 @@
               (when (= :read kind) (vreset! counting i))
               (let [r (f)] (when (seq? r) (doall r)))
               (vreset! counting nil)
-              (vswap! clocks conj [kind (observe/change-clock)])
+              (vswap! clocks conj [kind (observe/change-clock (:clock kb))])
               (recur (inc i) (rest ss))))
           (let [all    (vec census)
                 reads  (filterv #(= :read (first %)) @clocks)

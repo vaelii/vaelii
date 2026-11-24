@@ -775,7 +775,7 @@
             defeated (v/assert a '(chirps Rex) 'CxS {:creator 'AgentBoreas})]
         (testing "the fixture really stored a record the seat does not believe"
           (is (some? (v/sentex a defeated)) "it is in the store")
-          (is (false? (v/in? a defeated)) "and defeated by the monotonic negative"))
+          (is (false? (v/believed? a defeated)) "and defeated by the monotonic negative"))
         (testing "a defeated record moves neither the commit id nor the state root"
           (is (= cid0 (d/commit-id a)))
           (is (= root0 (d/state-root a))))
@@ -803,7 +803,7 @@
                 "and the record is still stored — this is belief, not a retraction")))
         (testing "and reviving it moves the id — belief is what the id follows"
           (v/retract! a (v/handle-of a '(not (chirps Rex)) 'CxS))
-          (is (true? (v/in? a defeated)) "the default is believed once its defeater is gone")
+          (is (true? (v/believed? a defeated)) "the default is believed once its defeater is gone")
           (is (not= cid0 (d/commit-id a)))
           (is (some? (d/inclusion-proof a (d/locator-of a defeated))))
           (is (true? (:resolved? (d/dereference a (d/marker a defeated))))

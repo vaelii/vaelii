@@ -215,7 +215,7 @@
   (tu/with-terms [p1 Ind1]
     (let [h (v/assert kb (list p1 Ind1) 'CxUniverse)]
       (v/assert kb (list 'not (list p1 Ind1)) 'CxUniverse {:strength :monotonic})
-      (is (false? (v/in? kb h)) "precondition: the default is stored but OUT")
+      (is (false? (v/believed? kb h)) "precondition: the default is stored but OUT")
       (testing "a belief-following read does not have it"
         (is (empty? (v/sentexes-matching kb (list p1 Ind1) '?ctx)))
         (is (empty? (v/query kb (list p1 '?x) '?ctx))))
@@ -230,7 +230,7 @@
   (tu/with-terms [p1 Ind1]
     (let [h (v/assert kb (list p1 Ind1) 'CxUniverse)]
       (v/assert kb (list 'not (list p1 Ind1)) 'CxUniverse {:strength :monotonic})
-      (is (false? (v/in? kb h)))
+      (is (false? (v/believed? kb h)))
       (testing "ordinary first, then blind"
         (is (empty? (v/query kb (list p1 '?x) '?ctx)))
         (is (seq (v/query kb (list p1 '?x) 'CxEverything))))
@@ -238,7 +238,7 @@
         (tu/with-terms [p2 Ind2]
           (let [h2 (v/assert kb (list p2 Ind2) 'CxUniverse)]
             (v/assert kb (list 'not (list p2 Ind2)) 'CxUniverse {:strength :monotonic})
-            (is (false? (v/in? kb h2)))
+            (is (false? (v/believed? kb h2)))
             (is (seq (v/query kb (list p2 '?x) 'CxEverything)))
             (is (empty? (v/query kb (list p2 '?x) '?ctx)))))))))
 

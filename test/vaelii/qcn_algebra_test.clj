@@ -145,7 +145,7 @@
   [kb f]
   (for [h (reads/as-stored-with-functor (:index kb) f)
         :let [sx (v/sentex kb h)]
-        :when (and (= 'CxUniverse (:context sx)) (not (v/in? kb h)))]
+        :when (and (= 'CxUniverse (:context sx)) (not (v/believed? kb h)))]
     (vec (rest (:sentence sx)))))
 
 (deftest every-inert-property-the-upper-files-state-of-a-calculus-holds-in-its-algebra

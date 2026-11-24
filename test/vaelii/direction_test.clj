@@ -50,7 +50,7 @@
     ;; (docs/inference.md, "An inert rule is documentation with a handle").
     (let [h (v/handle-of kb (list 'set/inertRule ancestor-rule) 'CxFam)]
       (testing "the rule is believed, at an ordinary class — there is no :inert strength"
-        (is (v/in? kb h))
+        (is (v/believed? kb h))
         (is (= :default (:strength (v/sentex kb h))))
         (is (= :default (v/defeat-class kb h)))
         (is (= #{} (:engines (v/sentex kb h)))))
@@ -138,7 +138,7 @@
 (tu/deftest-kb a-forward-rule-reads-a-lazy-forward-conclusion-and-not-a-backward-one
   (tu/with-terms [cat feline noted ownerOf Tom Ann]
     (let [rule   (vr/rule-sentence [(list cat '?x)] (list feline '?x))
-          held?  #(boolean (when-let [h (v/handle-of kb % 'CxFam)] (v/in? kb h)))
+          held?  #(boolean (when-let [h (v/handle-of kb % 'CxFam)] (v/believed? kb h)))
           member (v/assert kb (list cat Tom) 'CxFam)]
       (v/assert kb (list 'set/backwardRule rule) 'CxFam)
       (v/assert kb (list 'set/forwardRule
@@ -160,7 +160,7 @@
 (tu/deftest-kb a-lazy-firing-is-placed-where-no-visible-edge-holds-its-membership
   (doseq [edge-first? [true false]]
     (tu/with-terms [dog vocal hasVoice Rex Bark CxA CxB]
-      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/in? kb h)))
+      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/believed? kb h)))
             edge  #(v/assert kb (list 'genl dog vocal) CxB)]
         (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
         (when edge-first? (edge))
@@ -184,7 +184,7 @@
 (tu/deftest-kb a-departing-edge-re-joins-the-lazy-reader-whose-membership-it-held
   (doseq [edge-first? [true false]]
     (tu/with-terms [dog vocal hasVoice Rex Bark CxA]
-      (let [stored? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/in? kb h)))
+      (let [stored? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/believed? kb h)))
             edge    #(v/assert kb (list 'genl dog vocal) CxA)
             e0      (when edge-first? (edge))]
         (lazy-voice-world! kb CxA dog vocal hasVoice Rex Bark)
@@ -194,7 +194,7 @@
 (tu/deftest-kb a-departing-edge-re-joins-the-lazy-reader-beside-a-member-of-a-subtype
   (doseq [edge-first? [true false]]
     (tu/with-terms [dog puppy vocal hasVoice Rex Bark CxA]
-      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/in? kb h)))
+      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/believed? kb h)))
             edge  #(v/assert kb (list 'genl puppy vocal) CxA)
             e0    (when edge-first? (edge))]
         (v/assert kb (list 'genl puppy dog) CxA)
@@ -226,7 +226,7 @@
 (tu/deftest-kb a-converse-reader-reads-the-genl-edges-its-placement-context-sees
   (doseq [edge-first? [true false]]
     (tu/with-terms [dog vocal hasVoice Rex Bark CxA CxB]
-      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/in? kb h)))
+      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/believed? kb h)))
             edge  #(v/assert kb (list 'genl vocal dog) CxB)]
         (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
         (when edge-first? (edge))
@@ -237,7 +237,7 @@
 (tu/deftest-kb a-genl-edge-withholds-a-converse-reader-s-firing-in-either-order-until-it-departs
   (doseq [edge-first? [true false]]
     (tu/with-terms [dog vocal hasVoice Rex Bark CxA]
-      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/in? kb h)))
+      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/believed? kb h)))
             edge  #(v/assert kb (list 'genl vocal dog) CxA)
             e0    (when edge-first? (edge))]
         (lazy-voice-world! kb CxA dog vocal hasVoice Rex Bark)
@@ -249,7 +249,7 @@
 (tu/deftest-kb a-lazy-rule-s-exception-withholds-its-readers-firings-in-either-order
   (doseq [exception-first? [true false]]
     (tu/with-terms [dog deaf vocal hasVoice Rex Bark CxA]
-      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/in? kb h)))
+      (let [held? #(boolean (when-let [h (v/handle-of kb % CxA)] (v/believed? kb h)))
             lazy  (list 'set/lazyForwardRule (vr/rule-sentence [(list dog '?x)] (list hasVoice '?x Bark)))
             exc   #(v/assert kb (list 'exceptWhen (list deaf '?x) lazy) CxA)
             e0    (when exception-first? (exc))]
@@ -264,7 +264,7 @@
 
 (tu/deftest-kb a-batch-runs-each-owed-lazy-re-join-once-at-its-settle
   (tu/with-terms [cat feline noted ownerOf Ann Tom Kit Rex]
-    (let [held?  #(boolean (when-let [h (v/handle-of kb % 'CxFam)] (v/in? kb h)))
+    (let [held?  #(boolean (when-let [h (v/handle-of kb % 'CxFam)] (v/believed? kb h)))
           reader (vr/rule-sentence [(list ownerOf Ann '?x) (list feline '?x)] (list noted '?x))
           runs   (atom [])
           run    @#'chain/run-owed-rejoin
@@ -288,7 +288,7 @@
 
 (tu/deftest-kb a-lazy-reader-s-re-join-proves-the-lazy-literal-from-the-arriving-membership
   (tu/with-terms [cat feline noted Tom]
-    (let [held? #(boolean (when-let [h (v/handle-of kb % 'CxFam)] (v/in? kb h)))
+    (let [held? #(boolean (when-let [h (v/handle-of kb % 'CxFam)] (v/believed? kb h)))
           rows  (atom 0)
           solve @#'chain/solve-lazy]
       (v/assert kb (list 'set/lazyForwardRule (vr/rule-sentence [(list cat '?x)] (list feline '?x))) 'CxFam)
@@ -315,7 +315,7 @@
 (tu/deftest-kb a-nonempty-lazy-reader-notes-a-type-whose-member-arrives-after-it
   (doseq [in-lazy? [true false]]
     (tu/with-terms [inhabited listed noted dog Fido]
-      (let [held? #(boolean (when-let [h (v/handle-of kb % 'CxFam)] (v/in? kb h)))]
+      (let [held? #(boolean (when-let [h (v/handle-of kb % 'CxFam)] (v/believed? kb h)))]
         (nonempty-reader! kb in-lazy? inhabited listed noted)
         (v/assert kb (list listed dog) 'CxFam)
         (is (false? (held? (list noted dog))) (str "listed in the lazy rule: " in-lazy?))

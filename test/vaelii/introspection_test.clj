@@ -190,7 +190,7 @@
     (v/assert kb (tu/fwd [(list bird '?x)] (list flies '?x)) 'CxNaturalWorld)
     (let [fact  (v/assert kb (list bird Robin) 'CxNaturalWorld)
           concl (v/handle-of kb (list flies Robin) 'CxNaturalWorld)]
-      (is (v/in? kb concl) "the rule fired")
+      (is (v/believed? kb concl) "the rule fired")
       (testing "the conclusion is supported by a justification, and depends on nothing"
         (is (seq (v/supporting-justifications kb concl)))
         (is (empty? (v/dependent-justifications kb concl))))

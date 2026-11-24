@@ -13,11 +13,14 @@
             [vaelii.cli :as pcli]
             [vaelii.core :as v]
             [vaelii.host.cli :as cli]
+            [vaelii.host.run :as run-file]
             [vaelii.host.seed :as seed]
             [vaelii.host.starter :as starter]
             [vaelii.host.sync :as sync]
+            [vaelii.impl.asp.solver :as solver]
             [vaelii.impl.disk.backend :as backend]
             [vaelii.impl.io.import :as imp]
+            [vaelii.impl.memory :as mem]
             [vaelii.impl.reasoning-image :as ri]
             [vaelii.test-util :as tu])
   (:import [java.io File]
@@ -50,7 +53,7 @@
       (let [h (cli/dispatch kb "handle-of" [(list dog Muffet) CxCli] {})]
         (is (nat-int? h))
         (is (map? (cli/dispatch kb "why" [h] {})))
-        (is (true? (cli/dispatch kb "in" [h] {})))))
+        (is (true? (cli/dispatch kb "believed" [h] {})))))
     (testing "types lists the genl hierarchy nodes (dog is one after the genl edge)"
       (is (contains? (set (cli/dispatch kb "types" [] {})) dog))
       (is (coll? (cli/dispatch kb "contexts" [] {}))))
@@ -737,6 +740,69 @@
         (is (= "error: [:internal-error] java.lang.StackOverflowError"
                (cli/refusal-line (StackOverflowError.)))))
       (finally (backend/close-dir! dir) (tu/rm-rf! root)))))
+
+(deftest run-prints-each-read-and-exits-by-what-the-run-met
+  (with-redefs [run-file/base-kb (fn [_] (tu/load-core! (v/open-kb {:backend :memory
+                                                                    :space (mem/engine-space :run)})))]
+    (tu/with-terms [bird winged flies Tweety Bob CxZoo]
+      (tu/with-tmp
+        (fn [dir]
+          (let [vae (fn [n & lines] (let [f (io/file dir n)] (spit f (str/join "\n" lines)) (str f)))
+                ok  (vae "ok.vae" (str "#context " CxZoo) (pr-str (list bird Tweety))
+                         (pr-str (list 'implies (list bird '?x) (list winged '?x)))
+                         (pr-str (list 'implies (list winged '?x) (list flies '?x)))
+                         (str "#show " (pr-str (list flies '?x)))
+                         (str "#truth " (pr-str (list flies Bob))))]
+            (testing "a #show prints its instances, and a #truth its verdict and sentence"
+              (is (= {:status 0 :err ""
+                      :out    (str (pr-str (list flies Tweety)) "\nunknown " (pr-str (list flies Bob)) "\n")}
+                     (run-captured "run" ok))))
+            (testing "a #show the depth cut short exits 3"
+              (let [r (run-captured "run" ok "--depth" "1")]
+                (is (= 3 (:status r)))
+                (is (re-find #"ok\.vae:5: #show .* stopped short of its answer: :truncated" (:err r))
+                    (:err r))))
+            (when (solver/available?)
+              (tu/with-terms [menu_item picked weightOf Aa Bb CxPick]
+                (let [pick  (fn [n & extra]
+                              (apply vae n (str "#context " CxPick)
+                                     (concat
+                                      (map #(if (string? %) % (pr-str %))
+                                           (concat
+                                            [(list menu_item Aa) (list menu_item Bb)
+                                             (list weightOf Aa 1) (list weightOf Bb 2)
+                                             (list 'set/assumptionRule
+                                                   (list 'implies (list menu_item '?x) (list picked '?x)))
+                                             (list 'asp/atMost 1 '?x (list picked '?x))
+                                             (list 'asp/minimize 1 '?w (list 'and (list picked '?x)
+                                                                             (list weightOf '?x '?w)))]
+                                            extra))
+                                      [(str "#models " (pr-str (list picked '?x)))
+                                       (str "#brave " (pr-str (list picked '?x)))])))
+                      one   (pr-str (list picked Aa))
+                      two   (pr-str (list picked Bb))]
+                  (testing "a #models prints each answer set and its cost, and a #brave its instances"
+                    (is (= {:status 0 :err ""
+                            :out    (str "Answer 1: " one "\nOptimization: 1\n" one "\n")}
+                           (run-captured "run" (pick "pick.vae" (list 'asp/atLeast 1 '?x (list picked '?x)))))))
+                  (testing "under a cost bound each answer set prints its own cost"
+                    (is (= {:status 0 :err ""
+                            :out    (str "Answer 1: " one "\nOptimization: 1\nAnswer 2: " two
+                                         "\nOptimization: 2\n" one "\n" two "\n")}
+                           (run-captured "run" (pick "bound.vae" (list 'asp/atLeast 1 '?x (list picked '?x))
+                                                     "#solve {:among [2]}")))))
+                  (testing "a solve with no answer set prints unsatisfiable"
+                    (is (= {:status 0 :err "" :out "unsatisfiable\nunsatisfiable\n"}
+                           (run-captured "run" (pick "none.vae" (list 'asp/atLeast 2 '?x (list picked '?x))))))))))
+            (testing "a refused form exits 1, naming its file and line"
+              (let [r (run-captured "run" (vae "bad.vae" (pr-str (list Tweety bird))))]
+                (is (= 1 (:status r)))
+                (is (re-find #"bad\.vae:1: error: \[:naming\] " (:err r)) (:err r))))
+            (testing "a flag naming another KB, and a format run does not print"
+              (is (re-find #"^error: \[:unknown-option\] run starts from the base"
+                           (:err (run-captured "run" ok "--starter"))))
+              (is (re-find #"^error: \[:unknown-option\] unknown --format xml"
+                           (:err (run-captured "run" ok "--format" "xml")))))))))))
 
 (deftest a-dir-under-a-missing-parent-is-refused-and-nothing-is-created
   ;; The store creates every missing component of the path it opens, so a mistyped

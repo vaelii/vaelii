@@ -151,7 +151,8 @@
 
    * `:optimal` keeps the models on the best cost seen, dropping them when a better one
      arrives;
-   * `:last` keeps only the newest, the one `finalize` reads for the enumerations."
+   * `:last` keeps only the newest, the one `finalize` reads for the enumerations;
+   * `:all` keeps every model, for an enumeration whose models differ in cost."
   [{:keys [models optimum any-optimal?]} m retain]
   (let [c       (:cost m)
         better? (and (seq c) (or (nil? optimum) (neg? (compare (vec c) (vec optimum)))))]
@@ -159,6 +160,7 @@
      :any-optimal? (or any-optimal? (boolean (:optimal? m)))
      :models       (case retain
                      :last    [m]
+                     :all     (conj models m)
                      :optimal (if better? [m] (conj models m)))}))
 
 (defn- drain-models
@@ -277,18 +279,26 @@
           (ci "clingo_backend_minimize" backend (Integer/valueOf (int priority))
               wmem (Long/valueOf (long wn))))))
 
+(defn- backend-project!
+  "Emit a projection statement over clingo atom ids `cids` through
+   `clingo_backend_project`."
+  [backend cids]
+  (chk! "backend_project"
+        (ci "clingo_backend_project" backend (int-array-mem cids) (Long/valueOf (long (count cids))))))
+
 (defn- stmt-vids
   "The vaelii atom ids `stmt` references — the head and show atoms, and the unsigned
    ids of its body/weight literals. The union over a program's statements is the full
    atom universe; the `:show` set alone already covers it."
-  [{:keys [type atom head body literals]}]
+  [{:keys [type atom atoms head body literals]}]
   (case type
     (:fact :choice :show) [atom]
     :rule              (cons head (map #(Math/abs (long %)) body))
     :constraint        (map #(Math/abs (long %)) body)
     :weight-constraint (map (fn [[l _]] (Math/abs (long l))) literals)
     :weight-rule       (cons head (map (fn [[l _]] (Math/abs (long l))) literals))
-    :minimize          (map (fn [[l _]] (Math/abs (long l))) literals)))
+    :minimize          (map (fn [[l _]] (Math/abs (long l))) literals)
+    :project           atoms))
 
 (defn- control-backend
   "The backend accessor of live control `ctl` (`clingo_control_backend`) — the handle a
@@ -327,7 +337,7 @@
                            entries)
           lit        (fn [l] (if (neg? l) (- (long (vid->cid (- l)))) (long (vid->cid l))))
           wlit       (fn [[l w]] [(lit l) w])]
-      (doseq [{:keys [type atom head body bound literals priority]} stmts]
+      (doseq [{:keys [type atom atoms head body bound literals priority]} stmts]
         (case type
           :fact              (backend-rule! backend false [(vid->cid atom)] nil)
           :choice            (backend-rule! backend true  [(vid->cid atom)] nil)
@@ -336,14 +346,15 @@
           :weight-constraint (backend-weight-rule! backend false nil bound (map wlit literals))
           :weight-rule       (backend-weight-rule! backend false [(vid->cid head)] bound (map wlit literals))
           :minimize          (backend-minimize! backend priority (map wlit literals))
+          :project           (backend-project! backend (map vid->cid atoms))
           :show              nil))
       (chk! "backend_end" (ci "clingo_backend_end" backend))
       sym->label)))
 
 (defn- backend-solve
-  "Solve the ground program `stmts` under `arg-strs` (clasp's flags), keeping the models
-   `retain` keeps.  Returns the raw drain (`drain-handle`)."
-  [arg-strs stmts retain]
+  "Solve the ground program `stmts` under `arg-strs` (clasp's flags) for at most `limit`
+   seconds, keeping the models `retain` keeps.  Returns the raw drain (`drain-handle`)."
+  [arg-strs stmts retain limit]
   (let [argcs (mapv cstr arg-strs)                       ; retained through control_new
         argv  (if (seq argcs) (ptr-array argcs) Pointer/NULL)
         ctlr  (PointerByReference.)]
@@ -355,20 +366,11 @@
               hr         (PointerByReference.)]
           (chk! "solve" (ci "clingo_control_solve" ctl mode-async-yield Pointer/NULL
                             (Long/valueOf 0) Pointer/NULL Pointer/NULL hr))
-          (let [raw (drain-handle hr (config/asp-time-limit) retain
-                                  (fn [m] (model-atoms m sym->label)))]
+          (let [raw (drain-handle hr limit retain (fn [m] (model-atoms m sym->label)))]
             (when (seq argcs) argcs)                     ; keep arg strings alive past the call
             raw))
         (finally
           (cv "clingo_control_free" ctl))))))
-
-(def ^:private mode-args
-  ;; the flags `clasp/mode-args` gives each mode, in clingo's spelling
-  {:label                ["--opt-mode=opt"  "--models=0"]
-   :sat                  ["--models=1"]
-   :all-optima           ["--opt-mode=optN" "--models=0"]
-   :classify-true        ["--opt-mode=optN" "--enum-mode=cautious" "--models=0"]
-   :classify-supportable ["--opt-mode=optN" "--enum-mode=brave"    "--models=0"]})
 
 (def ^:private mode-retention
   "How many of a mode's streamed models `drain-models` has to keep.  `:label` and
@@ -383,31 +385,34 @@
 (defn- optimal-models [models opt]
   (if (nil? opt) models (filter #(= opt (:cost %)) models)))
 
-(defn- mode-args-or-throw [mode]
-  (or (mode-args mode)
+(defn- mode-args-or-throw [mode opts]
+  (or (clasp/mode-flags mode opts)
       (throw (ex-info (str "unknown clingo mode: " (pr-str mode) " — want one of "
-                           (pr-str (vec (sort (keys mode-args)))))
-                      {:type :unknown-option :mismatch :bad-value :mode mode :valid (keys mode-args)}))))
+                           (pr-str (vec (sort (keys mode-retention)))))
+                      {:type :unknown-option :mismatch :bad-value :mode mode :valid (keys mode-retention)}))))
 
 (defn- finalize
   "The raw drain of either solve path (`backend-solve`, `solve-control`) as
-   `vaelii.impl.asp.clasp/solve`'s result:
-     :status    :optimum | :sat | :best-effort | :unsat | :interrupted | :unknown
-     :atoms     vector of label strings
-     :cost      optimum cost (nil if no minimize / unsat)
-     :witnesses vector of value vectors (only for :all-optima)
-     :raw       the drain (diagnostics)
-
-   A search is stopped short when the interrupted bit is set, or when neither the
-   exhausted nor the unsat bit is, except a `:sat` search holding a model.  A stopped
+   `vaelii.impl.asp.clasp/solve`'s result, `:atoms` holding label strings and `:raw` the
+   drain.  A search is stopped short when the interrupted bit is set, or when neither the
+   exhausted nor the unsat bit is.  A search holding every model its cap asks for did not
+   stop short: one for `:sat`, `opts`' `:models` optimal ones for `:all-optima`.  A stopped
    `:label` or `:sat` search holding a model is `:best-effort`; any other is
    `:interrupted`.  An exhausted search with a cost is `:optimum`, as clasp's `OPTIMUM
    FOUND` is: under `--opt-mode=opt` no streamed model is marked proven."
-  [{:keys [result models any-optimal?] opt :optimum :as raw} mode]
+  [{:keys [result models any-optimal?] opt :optimum :as raw} mode opts]
   (let [cost     (first opt)
+        costs    (some-> opt vec)
+        optimal? (clasp/optimal-only? opts)
+        capped?  (case mode
+                   :sat        (boolean (seq models))
+                   :all-optima (and (pos-int? (:models opts))
+                                    (>= (count (if optimal? (filter :optimal? models) models))
+                                        (long (:models opts))))
+                   false)
         stopped? (or (pos? (bit-and result result-interrupted))
                      (and (zero? (bit-and result (bit-or result-exhausted result-unsat)))
-                          (not (and (= :sat mode) (seq models)))))
+                          (not capped?)))
         status   (cond
                    (and stopped? (#{:label :sat} mode) (seq models)) :best-effort
                    stopped?                                          :interrupted
@@ -418,16 +423,18 @@
                    :else                                             :unknown)]
     (case mode
       (:label :sat)
-      {:status status :atoms (vec (:atoms (first (optimal-models models opt)))) :cost cost :raw raw}
+      {:status status :atoms (vec (:atoms (first (optimal-models models opt)))) :cost cost :costs costs
+       :raw raw}
 
       :all-optima
-      (let [opts (optimal-models models opt)]
-        {:status status :atoms (vec (:atoms (first opts)))
-         :cost cost :witnesses (mapv (comp vec :atoms) opts) :raw raw})
+      (let [ms (if optimal? (optimal-models models opt) models)]
+        {:status status :atoms (vec (:atoms (first ms))) :cost cost :costs costs
+         :witnesses (mapv (comp vec :atoms) ms) :witness-costs (mapv #(not-empty (vec (:cost %))) ms)
+         :raw raw})
 
       (:classify-true :classify-supportable)
       ;; the last model is the converged consequence set
-      {:status status :atoms (vec (:atoms (last models))) :cost cost :raw raw})))
+      {:status status :atoms (vec (:atoms (last models))) :cost cost :costs costs :raw raw})))
 
 (defn- objective?
   "Do `stmts` hold a minimize statement over at least one literal?  Without one every
@@ -437,15 +444,23 @@
 
 (defn solve
   "Run clingo in-process on translated program `{:aspif <text> :stmts <statements>}` in
-   one of the supported modes, injecting `:stmts` through the `clingo_backend_*`
+   one of `clasp/solve`'s modes under its solve options `opts`, injecting `:stmts` through the `clingo_backend_*`
    accessors (no ASPIF text, no temp file, no parse). See `finalize` for the return
-   contract.  A `:label` solve of a program with no objective runs as `:sat`: streaming
+   contract.  A `:label` solve runs as `:sat` as `clasp/solve`'s does: streaming
    improving models there would enumerate every model."
-  [{:keys [stmts]} mode]
-  (let [mode (if (and (= :label mode) (not (objective? stmts))) :sat mode)]
-    (finalize (backend-solve (into (mode-args-or-throw mode) (clasp/search-args)) stmts
-                             (mode-retention mode))
-              mode)))
+  ([program mode] (solve program mode nil))
+  ([{:keys [stmts]} mode opts]
+   (let [mode (if (and (= :label mode) (not (and (objective? stmts) (clasp/optimal-only? opts))))
+                :sat
+                mode)]
+     (clasp/without-optimum
+      (finalize (backend-solve (into (mode-args-or-throw mode opts) (clasp/search-args opts)) stmts
+                               (if (and (= :all-optima mode) (not (clasp/optimal-only? opts)))
+                                 :all
+                                 (mode-retention mode))
+                               (clasp/solve-seconds opts))
+                mode opts)
+      opts))))
 
 (defn- load-block!
   "Load `aspif-text` into `ctl` through `clingo_control_load_aspif`, once: clingo refuses
@@ -541,7 +556,7 @@
       (let [run (fn [enum-mode]
                   (set-enum-mode! ctl enum-mode)
                   (finalize (solve-control ctl [] (mode-retention :classify-true))
-                            :classify-true))
+                            :classify-true nil))
             cautious (run "cautious")
             brave    (run "brave")]
         #_{:clj-kondo/ignore [:unused-value]}

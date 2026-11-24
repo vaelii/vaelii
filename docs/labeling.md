@@ -86,18 +86,13 @@ being a thing a caller has to remember.
 
 ### Where the labeling comes from, and why it differs from `label-context`
 
-`label/label-context` reads the labeling from the **TMS**, and `do/labeling` on a dilemma
-reads it from a **resolution** computed for the purpose. Both follow the same rule — *report what actually decided it* — applied to two different
-situations:
-
-| situation | who decided | so read from |
-|---|---|---|
-| a tie `settle` arbitrated | the engine committed to one side | the TMS |
-| a dilemma `settle` declined | nobody; **both sides are IN** | a resolution |
-
-Reading current belief for a dilemma would copy *both* sides of the contradiction
-into the labeling context, which just recreates the dilemma one level down. There is
-no committed answer to be faithful to, so the resolution is the only thing that decides.
+`do/labeling` on a dilemma reads the labeling from a **resolution** computed for the
+purpose, since `settle` declined the dilemma and **both sides are IN**. It records the kept
+assumptions with the `Program` as `:keep`. `label/label-context` copies that set, less each
+assumption its own context no longer believes. Reading current belief for a dilemma would
+copy *both* sides of the contradiction into the labeling context, which recreates the
+dilemma one level down
+(`asp_label_test/label-context-copies-the-side-label-dilemmas-kept-while-its-own-context-believes-it`).
 
 ### `Ctx` inherits, and the labeling is recorded by strengthening
 
@@ -296,7 +291,8 @@ forcing OUT satisfies every nogood — leaves no nogood with all its members sti
 which is a dilemma set's optimal labelings. `classify-local` reads belief under each
 resolution and splits a believed datum by which resolutions keep it: `:true` when every
 resolution keeps it (skeptical), `:supportable` when some but not every do (credulous),
-`:false` when none do.
+`:false` when none do. A datum the read context does not believe, or with no context its
+own context, is in no class, so a datum a placed `defeat` removes is never `:true`.
 
 `(hasEthicalStance Nixon)` drawn from **both** the pacifist and non-pacifist side is `:true`:
 every resolution keeps one side, so one support survives. `(opposesWar Nixon)` resting on
@@ -358,7 +354,3 @@ Limits, none of them silent:
   It is context-exact, so it shows a labeled context's own extent and nothing it sees
   through `genlCx`. It holds in the base context too; a labeled context is only where
   you are most likely to trip over it.
-* **`label-context` and `label-dilemmas` overlap.** The former materializes a labeling
-  the engine committed to and reads the TMS; the latter commits to one and reads the
-  solve. Both are correct for their situation, and the table above says which is
-  which.

@@ -122,20 +122,16 @@
   ([conn goal context] (c/provable? conn goal context))
   ([conn goal context opts] (c/provable? conn goal context opts)))
 
-(defn in?
-  "Whether the sentex `handle` names is raw JTMS IN."
-  [conn handle]
-  (c/in? conn handle))
-
 (defn believed?
-  "Whether `handle` is JTMS IN after exceptions visible from `context`, before
-  assertion-context inheritance."
-  [conn handle context]
-  (c/believed? conn handle context))
+  "Whether `handle` is believed at `context`, or with no `context` at the context it is
+  stored in: IN, stored in a context `context` sees, and hidden there by no `except` and
+  no placed `defeat` in force."
+  ([conn handle] (c/believed? conn handle))
+  ([conn handle context] (c/believed? conn handle context)))
 
 (defn belief-status
-  "Storage, raw IN, exception forest, inheritance path, belief, and visibility for
-  `handle` as viewed from `context`."
+  "Storage, the JTMS label, the exception forest, the withdrawal, the inheritance path and
+  belief for `handle` at `context` (`vaelii.core/belief-status`)."
   [conn handle context]
   (c/belief-status conn handle context))
 

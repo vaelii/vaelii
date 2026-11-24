@@ -265,7 +265,7 @@
         out (atom {:ds [] :order [] :after []})]
     (dotimes [_ n]
       (let [world (length-world rnd ncx)
-            runs  (vec (for [_ (range orders)] (length-run rnd (vec (shuffle world)) nil)))]
+            runs  (vec (for [_ (range orders)] (length-run rnd (tu/shuffled rnd world) nil)))]
         (doseq [{:keys [ds after]} runs]
           (swap! out update :ds into (map #(hash-map :world world :d %)) ds)
           (swap! out update :after into (map #(hash-map :world world :d %)) after))
@@ -287,6 +287,15 @@
       (is (= [] (take 3 ds)) (str ncx " contexts"))
       (is (= [] (take 3 order)) (str ncx " contexts"))
       (is (= [] (take 3 after)) (str ncx " contexts")))))
+
+(deftest ^:red an-arity-min-binds-the-least-length-of-an-unbounded-arity-predicate
+  (tu/with-neutral-kb [kb #(doto (tu/empty-kb) (tu/load-core!))]
+    (tu/with-terms [relUa]
+      (v/assert kb (list 'unbounded_arity_predicate relUa) 'CxUniverse)
+      (v/assert kb (list 'arityMin relUa 2) 'CxUniverse)
+      (is (= {:min 2} (select-keys (arity/relation-length kb relUa) [:exact :min]))
+          "core.txt places unbounded_arity_predicate below variable_arity_predicate, so
+          relUa is variable_arity and its arityMin is its least length"))))
 
 (deftest an-engine-term-s-length-is-its-shape-whatever-the-kb-binds
   ;; `assert` refuses `(arity genl 3)` (`:length-against-shape`), so the binding arrives
@@ -635,7 +644,7 @@
               free  #(v/retract! kb b)]
           (if tuple-first? (do (tuple) (free)) (do (free) (tuple)))
           (let [c (v/handle-of kb (list r A C) 'CxUniverse)]
-            (is (and c (v/in? kb c))
+            (is (and c (v/believed? kb c))
                 (if tuple-first? "the tuple before the release" "the release before the tuple"))))))))
 
 (defn- descension-pairs

@@ -293,7 +293,7 @@
    "PERF_TOLERANCE"    "scripts/gate.sh, passed through to `lein perf --tolerance`"
    "GATE_MAX_CONCURRENT" "scripts/lib/slots.sh, how many sharded suites run at once on the box"
    "GATE_NO_WAIT"      "scripts/lib/slots.sh, exit 75 rather than wait for a gate slot"
-   "TEST_MIN_JOBS"     "scripts/test-parallel.sh, the fewest shards its default count starts"
+   "TEST_MIN_JOBS"     "scripts/lib/slots.sh, the fewest shards a suite's default count starts"
    "PERF_NO_WAIT"      "scripts/lib/slots.sh, exit 75 rather than wait for the perf lock"
    "TEST_BACKENDS_OUT" "scripts/test-backends.sh, its log directory"
    "TEST_SWEEPS_OUT"   "scripts/test-sweeps.sh, its log directory"

@@ -23,9 +23,8 @@
 ;;
 ;; The sign is **the sentence's own head**, not a slot: a negative literal's sentence is
 ;; `(not S)`, and `negative?` reads that.  Which literal a sentex is says nothing about
-;; belief — whether the KB *holds* it is `jtms/in?`, which reads a handle.  A negative
-;; literal the JTMS believes is a believed denial, and a positive one it does not is a
-;; defeated positive; the two axes are independent.
+;; belief, which is read by handle (`exc/believed-own?`, or at a context).  A negative
+;; literal may be believed and a positive one defeated; the two axes are independent.
 (defrecord LiteralSentex [sentence context id strength])
 ;;
 ;; A `RuleSentex` is an implication.  Beyond the core it carries the decomposition the

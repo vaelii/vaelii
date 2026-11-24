@@ -46,10 +46,12 @@
             [vaelii.impl.disk.index-snapshot :as index-snapshot]
             [vaelii.impl.except :as exc]
             [vaelii.impl.io.import :as io-import]
+            [vaelii.impl.io.text :as text]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.memory :as mem]
             [vaelii.impl.naming :as nm]
+            [vaelii.impl.nat :as nat]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.overlay.mount :as mount]
             [vaelii.impl.protocols :as p]
@@ -596,6 +598,35 @@
                        :overlay {:backend :memory :space own}}))
       (merge {:space s} common *storage*))))
 
+(defn- plumbing-row?
+  "Is `form`, under any strength wrapper, a `natFormula` row: the record of what a reified
+  constant denotes, which the mint writes and no author does?"
+  [form]
+  (let [f (loop [f form]
+            (if (and (seq? f) (symbol? (first f)) (= "set" (namespace (first f))))
+              (recur (second f))
+              f))]
+    (and (seq? f) (= 'natFormula (first f)))))
+
+(defn premise-wff-problems
+  "The premises of `kb` that `v/check` refuses under the constraint-only reading of
+  argument declarations, as `{:context c :form f :problems [problem …]}` in premise order.
+  Each premise is read as a KB file writes it (`text/premise-entries`), with every reified
+  constant expanded to the application it denotes.  The `natFormula` rows are skipped.
+  That reading convicts an argument only for a type the taxonomy separates from the
+  declared one: a premise is reported when it contradicts its constraints.  Stores nothing
+  and draws no entailment."
+  [kb]
+  (let [recs (:records kb)]
+    (binding [argument/*assertive-arg-types?* false]
+      (into [] (keep (fn [{:keys [context form]}]
+                       (when-not (plumbing-row? form)
+                         (let [form (nat/expand-expression kb form)]
+                           (when-let [ps (seq (v/check kb form context))]
+                             {:context context :form form :problems (vec ps)})))))
+            (first (text/premise-entries
+                    kb (into [] (keep #(p/get-sentex recs %)) (sort (p/premise-ids recs)))))))))
+
 (defn clear-kb!
   "Wipe the stores under a KB the fixtures hand back over and over.  `v/clear!` without
   the durability daemon's flush, plus the in-memory state a wipe must take with it: the
@@ -766,7 +797,7 @@
                                                     (list 'implies (:antecedent r) (:consequent r))))
                                               inf))
                               :conclusion {:sentence (:sentence c) :context (:context c)}
-                              :believed?  (boolean (v/in? kb (:consequence j)))
+                              :believed?  (boolean (v/believed? kb (:consequence j)))
                               :unseen     unseen})
                      "\n")
                 :append true))
@@ -837,6 +868,16 @@
   "An element of `coll` chosen by `rng`, a `java.util.Random`."
   [^java.util.Random rng coll]
   (nth coll (.nextInt rng (count coll))))
+
+(defn shuffled
+  "The answer is `coll` permuted by `rng`, as a vector; `rng` is a `java.util.Random` or a
+  seed.  One seed always gives one order, which lets a randomized test replay from its seed.
+  `clojure.core/shuffle` reads a global source instead."
+  [rng coll]
+  (let [^java.util.Random r (if (instance? java.util.Random rng) rng (java.util.Random. (long rng)))
+        a (java.util.ArrayList. ^java.util.Collection (vec coll))]
+    (java.util.Collections/shuffle a r)
+    (vec a)))
 
 (defn temp-dir
   "A new, empty directory under `java.io.tmpdir`, as a `File`, whose name is `(apply str
@@ -1052,6 +1093,38 @@
   ([] (isolated-fresh {}))
   ([opts] (fresh-slot (dec block-top) opts)))
 
+(defn engine-space-kb
+  "An empty in-RAM KB on a space of its own (`mem/engine-space`), which `v/close!` drops
+  from every registry: a second KB a test may close, whatever storage the run selected,
+  without touching the scratch or the isolated space."
+  []
+  (v/open-kb {:backend :memory :space (mem/engine-space :test) :recover? false}))
+
+(defn vars-holding
+  "The vars of namespace `ns-sym` whose atom, volatile or `AtomicReference` holds a part of
+  `kb` by identity, as its value or as a key, value or element one level inside it.  The
+  parts are `kb`'s stores, `:unrecovered` atom and `Reasoning` value, and its taxonomy and
+  candidate atoms with the values they hold."
+  [ns-sym kb]
+  (let [tax   (reasoning/taxonomy kb)
+        cands (reasoning/nogood-candidates kb)
+        parts [(:records kb) (:index kb) (:unrecovered kb) (reasoning/of kb) tax @tax cands @cands]
+        part? (fn [x] (some #(identical? % x) parts))
+        held  (fn [r] (condp instance? r
+                        clojure.lang.IAtom @r
+                        clojure.lang.Volatile @r
+                        java.util.concurrent.atomic.AtomicReference
+                        (.get ^java.util.concurrent.atomic.AtomicReference r)
+                        ::none))]
+    (into (sorted-set)
+          (keep (fn [[sym v]]
+                  (let [x (held @v)]
+                    (when (or (part? x)
+                              (and (map? x) (some (fn [[k y]] (or (part? k) (part? y))) x))
+                              (and (coll? x) (not (map? x)) (some part? x)))
+                      sym))))
+          (ns-interns ns-sym))))
+
 ;; ---- gensym'd temporary terms (naming-invariant by construction) --------
 ;; predicate  bare lowercase, uncommitted in arity -> tmppred1
 ;; individual CapitalCamelCase                -> Tmp2
@@ -1217,8 +1290,8 @@
 
 (defn verdict-violations
   "Where the justification verdicts and belief disagree over the handles `hs` and the
-  readers `ctxs`, as `[handle context kind]` rows.  `:belief`: the verdict reader's belief
-  (`exc/verdict-reader`) is not `exc/belief-hidden-fn`'s.  `:verdict`: a handle IN, named
+  readers `ctxs`, as `[handle context kind]` rows.  `:withdrawal`: the verdict reader's answer
+  (`exc/verdict-reader`) is not `exc/withdrawn-fn`'s.  `:verdict`: a handle IN, named
   by no defeat in force at the reader (`exc/defeats-of`), is not believed exactly when it is a premise or a justification of it reads `:supports`.
   `:why`: `v/why` at the handle's own context carries other verdicts."
   [kb hs ctxs]
@@ -1227,18 +1300,18 @@
         hids   (volatile! {})
         hid    (fn [c] (if-let [e (find @hids c)]
                          (val e)
-                         (let [f (exc/belief-hidden-fn kb c)] (vswap! hids assoc c f) f)))
+                         (let [f (exc/withdrawn-fn kb c)] (vswap! hids assoc c f) f)))
         live   (filterv #(jtms/in? tms %) hs)]
     (into (vec (for [h live, c ctxs
-                     :let [{:keys [believed? verdicts]} (reader h c)
+                     :let [{:keys [unwithdrawn? verdicts]} (reader h c)
                            f        (hid c)
                            network  (not (and f (f h)))
                            removed? (seq (exc/defeats-of kb h c))
                            expected (boolean (and (not removed?)
                                                   (or (jtms/premise? tms h)
                                                       (some #{:supports} (vals verdicts)))))
-                           kind     (cond (not= network believed?)  :belief
-                                          (not= expected believed?) :verdict)]
+                           kind     (cond (not= network unwithdrawn?)  :withdrawal
+                                          (not= expected unwithdrawn?) :verdict)]
                      :when kind]
                  [h c kind]))
           ;; one `why` graph answers for every handle it reaches, so a handle an earlier
@@ -1359,7 +1432,7 @@
             ;; An inert sentex restored by `import!` is a TMS datum held OUT with no
             ;; strength, so it is neither a premise nor an unknown datum, and it is
             ;; retracted by the third test.
-            inert (fn [h] (and (nil? (:strength (v/sentex kb h))) (not (v/in? kb h))))
+            inert (fn [h] (and (nil? (:strength (v/sentex kb h))) (not (v/believed? kb h))))
             added (filter #(and (not (contains? before %))
                                 (or (prems %) (not (jtms/known-datum? (reasoning/tms kb) %))
                                     (inert %)))
@@ -1670,6 +1743,15 @@
                      (f target)))
       (finally (run! #(.delete ^File %) (reverse (file-seq dir)))))))
 
+(defn contradictions-naming
+  "The believed `(contradicts …)` sentences that name one of `handles` as a member."
+  [kb handles]
+  (let [named (set (map #(list 'sentexHandle %) handles))]
+    (into #{} (comp (filter #(v/believed? kb (:id %)))
+                    (map :sentence)
+                    (filter #(some named (rest %))))
+          (v/sentexes-with-functor kb 'contradicts))))
+
 (defn recovered-readings
   "`[source recovered written]`, each `{:placed :loser}`: the believed `contradicts` and
   `defeat` sentexes as `[sentence context]` with their handles resolved (`handle-free`),
@@ -1677,7 +1759,7 @@
   `recovered-copy*`'s target before any write and after `(write! target)`."
   [kb reopen? [s ctx] write!]
   (let [read (fn [k] {:placed (into #{} (comp (mapcat #(v/sentexes-with-functor k %))
-                                              (filter #(v/in? k (:id %)))
+                                              (filter #(v/believed? k (:id %)))
                                               (map #(handle-free k [(:sentence %) (:context %)])))
                                     '[contradicts defeat])
                       :loser  (v/believed? k (v/handle-of k s ctx) ctx)})]

@@ -144,7 +144,7 @@
 (defn- believed-in-universe?
   "Is `sentence` stored in CxUniverse and believed there?"
   [kb sentence]
-  (boolean (some->> (v/handle-of kb sentence 'CxUniverse) (v/in? kb))))
+  (boolean (some->> (v/handle-of kb sentence 'CxUniverse) (v/believed? kb))))
 
 (defn- inverse-supports
   "The antecedent sentences of each justification of `sentence` in CxUniverse that reads

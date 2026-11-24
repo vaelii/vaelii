@@ -43,7 +43,7 @@
   assert of a derived sentence marks a baseline sentex a premise, which teardown keeps."
   [kb]
   (v/assert kb (list 'unreifiable_function Quote) 'CxUniverse)
-  (when-not (some #(v/in? kb (:id %)) (v/sentexes-matching kb '(unary_predicate dog) 'CxUniverse))
+  (when-not (some #(v/believed? kb (:id %)) (v/sentexes-matching kb '(unary_predicate dog) 'CxUniverse))
     (v/assert kb (list 'unary_predicate 'dog) 'CxUniverse)))
 
 (defn- fired?

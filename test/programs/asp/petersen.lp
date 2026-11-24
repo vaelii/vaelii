@@ -1,0 +1,26 @@
+% The Petersen graph: the twin of petersen.vae.
+graph_node(p0).
+graph_node(p1).
+graph_node(p2).
+graph_node(p3).
+graph_node(p4).
+graph_node(p5).
+graph_node(p6).
+graph_node(p7).
+graph_node(p8).
+graph_node(p9).
+graphEdge(p0,p1).
+graphEdge(p1,p2).
+graphEdge(p2,p3).
+graphEdge(p3,p4).
+graphEdge(p4,p0).
+graphEdge(p0,p5).
+graphEdge(p1,p6).
+graphEdge(p2,p7).
+graphEdge(p3,p8).
+graphEdge(p4,p9).
+graphEdge(p5,p7).
+graphEdge(p6,p8).
+graphEdge(p7,p9).
+graphEdge(p8,p5).
+graphEdge(p9,p6).

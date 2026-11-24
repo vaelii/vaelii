@@ -149,7 +149,7 @@
      ;; never drew it at all, and the two read the same belief off different record sets:
      ;; a stored sentex is not a believed one (README.md, "Belief filtering").  So this
      ;; counts neither records nor handles — it is the sentences believed, and asserted.
-     :believed-set       (into #{} (comp (filter #(v/in? kb %))
+     :believed-set       (into #{} (comp (filter #(v/believed? kb %))
                                          (map #(v/sentence-of (v/sentex kb %))))
                                (tu/sentex-ids kb))
      :premise-set        (into #{} (map #(v/sentence-of (v/sentex kb %)))

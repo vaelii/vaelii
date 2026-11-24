@@ -24,7 +24,7 @@
  {:feature "supersession"           :removability :free   :rows [:Q2 :Q4]}
  {:feature "candidate index"        :removability :free
   :rows [:J1 :J2 :J6 :N1 :N2 :N3 :N5 :N6 :N9 :Q7 :X1]}
- {:feature "visibility except"      :removability :free   :rows [:Q3]}
+ {:feature "except"                 :removability :free   :rows [:Q3]}
  {:feature "inherited discovery"    :removability :free   :rows [:N7 :D3 :R5 :R6]}
  {:feature "exceptWhen · NAF"       :removability :free   :rows [:S5]}
  {:feature "edge solver"            :removability :free   :rows [:S7]}

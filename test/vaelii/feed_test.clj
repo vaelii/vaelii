@@ -326,7 +326,7 @@
       (let [h (binding [trove/*log-fn* (fn [_ns _coords _level id payload]
                                          (swap! logged conj [id (force payload)]))]
                 (v/assert kb (list dog Muffet) 'CxUniverse))]
-        (is (v/in? kb h) "the settle was already committed; the write stands")
+        (is (v/believed? kb h) "the settle was already committed; the write stands")
         (is (= [(list dog Muffet)] (added @seen))
             "and the listener registered after the thrower still ran")
         (is (some (fn [[id p]] (and (= ::v/listener-threw id) (identical? bug (:error p))))
@@ -337,7 +337,7 @@
   (tu/with-terms [dog Muffet Rex]
     (let [token (v/watch kb (fn [_] (throw (OutOfMemoryError. "heap"))))]
       (is (thrown? OutOfMemoryError (v/assert kb (list dog Muffet) 'CxUniverse)))
-      (is (some->> (v/handle-of kb (list dog Muffet) 'CxUniverse) (v/in? kb))
+      (is (some->> (v/handle-of kb (list dog Muffet) 'CxUniverse) (v/believed? kb))
           "the settle was committed before delivery; the write stands")
       (v/unwatch kb token))
     (let [[seen f] (recorder)
@@ -345,7 +345,7 @@
       (v/watch kb f)
       (let [h     (v/assert kb (list dog Rex) 'CxUniverse)
             flag? (Thread/interrupted)]
-        (is (v/in? kb h))
+        (is (v/believed? kb h))
         (is flag? "the writing thread's interrupt flag is set again")
         (is (= [(list dog Rex)] (added @seen)) "and the next listener still ran"))
       (v/unwatch kb token))))

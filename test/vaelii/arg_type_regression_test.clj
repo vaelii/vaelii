@@ -31,7 +31,7 @@
          :let [sx (p/get-sentex (:records kb) h)]]
      [(str/replace (pr-str (:sentence sx)) #"\(sentexHandle \d+\)" "(sentexHandle _)")
       (str (:context sx))
-      (v/in? kb h)])))
+      (v/believed? kb h)])))
 
 (defn- reasons
   "Every justification in `kb` as `[informant conclusion antecedents subsumptions]`, by
@@ -158,4 +158,4 @@
         (is (= [] (filter #(= h (v/handle-of kb (:sentence %) (:context %)))
                           (filter #(= :inert-rule (:violation %)) (v/violations kb))))
             "the rule is not reported inert")
-        (is (true? (v/in? kb h)) "and it is believed")))))
+        (is (true? (v/believed? kb h)) "and it is believed")))))

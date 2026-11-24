@@ -101,5 +101,5 @@
     (binding [v/*creator* "alice" v/*clock* (constantly 1000)]
       (let [h (v/assert kb (list dog Muffet) CxFarm)]
         (testing "recording provenance does not disturb belief or query"
-          (is (v/in? kb h))
+          (is (v/believed? kb h))
           (is (seq (v/sentexes-matching kb (list dog Muffet) CxFarm))))))))

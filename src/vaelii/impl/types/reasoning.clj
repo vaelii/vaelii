@@ -98,7 +98,8 @@
                       settle-stats chain-stats preserved-clashes
                       supersessions qcn qcn-joined matches closures
                       respell except-moves owed-drops
-                      mint-queues mint-rules engine-rules nogood-candidates arity-lengths])
+                      mint-queues mint-rules engine-rules nogood-candidates arity-lengths
+                      sync-memo crossing-reads])
 
 (defn of
   "The `Reasoning` value `kb` holds now."
@@ -215,6 +216,18 @@
   {:inline (fn [kb] `(:owed-drops (deref (:reasoning ~kb))))}
   [kb]
   (:owed-drops @(:reasoning kb)))
+
+(defn sync-memo
+  "`kb`'s `:sync-memo` atom."
+  {:inline (fn [kb] `(:sync-memo (deref (:reasoning ~kb))))}
+  [kb]
+  (:sync-memo @(:reasoning kb)))
+
+(defn crossing-reads
+  "`kb`'s `:crossing-reads` atom."
+  {:inline (fn [kb] `(:crossing-reads (deref (:reasoning ~kb))))}
+  [kb]
+  (:crossing-reads @(:reasoning kb)))
 
 (defn qcn
   "`kb`'s `:qcn` atom."

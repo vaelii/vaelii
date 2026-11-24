@@ -70,11 +70,11 @@
   `:tiebreak?` (default true) emits the level-0 content-keyed objective, which makes the
   optimum unique; an enumeration turns it off (docs/asp.md, \"Two things keep `classify`
   from reporting a tie as forced\").  `:keep-belief?` (default true) emits the level-1
-  objective minimizing defeated assumptions; `do/label :sat` turns it off (docs/solving.md,
-  \"The three modes\")."
+  objective minimizing defeated assumptions; `do/label :sat` turns it off.  `:project`, a set
+  of handles, emits a projection statement over their atoms, empty for an empty set."
   ([program] (translate program {}))
   ([{:keys [assumptions contradictions derived derivations] :as program}
-    {:keys [tiebreak? keep-belief?] :or {tiebreak? true keep-belief? true}}]
+    {:keys [tiebreak? keep-belief? project] :or {tiebreak? true keep-belief? true}}]
    (let [ordered   (nm/sort-by-content-key #(solve/content-key program %) compare assumptions)
          ;; a solve's derived atoms, allocated after the choices in the same content order
          ordered-d (nm/sort-by-content-key #(solve/content-key program %) compare derived)
@@ -184,6 +184,7 @@
                     (when (and tiebreak? (seq ordered))
                       [(aspif/minimize level-tiebreak
                                        (map-indexed (fn [i h] [(- (atom-of h)) (- n i)]) ordered))])
+                    (when (some? project) [(aspif/project (sort (keep atom-of project)))])
                     (map (fn [h] (aspif/show (atom-of h) (atoms/label-of-atom table (atom-of h))))
                          (concat ordered ordered-d))
                     (map (fn [[_ v]] (aspif/show v (atoms/label-of-atom table v))) v-atoms)
@@ -256,7 +257,7 @@
     (into #{} (filter #(true-labels (atoms/label-of-atom table (atoms/atom-of-sentex table %))))
           (concat assumptions derived))))
 
-(defn- handles-of
+(defn handles-of
   "The assumption handles behind `labels` — a solver's answer set, as label strings."
   [table labels]
   (into #{} (keep #(some->> (atoms/atom-of-label table %)

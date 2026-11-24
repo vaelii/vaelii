@@ -28,6 +28,14 @@
   false when `(R a w)` (against it, `transitiveInArgInverse`)."
   '{transitiveInArgInverse false, transitiveInArg true})
 
+(defn declaration-record?
+  "Is the record `sxr` a preservation declaration: a handle a firing that joined on an
+  inherited claim names among its antecedents?  Such a firing confers `:default`
+  (docs/inherit.md, \"Strict versus typical\")."
+  [sxr]
+  (let [s (:sentence sxr)]
+    (boolean (and (sequential? s) (contains? declarations (nm/functor s))))))
+
 ;; ---- one question, one set of closure reads ------------------------------
 
 (def ^:dynamic *memo*
@@ -711,6 +719,20 @@
                     (remove #(= (first (:tuple %)) (second (:tuple %)))
                             (probe nsl [1 0] false :against)))))))))
 
+(defn- against-claims
+  "`claims`' `:against` half: the `stated-denials` and, for a unary goal with a preserved
+  position, the separated memberships at its own tuple, which `strong?` reads none of."
+  [kb goal context strong?]
+  (let [[_ _ nsl] (goal-probes kb goal context strong?)
+        args      (nm/args goal)]
+    (concat
+     (stated-denials kb goal context strong?)
+     (when (and (= 1 (count args)) (not strong?) (seq (positions kb (nm/functor goal) context)))
+       (map #(assoc % :separated? true)
+            (strongest-per-tuple
+             kb :against
+             (separated-denials kb (nm/functor goal) (first args) nsl context *deadline*)))))))
+
 (defn claims
   "Every believed claim bearing on the ground goal `(P a1 … an)`, each tagged with the
   argument tuple it is stated at and whether it argues `:for` or `:against`.
@@ -733,19 +755,14 @@
   ([kb goal context strong?]
    (with-memo
      (let [args  (vec (nm/args goal))
-           [probe sl nsl] (goal-probes kb goal context strong?)]
+           [probe sl] (goal-probes kb goal context strong?)]
        ;; realized here, inside the memo (`with-memo`): the probes read the store and
        ;; `strongest-per-tuple` groups lazily, so a seq handed back unrealized does all
        ;; of that with the memo gone
        (vec
         (concat
          (probe sl (vec (range (count args))) false :for)
-         (stated-denials kb goal context strong?)
-         (when (and (= 1 (count args)) (seq (positions kb (nm/functor goal) context)) (not strong?))
-           (map #(assoc % :separated? true)
-                (strongest-per-tuple
-                 kb :against
-                 (separated-denials kb (nm/functor goal) (first args) nsl context *deadline*))))))))))
+         (against-claims kb goal context strong?)))))))
 
 ;; ---- specificity ---------------------------------------------------------
 
@@ -768,27 +785,32 @@
                                    (below? kb positions (:tuple o) (:tuple c) context)))
                       others))))
 
-(def ^:dynamic *default-contraries-set-aside*
-  "True while `chain` reads a preserved antecedent: a `:default` claim that denies the
-  goal is left out before the survivors are read, so a firing it alone undercuts is made,
-  and stored with a defeat of its conclusion resting on that claim (`contraries`).
-  The prover reads every claim."
+(def ^:dynamic *contraries-set-aside*
+  "True while `chain` reads a preserved antecedent: no claim that denies the goal is read,
+  so the firing is made, and stored with a defeat of its conclusion at each context a
+  denial reaches it in (`contraries`).  The prover reads every claim."
   false)
+
+(defn- for-goal? [c] (= :for (:polarity c)))
+
+(defn- undisplaced
+  "The members of `cs` that no more specific member of `cs` displaces (`undercut?`)."
+  [kb poss cs context]
+  ;; realized inside the memo: `undercut?` walks a `reach` per comparison
+  (into [] (remove #(undercut? kb poss % cs context)) cs))
 
 (defn surviving
   "The believed claims bearing on `goal` that a strictly more specific one has not
   displaced, each carrying its `:polarity` and `:class`.  The raw material both
   consumers read: the prover turns it into a verdict, and `checks/asymmetry-problem`
   asks the narrower question of whether any survivor is **known-true**.  Under
-  `*default-contraries-set-aside*` a `:default` claim against the goal is not read."
+  `*contraries-set-aside*` a claim against the goal is not read."
   [kb goal context]
   (with-memo
-    (let [poss (positions kb (nm/functor goal) context)
-          cs   (cond->> (claims kb goal context)
-                 *default-contraries-set-aside*
-                 (into [] (remove #(and (not= :for (:polarity %)) (= :default (:class %))))))]
-      ;; realized inside the memo: `undercut?` walks a `reach` per comparison
-      (into [] (remove #(undercut? kb poss % cs context)) cs))))
+    (undisplaced kb (positions kb (nm/functor goal) context)
+                 (cond->> (claims kb goal context)
+                   *contraries-set-aside* (filterv for-goal?))
+                 context)))
 
 (defn verdict
   "What the preserved claims say about the ground goal:
@@ -811,13 +833,24 @@
           (seq polarity)           :ambiguous)))))
 
 (defn contraries
-  "The surviving claims (`surviving`, every claim read) that do not argue for `goal` in
-  `context`: what keeps a `:for` verdict from it.  A firing over `goal` whose contraries
-  are all `:default` is stored with a defeat resting on each."
+  "The handles of the claims that deny `goal` at `context` with no claim for it more
+  specific than theirs: `verdict` is not `:for` exactly while one stands.  A denial a
+  second denial displaces is one, since a reader that does not believe the second still
+  reads the first."
   [kb goal context]
-  (binding [*default-contraries-set-aside* false]
+  (binding [*contraries-set-aside* false]
     (with-memo
-      (into [] (remove #(= :for (:polarity %))) (surviving kb goal context)))))
+      (let [poss    (positions kb (nm/functor goal) context)
+            cs      (claims kb goal context)
+            against (remove for-goal? cs)]
+        (if (empty? against)
+          #{}
+          (let [fors (filterv for-goal? cs)]
+            (into #{}
+                  (comp (mapcat #(cons % (:also %)))
+                        (remove #(undercut? kb poss % fors context))
+                        (map :handle))
+                  against)))))))
 
 (defn ground-goal?
   "A closed positive literal this can speak about.  A forward join reads claims on a
@@ -1156,49 +1189,68 @@
 (defn supports-for
   "What licenses the ground goal `(P a1 … an)` by preservation: a vector of `{:claim
   handle :handles [handle …]}`, each the claim it was read off and every sentex the
-  reading rests on, empty when nothing does.  The semantics are `verdict`'s: the
-  surviving claims must agree.
+  reading rests on, empty when nothing does.  The semantics are `verdict`'s over the
+  claims heard, those for the goal alone under `*contraries-set-aside*`: they must agree.
 
-  A goal the KB states directly licenses nothing: the stored claim is the diagonal of the
-  reflexive reach, and the ordinary matcher already justifies it.
+  A statement of the goal at its own tuple licenses nothing, since the ordinary matcher
+  justifies it.  Its reading ranks `:monotonic`, covers those seen beside it, and is dropped.
 
-  Each surviving claim, and each other statement of its tuple (`:also`), contributes its
-  readings (`claim-supports`).  A reading is dropped when another is at least as strong
-  (the claim's defeat class) and seen from every reader that sees it (`tax/uncovered`), so
-  routes stated in sibling contexts license one reading each.  The survivors are ordered
-  on defeat class, then the tuple, the context and the sentence, all spellings; of two
-  readings that cover each other the earlier is kept."
+  Each surviving claim (each claim for the goal under `*contraries-set-aside*`), and each
+  other statement of its tuple (`:also`), contributes its readings (`claim-supports`).  A
+  reading is dropped when another is at least as strong and seen from every reader that
+  sees it (`tax/uncovered`), so routes stated in sibling contexts license one reading each.
+  The claims are ordered own tuple first, then on defeat class, survivors first, the tuple,
+  the context and the sentence; of two readings that cover each other the earlier is kept."
   [kb goal context]
   (with-memo
     (let [pred (nm/functor goal)
           args (vec (nm/args goal))
           poss (positions kb pred context)]
       (or (when (seq poss)
-            (let [sv (surviving kb goal context)]
+            (let [aside? *contraries-set-aside*
+                  cs     (claims kb goal context)
+                  heard  (if aside? (filterv for-goal? cs) cs)
+                  sv     (undisplaced kb poss heard context)
+                  own?   #(= (:tuple %) args)]
               (when (and (seq sv)
                          (= #{:for} (into #{} (map :polarity) sv))
-                         (not-any? #(= (:tuple %) args) sv))
+                         (or aside? (not-any? own? sv)))
                 (let [by-n (by-position poss (count args))
                       tx   (reasoning/taxonomy kb)
+                      top  (set sv)
+                      hid  (when aside? (memoize #(exc/closure-excepted-anywhere? kb %)))
+                      deny (when aside? (into [] (comp (remove for-goal?) (remove :separated?)) cs))
+                      open (fn [c]
+                             (when (and (seq deny) (not (own? c)))
+                               (into #{} (comp (remove #(undercut? kb poss % [c] context))
+                                               (map :handle))
+                                     deny)))
                       alts (into []
                                  (mapcat (fn [c]
                                            (for [c                 (cons c (:also c))
                                                  {:keys [hs ctxs]} (claim-supports kb by-n args c context nil nil)]
                                              {:claim   (:handle c)
                                               :handles (into [] (distinct) (cons (:handle c) hs))
-                                              ::rank   (st/rank-of (:class c))
+                                              ::own?   (own? c)
+                                              ::rank   (st/rank-of (if (own? c) :monotonic (:class c)))
+                                              ::hid    (when aside?
+                                                         (not-empty (into (set (hidable-of hid (cons (:handle c) hs)))
+                                                                          (open c))))
                                               ::ctxs   (cons (:context c) ctxs)})))
                                  ;; the key is built once per survivor, through
                                  ;; `nm/print-key`: the chosen handle lands in a
                                  ;; recorded justification
-                                 (nm/sort-by-content-key (juxt #(- (st/rank-of (:class %)))
+                                 (nm/sort-by-content-key (juxt #(if (own? %) 0 1)
+                                                               #(- (st/rank-of (:class %)))
+                                                               #(if (contains? top %) 0 1)
                                                                #(nm/print-key (:tuple %))
                                                                #(nm/name-key (:context %))
                                                                #(nm/print-key (:sentence %)))
                                                          compare
-                                                         sv))]
-                  (mapv #(dissoc % ::rank ::ctxs)
-                        (tax/uncovered tx (fn [a] [(::rank a) (tax/context-floor tx (::ctxs a))])
+                                                         (if aside? heard sv)))]
+                  (into []
+                        (comp (remove ::own?) (map #(dissoc % ::rank ::ctxs ::own? ::hid)))
+                        (tax/uncovered tx (fn [a] [(::rank a) (tax/context-floor tx (::ctxs a)) (::hid a)])
                                        alts))))))
           []))))
 
@@ -1403,6 +1455,15 @@
                               :contexts w}))
                       (tax/disjointness-witnesses tax s pred))))))
 
+(defn- asymmetric-supporters
+  "The `[handle context]` of each statement marking `pred`, or a predicate above it,
+  `asymmetric`, read from every context: a superset each reader narrows."
+  [kb pred]
+  (let [tax (reasoning/taxonomy kb)]
+    (into #{}
+          (mapcat #(tax/prop-supporter-contexts tax :asymmetric %))
+          (tax/props-over tax :asymmetric pred))))
+
 (defn denial-readings
   "Each reading of a claim that denies `sentence` by preservation, read from every
   context at once, as `{:handles :contexts}`: the claim and what the reading rests on
@@ -1445,10 +1506,7 @@
         #{}
         (-> (reads body (if neg? :for :against))
             (into (when-let [goal (when-not neg? (converse-goal kb body '?ctx))]
-                    (let [tax  (reasoning/taxonomy kb)
-                          mark (into #{}
-                                     (mapcat #(tax/prop-supporter-contexts tax :asymmetric %))
-                                     (tax/props-over tax :asymmetric (nm/functor body)))]
+                    (let [mark (asymmetric-supporters kb (nm/functor body))]
                       (for [r (reads goal :for), [h c] mark]
                         (-> (update r :handles conj h)
                             (update :contexts #(cond-> % c (conj c))))))))
@@ -1465,6 +1523,43 @@
                             (update :contexts into (:contexts w))))))))))))
 
 ;; ---- enumerating what a claim licenses -----------------------------------
+
+(defn contrary-readings
+  "Each reading of a claim that denies the ground `goal`, read from every context at once,
+  as `{:handle :handles :separated :displacers}`.  `:handles` holds the claim, the reach it
+  denies `goal` along (`claim-supports`) and, for a converse, its `asymmetric` statement.
+  `:separated` names the type of a membership that denies it by a separation, and
+  `:displacers` the claims for the goal that displace it somewhere.  The readings are a
+  superset over the readers: `contraries` decides each where it is placed."
+  [kb goal]
+  (binding [*contraries-set-aside* false]
+    (with-memo
+      (let [pred    (nm/functor goal)
+            args    (vec (nm/args goal))
+            poss    (positions kb pred '?ctx)
+            against (when (seq poss) (vec (against-claims kb goal '?ctx false)))]
+        (if (empty? against)
+          #{}
+          (let [by-n (by-position poss (count args))
+                fors (filterv for-goal? (claims kb goal '?ctx))
+                hid  (memoize #(exc/closure-excepted-anywhere? kb %))
+                mark (delay (into #{} (map (fn [[h _]] #{h})) (asymmetric-supporters kb pred)))]
+            (into #{}
+                  (for [w against
+                        c (cons w (:also w))
+                        :let [s     (:sentence c)
+                              sep   (when (:separated? w) (nm/functor s))
+                              marks (if (or sep (= 'not (nm/functor s))) [#{}] @mark)
+                              below (into #{} (comp (filter #(undercut? kb poss c [%] '?ctx))
+                                                    (mapcat #(cons % (:also %)))
+                                                    (map :handle))
+                                          fors)]
+                        {:keys [hs]} (claim-supports kb by-n args (assoc c :polarity :against) '?ctx nil hid)
+                        m marks]
+                    {:handle     (:handle c)
+                     :handles    (into (into #{(:handle c)} hs) m)
+                     :separated  sep
+                     :displacers below}))))))))
 
 (defn- goal-bindings
   "The bindings making the literal's argument list `args` the tuple `t`, or nil where
@@ -1728,53 +1823,29 @@
             alts     (walk (nm/functor sentence) s (vec tuple))]
         (when-not (= [[]] alts) (into [] (distinct) alts))))))
 
-(defonce ^:private crossing-reads
-  ;; `{kb-key -> {:decls postings :derived {k value} :read-under s :marks {q #{group}}}}`, one
-  ;; entry per KB, keyed by `crossing-key`
-  (atom {}))
-
-(defn- crossing-key
-  "The key `kb`'s `crossing-reads` entry is held under: its `:unrecovered` atom, which the
-  KB owns and which holds a few flags, so an entry keeps no store reachable.  Nil for a
-  KB value without one, whose reads are not cached."
+(defn- crossing-values
+  "How many values `kb`'s crossing reads hold: one per `:derived` key, and the marks."
   [kb]
-  (:unrecovered kb))
-
-(def ^:private crossing-reads-limit
-  "How many KBs' entries `crossing-reads` holds before it is cleared wholesale."
-  64)
+  (let [e @(reasoning/crossing-reads kb)]
+    (+ (count (:derived e)) (if (contains? e :marks) 1 0))))
 
 (caches/register-cache
  {:cache    :preservation-crossing
   :label    "Preservation crossing reads"
-  :scope    :process
-  :unit     "KBs"
-  :limit    (caches/limit-thunk :preservation-crossing crossing-reads-limit)
+  :scope    :kb
+  :unit     "derived values"
+  :limit    nil
   :counters nil
-  :note     (str "Per KB, the argument positions the declarations preserving along genl "
+  :note     (str "The argument positions the declarations preserving along genl "
                  "name and the commuting groups the stored marks state, which a genl edge "
-                 "reads to decide which preserved predicates it moves. An entry is re-read "
-                 "when a declaration functor's or a mark functor's posting moves. Past the "
-                 "limit it is cleared wholesale.")
-  :read     (fn [_] {:entries (count @crossing-reads)})
-  :clear    (fn [kb] (let [k (crossing-key kb)
-                           n (if (contains? @crossing-reads k) 1 0)]
-                       (swap! crossing-reads dissoc k)
-                       n))
-  :trim     (fn [_ target] (caches/trim-map! crossing-reads target))})
-
-(defn- store-crossing-read!
-  "Merge `f`'s result into `kb`'s `crossing-reads` entry, clearing the cache wholesale when a
-  new KB's entry would take it past its bound.  Stores nothing for a KB with no
-  `crossing-key`."
-  [kb f]
-  (when-let [k (crossing-key kb)]
-    (swap! crossing-reads
-           (fn [m]
-             (if (contains? m k)
-               (update m k f)
-               (caches/assoc-bounded m (caches/limit-of :preservation-crossing crossing-reads-limit)
-                                     k (f nil)))))))
+                 "reads to decide which preserved predicates it moves. The entry is re-read "
+                 "when a declaration functor's or a mark functor's posting moves. It holds "
+                 "the declaration index, the marks and one value per relation a "
+                 "declaration preserves along, so no limit bounds it.")
+  :read     (fn [kb] {:entries (crossing-values kb)})
+  :clear    (fn [kb] (let [n (crossing-values kb)]
+                       (reset! (reasoning/crossing-reads kb) nil)
+                       n))})
 
 (defn- declaration-postings
   "The declaration functors' postings, in `declaration-functors` order: two
@@ -1789,15 +1860,17 @@
   read and `compute` leaves an answer newer than its key, which the next read finds
   unequal and reads again."
   [kb decls k compute]
-  (let [e (get @crossing-reads (crossing-key kb))]
+  (let [a  (reasoning/crossing-reads kb)
+        tl (caches/tally-of a :R6)
+        e  @a]
     (if (and e (= decls (:decls e)) (contains? (:derived e) k))
-      (get-in e [:derived k])
-      (let [v (compute)]
-        (store-crossing-read! kb (fn [e]
-                                   (let [e (if (= decls (:decls e))
-                                             e
-                                             (-> e (assoc :decls decls) (dissoc :derived)))]
-                                     (assoc-in e [:derived k] v))))
+      (do (caches/hit tl) (get-in e [:derived k]))
+      (let [v (caches/recomputed tl (compute))]
+        (swap! a (fn [e]
+                   (let [e (if (= decls (:decls e))
+                             e
+                             (-> e (assoc :decls decls) (dissoc :derived)))]
+                     (assoc-in e [:derived k] v))))
         v))))
 
 (defn- positions-along
@@ -1834,18 +1907,22 @@
   [kb]
   (let [idx   (:index kb)
         posts (mapv #(reads/as-stored-with-functor idx %) permuting-marks)
-        e     (get @crossing-reads (crossing-key kb))]
+        a     (reasoning/crossing-reads kb)
+        tl    (caches/tally-of a :R6)
+        e     @a]
     (if (and e (contains? e :marks) (= posts (:read-under e)))
-      (:marks e)
+      (do (caches/hit tl) (:marks e))
       (let [recs  (:records kb)
-            marks (reduce (fn [m h]
-                            (let [sen (:sentence (p/get-sentex recs h))]
-                              (if-let [g (and (sequential? sen) (mark-group sen))]
-                                (update m (second sen) (fnil conj #{}) g)
-                                m)))
-                          {}
-                          (sequence cat posts))]
-        (store-crossing-read! kb #(assoc % :read-under posts :marks marks))
+            marks (caches/recomputed
+                   tl
+                   (reduce (fn [m h]
+                             (let [sen (:sentence (p/get-sentex recs h))]
+                               (if-let [g (and (sequential? sen) (mark-group sen))]
+                                 (update m (second sen) (fnil conj #{}) g)
+                                 m)))
+                           {}
+                           (sequence cat posts)))]
+        (swap! a assoc :read-under posts :marks marks)
         marks))))
 
 (defn- reach-positions
@@ -1994,6 +2071,34 @@
     (filter #(contains? in %) xs)
     (filter #(contains? xs %) (if (map? in) (keys in) in))))
 
+(defn declared-in
+  "The predicates the declarations stored in the contexts `ctxs` name, read per context off
+  the declaration functors' extents: a declaration stated elsewhere is not read."
+  [kb ctxs]
+  (let [idx (:index kb) recs (:records kb)]
+    (into #{}
+          (comp (mapcat #(reads/as-stored-with-functor-in idx % ctxs))
+                (keep #(p/get-sentex recs %))
+                (keep (fn [sxr] (let [pred (second (:sentence sxr))] (when (symbol? pred) pred)))))
+          declaration-functors)))
+
+(def ^:private rejoin-channels
+  "The channels of `moved-in` the re-join reads (`licensed-predicates`): those that can
+  license a claim for a goal and that no other re-join covers.  A channel absent here is
+  re-checked alone.  An `asymmetric` mark moves denials alone, and a permuting mark's
+  rules are `chain/permuting-rejoin-rules`'."
+  #{:claim :reach :declaration :transitive})
+
+(defn- channel-of
+  "The channel through which a sentence of functor `f` moves a predicate it does not
+  claim."
+  [f]
+  (cond (contains? declarations f) :declaration
+        (= 'transitive f)          :transitive
+        (= 'asymmetric f)          :asymmetric
+        (permuting-mark? f)        :permuting
+        :else                      :reach))
+
 (defn- moved-in
   "`moved-predicates` over the declarations indexed as `decl-index` indexes them, as
   `[claimed other]`: the predicates moved through the claim channel, and those moved
@@ -2005,35 +2110,33 @@
         f    (nm/functor body)
         arg1 (nth body 1 nil)]
     (when (symbol? f)
-      (cond
-        (contains? declarations f) [nil (when (symbol? arg1) #{arg1})]
+      (case (channel-of f)
+        :declaration [nil (when (symbol? arg1) #{arg1})]
         ;; the relations walked along it, and its own self relation
-        (= 'transitive f)          [nil (cond-> (into #{} (get by-r arg1))
-                                          (contains? by-p arg1) (conj arg1))]
+        :transitive  [nil (cond-> (into #{} (get by-r arg1))
+                            (contains? by-p arg1) (conj arg1))]
         ;; the mark binds its spec subtree, whose converses `converse-claim` reads
-        (= 'asymmetric f)          [nil (when (symbol? arg1)
-                                          (into #{} (among (tax/specs-global
-                                                            (reasoning/taxonomy kb) arg1)
-                                                           by-p)))]
+        :asymmetric  [nil (when (symbol? arg1)
+                            (into #{} (among (tax/specs-global (reasoning/taxonomy kb) arg1)
+                                             by-p)))]
         ;; the permutation is applied per fanned literal on its own mark, so a mark on
         ;; a sub-predicate moves every preserved super it feeds
-        (permuting-mark? f)        [nil (when (symbol? arg1)
-                                          (into #{} (among (tax/genls-global
-                                                            (reasoning/taxonomy kb) arg1)
-                                                           by-p)))]
-        :else (let [preds (tax/genls-global (reasoning/taxonomy kb) f)]
-                ;; a claim on P or on a sub-predicate of it
-                [(into #{} (among preds by-p))
-                 ;; a fact on a relation some P is preserved along
-                 (into #{}
-                       (mapcat (fn [r]
-                                 (let [ps (get by-r r)]
-                                   (if-some [crosses (when (and (= 'genl f) (= 'genl r)
-                                                                (some wanted ps))
-                                                       (crossing-claim? kb body))]
-                                     (into (set (among ps crosses)) (among ps joint))
-                                     ps))))
-                       (among preds by-r))])))))
+        :permuting   [nil (when (symbol? arg1)
+                            (into #{} (among (tax/genls-global (reasoning/taxonomy kb) arg1)
+                                             by-p)))]
+        :reach (let [preds (tax/genls-global (reasoning/taxonomy kb) f)]
+                 ;; a claim on P or on a sub-predicate of it
+                 [(into #{} (among preds by-p))
+                  ;; a fact on a relation some P is preserved along
+                  (into #{}
+                        (mapcat (fn [r]
+                                  (let [ps (get by-r r)]
+                                    (if-some [crosses (when (and (= 'genl f) (= 'genl r)
+                                                                 (some wanted ps))
+                                                        (crossing-claim? kb body))]
+                                      (into (set (among ps crosses)) (among ps joint))
+                                      ps))))
+                        (among preds by-r))])))))
 
 (defn channels-read-arguments?
   "Does `moved-channels`' answer for a sentence with functor `f` read its arguments?  True
@@ -2059,8 +2162,8 @@
 
   * for a membership `(S x)`, in either polarity, those separated from `S`, in `member`;
   * for a `genl` edge `sen` installs (`tax/installed-edges`) whose upper end is
-    `tax/separable?`, those separated from the upper end, and those at or below the
-    lower end;
+    `tax/separable?`, those separated from either end, and those at or below the lower
+    end;
   * for any other sentence that moves a separation, those at or below a type
     `tax/sentence-separation-ends` names.
 
@@ -2076,7 +2179,7 @@
             edges    (filter (fn [[_ b]] (tax/separable? tx b)) (tax/installed-edges body))
             ends     (tax/sentence-separation-ends tx body)]
         [(if unary? (set (sep-from f)) #{})
-         (cond-> (into #{} (mapcat (fn [[_ b]] (sep-from b))) edges)
+         (cond-> (into #{} (mapcat (fn [[a b]] (concat (sep-from a) (sep-from b)))) edges)
            (seq ends) (into (filter #(some ends (tax/genls-global tx %))) ps))]))))
 
 (defn separation-moved-predicates
@@ -2280,9 +2383,17 @@
                   (mapcat #(reads/as-stored-unary-with-arg-global idx %)
                           (get by-t 1 (into #{} cat (vals by-t)))))))))))
 
+(defn- index-of-decls
+  "The declarations `decls` indexed, or the stored ones for nil; nil for a `sen` of no shape."
+  [kb sen decls]
+  (when (and (sequential? sen) (seq sen))
+    (if decls
+      (memoized [:decl-index decls] #(decl-index decls))
+      (declaration-index kb))))
+
 (defn moved-predicates
-  "The preserved predicates whose licensed claims `sen` may have moved, over five
-  channels (docs/inherit.md, \"Forward chaining on a claim nobody stored\"):
+  "The preserved predicates whose verdicts `sen` may have moved, over five channels
+  (docs/inherit.md, \"Forward chaining on a claim nobody stored\"):
 
   * a claim on `P` or a sub-predicate of it;
   * a fact on a relation `R` some `P` is preserved along, a `genl` or `genlCx` edge
@@ -2293,35 +2404,104 @@
   * a membership of a type a separation holds apart from `P`, and a separation or `genl`
     edge that moves which types those are (`separation-moved`).
 
-  The reads are global and not belief-filtered: over-selecting costs a join that derives
-  what is already there.  The pairs are `declared`'s, indexed (`declaration-index`); a KB
+  The re-check reads all five and the re-join `rejoin-channels` alone, both globally
+  and as stored.  The pairs are `declared`'s, indexed (`declaration-index`); a KB
   that declares nothing pays two predicate-extent counts.  The three-argument form takes
   the `[P R]` pairs, for a caller asking per member of a settle's region under one
   `with-memo`; `wanted` names the predicates whose `genl` narrowing the caller acts on."
   ([kb sen] (moved-predicates kb sen nil any?))
   ([kb sen decls] (moved-predicates kb sen decls any?))
   ([kb sen decls wanted]
-   (if-let [di (when (and (sequential? sen) (seq sen))
-                 (if decls
-                   (memoized [:decl-index decls] #(decl-index decls))
-                   (declaration-index kb)))]
-     (let [[claimed other] (moved-in kb sen di wanted)]
-       (-> (set claimed)
-           (into other)
-           (into cat (separation-moved kb sen (keys (:by-p di))))))
+   (if-let [di (index-of-decls kb sen decls)]
+     (into #{} cat (concat (moved-in kb sen di wanted)
+                           (separation-moved kb sen (keys (:by-p di)))))
      #{})))
 
+(defn- licensed-predicates
+  "The preserved predicates whose claims for a goal `sen` may have moved, which are all a
+  forward join reads (`*contraries-set-aside*`): `rejoin-channels` of `moved-in`'s, with
+  a claim read in the positive polarity alone.  A channel that moves denials alone
+  belongs to `moved-predicates` and not here."
+  [kb sen wanted]
+  (let [claim? (and (contains? rejoin-channels :claim) (not= 'not (nm/functor sen)))
+        other? (contains? rejoin-channels
+                          (channel-of (nm/functor (or (sx/underlying-body sen) sen))))]
+    (if-let [di (when (or claim? other?) (index-of-decls kb sen nil))]
+      (let [[claimed other] (moved-in kb sen di wanted)]
+        (cond-> #{} claim? (into claimed) other? (into other)))
+      #{})))
+
+(defn antecedent-rules
+  "The rules with an antecedent on one of `preds`, stated in any context: placement
+  decides where a firing lands."
+  [kb preds]
+  (let [idx (:index kb)]
+    (into #{} (mapcat #(reads/as-stored-rules-by-antecedent-global idx %)) preds)))
+
+(defn preserving-rules
+  "The `antecedent-rules` of every preserved predicate, which `recover` asks again."
+  [kb]
+  (antecedent-rules kb (into #{} (map first) (preserved-pairs kb))))
+
+(defn deniable-in?
+  "Can something stored in the contexts `ctxs`, a set or `p/every-context`, deny a goal of
+  `pred`?  An `asymmetric` mark in any context can, as can a negative fact on a predicate
+  above or below `pred` and a fact of a type separated from it.  The read is as stored, for
+  no one reader: a superset of what any reader's `contraries` finds there."
+  [kb pred ctxs]
+  (let [idx (:index kb) tax (reasoning/taxonomy kb)]
+    (boolean
+     (or (seq (asymmetric-supporters kb pred))
+         (some #(pos? (long (reads/stored-count-denials-in idx % ctxs)))
+               (-> #{pred} (into (tax/genls-global tax pred)) (into (tax/specs-global tax pred))))
+         (some #(pos? (long (reads/stored-count-with-functor-in idx % ctxs)))
+               (separated-types kb pred))))))
+
+(defn contraries-in
+  "The sentences stored in the contexts `ctxs` that can deny a goal of `pred` over the
+  channels `deniable-in?` counts: the negative facts on `pred`, its `genls` and its
+  `specs`, and the facts of a type separated from it.  Nil when more than `limit` are
+  stored, or when an `asymmetric` mark makes a positive fact on `pred` a contrary too."
+  [kb pred ctxs limit]
+  (let [idx (:index kb) tax (reasoning/taxonomy kb)
+        dq  (-> #{pred} (into (tax/genls-global tax pred)) (into (tax/specs-global tax pred)))
+        ts  (separated-types kb pred)]
+    (when (and (empty? (asymmetric-supporters kb pred))
+               (<= (+ (transduce (map #(long (reads/stored-count-denials-in idx % ctxs))) + dq)
+                      (transduce (map #(long (reads/stored-count-with-functor-in idx % ctxs))) + ts))
+                   (long limit)))
+      (let [in     (when-not (= p/every-context ctxs) ctxs)
+            stored (comp (mapcat #(reads/as-stored-with-functor-in idx % in))
+                         (keep #(p/get-sentex (:records kb) %)))]
+        (-> []
+            (into (comp stored (filter sx/negative?) (map :sentence)) dq)
+            (into (comp stored (map :sentence)) ts))))))
+
+(defn deniable-predicates
+  "The preserved predicates something stored can deny (`deniable-in?`): those whose rules'
+  stored firings can owe a guard defeat."
+  [kb]
+  (with-memo
+    (into #{} (comp (map first) (distinct) (filter #(deniable-in? kb % p/every-context)))
+          (preserved-pairs kb))))
+
+(defn- rules-over
+  "The `antecedent-rules` of the predicates `(preds wanted)` answers, or nil."
+  [kb preds]
+  (let [rules-on (memoize #(antecedent-rules kb [%]))]
+    (not-empty (into #{} (mapcat rules-on) (preds #(seq (rules-on %)))))))
+
 (defn rejoin-rules
-  "The forward rules to re-join in full because `sen` moved what a preserved predicate
-  licenses (every rule with an antecedent on a `moved-predicates` member), or nil.  Keyed
-  on the antecedent index, since `(genl chihuahua dog)` moves a `typeLargerThan` antecedent
-  whose predicate no walk from `genl` reaches."
+  "The rules to re-join because `sen` moved what a preserved predicate licenses
+  (`licensed-predicates`)."
   [kb sen]
-  (let [idx      (:index kb)
-        rules-on (memoize #(reads/as-stored-rules-by-antecedent-global idx %))]
-    (when-let [ps (seq (moved-predicates kb sen nil #(seq (rules-on %))))]
-      (let [rs (into #{} (mapcat rules-on) ps)]
-        (when (seq rs) rs)))))
+  (rules-over kb #(licensed-predicates kb sen %)))
+
+(defn recheck-rules
+  "The rules whose firings to re-decide because `sen` moved a preserved predicate's
+  verdicts (`moved-predicates`)."
+  [kb sen]
+  (rules-over kb #(moved-predicates kb sen nil %)))
 
 (defn licensing-functors
   "The functors whose facts move what a preserved predicate `preds` accepts (a set, or a
@@ -2362,9 +2542,8 @@
   :holds-content? false
   :keyed-by :global :reads [:index :records]
   :retired-by {:stored :I :removed :I :respelled :I :caches-cleared :W :recover :W}
-  :computed :read :imaged? false :var #'crossing-reads
-  :value (fn [kb] (get @crossing-reads (crossing-key kb)))
-  :note "keyed by the KB's `:unrecovered` atom: re-read when the declaration postings or the mark postings are not equal"})
+  :computed :read :imaged? false :at [[:crossing-reads]]
+  :note "one entry per KB: re-read when the declaration postings or the mark postings are not equal"})
 
 ;; ---- a second route at a reader -----------------------------------------
 ;; A rule firing whose witness path a reader hides stands there when each goal it matched

@@ -102,7 +102,7 @@ answerable.
    (`special/inadmissible`): naming, the definitional constraints, well-formedness and
    edge stratification.  A sentence `assert` would refuse is not assumed, so abduction is
    not a way around the checks.
-4. **Not already contradicted**: no visible, believed `(not S)` where it would land.  A
+4. **Not already contradicted**: no `(not S)` believed where it would land.  A
    clash found *later* is arbitrated, because the hypothesis is `:default`; a clash visible
    at mint time refuses the hypothesis.  The read is `matches-visible`, so a negation
    stated in a context the asker cannot see does not block, as it would not block an

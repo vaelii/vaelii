@@ -139,7 +139,7 @@
     (doseq [[a b] '[[prt_m0 prt_dust] [prt_cat prt_ant] [prt_pebble prt_m6]]]
       (v/assert kb (list 'prtLarger a b) ctx)))
   (let [marks  (map #(hash-map ::special/preserving %) sentences)
-        rhs    (into #{} (mapcat #(inherit/rejoin-rules kb %)) sentences)
+        rhs    (into #{} (mapcat #(inherit/recheck-rules kb %)) sentences)
         queue  (fn [ms] (into {} (for [rh rhs] [rh (set ms)])))
         all    (recheck/exception-candidates kb (queue marks))
         each   (into #{} (mapcat #(recheck/exception-candidates kb (queue [%]))) marks)

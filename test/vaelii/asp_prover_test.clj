@@ -74,8 +74,8 @@
             P  (list pacifist nixon)
             nP (list 'not (list pacifist nixon))]
         (testing "the engine arbitrated nothing: both sides IN, no program"
-          (is (true? (v/in? kb pos)))
-          (is (true? (v/in? kb neg)))
+          (is (true? (v/believed? kb pos)))
+          (is (true? (v/believed? kb neg)))
           (is (nil? (v/last-program kb))))
         (testing "each side is bravely true (in some optimum)"
           (is (v/ask? kb (list 'bravely P)  'CxUniverse))
@@ -84,8 +84,8 @@
           (is (not (v/ask? kb (list 'cautiously P)  'CxUniverse)))
           (is (not (v/ask? kb (list 'cautiously nP) 'CxUniverse))))
         (testing "the read committed nothing — belief and reports are unchanged"
-          (is (true? (v/in? kb pos)))
-          (is (true? (v/in? kb neg)))
+          (is (true? (v/believed? kb pos)))
+          (is (true? (v/believed? kb neg)))
           (is (= 1 (count (v/contradictions kb))))
           (is (nil? (v/last-program kb))))))))
 
@@ -166,7 +166,7 @@
       (v/assert kb (list 'genlCx CxChild CxParent) 'CxUniverse)
       (v/assert kb (list glad Pat) CxParent)
       (v/assert kb (list 'not (list glad Pat)) CxChild {:strength :monotonic})
-      (is (v/in? kb (v/handle-of kb (list glad Pat) CxParent)))
+      (is (v/believed? kb (v/handle-of kb (list glad Pat) CxParent)))
       (doseq [m '[bravely cautiously]]
         (is (modal? kb m (list glad Pat) CxParent) (str m " in the parent"))
         (is (not (modal? kb m (list glad Pat) CxChild)) (str m " in the child"))
@@ -194,6 +194,21 @@
       (testing "monotonic background is in neither bracket"
         (is (not (contains? (:supportable cls) quaker)))
         (is (not (contains? (:true cls) quaker)))))))
+
+(deftest classify-local-classifies-only-a-datum-the-reader-believes
+  ;; A monotonic denial defeats the one-sided conclusion, which stays IN in the network.
+  (tu/with-neutral-kb [kb tu/fresh]
+    (let [{:keys [opposes opposes-form ethical]} (extended-nixon kb)
+          cx    (tu/tmp-ctx "Child")
+          deny  #(v/assert kb (list 'not opposes-form) % {:strength :monotonic})
+          class (fn [cls h] (some #(when (contains? (get cls %) h) %) [:true :supportable :false]))
+          read  #(mapv (partial class (apply label/classify-local kb %&)) [opposes ethical])]
+      (v/assert kb (list 'genlCx cx 'CxUniverse) 'CxUniverse)
+      (deny cx)
+      (is (= [:supportable :true] (read)) "its own context believes it")
+      (is (= [nil :true] (read cx)) "the denial defeats it in the child")
+      (deny 'CxUniverse)
+      (is (= [nil :true] (read))))))
 
 (defn- extended-nixon-reads
   "The brave/cautious reads over `extended-nixon`, which both classification paths owe: a
@@ -267,7 +282,7 @@
   (tu/with-neutral-kb [kb tu/fresh]
     (let [{:keys [ethical ethical-form pos neg]} (extended-nixon kb)]
       (testing "it answers an ordinary query"
-        (is (true? (v/in? kb ethical)))
+        (is (true? (v/believed? kb ethical)))
         (is (v/ask? kb ethical-form 'CxUniverse)))
       (testing "why explains it, deriving it from both dilemma sides"
         (let [tree  (tu/why-root kb ethical)
@@ -292,7 +307,7 @@
         (let [w-form (list weird n) w (v/handle-of kb w-form 'CxUniverse)
               cls    (label/classify-local kb)]
           (testing "it is believed — base belief holds both dilemma sides at once"
-            (is (v/in? kb w)))
+            (is (v/believed? kb w)))
           (testing "yet it is excluded, not merely credulous"
             (is (contains? (:false cls) w))
             (is (not (contains? (:supportable cls) w))))

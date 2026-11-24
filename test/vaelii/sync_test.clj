@@ -11,6 +11,7 @@
   makes them in both arrival orders, each over a KB of its own."
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
+            [clojure.walk :as walk]
             [vaelii.core :as v]
             [vaelii.host.seed :as seed]
             [vaelii.host.sync :as sync]
@@ -231,7 +232,7 @@
                           (is (true? (v/premise? kb h)) "as the premise the author stated")
                           (is (= {:added 0 :removed 0 :refused []} (sync/sync! kb @ships)))
                           (is (= h (v/handle-of kb binding 'CxUniverse)))
-                          (is (v/in? kb h))))))))
+                          (is (v/believed? kb h))))))))
 
 (deftest a-lifted-copy-of-a-data-context-fact-survives-the-sync
   ;; A fact of a predicate the author marks `decontextualized_predicate` alone, stated in a
@@ -249,7 +250,7 @@
                           (is (false? (v/premise? kb copy)) "the copy is no premise")
                           (is (= {:added 0 :removed 0 :refused []} (sync/sync! kb @ships)))
                           (is (= copy (v/handle-of kb fact 'CxUniverse)))
-                          (is (v/in? kb copy))))))))
+                          (is (v/believed? kb copy))))))))
 
 (deftest a-sentence-removed-from-a-shipped-file-is-retracted
   (let [gone (shipped-form 'CxUniverse plain-fact?)
@@ -404,6 +405,58 @@
                    (map #(dissoc % :premises) (:re-meanings r))))
             (is (= #{CxStore CxNew} (set (map :context (:premises (first (:re-meanings r)))))))))
         (is (= 0 (:rewritten (sync/rename! kb renames))) "a second run finds nothing to rewrite")
+        (finally (tu/clear-kb! kb))))))
+
+(def ^:private kinship-0-34-renames
+  "The kinship spellings 0.34.0 shipped and the ones this release ships in their place."
+  '{generic_kinship_predicate unqualified_kinship_predicate
+    BloodKinFn                GeneticKinFn
+    blood_kinship_predicate   genetic_kinship_predicate
+    bloodRelativeOf           geneticRelativeOf
+    bloodKinPredicateOf       geneticVersionOf
+    chosenKinPredicateOf      chosenVersionOf})
+
+(deftest a-store-written-under-0-34-has-its-kinship-spellings-rewritten
+  ;; each 0.34.0 kinship name in a stored premise is rewritten by the shipped renames
+  ;; files, with its arguments in place
+  (tu/with-terms [notes Tom Ann Bob kin CxStore]
+    (let [kb   (open-kb :kinship-0-34 (fn [_]))
+          old  [(list 'generic_kinship_predicate kin)
+                (list notes Tom '(BloodKinFn siblingOf))
+                (list 'blood_kinship_predicate kin)
+                (list 'bloodRelativeOf Ann Bob)
+                (list 'bloodKinPredicateOf 'siblingOf kin)
+                (list 'chosenKinPredicateOf 'siblingOf kin)]
+          held (fn [] (set (map v/sentence-of (v/sentexes-in-context kb CxStore))))]
+      (try
+        (doseq [s old] (v/assert kb s CxStore {:strength :monotonic}))
+        (let [r (sync/rename! kb)]
+          (is (= 6 (:rewritten r)))
+          (is (empty? (:refused r))))
+        (is (= (set (map #(walk/postwalk-replace kinship-0-34-renames %) old)) (held)))
+        (is (not-any? (fn [s] (some #(names? s %) (keys kinship-0-34-renames))) (held)))
+        (finally (tu/clear-kb! kb))))))
+
+(deftest a-0-34-birth-fact-under-the-old-genetic-reading-is-reported-ill-typed-after-the-renames
+  ;; 0.34.0 shipped a qualified reading of birthDate, birthYearOf and olderThan; this
+  ;; release ships them as eternal predicates, which no unqualified kinship predicate is.
+  ;; The renames rewrite the stored application's expression and refuse nothing, so the
+  ;; premise sweep is what reports the rewritten fact.
+  (tu/with-terms [Tom CxStore]
+    (let [kb (open-kb :kinship-0-34-birth tu/load-core!)]
+      (try
+        (v/assert kb '(unary_function BloodKinFn) 'CxUniverse)
+        (v/assert kb '(reifiable_function BloodKinFn) 'CxUniverse)
+        (v/assert kb (list '(BloodKinFn birthDate) Tom '(YearFn 1970)) CxStore {:strength :monotonic})
+        (is (empty? (filter #(= CxStore (:context %)) (tu/premise-wff-problems kb)))
+            "under the 0.34.0 spelling the sweep reads an application no declaration types")
+        (is (empty? (:refused (sync/rename! kb))))
+        (let [ps (filter #(= CxStore (:context %)) (tu/premise-wff-problems kb))]
+          (is (= [(list 'set/monotonic (list '(GeneticKinFn birthDate) Tom '(YearFn 1970)))]
+                 (map :form ps)))
+          (is (= [[[:arg-type 'eternal_predicate]]]
+                 (map (fn [p] (mapv (juxt :type :disjoint-with) (:problems p))) ps))
+              "birthDate is an eternal_predicate, disjoint from unqualified_kinship_predicate"))
         (finally (tu/clear-kb! kb))))))
 
 (deftest write-back-edits-one-line-per-premise

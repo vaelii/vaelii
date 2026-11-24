@@ -347,7 +347,7 @@
         (load! kb)
         (let [h (kb/find-sentex-handle kb (list parentOf B A) CxStory)]
           (is (some? h) "the written spelling is stored")
-          (is (not (v/in? kb h)) "and superseded by the merge, so no join finds it")
+          (is (not (v/believed? kb h)) "and superseded by the merge, so no join finds it")
           (is (seq (v/sentexes-matching kb (list grandparentOf B A) CxStory))
               "yet it still fires, joined against the spelling that replaced it"))))))
 

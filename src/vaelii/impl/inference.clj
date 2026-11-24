@@ -808,7 +808,7 @@
   ([kb goals context opts]
    (let [base   (tactics/strategy (get opts :strategy *strategy*))
          racers (get opts :racers default-racers)
-         live?  (or observe/*live* (observe/hold-owner?))]
+         live?  (or observe/*live* (observe/hold-owner? (:clock kb)))]
      (when-not (tactics/complete? base)
        (throw (ex-info (str "a portfolio races complete searches only — the strategy in"
                             " force sets :first-result? "

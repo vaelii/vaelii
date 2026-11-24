@@ -650,8 +650,8 @@ reached by binding one var and calling `chain/chain-all` unchanged. The network 
 which firings are new; the reference does everything else.
 
 **Belief is not baked into the memories.** A datum stays in its alpha memory when it is
-defeated or superseded; `in?` is consulted at read time exactly as `match-one` does. So
-a belief flip needs no memory update — the only structural mutations are a stored fact
+defeated or superseded. `jtms/in?` is consulted at read time exactly as `match-one` does,
+and the caller drops what its reader hides. So a belief flip needs no memory update — the only structural mutations are a stored fact
 arriving (`kb/create-sentex`) or leaving (`integrate/sentex-removed!`), routed to the
 network through the leaf `vaelii.impl.observe` extension point so no require cycle forms. Subtype and
 symmetric resolution also happen at read time over the live taxonomy, so a `genl` or
@@ -811,7 +811,7 @@ That cache is one of four fast paths on the placement path, with the `ensure-nod
 no-op skip (a node already present at a depth no higher moves neither the network nor the
 change clock, so the scoped caches a run reads stay warm), the single-context placement
 answer, and the run's held answers to whether an except reaches a support
-(`jtms/*reach-memo*`, [contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree));
+(`jtms/*reach-memo*`, [contexts.md](contexts.md#except-removing-belief-down-a-context-subtree));
 `observe/*chain-fast-paths*` is the one switch over all four, and binding it **false** runs
 the reference paths instead. Each is a pure cost decision that computes exactly what its
 reference computes, which is what `chain_fast_paths_test` compares (`jtms_locality_test`
@@ -1588,7 +1588,8 @@ computed from one state by definition, and what a step enables is picked up by t
 round and not mid-step. A join over one network keyed on the change clock alone would
 re-derive that network per solution and join half its bindings against a state the other
 half never saw. The scope is therefore never wider than the thing whose answer must come
-from one state. The change clock is global and coarse by design: a finer one would need a
+from one state. The change clock counts every write to one store, through any KB value open
+over it, and a fork's adds its base's. It is coarse by design: a finer one would need a
 judgement at each choke point about which caches a change concerns, which is the judgement
 that gets a cache wrong, so a clock-keyed reader re-derives more often than it must and
 never less.
@@ -2717,10 +2718,10 @@ Each of these datums re-joins the rules it moved, in full and not at a trigger p
 |---|---|---|
 | a permuting mark (`symmetric`, `commutative`, `commutativeInArgs`, `commutativeInArgAndRest`) | an antecedent on `P` or a super-predicate of it (`genls`, since the matcher asks whether any sub-predicate of the functor carries the mark) | `permuting-rejoin-rules` |
 | the `(transitive P)` declaration, or an edge of a declared walk (a fact on `P`, a sub-predicate, or an `inverse` partner) | an antecedent whose own functor is the declared one; over-approximating, since a re-join too many is a firing the TMS dedups and one too few depends on which hop arrived last | `transitive-rejoin-rules` |
-| a `genl` or `genlCx` edge, or a cover | an antecedent on the same relation (`special/closure-edge-relation`); a `genl` edge between symbols joins from the pairs it adds instead (`edge-closure-starts`) | `closure-rejoins` |
+| a `genl` or `genlCx` edge, or a cover | an antecedent on the same relation (`special/closure-edge-relation`); a `genl` edge or a cover whose `genl` pairs (`tax/installed-edges`) are between symbols joins from the pairs it adds instead (`edge-closure-starts`) | `closure-rejoins` |
 | a datum on a predicate a `SupportingProver` reads | `special/computed-reading-rules` | |
 | a datum on a lazy-forward rule's antecedent predicate, or the lazy rule itself | an antecedent on the functor the lazy rule concludes, and on through the lazy rules among those | `lazy-readers` |
-| a preservation declaration or its reach | `inherit/rejoin-rules` | |
+| a preservation declaration, a positive claim on a preserved predicate, or a move of its reach | an antecedent on a preserved `P` whose claims for a goal the datum can move (`inherit/rejoin-channels`); a datum that moves denials alone is re-checked and re-joins nothing | `inherit/rejoin-rules` |
 | a `(result F t)` or `(resultArg F n)` declaration, or a `(genl s t)` edge | an antecedent `(k (F a…))` over `F` with `k` at or above `t`, over `F` at any `k`, or with `k` at or above `t` | `result-type-rejoin-rules` |
 
 `bfn` is the functor of the sentence's underlying body, so a believed `(not (causes B C))`
@@ -2733,12 +2734,12 @@ already in canonical order is reached only by this re-join. `delta` is `planned-
 for the full join. A rule is re-joined only when forward-capable and believed, because the
 index posts on storage.
 
-Inside a chaining run every arm but the closure arm owes its re-join
+Inside a chaining run every full re-join but the closure arm's is owed
 (`chain/owe-computed-rejoins`): the rule gets one marker at the back of the agenda, and
 each datum that owes it before the marker runs shares that one join. n `genl` edges, each
 moving a rule on a predicate preserved along `genl`, cost one full join of the rule and
 not n (`lein perf`'s `preserved-reader-load`). The closure arm records its full joins per
-taxonomy generation (`chain/*closure-rejoins*`).
+taxonomy generation (`chain/*closure-rejoins*`). A join from bound starts runs at once.
 
 ## Deferred antecedents in a forward join
 
@@ -2849,8 +2850,9 @@ and each support element checked to be a handle as the answer is read. A prover 
 not implement it answers with an empty support, which is complete for a prover that reads
 nothing stored (`EvaluableProver`, `EvaluateProver`). `FactProver`, `SymmetricProver` and
 `InverseProver` read stored facts and name none of them (`provers/answers-with-support`),
-and the forward join drops an empty-support answer from a prover that is not a
-`SupportingProver` (`chain/solve-computed`).
+so the forward join asks a computed antecedent of the `SupportingProver`s alone
+(`chain/solve-computed`). A sole complete prover that does not implement
+`SupportingProver` leaves the antecedent unanswered there.
 
 Four things follow. The first three are the ones the qualitative and the inherited
 antecedents already get ([qcn.md](qcn.md), [inherit.md](inherit.md)):
@@ -2963,13 +2965,15 @@ which arrived first. The closure's answers are unioned with the matcher's, so a 
 pair is still a stated pair; both routes name the same one handle for a direct edge, and
 the TMS set-dedups the duplicate justification.
 
-A chain of more than one hop rests on the **declaration** too, since only `(transitive
-P)` makes two hops a pair, so the support names every believed statement of it the
-reading context sees. The walk is asked at the contexts holding a hop or a declaration
-and where two or more of those meet (`chain/transitive-contexts`), and placement reads
-the support's contexts: hops stated in one context and the declaration in another make
-the pair below both, and the hops' own context, which sees no declaration, walks
-nothing.
+A chain of more than one hop rests on the **declaration** too, since only `(transitive P)`
+makes two hops a pair. The walk answers the pair once per statement of it the reading
+context sees and believes, each statement a support of its own
+(`res/declaration-supports`). Retracting, defeating or excepting one of two statements
+therefore leaves the other's justification. A statement that arrives or returns to belief
+re-joins the rule. The walk is asked at the contexts holding a hop or a declaration and
+where two or more of those meet (`chain/transitive-contexts`), and placement reads the
+support's contexts: hops stated in one context and the declaration in another make the
+pair below both, and the hops' own context, which sees no declaration, walks nothing.
 
 Only the **bounded** arms answer here, exactly as they do for a plain ask: an antecedent
 with both ends open contributes nothing from the walk (the closure is quadratic in a

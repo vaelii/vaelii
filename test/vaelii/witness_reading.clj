@@ -99,7 +99,7 @@
               (if (= f rel) (update-in m [a b] (fnil conj #{}) h) m)
               m))
           {}
-          (reads/believed-with-functor kb rel)))
+          (reads/in-with-functor kb rel)))
 
 (defn- witness-paths
   "The witness edges of `j` joined into paths, one per reachability the firing rests on,

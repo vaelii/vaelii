@@ -36,6 +36,8 @@
 #                 derived-state register row, or a reason in its allowlist
 #   - doc-size    docstring lines past the 8th and comment lines per file, against
 #                 the per-file budget in scripts/doc-size-baseline.txt
+#   - perf-owed   scripts/test_perf_owed.py, the tests of the selector behind
+#                 `lein perf --owed` and `lein gate`'s perf owed lines
 #
 #   lein lint               # the clean report
 #   VERBOSE=1 lein lint     # also dump each check's full output, pass or fail
@@ -255,7 +257,7 @@ kondo_version_note() {
 #
 #   A  cljfmt, reflect                              ~30s
 #   B  kondo, unused                                ~25s
-#   C  the other nine                               ~30s
+#   C  the other ten                                ~30s
 #
 # Wall clock is the longest lane's, where a serial run's was the sum.  A lane that
 # outgrows the other two is the signal to rebalance.
@@ -294,12 +296,13 @@ lane_c() {
   check prose      -- prose_check
   check derived    -- python3 scripts/check-derived-state.py
   check doc-size   -- python3 scripts/check-doc-size.py
+  check perf-owed  -- python3 scripts/test_perf_owed.py
 }
 
 # The order the report reads in, which is NOT a lane's order: rows print here,
 # each waiting for its own lane to reach it.
 readonly -a CHECKS=(glossary versions links drift conflicts
-                    kondo cljfmt shellcheck reflect unused prose derived doc-size)
+                    kondo cljfmt shellcheck reflect unused prose derived doc-size perf-owed)
 
 lint_run() {
   printf '%slint%s\n' "$BOLD" "$RST"

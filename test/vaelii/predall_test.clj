@@ -800,7 +800,7 @@
     (tu/with-terms [hasPet person pet likes food]
       (let [h (v/assert kb (list 'predAllSpecified hasPet person pet) 'CxUniverse)]
         (is (= :inert (:reason (v/why-not kb (list 'predAllSpecified hasPet person pet) 'CxUniverse))))
-        (is (false? (v/in? kb h))))
+        (is (false? (v/believed? kb h))))
       (v/assert kb (list 'predAllSpecified likes food) 'CxUniverse)
       (let [report (predall/all-specified-violations kb 'CxUniverse)]
         (is (= {:status :gap :gap :legacy-ternary-declaration
@@ -1314,7 +1314,7 @@
                  (specified-result kb functor notes item_kind CxSibling)))
           (v/retract! kb except))
         (let [denial (v/assert kb (list 'not declaration) CxDefined {:strength :monotonic})]
-          (is (not (v/in? kb handle)) "the default declaration is defeated, not erased")
+          (is (not (v/believed? kb handle)) "the default declaration is defeated, not erased")
           (is (= {:status :audited :violations #{}}
                  (specified-result kb functor notes item_kind CxChild)))
           (v/retract! kb denial))

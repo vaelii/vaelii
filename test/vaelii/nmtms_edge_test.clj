@@ -133,6 +133,6 @@
         (v/retract! kb bird-h)
         (testing "the conclusion is gone with its support — swept, not merely defeated"
           (is (empty? (v/sentexes-matching kb (list flies sky) 'CxUniverse)))
-          (is (not (v/in? kb flies-h)))
+          (is (not (v/believed? kb flies-h)))
           (is (nil? (v/sentex kb flies-h)))                          ; physically removed
           (is (empty? (v/conflicts kb))))))))

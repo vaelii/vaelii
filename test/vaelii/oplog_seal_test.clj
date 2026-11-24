@@ -61,7 +61,7 @@
   "Handle -> believed?, over every sentex `kb`'s records hold."
   [kb]
   (into (sorted-map)
-        (map (fn [h] [h (v/in? kb h)]))
+        (map (fn [h] [h (v/believed? kb h)]))
         (p/sentex-ids (oplog/inner-records (:records kb)))))
 
 (defn- log-path ^String [dir] (str dir "/oplog/ops.log"))
@@ -334,7 +334,7 @@
             (try
               (is (:restored r))
               (is (zero? (long (:frames r))) "every write is in the images the close wrote")
-              (is (v/in? (:kb r) h))
+              (is (v/believed? (:kb r) h))
               (finally (v/close! (or (:kb r) kb))))))
         (finally (tu/rm-rf! a))))))
 
@@ -554,7 +554,7 @@
           (try
             (is (= {:restored true :frames 0} (opened kb)))
             (is (= :tick (oplog/fsync-mode (:oplog kb))))
-            (is (v/in? kb h))
+            (is (v/believed? kb h))
             (finally (v/close! kb))))
         (finally (tu/rm-rf! a))))))
 

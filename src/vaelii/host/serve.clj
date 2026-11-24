@@ -389,6 +389,26 @@
                          "the directory")
    (v/export! kb dir opts)))
 
+(defn- served-answer-sets
+  "`v/answer-sets` with its `:time-limit` held under the clock ceiling, `config/max-query-ms`
+  rounded up to whole seconds.  An absent limit is the ceiling, and a larger one or `0`,
+  which lifts the limit, is refused (`:over-ceiling`).  The ASP limit counts seconds, and
+  `search-bounds` holds `:max-ms` alone, so this op holds its own."
+  ([kb context] (served-answer-sets kb context nil))
+  ([kb context opts]
+   (let [ms      (config/max-query-ms)
+         ceiling (long (Math/ceil (/ ms 1000.0)))
+         v       (when (map? opts) (:time-limit opts))]
+     (when (and (pos? ms) (number? v) (or (zero? v) (> v ceiling)))
+       (throw (ex-info (str "op :answer-sets :time-limit " v " is over this daemon's ceiling of "
+                            ceiling " s — a request may name a smaller limit and not a larger"
+                            " one or none, since every op runs on the single writer")
+                       {:type :over-ceiling :op :answer-sets :option :time-limit :requested v
+                        :ceiling ceiling})))
+     (v/answer-sets kb context (cond-> opts
+                                 (and (pos? ms) (nil? v) (or (nil? opts) (map? opts)))
+                                 (assoc :time-limit ceiling))))))
+
 (def ops
   "The reachable operations, keyed by op keyword: reads, writes and introspection, the
   working set a remote caller needs.  A `vaelii.core` fn that takes a KB is either a row here
@@ -438,7 +458,6 @@
     :ask?         (op v/ask?)
     :prove        (op v/prove)
     :provable?    (op v/provable?)
-    :in?          (op v/in?)
     :believed?    (op v/believed?)
     :belief-status (op v/belief-status)
     :believed     (op v/believed)
@@ -548,6 +567,7 @@
     :count-with-arg        (op v/count-with-arg)
     :count-with-functor    (op v/count-with-functor)
     :stored-first-args     (op v/stored-first-args)
+    :stored-lengths        (op v/stored-lengths)
     :disjoint-metatypes    (op v/disjoint-metatypes)
     :metatype-members      (op v/metatype-members)
     :separating-covers     (op v/separating-covers)
@@ -564,6 +584,8 @@
     :possible-relations    (op v/possible-relations)
     :qualitative-scenario  (op v/qualitative-scenario)
     :qualitative-scenarios (op v/qualitative-scenarios)
+    :sign-reading          (op v/sign-reading)
+    :answer-sets           (op served-answer-sets)
     ;; what this process is holding beside the store, and the one control that drops it.
     ;; The clear is a write in the HTTP sense and in no other: it destroys no knowledge,
     ;; moves no belief, and is the instrument that makes a hit rate mean something

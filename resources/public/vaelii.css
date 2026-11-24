@@ -105,6 +105,11 @@
   --g-sub:      #3f7fd9;
   --g-disjoint: #c08a00;
 
+  /* the proof drawing's two sentence kinds: violet for a stated sentence, as the tree's
+     premise pill, and green for a derived one, as its IN pill */
+  --g-stated:   #ac92ec;
+  --g-derived:  #48cfad;
+
   /* derived from --accent (+ mode), so a palette change ripples automatically: the
      wordmark and the selected-card tint/edge follow the hue. */
   --brand:    var(--accent);
@@ -158,6 +163,7 @@
     --btn-bg:#ecece4; --btn-hover:#e0e0d6; --shadow:rgba(0,0,0,.18);
     --belief-bg:#faf7f2; --err-bg:#fdeceb; --err-ink:#c0392b;
     --t-var:#8b8f99; --g-sub:#1661c0; --g-disjoint:#b97800;
+    --g-stated:#4b20b6; --g-derived:#0a7d5a;
     --rb1:#c21527; --rb2:#d32704; --rb3:#d69900; --rb4:#6da72f; --rb5:#2daa8a;
     --rb6:#1893be; --rb7:#1661c0; --rb8:#4b20b6; --rb9:#b91d75;
     --accent: var(--lt-accent); --accent-2: var(--lt-accent-2);
@@ -172,6 +178,7 @@
   --btn-bg:#ecece4; --btn-hover:#e0e0d6; --shadow:rgba(0,0,0,.18);
   --belief-bg:#faf7f2; --err-bg:#fdeceb; --err-ink:#c0392b;
   --t-var:#8b8f99; --g-sub:#1661c0; --g-disjoint:#b97800;
+  --g-stated:#4b20b6; --g-derived:#0a7d5a;
   --rb1:#c21527; --rb2:#d32704; --rb3:#d69900; --rb4:#6da72f; --rb5:#2daa8a;
   --rb6:#1893be; --rb7:#1661c0; --rb8:#4b20b6; --rb9:#b91d75;
   --accent: var(--lt-accent); --accent-2: var(--lt-accent-2);
@@ -1431,6 +1438,10 @@ ul.why summary:focus-visible { outline: 2px solid var(--accent); outline-offset:
              column-gap: 1rem; row-gap: .2rem; margin: .3rem 0 1rem; }
 .def-parts dt { color: var(--muted); }
 .def-parts dd { margin: 0; overflow-wrap: anywhere; }
+/* the siblings past the first few, folded inline behind "+ N more" */
+.def-parts .sib-more { display: inline; }
+.def-parts .sib-more > summary { display: inline; cursor: pointer; color: var(--muted); }
+.def-parts .sib-more[open] > summary { display: none; }
 
 /* ---- redesign: collapsible proof, sticky/overflow safety --------------- */
 
@@ -1473,20 +1484,55 @@ ul.why > li .tag       { white-space: nowrap; }
 /* the <a> wraps the <g>, so the hover comes from outside in */
 a:hover > .g-node .g-box { fill: var(--btn-hover); }
 
-.g-edge line { stroke: var(--muted); stroke-width: 1.2; fill: none; }
-.g-edge.g-genlCx line { stroke-dasharray: 5 3; }
+/* an edge is a <line>, or a <polyline> where it bends around a box */
+.g-edge polyline, .g-edge line { stroke: var(--muted); stroke-width: 1.2; fill: none; }
+.g-edge.g-genlCx polyline, .g-edge.g-genlCx line { stroke-dasharray: 5 3; }
+.g-edge.g-genl polyline, .g-edge.g-genlCx polyline,
 .g-edge.g-genl line, .g-edge.g-genlCx line { stroke: var(--g-sub); }
-.g-edge.g-rel-disjoint line { stroke: var(--g-disjoint); }
+.g-edge.g-rel-disjoint polyline, .g-edge.g-rel-disjoint line { stroke: var(--g-disjoint); }
 .g-arrowhead { fill: var(--muted); }
 .g-arrowhead.g-sub      { fill: var(--g-sub); }
 .g-arrowhead.g-disjoint { fill: var(--g-disjoint); }
-/* a cover group under the centre: a frame behind its subtypes, the kind in its foot */
+/* a cover group under the centre: a frame behind its subtypes, the kind left of them */
 .g-frame { fill: none; stroke: var(--muted); stroke-width: 1; }
-/* the label sits under the boxes, where edges from the row below cross it: a ground-
-   coloured halo keeps the text readable over a line */
 .g-frame-label { font-size: var(--g-edge); fill: var(--muted);
-                 font-family: var(--mono); font-size-adjust: var(--x-height);
-                 paint-order: stroke; stroke: var(--bg); stroke-width: 3px;
-                 stroke-linejoin: round; }
+                 font-family: var(--mono); font-size-adjust: var(--x-height); }
 .g-edge-label { font-size: var(--g-edge); fill: var(--muted);
                 font-family: var(--mono); font-size-adjust: var(--x-height); }
+
+/* the proof drawing (a why page): a sentence's kind is its colour, a justification is an
+   ink box on the code background, and what is not believed or not supporting is dashed */
+.g-node.g-stated  { color: var(--g-stated); }
+.g-node.g-derived { color: var(--g-derived); }
+.g-node.g-rule    { color: var(--ink); }
+.g-node.g-rule .g-box { fill: var(--code-bg); }
+.g-node.g-out, .g-node.g-blocked { color: var(--muted); }
+.g-node.g-out .g-box, .g-node.g-blocked .g-box,
+.g-edge.g-blocked polyline, .g-edge.g-blocked line { stroke-dasharray: 4 3; }
+/* a slanted edge runs through its own label: a stroke in the page background behind the
+   text keeps the label readable */
+.g-edge.g-blocked .g-edge-label { paint-order: stroke; stroke: var(--bg); stroke-width: 3px;
+                                  stroke-linejoin: round; }
+
+/* the vantage drawing (/vantage): a context is a card in its role colour, and each stored
+   match it sees is a row in the proof drawing's colours, dashed where it is not believed */
+.g-row            { color: var(--muted); }
+.g-row.g-stated   { color: var(--g-stated); }
+.g-row.g-derived  { color: var(--g-derived); }
+.g-row-box        { fill: var(--card); stroke: currentColor; stroke-width: 1; }
+.g-row.g-out .g-row-box { stroke-dasharray: 4 3; }
+a:hover > .g-row .g-row-box { fill: var(--btn-hover); }
+.g-row-note { font-size: var(--g-edge); fill: var(--muted);
+              font-family: var(--mono); font-size-adjust: var(--x-height); }
+
+/* the network drawing (/network): a pair or a term the network names unsatisfiable is
+   dashed in the disjoint colour */
+.g-edge.g-unsat polyline, .g-edge.g-unsat line { stroke: var(--g-disjoint); stroke-dasharray: 5 3; }
+.g-edge.g-unsat .g-edge-label { fill: var(--g-disjoint); }
+.g-node.g-unsat .g-box { stroke: var(--g-disjoint); stroke-dasharray: 5 3; }
+/* the frame round an inconsistent network, and its label, in the same colour */
+.g-frame.g-unsat { stroke: var(--g-disjoint); stroke-dasharray: 5 3; }
+.g-frame-label.g-unsat { fill: var(--g-disjoint); }
+
+/* the timeline (/network): a term's bar or tick is its box filled in its role colour */
+.g-node.g-mark .g-box { fill: currentColor; fill-opacity: .35; }

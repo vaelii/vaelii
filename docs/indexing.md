@@ -159,7 +159,7 @@ three are revivable and belief lives in the JTMS. That is not an omission to wor
 half the engine wants the stored reading — but it does mean every read of a posting carries
 a question, so the reads are not made against `vaelii.impl.protocols` directly. They go
 through `vaelii.impl.reads`, whose entry point names say which answer the caller wanted:
-`as-stored-…` and `stored-count-…` take the index store, `believed-…` takes the KB.
+`as-stored-…` and `stored-count-…` take the index store, `in-…` takes the KB.
 `lein lint`'s **E16** lists the implementers — this namespace, `columnar`, the disk
 snapshot, `kb` and `resolution`, and the dump — and fails a raw read anywhere else
 ([nmtms.md](nmtms.md#belief-filtering-is-a-namespace-boundary)).

@@ -36,6 +36,7 @@ SCRIPTS=(
   scripts/lint-conflict-markers.sh
   scripts/check-reflection.sh
   scripts/asp-namespaces.sh
+  scripts/ci-perf-plan.sh
   scripts/ci-shard.sh
   scripts/ci-weights.sh
   scripts/check-breaking-siblings.sh
@@ -50,6 +51,7 @@ SCRIPTS=(
   scripts/test-full-kb.sh
   scripts/test-selector.sh
   scripts/test-shuffle.sh
+  scripts/lib/failed-selectors.sh
   scripts/lib/ns-timings.sh
   scripts/lib/revision.sh
   scripts/lib/runlog.sh

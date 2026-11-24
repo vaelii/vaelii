@@ -351,7 +351,7 @@
                   "no equality is derived from two :default fillers")
               (is (not (merged? kb ThingOne ThingTwo))
                   "so the two fillers stay apart")
-              (is (true? (v/in? kb neg))
+              (is (true? (v/believed? kb neg))
                   "the asserted difference is believed: no equality stands beside it")
               (is (= [:default :default]
                      [(v/defeat-class kb one) (v/defeat-class kb two)])

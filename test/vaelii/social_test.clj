@@ -3,7 +3,7 @@
 (ns vaelii.social-test
   "CxSocial's general relationship and dwelling vocabulary: kinOf,
   romanticPartnerOf, coworkerOf and roommateOf, each a spec of knows or
-  friendOf except kinOf, which reads knows by default; originatorOf, read from blood-qualified parenthood;
+  friendOf except kinOf, which reads knows by default; originatorOf, read from genetic parenthood;
   relationshipLabel, a perspectival label; and dwelling/dwellsIn, whose
   co-dwelling rule derives roommateOf. CxSocial is a starter theory, so CxWell
   sees all of it with no opt-in step."
@@ -37,13 +37,13 @@
   (doseq [t '[building vehicle]]
     (is (= :orthogonal (v/subsumption-status tu/*kb* 'dwelling t 'CxWell)) (str "dwelling and " t))))
 
-(tu/deftest-kb originatorof-is-read-from-blood-parenthood
+(tu/deftest-kb originatorof-is-read-from-genetic-parenthood
   (tu/with-terms [Parent Child]
     (v/assert kb (list 'plant Parent) 'CxWell)
     (v/assert kb (list 'plant Child) 'CxWell)
     (v/assert kb (list 'parentOf Parent Child) 'CxWell)
     (is (not (holds-query (list 'originatorOf Parent Child) 'CxWell)))
-    (v/assert kb (list (list 'BloodKinFn 'parentOf) Parent Child) 'CxWell)
+    (v/assert kb (list (list 'GeneticKinFn 'parentOf) Parent Child) 'CxWell)
     (is (holds-query (list 'originatorOf Parent Child) 'CxWell))
     (is (not (holds-query (list 'person Parent) 'CxWell)))
     (is (not (holds-query (list 'person Child) 'CxWell)))))

@@ -14,10 +14,10 @@
       randomized assert/retract stream compared after *every* operation.  The reference
       is rebuilt from the surviving claims each step, so an incremental path that fails
       to re-join, or re-joins what it should not, diverges at the operation that caused
-      it.  The **justifications** are compared as well, projected to the conclusion,
-      the rule and the strength: their antecedent lists differ by construction — a
-      materialized claim rests on itself, an inherited one on the claim, the
-      declaration and the reach edges — and that difference is the whole feature.
+      it.  The **justifications** are compared too, projected to the conclusion, the
+      rule and the strength, `:default` for an inherited firing (`inherited-shapes`).
+      Their antecedent lists differ by construction: a materialized claim rests on
+      itself, an inherited one on the claim, the declaration and the reach edges.
 
     * **order** — the same content in eight orders, from nothing each time, must reach
       the identical derived set *and* the identical justifications, antecedent sets
@@ -32,8 +32,10 @@
             [clojure.test :refer [deftest is testing]]
             [clojure.walk :as walk]
             [vaelii.core :as v]
+            [vaelii.impl.jtms :as jtms]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (def ^:private ctx 'CxUniverse)
@@ -68,17 +70,27 @@
   (into #{} (map :sentence) (v/sentexes-matching kb (list pred '?x '?y) ctx)))
 
 (defn- firing-shapes
-  "Every justification as `[rule-sentence conclusion strength]` — what was concluded,
-  by which rule, at what class.  The antecedent list is left out, because the two KBs
-  of the first oracle are *meant* to disagree about it."
-  [kb]
-  (into #{}
-        (keep (fn [id]
-                (when-let [d (p/get-justification (:records kb) id)]
-                  [(first (sx-content kb (:informant d)))
-                   (first (sx-content kb (:consequence d)))
-                   (:strength d)])))
-        (p/justification-ids (:records kb))))
+  "Every justification whose id `keep?` takes (all by default) as `[rule-sentence
+  conclusion strength]` — what was concluded, by which rule, at what class.  The
+  antecedent list is left out, because the two KBs of the first oracle are *meant* to
+  disagree about it."
+  ([kb] (firing-shapes kb any?))
+  ([kb keep?]
+   (into #{}
+         (keep (fn [id]
+                 (when-let [d (and (keep? id) (p/get-justification (:records kb) id))]
+                   [(first (sx-content kb (:informant d)))
+                    (first (sx-content kb (:consequence d)))
+                    (:strength d)])))
+         (p/justification-ids (:records kb)))))
+
+(defn- inherited-shapes
+  "`firing-shapes` of the materialized `kb` as the preserving KB draws them: a firing on
+  a tuple the set of pairs `stated` does not hold rests on an inherited claim, and
+  confers `:default` (docs/inherit.md, \"Strict versus typical\")."
+  [kb stated]
+  (into #{} (map (fn [[r c s]] [r c (if (stated (vec (rest c))) s :default)]))
+        (firing-shapes kb)))
 
 (defn- firing-content
   "The same with the antecedent sets, which the *order* oracle does compare: one
@@ -92,16 +104,6 @@
                    (first (sx-content kb (:consequence d)))
                    (:strength d)])))
         (p/justification-ids (:records kb))))
-
-(defn- shuffled
-  "A permutation of `xs` from `rng` — `clojure.core/shuffle` reads a global source, and
-  a randomized oracle that cannot be replayed from its seed is not one."
-  [xs ^java.util.Random rng]
-  (let [a (java.util.ArrayList. ^java.util.Collection (vec xs))]
-    (java.util.Collections/shuffle a rng)
-    (vec a)))
-
-;; ---- oracle 1: one general claim against every claim it licenses --------
 
 (defn- build!
   "The two chains and the forward rule; the declarations too, when `preserving?`."
@@ -155,9 +157,16 @@
                            "\n  only preserved:    "
                            (pr-str (set/difference (derived-content pres con)
                                                    (derived-content mat con)))))
-                  (is (= (firing-shapes mat) (firing-shapes pres))
-                      (str "step " step ": the same conclusions, drawn by a different "
-                           "rule or at a different strength"))
+                  (let [blocked (set (jtms/blocked (reasoning/tms pres)))
+                        want    (inherited-shapes mat claims')
+                        got     (firing-shapes pres (complement blocked))]
+                    (is (= want got)
+                        (str "step " step ": the same conclusions, drawn by a different "
+                             "rule or at a different strength\n  only materialized: "
+                             (pr-str (set/difference want got))
+                             "\n  only preserved:    " (pr-str (set/difference got want))))
+                    (is (every? (fn [[_ c]] (claims' (vec (rest c)))) (firing-shapes pres blocked))
+                        (str "step " step ": a blocked firing is on a tuple no claim states")))
                   (finally (tu/clear-kb! mat))))
               (recur (inc step) claims'))))
         (testing "the stream reached something — an oracle over two empty KBs proves nothing"
@@ -194,7 +203,7 @@
                         (doseq [s order] (v/assert k s ctx))
                         {:derived (derived-content k con) :because (firing-content k)}
                         (finally (tu/clear-kb! k)))))
-          runs    (mapv (fn [_] (go (shuffled content rng))) (range 8))]
+          runs    (mapv (fn [_] (go (tu/shuffled rng content))) (range 8))]
       (testing "the content derived something, and not the two pairs it withholds"
         (is (< 1 (count (:derived (first runs)))))
         (is (not (contains? (:derived (first runs)) (list con (nth as 1) (nth bs 1))))

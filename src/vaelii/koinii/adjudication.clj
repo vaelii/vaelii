@@ -79,7 +79,7 @@
   "The default policy's core move: announce every not-yet-announced dispute `channel`
   observes and record it `notified`.  For each `:open` dispute (`pending-disputes`), record
   a `notified` mark (`open -> notified`) and push the entry to `*notify-sink*`.  Changes NO
-  belief: both sides stay `in?` at `:default`.  **Fires once per dispute**: the stored mark
+  belief: both sides stay believed at `:default`.  **Fires once per dispute**: the stored mark
   is the idempotency key, so a redelivery or a catch-up re-run does not re-push it.  Returns
   the disputes newly notified."
   [kb channel]

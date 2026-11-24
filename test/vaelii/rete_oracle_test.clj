@@ -121,7 +121,7 @@
   (into #{} (keep #(sx-content kb %)) (p/sentex-ids (:records kb))))
 
 (defn believed-content [kb]
-  (into #{} (comp (filter #(v/in? kb %)) (keep #(sx-content kb %)))
+  (into #{} (comp (filter #(v/believed? kb %)) (keep #(sx-content kb %)))
         (p/sentex-ids (:records kb))))
 
 (defn justification-content [kb]

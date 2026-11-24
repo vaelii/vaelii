@@ -557,7 +557,7 @@
              (= :store-mark operation) (primitive-mark-evidence kb event)
              (= :reifiable-use operation)
              (for [h (tax/prop-supporters (reasoning/taxonomy kb) :reifiable (:function event))
-                   :when (res/supporter-believed? kb h reader)]
+                   :when (res/supporter-unhidden? kb h reader)]
                (evidence #{h} #{h} #{}))
              (= :modal-use operation)
              (for [h (tax/prop-supporters (reasoning/taxonomy kb) :modal (:predicate event))

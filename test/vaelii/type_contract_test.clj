@@ -379,7 +379,7 @@
   with a changelog entry, since callers discriminate on it (CONTRIBUTING.md §3.8)."
   #{:already-loaded :anti-symmetric :anti-transitive :arg-constraint-kind :arg-genl
     :arg-position :arg-type :arg-variable :argument-family-ceiling :arity :asymmetric :bad-algebra :bad-arg
-    :bad-args :bad-batch :bad-cursor :bad-foreign-manifest :bad-handle :bad-host
+    :bad-args :bad-batch :bad-cursor :bad-directive :bad-foreign-manifest :bad-handle :bad-host
     :bad-level :bad-pattern :bad-registrant :bad-reply
     :bad-snapshot :bad-table-entry :bad-token-table :backup-failed :base-is-overlay :belief-built :body-too-large
     :budget-exhausted :canonical-mismatch
@@ -475,6 +475,7 @@
    :bad-arg                 #{:arg :value}
    :bad-args                #{:op}
    :bad-cursor              #{:cursor :token}
+   :bad-directive           #{:directive :file :line :mismatch}
    :bad-foreign-manifest    #{:url}
    :bad-handle              #{}
    :bad-level               #{}
@@ -586,7 +587,9 @@
   a prose list is a hand-kept list too. `:bad-table-entry` is raised at namespace load and its
   caller is the build: the value is read by whoever is looking at the failure, so the
   vocabulary is frozen here and not spelled out in a table cell forty rows long."
-  {:bad-table-entry
+  {:bad-directive
+   #{:bad-value :conflict :cycle :misplaced :unknown-key}
+   :bad-table-entry
    #{:arbitrable :blank-exemption :blank-title :cached :checked :clash-check :duplicate-name
      :duplicate-reading :duplicate-title :enumeration :exempt-and-listed
      :family-lane :family-list :illegal-pair :image-axis :implication :inert :no-arm

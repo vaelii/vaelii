@@ -106,6 +106,16 @@
   (second (reduce (fn [a b] (if (neg? (long (compare (first a) (first b)))) a b))
                   (map (fn [t] [(term-key t) t]) terms))))
 
+(defn- class-min
+  "The member of an equality class `terms` that stands for it: the `term-min` of the
+  members that are no reified constant, else of all of them.  A constant is preferred
+  over a `nat/` or `cx/` constant whatever their names, so a placeholder merged with a
+  constant is spelled as the constant (docs/equality.md, \"Choosing the
+  representative\").  A function of the member set alone, so the arrival order of the
+  edges never moves it."
+  [terms]
+  (term-min (or (seq (remove nm/reified-constant? terms)) terms)))
+
 (defn- reach
   "Reflexive-transitive reachable set from `start` over adjacency `adj`: `graph/reach-all` from
   one node."
@@ -338,47 +348,58 @@
   (supporters-of @tax k))
 
 (defn create-taxonomy
-  "A KB's taxonomy: one atom holding the cached relations, plus a watch bumping
-  `observe/note-change` on every write.  `detached-copy` carries no watch.  The side atoms
-  need none (docs/taxonomy.md, \"Side atoms, probe copies and symmetric entries\")."
-  []
-  (doto
-   (atom {:genl (empty-relation) :genlCx (empty-relation)
-          :equality (empty-equality)
-          :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
-          :sibling-disjoint #{} :sib-exception-index {}
-          :covers {} :cover-parts {} :partitions #{}
-          :props {} :compound-targets #{}
-          :rewrite-view-consumers {:gen 0 :antecedents #{} :watched #{}}
-          :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
-          :cache-dirty #{} :cache-ctxs {}
-          ;; The supporter cache (`supporters-of`), over the index's supporter families
-          :supporters empty-supporters
-          ;; the index store the supporter families are posted to and read from (`post!`); a raw taxonomy holds a private one
-          :index (private-index) :raw? true
-          ;; two read-only callbacks a KB installs: whether any supporter needs exception-aware scoping, and whether one is effective from a reader; a raw taxonomy keeps the context-only path
-          :supporter-filter-active? nil :supporter-visible? nil
-          :network-filter-active? nil :network-visible? nil :supporter-reaches? nil
-          :supporter-sentence nil
-          ;; how many times `clear-relations!` rebuilt the relations, whose `:gen`s it
-          ;; restarts at 0 (`relation-epoch`)
-          :epoch 0
-          ;; oriented schematic rewrite rules (docs/equality.md): `:rewrite-support` by equation handle, `:rewrite-active` the believed subset `refresh-beliefs` keeps in sync
-          :rewrite-support {} :rewrite-active {}
-          ;; side atom of memoized reads beside the closures (see docs/taxonomy.md, "Side atoms, probe copies and symmetric entries")
-          :closure-memo (caches/tallied (atom {}) [:T7])
-          ;; the closures, global and scoped, in one weighted LRU keyed with the relation's `:gen`; a scope reading supporter belief also carries the change clock (`relation-scope`)
-          :closure-lru (closure-lru)
-          ;; the content-ordered rewrite rules (`rewrite-rules`), keyed by the map object they sorted
-          :rewrite-order (atom nil)})
-    ;; the value a write replaces is also the open write record's value for this atom,
-    ;; the first time a write since the record opened replaces one (`before-copy`)
-    (add-watch ::change (fn [_ r old new]
-                          (observe/note-change)
-                          (when-let [^java.util.concurrent.atomic.AtomicLong n
-                                     (:nodes (:closure-lru new))]
-                            (.set n (relation-nodes new)))
-                          (when observe/*write-record* (observe/record-of r (constantly old)))))))
+  "A KB's taxonomy: one atom holding the cached relations, plus a watch bumping `clock`,
+  the KB's change clock (`observe/note-change`), on every write; with no `clock`, one of
+  its own.  `:clock` holds it.  `detached-copy` carries no watch.  The side atoms need
+  none (docs/taxonomy.md, \"Side atoms, probe copies and symmetric entries\")."
+  ([] (create-taxonomy (observe/new-clock)))
+  ([clock]
+   (doto
+    (atom {:genl (empty-relation) :genlCx (empty-relation)
+           :equality (empty-equality)
+           :disjoint #{} :disjoint-index {} :disjoint-metatypes #{} :metatype-members {}
+           :sibling-disjoint #{} :sib-exception-index {}
+           :covers {} :cover-parts {} :partitions #{}
+           :props {} :compound-targets #{}
+           :rewrite-view-consumers {:gen 0 :antecedents #{} :watched #{}}
+           :inverse {} :negates {} :genl-inverse-down {} :genl-inverse-up {} :arity {} :functional-in-arg {} :commuting {} :meet {} :distinct {}
+           :cache-dirty #{} :cache-ctxs {}
+           ;; The supporter cache (`supporters-of`), over the index's supporter families
+           :supporters empty-supporters
+           ;; the index store the supporter families are posted to and read from (`post!`); a raw taxonomy holds a private one
+           :index (private-index) :raw? true
+           ;; two read-only callbacks a KB installs: whether any supporter needs exception-aware scoping, and whether one is effective from a reader; a raw taxonomy keeps the context-only path
+           :supporter-filter-active? nil :supporter-visible? nil
+           :network-filter-active? nil :network-visible? nil :supporter-reaches? nil
+           :edge-visible? nil :network-edge-visible? nil :supporter-sentence nil
+           ;; how many times `clear-relations!` rebuilt the relations, whose `:gen`s it
+           ;; restarts at 0 (`relation-epoch`)
+           :epoch 0
+           ;; oriented schematic rewrite rules (docs/equality.md): `:rewrite-support` by equation handle, `:rewrite-active` the believed subset `refresh-beliefs` keeps in sync
+           :rewrite-support {} :rewrite-active {}
+           ;; side atom of memoized reads beside the closures (see docs/taxonomy.md, "Side atoms, probe copies and symmetric entries")
+           :closure-memo (caches/tallied (atom {}) [:T7])
+           ;; the closures, global and scoped, in one weighted LRU keyed with the relation's `:gen`; a scope reading supporter belief also carries the change clock (`relation-scope`)
+           :closure-lru (closure-lru)
+           ;; the content-ordered rewrite rules (`rewrite-rules`), keyed by the map object they sorted
+           :rewrite-order (atom nil)
+           :clock clock})
+     ;; the value a write replaces is also the open write record's value for this atom,
+     ;; the first time a write since the record opened replaces one (`before-copy`)
+     (add-watch ::change (fn [_ r old new]
+                           (observe/note-change clock)
+                           (when-let [^java.util.concurrent.atomic.AtomicLong n
+                                      (:nodes (:closure-lru new))]
+                             (.set n (relation-nodes new)))
+                           (when observe/*write-record* (observe/record-of r (constantly old))))))))
+
+(def ^:dynamic *edge-stage*
+  "True while a read answers for a `genlCx` supporter: inside the scoped `genlCx` walk,
+  whose supporter callbacks bind it (`install-supporter-visibility!`), and inside
+  `exc/staged`'s read of one.  Such a read takes its excepts and defeats from the unscoped
+  ancestor set (`context-up-global`), since the scoped one (`context-up`) is what those
+  excepts decide."
+  false)
 
 (defn install-supporter-visibility!
   "Install the KB-owned visibility callbacks on `tax`.  `active?` is the O(1) whole-KB
@@ -387,15 +408,17 @@
   means every relation).  `reaches?` answers whether a supporter of the relation being read
   rests on a target, given the entries, a `supporter-summary` and whether placed defeats
   count (they do not for `genlCx`).  `visible?` answers whether one stored supporter
-  handle is believed and seen from one reader context.  `network-active?` and
+  handle is IN and hidden by no except or defeat at one reader context.  `network-active?` and
   `network-visible?` read the network and stored `except`s alone (`*network-belief*`).
   `sentence-of` answers the sentence a supporter handle states, for `most-general-of`.
   The taxonomy stays independent of the JTMS and exception grammar."
   ([tax active? visible?] (install-supporter-visibility! tax active? visible? active? visible? nil nil))
   ([tax active? visible? network-active? network-visible? reaches? sentence-of]
-   (swap! tax assoc :supporter-filter-active? active? :supporter-visible? visible?
-          :network-filter-active? network-active? :network-visible? network-visible?
-          :supporter-reaches? reaches? :supporter-sentence sentence-of)
+   (let [at-edge (fn [f] (fn [handle context] (binding [*edge-stage* true] (f handle context))))]
+     (swap! tax assoc :supporter-filter-active? active? :supporter-visible? visible?
+            :network-filter-active? network-active? :network-visible? network-visible?
+            :edge-visible? (at-edge visible?) :network-edge-visible? (at-edge network-visible?)
+            :supporter-reaches? reaches? :supporter-sentence sentence-of))
    tax))
 
 (defn install-index!
@@ -716,6 +739,16 @@
   [context]
   (and (symbol? context) (not (.startsWith (name context) "?"))))
 
+(def own-reading
+  "The `context` argument of a read that names no context: it reads each supporter at the
+  context it is stored in (`own-scope`), as `believed?` with no context reads a handle."
+  ::own)
+
+(defn own-reading?
+  "Is `context` `own-reading`?"
+  [context]
+  (identical? own-reading context))
+
 (def ^:dynamic *visible-neighbours-cache*
   "An optional atom holding a `{[dir-key vis n] neighbours}` map for a read-only pass
   over a still taxonomy, bound and dropped by the pass.  It also holds the other reads a
@@ -760,10 +793,11 @@
   false)
 
 (def ^:dynamic *search*
-  "nil outside a second-route search (`exc/route-answer`), else `:belief` while the search
-  answers a belief read and `:visibility` otherwise.  A scope that reads supporter belief
-  carries the value in its key, as the effective ancestor set does, so a walk inside a
-  search and one outside it never share a memo entry."
+  "nil outside a second-route search (`exc/route-answer`), else `:withdrawn` while the
+  search answers a withdrawal read (`exc/withdrawn-fn`) and `:belief` while it answers a
+  belief read.  A scope that reads supporter belief carries the value in its key, as the
+  effective ancestor set does, so a walk inside a search and one outside it never share a
+  memo entry."
   nil)
 
 (defn- entries-fn
@@ -772,13 +806,17 @@
   (if *network-belief* (:network-filter-active? t) (:supporter-filter-active? t)))
 
 (defn- visible-fn
-  "The supporter callback the reading in force reads (`*network-belief*`)."
-  [t]
-  (if *network-belief* (:network-visible? t) (:supporter-visible? t)))
+  "The supporter callback the reading in force reads (`*network-belief*`), for `rel-key`:
+  a `genlCx` supporter's binds `*edge-stage*`."
+  ([t] (visible-fn t nil))
+  ([t rel-key]
+   (if (= rel-key :genlCx)
+     (if *network-belief* (:network-edge-visible? t) (:edge-visible? t))
+     (if *network-belief* (:network-visible? t) (:supporter-visible? t)))))
 
 (defn- supporter-filter-active?
   "Does this KB currently need supporter-level filtering anywhere?  This is the whole-KB
-  presence check: true once any visibility `except`, or for a reader's belief any placed `defeat`, is
+  presence check: true once any `except`, or for a reader's belief any placed `defeat`, is
   stored, whatever it targets."
   [t]
   (boolean (when-let [active? (entries-fn t)] (active?))))
@@ -793,16 +831,16 @@
 (defn- relation-filter-active?
   "Does a scoped read of `rel-key` need supporter-level exception filtering: does some
   supporter of it, or of `genlCx`, rest on the target of a stored `except` or placed
-  `defeat` (the reach callback, `install-supporter-visibility!`)?  A supporter no except
-  targets is visible from a reader iff it is believed, so the context-only walk answers
-  the same.  Memoized per relation in the closure memo, keyed by the change clock and both
+  `defeat` (the reach callback, `install-supporter-visibility!`)?  Where none does, a
+  supporter is believed at a reader iff it is IN and stored in a context the reader sees,
+  which the active edges and `:edge-ctxs` record, so the context-only walk answers the same.  Memoized per relation in the closure memo, keyed by the change clock and both
   relations' generations."
   [t rel-key]
   (when-let [active? (entries-fn t)]
     (let [cx     (:genlCx t)
           rel    (get t rel-key)
           slot   (if *network-belief* :filter-active-network :filter-active)
-          under  [(observe/change-clock) (:gen cx) (:gen rel)]
+          under  [(observe/change-clock (:clock t)) (:gen cx) (:gen rel)]
           memo   (:closure-memo t)
           tl     (caches/tally-of memo :T7)
           cached (get-in @memo [rel-key slot])]
@@ -825,6 +863,18 @@
                               (assoc mm rel-key (assoc e slot {:read-under under :active? active})))))
               active)))))))
 
+(defn context-filter-active?
+  "Does an `except` reach a `genlCx` supporter (`relation-filter-active?`)?  While none
+  does, every context's scoped ancestor set (`context-up`) is its unscoped one
+  (`context-up-global`)."
+  [tax]
+  (boolean (relation-filter-active? @tax :genlCx)))
+
+(defn context-supporter?
+  "Does stored handle `h` install a `genlCx` edge?"
+  [tax h]
+  (boolean (some #(of-relation? :genlCx %) (keys-of @tax h))))
+
 (defn- scope-admits-supporter?
   "Does `scope` admit supporter `[handle context]`?
 
@@ -835,7 +885,23 @@
   (and (or (nil? supporter-context)
            (nil? contexts)
            (contains? contexts supporter-context))
-       (supporter-visible? handle context)))
+       (if (own-reading? context)
+         (or (nil? supporter-context) (supporter-visible? handle supporter-context))
+         (supporter-visible? handle context))))
+
+(defn- own-scope
+  "The scope of `own-reading` over `rel-key`: every asserting context, each supporter read
+  at its own (`scope-admits-supporter?`).  Nil while no `except` or placed `defeat`
+  reaches the relation (`relation-filter-active?`), when every IN supporter is believed
+  at its own context and the global walk answers the same."
+  [tax rel-key]
+  (let [t @tax]
+    (when (relation-filter-active? t rel-key)
+      {:contexts nil
+       :context own-reading
+       :supporter-visible? (visible-fn t rel-key)
+       :search *search*
+       :clock (observe/change-clock (:clock t))})))
 
 (defn- relation-scope
   "The scoped-read key for `rel-key` from `context`, or nil for the global fast path.
@@ -844,32 +910,34 @@
   exception-filtered ancestor set, the concrete reader, the reading (`*network-belief*`'s
   callback, `*search*`) and the change clock.  Held for a reading pass (`pass-held`)."
   [tax rel-key context]
-  (when (scoped-context? context)
-    (pass-held
-     [::scope rel-key context *network-belief* *search*]
-     #(let [t   @tax
-            ;; An exception on genlCx changes the assertion contexts a reader inherits.  genlCx
-            ;; starts from the raw ancestor set, so an edge's visibility reads no genlCx edge's
-            ;; visibility (`exc/witness-paths`); every other relation uses the effective set.
-            active? (relation-filter-active? t rel-key)
-            vis (cond
-                  ;; genlCx declarations are forced into CxUniverse and therefore
-                  ;; globally visible as declarations. Their *edges* can still be
-                  ;; excepted per reader, but assertion-context filtering must never
-                  ;; turn the whole context hierarchy off.
-                  (= rel-key :genlCx) nil
-                  ;; the scope below carries the reader, so its key is per reader whatever
-                  ;; the set, and a supporter's context is in `up(K) ∩ ctxs` iff it is in
-                  ;; `up(K)`: the exception-filtered ancestor set is the whole filter
-                  active?             (context-up tax context)
-                  :else               (visible-ctxs tax rel-key context))]
-        (if active?
-          {:contexts vis
-           :context context
-           :supporter-visible? (visible-fn t)
-           :search *search*
-           :clock (observe/change-clock)}
-          vis)))))
+  (if (own-reading? context)
+    (own-scope tax rel-key)
+    (when (scoped-context? context)
+      (pass-held
+       [::scope rel-key context *network-belief* *search*]
+       #(let [t   @tax
+              ;; An exception on genlCx changes the assertion contexts a reader inherits.  genlCx
+              ;; starts from the raw ancestor set, so an edge's visibility reads no genlCx edge's
+              ;; visibility (`exc/witness-paths`); every other relation uses the effective set.
+              active? (relation-filter-active? t rel-key)
+              vis (cond
+                    ;; genlCx declarations are forced into CxUniverse and therefore
+                    ;; globally visible as declarations. Their *edges* can still be
+                    ;; excepted per reader, but assertion-context filtering must never
+                    ;; turn the whole context hierarchy off.
+                    (= rel-key :genlCx) nil
+                    ;; the scope below carries the reader, so its key is per reader whatever
+                    ;; the set, and a supporter's context is in `up(K) ∩ ctxs` iff it is in
+                    ;; `up(K)`: the exception-filtered ancestor set is the whole filter
+                    active?             (context-up tax context)
+                    :else               (visible-ctxs tax rel-key context))]
+          (if active?
+            {:contexts vis
+             :context context
+             :supporter-visible? (visible-fn t rel-key)
+             :search *search*
+             :clock (observe/change-clock (:clock t))}
+            vis))))))
 
 (defn read-scope
   "The scope a read of `rel-key` from `context` walks under (`relation-scope`), as a key:
@@ -889,7 +957,7 @@
   (when (scoped-context? context)
     (let [t     @tax
           gen   (:gen (get t rel-key))
-          under [(observe/change-clock) (:gen (:genlCx t))]
+          under [(observe/change-clock (:clock t)) (:gen (:genlCx t))]
           memo  (:closure-memo t)
           m     @memo
           cur   (when (= gen (get-in m [rel-key :gen])) (get m rel-key))
@@ -975,7 +1043,7 @@
   "`closure-of` over only the edges effective in `scope`, memoized in the same LRU under
   the interned scope key and the relation's `:gen`.  The answer is a subset of
   `closure-of`'s.  A set scope that sees every context the global closure rests on reads
-  the global closure (`closure-needs`); a map scope (`except` visibility) always walks."
+  the global closure (`closure-needs`); a map scope (a supporter filter) always walks."
   [tax rel-key dir-key node scope]
   (or (when (set? scope)
         (let [r (closure-needs tax rel-key dir-key node)]
@@ -1999,7 +2067,8 @@
   "The representative of a class, from its members and the preference claims its active
   edges carry (docs/equality.md, \"Choosing the representative\"): the smallest head, a
   preferred term nothing deprecates; else, for a `rewriteOf` cycle `wff` refuses, the
-  smallest preferred term; else the smallest member.  Total."
+  smallest preferred term; else the smallest member.  Each smallest is `class-min`'s, a
+  constant before a reified constant.  Total."
   [rel members]
   (let [ps        (into #{}
                         (mapcat (fn [m] (mapcat #(get (:edge-prefs rel) % #{})
@@ -2007,7 +2076,7 @@
                         members)
         preferred (into #{} (map first) ps)
         heads     (set/difference preferred (into #{} (map second) ps))]
-    (term-min (cond (seq heads) heads (seq preferred) preferred :else members))))
+    (class-min (cond (seq heads) heads (seq preferred) preferred :else members))))
 
 (defn- install-class
   "Install `members` as one class under its freshly-computed representative, dropping
@@ -2249,7 +2318,7 @@
                      members)
             preferred (into #{} (map first) ps)
             heads     (set/difference preferred (into #{} (map second) ps))]
-        [members (term-min (cond (seq heads) heads (seq preferred) preferred :else members))]))))
+        [members (class-min (cond (seq heads) heads (seq preferred) preferred :else members))]))))
 
 (defn scoped-path-supporters
   "The supporters of one path joining `a` and `b` over the equality edges some supporter
@@ -2372,7 +2441,7 @@
 
 (defn- edge-pref-claims
   "The `[preferred dispreferred]` rewriteOf claims on edge `e` — all of them unscoped,
-  only the believed and visible ones under `visible?`.  A `sameAs` / `equals`-only edge
+  only the ones `visible?` admits.  A `sameAs` / `equals`-only edge
   yields none, since its supporters name no preference (`pref-pair` returns nil)."
   [rel e visible?]
   (if-not visible?
@@ -2386,8 +2455,9 @@
 (defn spelling-representative
   "`term`'s representative over the `rewriteOf` edges alone, a `sameAs` / `equals` merge
   not followed: the mention read `res/representative-term` takes inside a quoted
-  position.  Elected by `class-rep`'s rule over the `rewriteOf`-connected component; a
-  term no `rewriteOf` touches is returned unchanged.  With `visible?`, only the believed
+  position.  Elected by `class-rep`'s rule over the `rewriteOf`-connected component, a
+  constant before a reified constant (`class-min`); a term no `rewriteOf` touches is
+  returned unchanged.  With `visible?`, only the believed
   edges that reader admits count."
   ([tax term] (spelling-representative tax term nil))
   ([tax term visible?]
@@ -2402,8 +2472,8 @@
          (let [preferred  (into #{} (map first) claims)
                deprecated (into #{} (map second) claims)
                heads      (set/difference preferred deprecated)]
-           (cond (seq heads)     (term-min heads)
-                 (seq preferred) (term-min preferred)
+           (cond (seq heads)     (class-min heads)
+                 (seq preferred) (class-min preferred)
                  :else           term)))))))
 
 (defn equality-edges [tax] (get-in @tax [:equality :edges] #{}))
@@ -2525,7 +2595,7 @@
 
 (defn refresh-beliefs
   "Reconcile the cached relations with current belief: an edge or flat-cache entry is
-  active iff some sentex asserting it is believed.  Called after a relabel (from
+  active iff some sentex asserting it is IN (`believed?`, `jtms/in?` at both callers).  Called after a relabel (from
   `settle`).  `moved` is the set of handles whose belief just flipped (`jtms/touched`, a
   superset): the two transitive relations and the flat caches scope by it (`moved-keys`);
   the equality partition and rewrite rules run a presence check (`moved-touches?`).  `nil`
@@ -2694,15 +2764,24 @@
     nil))
 
 (defn- cache-entry-visible?
-  "Does flat-cache entry `k` have a believed supporter visible from `context`?
+  "Does flat-cache entry `k` have a supporter believed at `context`?
 
   Without exceptions, a context-set intersection is sufficient.  With exception
   filtering active, each supporter is checked individually: the exception-aware
   context ancestor set handles excepted genlCx links and the KB callback handles belief
   plus exceptions targeting the declaration itself."
   [tax k context]
-  (if-not (scoped-context? context)
+  (cond
+    (own-reading? context)
+    (let [t @tax]
+      (or (not (supporter-filter-active? t))
+          (let [vis? (visible-fn t)]
+            (boolean (some (fn [[h c]] (or (nil? c) (vis? h c))) (supporters-of t k))))))
+
+    (not (scoped-context? context))
     true
+
+    :else
     (let [t @tax]
       (if (supporter-filter-active? t)
         (let [scope (supporter-scope tax t context)]
@@ -2713,9 +2792,9 @@
                        (closure-of tax :genlCx :fwd context))))))
 (defn types
   "Every type currently in the genl hierarchy — the nodes of the closure, i.e. every
-  type named by some believed `genl` edge.  With a `context`, only a node touched by
-  an edge visible from it counts: the same visibility `genl?` and `disjoint?` read,
-  applied to every edge instead of to one pair's walk."
+  type named by some `genl` edge the network holds IN, a defeated one included.  With a
+  `context`, only a node touched by an edge visible from it counts: the same visibility
+  `genl?` and `disjoint?` read, applied to every edge instead of to one pair's walk."
   ([tax] (get-in @tax [:genl :nodes] #{}))
   ([tax context]
    (let [rel   (:genl @tax)
@@ -2855,7 +2934,7 @@
   context in the set `ctxs`, with no belief callback.  A predicate `genl` edge is forced
   monotonic, so for a predicate this is `genls` from a reader whose ancestor set is
   `ctxs`.  It reads no belief, so a caller that must not re-enter the supporter callback
-  (`res/supporter-believed?`) reads it in place of a scoped `genls`."
+  (`res/supporter-unhidden?`) reads it in place of a scoped `genls`."
   [tax t ctxs]
   (closure-of-vis tax :genl :fwd t ctxs))
 
@@ -3361,7 +3440,7 @@
   from `context`: the intersection of the members' `genls`.  Reflexive, as `genls` is, so
   a member above all the others is in the set, and one type's common genls are its
   `genls`.  A set; `#{}` for an empty `types`.  One memoized up-closure read per distinct
-  member.  A nil `context` reads every active edge, as `common-genls-global` does."
+  member.  A nil `context` reads every active edge."
   [tax types context]
   (common-closure #(genls tax % context) types))
 
@@ -3400,26 +3479,6 @@
   direction."
   [tax types context]
   (minimal-common max-specs max-types common-specs tax types context))
-
-(defn common-genls-global
-  "`common-genls` through **every** active edge — no context scope."
-  [tax types]
-  (common-genls tax types nil))
-
-(defn common-specs-global
-  "`common-specs` through **every** active edge — no context scope."
-  [tax types]
-  (common-specs tax types nil))
-
-(defn min-common-genls-global
-  "`min-common-genls` through **every** active edge — no context scope."
-  [tax types]
-  (min-common-genls tax types nil))
-
-(defn max-common-specs-global
-  "`max-common-specs` through **every** active edge — no context scope."
-  [tax types]
-  (max-common-specs tax types nil))
 
 (defn specs-of-all
   "The union of `specs` over every node in `nodes`, walked once with one `seen`.
@@ -3515,15 +3574,16 @@
   identifies it); nil `vis` is the unscoped read where every asserting context is visible.
   Held for a reading pass (`pass-held`)."
   [t rel-key [a b :as e] scope]
-  (pass-held
-   [::supporters rel-key e scope]
-   #(into [] (filter (let [live (get-in t [rel-key :edge-ctxs e] #{})]
-                       (fn [[h c]]
-                         (if (map? scope)
-                           (scope-admits-supporter? scope h c)
-                           (and (contains? live c)
-                                (or (nil? scope) (nil? c) (scope c)))))))
-          (supporters-of t [rel-key a b]))))
+  (let [read #(let [live (or (-> t (get rel-key) (get :edge-ctxs) (get e)) #{})]
+                (reduce-kv (fn [acc h c]
+                             (if (if (map? scope)
+                                   (scope-admits-supporter? scope h c)
+                                   (and (contains? live c)
+                                        (or (nil? scope) (nil? c) (scope c))))
+                               (conj acc (clojure.lang.MapEntry/create h c))
+                               acc))
+                           [] (supporters-of t [rel-key a b])))]
+    (if *visible-neighbours-cache* (pass-held [::supporters rel-key e scope] read) (read))))
 
 (defn genl-edge-supporters
   "The handles of the believed supporters of `genl` edge `[sub super]` a reader at
@@ -3720,10 +3780,10 @@
 (defn- reach-support*
   "`reach-support`'s walk.  The six- and seven-argument arities call it directly rather
   than one another through the var, so a walk is one call to either of them.  Given a
-  `router` (a HashMap), the walk reads the edge ranks, the edge witnesses and the route
-  lengths (`routed-witness-path`) held there per relation, scope, threshold and target, so the
-  walks one caller asks under one supporter-class reading enter each type once per
-  target; a route through a cycle falls back to `bfs-witness-path`."
+  `router` (a HashMap), the walk reads the sorted neighbours, the edge ranks, the edge
+  witnesses and the route lengths (`routed-witness-path`) held there per relation, scope,
+  threshold and target, so the walks one caller asks under one supporter-class reading enter
+  each type once per target; a route through a cycle falls back to `bfs-witness-path`."
   [tax rel-key sub super context supporter-class thresholds ^java.util.HashMap router]
   (cond
     (= sub super) []
@@ -3736,18 +3796,21 @@
           ;; nil `vis` is the unscoped walk — every asserting context is visible, so
           ;; the plain adjacency *is* the visible one, exactly as in `genls`
           adj (if (nil? scope) #(get (:fwd rel) %) #(visible-neighbours t rel-key :fwd scope %))
+          held    (fn [k make] (or (.get router k) (let [v (make)] (.put router k v) v)))
           ;; `nm/print-key` keeps a node that is not a symbol (a NAT) sortable and prints it with the
           ;; bounds released, so an ambient `*print-length*` cannot reorder the adjacency the
-          ;; witness path rests on.  Built once per adjacency.
-          nbrs (fn [n] (pass-held [::sorted rel-key scope n]
-                                  #(nm/sort-by-content-key nm/print-key compare (adj n))))
+          ;; witness path rests on.  Built once per adjacency, and once per router given one.
+          sorted #(nm/sort-by-content-key nm/print-key compare (adj %))
+          nbrs (if router
+                 (let [^java.util.HashMap by (held [::sorted rel-key scope] #(java.util.HashMap.))]
+                   (fn [n] (or (.get by n) (caches/held-if-settled #(sorted n) #(do (.put by n %) %)))))
+                 (fn [n] (pass-held [::sorted rel-key scope n] #(sorted n))))
           ;; the walk enters only types above `sub`, since a scoped adjacency is a subset of the
           ;; global one: a walk down from `super` through `sub`'s global ancestors enters exactly
           ;; those with a path to `super`
           reaches? (delay (let [up      (closure-of tax rel-key :fwd sub)
                                 between (closure-while tax rel-key :rev super #(contains? up %))]
                             #(contains? between %)))
-          held    (fn [k make] (or (.get router k) (let [v (make)] (.put router k v) v)))
           target  (when router (delay (reaches-target tax rel-key super)))
           walk    (fn [threshold admit? witness]
                     (let [r (when router
@@ -4203,7 +4266,7 @@
               :else             (recur (conj acc n) (into (pop todo) (up1 n))))
         acc))))
 
-(defn- reader-classes
+(defn reader-classes
   "The reader classes under `sub` (the contexts in `under`, `sub`'s global descendant set),
   as a sorted map from each class's key to its representative reader.  A reader's key is
   the set of contexts of `except-ctxs` in its global ancestor set; readers with one key read
@@ -4355,7 +4418,7 @@
       raw
       (let [rel  (:genlCx t)
             gen  (:gen rel)
-            clock (observe/change-clock)
+            clock (observe/change-clock (:clock t))
             memo (:closure-memo t)
             m    @memo
             cur  (when (= gen (get-in m [:genlCx :gen])) (get m :genlCx))
@@ -4753,12 +4816,12 @@
   every edge (`genls-global`)."
   [tax t context]
   (cond (set? context)            (genls-asserted-in tax t context)
-        (scoped-context? context) (genls tax t context)
+        (or (scoped-context? context) (own-reading? context)) (genls tax t context)
         :else                     (genls-global tax t)))
 
 (defn- entry-visible-at?
   "Does flat-cache entry `k` have a supporter `context` reads: stated in an ancestor set,
-  with no belief callback, or believed and visible from a concrete context
+  with no belief callback, or believed at a concrete context
   (`cache-entry-visible?`)."
   [tax k context]
   (if (set? context)
@@ -4776,12 +4839,19 @@
       (empty? idx)
       (constantly false)
 
-      (or (set? context) (scoped-context? context))
+      (or (set? context) (scoped-context? context) (own-reading? context))
       (fn [x y] (and (contains? (get idx x) y)
                      (entry-visible-at? tax [:sib-exception (hash-set x y)] context)))
 
       :else
       (fn [x y] (contains? (get idx x) y)))))
+
+(defn sib-exception-supporters
+  "The stored supporters of a `siblingDisjointException` over the pair `x`, `y`, as
+  `{handle context}`, for a caller that reads each one's belief itself."
+  [tax x y]
+  (when (contains? (get (:sib-exception-index @tax) x) y)
+    (supporters-of @tax [:sib-exception (hash-set x y)])))
 
 (defn sib-exceptions?
   "Is any `siblingDisjointException` stored?"
@@ -4950,7 +5020,8 @@
         terms (separable-terms tax sep)
         scope (when (seq terms)
                 (cond (set? context)            context
-                      (scoped-context? context) (relation-scope tax :genl context)))
+                      (or (scoped-context? context) (own-reading? context))
+                      (relation-scope tax :genl context)))
         t     @tax
         rel   (:genl t)
         lru   (:closure-lru t)
@@ -4994,7 +5065,7 @@
   `separating-partners` read the one frame so they cannot disagree.  A nil, variable or
   unscoped `context` gives constantly-true visibility predicates that take no key."
   [tax a context]
-  (let [scoped? (or (set? context) (scoped-context? context))
+  (let [scoped? (or (set? context) (scoped-context? context) (own-reading? context))
         ;; `a`'s supertypes cut to the separable ones: every arm but the sibling arm's
         ;; chain asks only whether a separable type is among them
         as      (if scoped? (separable-genls-at tax a context) (separable-genls tax a))
@@ -5532,8 +5603,8 @@
   ([tax kind pred context]
    (let [t @tax]
      (and (contains? (get (:props t) kind) pred)
-          (or (not (scoped-context? context))
-              (if (contains? keyed-kinds kind)
+          (or (not (or (scoped-context? context) (own-reading? context)))
+              (if (and (contains? keyed-kinds kind) (not (own-reading? context)))
                 (keyed-entry-believed? tax [:prop kind pred] context)
                 (cache-entry-visible? tax [:prop kind pred] context)))))))
 
@@ -5794,7 +5865,7 @@
    (let [qs (get-in @tax [:inverse p] #{})]
      ;; the empty case first: a transitive walk asks this per node, and reaching `closure-of`
      ;; before finding no partner would charge every walk a genlCx closure lookup per hop
-     (if (or (empty? qs) (not (scoped-context? context)))
+     (if (or (empty? qs) (not (or (scoped-context? context) (own-reading? context))))
        qs
        (into #{} (filter #(cache-entry-visible? tax (inverse-key p %) context)) qs)))))
 
@@ -5951,7 +6022,7 @@
   and the store for the same stretch, under a slot of its own (`res/arg-constraints`)."
   [tax slot k read]
   (if-let [memo (:closure-memo @tax)]
-    (let [clock (observe/change-clock)
+    (let [clock (observe/change-clock (:clock @tax))
           k     [k *network-belief* *search*]
           held  (get @memo slot)]
       (if-let [e (when (= clock (:read-under held)) (find (:closures held) k))]
@@ -6254,7 +6325,7 @@
   :note "reach sets, needs-sets, `:asserted-in`, `:reaches`, `:path` and separable entries keyed `[rel gen …]`: a generation bump orphans the keys, and the LRU ages them out; a scope that reads supporter belief carries the change clock, so any write orphans its entries"})
 
 (caches/register-derived
- {:id :T7 :label "Closure filter memo" :kind :cache :keyed-by :context :reads [:T1 :M1 :index :records]
+ {:id :T7 :label "Closure filter memo" :kind :cache :keyed-by :context :reads [:T1 :M1 :X5 :index :records]
   :holds-content? false
   :retired-by (assoc (caches/on-every :G*) :recover :W)
   :computed :read :imaged? false :at [[:taxonomy :closure-memo]]
@@ -6265,7 +6336,7 @@
  {:id :T10 :label "Taxonomy pass caches" :kind :pass :keyed-by :node :reads [:T1 :M1 :index :records]
   :holds-content? false
   :retired-by {} :computed :pass :imaged? false
-  :note "`*visible-neighbours-cache*`, bound for one reading pass (`with-neighbours`): the filtered and sorted neighbours and edge supporters the walks read, a reader's scope, the maximal common descendants of a context set, a flat-cache key's believed supporters and whether an except reaches a handle (`pass-held`); `chain/*witnesses*`, the witnesses, supporter classes and `genl` route lengths (`reach-support`'s router) one `place-nogoods!` reads, answered while the change clock holds"})
+  :note "`*visible-neighbours-cache*`, bound for one reading pass (`with-neighbours`): the filtered and sorted neighbours and edge supporters the walks read, a reader's scope, the maximal common descendants of a context set, a flat-cache key's believed supporters and whether an except reaches a handle (`pass-held`); `chain/*witnesses*`, the witnesses, supporter classes, sorted neighbours and `genl` route lengths (`reach-support`'s router) one `place-nogoods!` reads, answered while the change clock holds"})
 
 (caches/register-derived
  {:id :J4 :label "Flat context moves" :kind :journal :keyed-by :value :reads [:T2]

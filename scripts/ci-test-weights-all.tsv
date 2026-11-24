@@ -136,7 +136,7 @@ vaelii.examples-test	2.00
 vaelii.except-gnarly-test	11.00
 vaelii.except-monotonic-test	0.00
 vaelii.except-recheck-test	2.00
-vaelii.except-rule-visibility-test	0.00
+vaelii.except-rule-target-test	0.00
 vaelii.except-strength-test	0.00
 vaelii.except-test	0.00
 vaelii.exempt-reads-test	0.00

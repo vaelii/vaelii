@@ -37,7 +37,7 @@
       (testing "the conclusion is a real sentex with a real proof"
         (let [h (:handle (first derived))]
           (is (nat-int? h))
-          (is (v/in? kb h))
+          (is (v/believed? kb h))
           (is (= (list mortal Muffet) (:sentence (tu/why-root kb h)))))))))
 
 (tu/deftest-kb a-write-that-follows-from-nothing-reports-only-itself

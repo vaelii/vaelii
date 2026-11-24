@@ -11,7 +11,7 @@
   engaged. When nothing is engaged the atoms hold nil and `notify-*` is a deref and a `nil?`
   check. The observer is global, not per-KB; the installed functions dispatch on `kb`.
 
-  The change clock (`note-change`) is the coarse counter a cache keys on, and the resident
+  The change clock (`note-change`), one per KB, is the coarse counter a cache keys on, and the resident
   caches it serves (`cached`) declare themselves to `vaelii.impl.caches` at the bottom of
   this file. See docs/inference.md."
   (:refer-clojure :exclude [])
@@ -78,38 +78,95 @@
 
 ;; ---- the change clock ----------------------------------------------------
 
-(defonce ^{:private true
-           :tag AtomicLong
-           :doc "A monotone counter bumped by every mutation that could move what a derived,
-  resident structure computes.  An `AtomicLong` rather than an atom: the engine is
-  single-writer, so this is an increment, not a compare-and-swap — and it sits on every
-  mutating `jtms` entry point, so it has to added no work at all."}
-  clock
-  (AtomicLong. 0))
+(deftype StoreCounts [^AtomicLong changes ^AtomicLong respells except-writes])
+
+(defn new-store-counts
+  "A store's change count and respell count, both at 0, and its except write counts
+  (`except/note-stored!`).  Two `AtomicLong`s rather than atoms: the engine is
+  single-writer, so a move is an increment, not a compare-and-swap, and it sits on every
+  mutating `jtms` entry point."
+  []
+  (StoreCounts. (AtomicLong. 0) (AtomicLong. 0) (atom {:frames 0 :leaving 0 :base 0 :fs []})))
+
+(defonce ^{:private true :tag java.util.HashMap
+           :doc "`{store-key WeakReference<StoreCounts>}`, weak because no KB holds the key:
+  the counts stay while a clock holds them."}
+  store-registry (java.util.HashMap.))
+
+(defn store-counts
+  "The counts every KB value open over the store keyed `k` shares, made at the first open
+  (`kb/open-kb` keys a store by its records).  A later open finds them while a value's
+  clock still holds them, and starts at 0 once none does."
+  [k]
+  (locking store-registry
+    (or (some-> ^java.lang.ref.WeakReference (.get store-registry k) .get)
+        (let [c (new-store-counts)]
+          (.removeIf (.values store-registry) #(nil? (.get ^java.lang.ref.WeakReference %)))
+          (.put store-registry k (java.lang.ref.WeakReference. c))
+          c))))
+
+(deftype Clock [^StoreCounts own ^StoreCounts base ^AtomicReference holds])
+
+(defn new-clock
+  "A KB value's change clock over `own`, the counts of the store it writes, and `base`, its
+  fork base's (nil when it is no fork), with its registry of open holds empty.  `open-kb`
+  makes one per KB value it opens, every copy of that value (`assoc` onto it) holds the same
+  one, and the KB hands it to its network and its taxonomy, which move it on every write.
+  With no arguments the counts are its own."
+  ([] (new-clock (new-store-counts) nil))
+  ([own base] (Clock. own base (AtomicReference. {}))))
+
+(defn clock?
+  "Is `x` a KB's change clock (`new-clock`)?"
+  [x]
+  (instance? Clock x))
+
+(defn own-counts
+  "The counts of the store the KB holding clock `c` writes."
+  ^StoreCounts [^Clock c]
+  (.-own c))
+
+(defn- changes
+  "Clock `c`'s own change count plus its base's."
+  ^long [^Clock c]
+  (let [b ^StoreCounts (.-base c)]
+    (+ (.get ^AtomicLong (.-changes ^StoreCounts (.-own c)))
+       (if b (.get ^AtomicLong (.-changes b)) 0))))
 
 (defn note-change
-  "Something a resident derived structure is a function of has changed. Three places bump
-  it: the two store choke points (`kb/create-sentex`, `integrate/sentex-removed!`), every
-  mutating `jtms` entry point (before and after, `jtms/moving`), and a watch on the
-  taxonomy's atom. `core/clear!` and `reindex/reindex` bump by hand. Global and coarse: it
-  says only that something moved, so a reader keyed on it re-derives more often than it must
-  and never less. Bare, not `!`: it destroys nothing."
-  []
-  (.incrementAndGet clock))
-
-(defonce ^:private ^AtomicLong respells (AtomicLong. 0))
+  "Something a resident derived structure of the KB holding clock `c` is a function of has
+  changed. Three places bump it: the two store choke points (`kb/create-sentex`,
+  `integrate/sentex-removed!`), every mutating `jtms` entry point (before and after,
+  `jtms/moving`), and a watch on the taxonomy's atom. `core/clear!` and `reindex/reindex`
+  bump by hand. Coarse: it says only that something in the store moved, so a reader keyed
+  on it re-derives more often than it must and never less. Bare, not `!`: it destroys nothing."
+  [^Clock c]
+  (.incrementAndGet ^AtomicLong (.-changes ^StoreCounts (.-own c))))
 
 (defn note-respell
-  "A stored sentex took another spelling under its handle (`kb/respell-sentex!`)."
-  []
-  (.incrementAndGet respells))
+  "A stored sentex of the KB holding clock `c` took another spelling under its handle
+  (`kb/respell-sentex!`)."
+  [^Clock c]
+  (.incrementAndGet ^AtomicLong (.-respells ^StoreCounts (.-own c))))
 
 (defn respell-count
-  "How many times a stored sentex has taken another spelling under its handle, in any KB
-  of the process (`note-respell`).  A resident copy of stored records compares it: a
-  respell moves no handle into or out of a posting."
-  ^long []
-  (.get respells))
+  "How many times a stored sentex the KB holding clock `c` reads has taken another spelling
+  under its handle (`note-respell`), its base's included.  A resident copy of stored records
+  compares it: a respell moves no handle into or out of a posting."
+  ^long [^Clock c]
+  (let [b ^StoreCounts (.-base c)]
+    (+ (.get ^AtomicLong (.-respells ^StoreCounts (.-own c)))
+       (if b (.get ^AtomicLong (.-respells b)) 0))))
+
+(defn except-writes
+  "The except write counts atom of the store the KB holding clock `c` writes."
+  [^Clock c]
+  (.-except-writes ^StoreCounts (.-own c)))
+
+(defn base-except-writes
+  "The except write counts atom of the fork base of the KB holding clock `c`, or nil."
+  [^Clock c]
+  (some-> ^StoreCounts (.-base c) .-except-writes))
 
 (def ^:dynamic *fired-sink*
   "Nil, or a `java.util.Set` that `jtms/add-justification` adds the consequence of each
@@ -170,16 +227,11 @@
 ;;
 ;; A settle holds the belief it started from for every other thread and publishes what it
 ;; decided in one step when it ends (`vaelii.impl.settle/settle`). The network records the
-;; labels the settle moves (`vaelii.impl.jtms/hold!`), the held sets keep their value
-;; (`held-atom`), and this registry says which holds are open and which thread owns each.
-;; Closing a hold is one swap here, so a reader switches from held to published belief in
-;; one step across the network, the held sets and the clock.
+;; labels the settle moves (`vaelii.impl.jtms/hold!`), and the held sets keep their value.
+;; The KB's `Clock` holds `{token owner-thread}` for each open hold on the KB, and closing
+;; one is a swap there: a reader switches from held to published belief in one step.
 
-(defonce ^{:private true
-           :tag AtomicReference
-           :doc "The open holds, as `{token owner-thread}`.  Empty on nearly every read."}
-  holds
-  (AtomicReference. {}))
+(defn- holds-of ^AtomicReference [^Clock c] (.-holds c))
 
 (def ^:dynamic *live*
   "True where a thread reads what the writer holds now even while a hold is open.  The
@@ -193,25 +245,26 @@
   (reduce-kv (fn [_ _ owner] (if (identical? owner t) (reduced true) false)) false m))
 
 (defn held-reader?
-  "Does the current thread read held belief: a hold is open, this thread owns none, and
-  it is not reading live (`*live*`)?"
-  []
-  (let [m (.get holds)]
+  "Does the current thread read the held belief of the KB holding clock `c`: a hold on
+  the KB is open, this thread owns none of them, and it is not reading live (`*live*`)?"
+  [c]
+  (let [m (.get (holds-of c))]
     (and (not (zero? (count m)))
          (not (owns-a-hold? m (Thread/currentThread)))
          (not *live*))))
 
 (defn hold-owner?
-  "Does the current thread own an open hold?"
-  []
-  (owns-a-hold? (.get holds) (Thread/currentThread)))
+  "Does the current thread own an open hold on the KB holding clock `c`?"
+  [c]
+  (owns-a-hold? (.get (holds-of c)) (Thread/currentThread)))
 
 (defn registry
-  "The open holds, as one value.  Every open and every close replaces it, so a reader
+  "The open holds on the KB holding clock `c`, as one value.  Every open and every close
+  replaces it, so a reader
   that reads it before and after a read of live state, and finds the same value both
   times, knows no hold opened or closed in between."
-  []
-  (.get holds))
+  [c]
+  (.get (holds-of c)))
 
 (defn reads-held-in?
   "Does the current thread read the belief hold `h` keeps, by `registry` value `m`: `h`
@@ -224,9 +277,9 @@
        (not *live*)))
 
 (defn reads-held?
-  "`reads-held-in?` against the registry as it is now."
-  [h]
-  (reads-held-in? (.get holds) h))
+  "`reads-held-in?` against the registry of the KB holding clock `c`, as it is now."
+  [c h]
+  (reads-held-in? (.get (holds-of c)) h))
 
 (defn new-hold
   "A hold owned by the current thread, not yet open: `{:token :owner}`."
@@ -234,31 +287,34 @@
   {:token (Object.) :owner (Thread/currentThread)})
 
 (defn open-hold!
-  "Open hold `h`: move the change clock, then register `h`, after which every thread that
-  owns no hold reads the belief `h` keeps.  The clock moves first so a cache entry a held
-  reader installs under this hold carries a clock value no earlier hold's reader used
-  (`change-clock`)."
-  [h]
-  (note-change)
-  (loop []
-    (let [m (.get holds)]
-      (when-not (.compareAndSet holds m (assoc m (:token h) (:owner h))) (recur))))
+  "Open hold `h` over the network whose KB holds clock `c`: move `c`, then register `h`,
+  after which every thread that owns no hold reads the belief `h` keeps.  The clock moves
+  first so a cache entry a held reader installs under this hold carries a clock value no
+  earlier hold's reader used (`change-clock`)."
+  [h c]
+  (note-change c)
+  (let [holds (holds-of c)]
+    (loop []
+      (let [m (.get holds)]
+        (when-not (.compareAndSet holds m (assoc m (:token h) (:owner h))) (recur)))))
   h)
 
 (defn close-hold!
-  "Close hold `h`: from this call on, every thread reads the belief its writer published."
-  [h]
-  (loop []
-    (let [m (.get holds)]
-      (when-not (.compareAndSet holds m (dissoc m (:token h))) (recur))))
+  "Close hold `h` on the KB holding clock `c`: from this call on, every thread reads the
+  belief its writer published."
+  [h c]
+  (let [holds (holds-of c)]
+    (loop []
+      (let [m (.get holds)]
+        (when-not (.compareAndSet holds m (dissoc m (:token h))) (recur)))))
   nil)
 
 (defmacro live
-  "Run `body` reading what the writer holds now, whatever hold is open.  Binds `*live*`
-  only on a thread that reads held belief (`held-reader?`), so the writer and every read
-  outside a settle pay one registry read."
-  [& body]
-  `(if (held-reader?) (binding [*live* true] ~@body) (do ~@body)))
+  "Run `body` reading what the writer of the KB holding clock `c` holds now, whatever hold
+  on it is open.  Binds `*live*` only on a thread that reads that KB's held belief
+  (`held-reader?`), so the writer and every read outside a settle pay one registry read."
+  [c & body]
+  `(if (held-reader? ~c) (binding [*live* true] ~@body) (do ~@body)))
 
 (defn- keep-value!
   "Record the value `a`, the atom inside the held atom `ha`, holds in the open write
@@ -267,7 +323,7 @@
   (when *write-record*
     (record-of ha #(.deref a))))
 
-(deftype HeldAtom [^clojure.lang.Atom a ^AtomicReference held]
+(deftype HeldAtom [^clojure.lang.Atom a ^AtomicReference held ^Clock clock]
   ;; `held` is nil, or `{:hold h :value v}`: the value `a` held when hold `h` began.  Every
   ;; write goes to `a`; a deref answers `v` to a thread that reads `h`'s belief.
   ;;
@@ -281,12 +337,12 @@
       (if (and p (identical? (:owner (:hold p)) (Thread/currentThread)))
         (.deref a)
         (loop []
-          (let [m (.get holds)
+          (let [m (registry clock)
                 p (.get held)]
             (if (and p (reads-held-in? m (:hold p)))
               (:value p)
               (let [v (.deref a)]
-                (if (identical? m (.get holds)) v (recur)))))))))
+                (if (identical? m (registry clock)) v (recur)))))))))
   ;; every write first offers the value it replaces to the open write record
   clojure.lang.IAtom2
   (swap [this f] (keep-value! this a) (.swap a f))
@@ -302,9 +358,10 @@
   (resetVals [this v] (keep-value! this a) (.resetVals a v)))
 
 (defn held-atom
-  "An atom holding `v` that keeps its value for a hold's readers (`hold-atom!`)."
-  [v]
-  (HeldAtom. (atom v) (AtomicReference. nil)))
+  "An atom holding `v` that keeps its value for the readers of a hold on the KB holding
+  clock `c` (`hold-atom!`)."
+  [c v]
+  (HeldAtom. (atom v) (AtomicReference. nil) c))
 
 (defn hold-atom!
   "Keep `ha`'s current value for the readers of hold `h`, until `release-atom!`."
@@ -319,13 +376,14 @@
   nil)
 
 (defn change-clock
-  "The current value of the change clock. A reader records what it derived under this and
-  re-derives when it has moved. A thread that reads held belief (`held-reader?`) reads
-  `-1 - clock` instead, so what it derives under the hold never shares an entry with the
-  writer's. `open-hold!` moves the clock, so two holds' readers do not share one either."
-  ^long []
-  (let [c (.get clock)]
-    (if (held-reader?) (- -1 c) c)))
+  "The current value of clock `c`, a KB's (`new-clock`): its store's change count plus its
+  fork base's. A reader records what it derived under this and re-derives when it has
+  moved. A thread that reads held belief (`held-reader?`) reads `-1 - clock` instead, so
+  what it derives under the hold never shares an entry with the writer's. `open-hold!`
+  moves the clock, so two holds' readers do not share one either."
+  ^long [^Clock c]
+  (let [n (changes c)]
+    (if (held-reader? c) (- -1 n) n)))
 
 ;; ---- the stored-handle cache --------------------------------------------
 
@@ -432,16 +490,16 @@
 
 (defn clocked
   "The value of `k` in the resident `cache`, an atom of `{k {:value v :clock n}}`, with
-  `build` run whenever the change clock has moved since `v` was derived. A nil `cache` runs
+  `build` run whenever clock `c` has moved since `v` was derived. A nil `cache` runs
   `build` every time. `build` is called with the stale value it replaces, or nil, for a
   caller that derives the new answer from the old (`qcn-kb`'s warm-started pass). The clock
   is read before `build` and the entry recorded under that reading. Nothing here is
   content-keyed: the derivations over a resident value stay keyed on that value, so two KBs
   reaching one network share one pass."
-  [cache k build]
+  [c cache k build]
   (if (nil? cache)
     (build nil)
-    (let [now (change-clock)
+    (let [now (change-clock c)
           hit (get @cache k)
           t   (caches/tally-of cache :R3)]
       (if (and hit (== now (long (:clock hit))))
@@ -457,12 +515,12 @@
 (defn cached
   "`clocked`, overridden by a bound `*held-values*`: the value that scope holds for `k`, or
   the one `clocked` answers now, held for the rest of the scope."
-  [cache k build]
+  [c cache k build]
   (let [held *held-values*
         pk   (when held [cache k])]              ; the atom's identity is the KB's identity
     (if-let [found (and held (find @held pk))]
       (val found)
-      (let [v (clocked cache k build)]
+      (let [v (clocked c cache k build)]
         (when held (swap! held assoc pk v))
         v))))
 
@@ -625,9 +683,9 @@
 (caches/register-derived
  {:id :X3 :label "Change clock" :kind :counter :keyed-by :global :reads []
   :holds-content? false
-  :retired-by (caches/on-every :G*) :computed :write :imaged? false :var #'clock
-  :value (fn [_] (.get clock))
-  :note "bumped by every mutation of any KB in the process; R1, R2 and R3 key entries by it"})
+  :retired-by (caches/on-every :G*) :computed :write :imaged? false :at [[:taxonomy :clock]]
+  :value (fn [kb] (changes (:clock kb)))
+  :note "the change count of the store the KB writes (`store-counts`, shared by every open of that store) plus its fork base's, held by the KB record and handed to its network and taxonomy; bumped by every mutation through any value over the store; R1, R2 and R3 key entries by it"})
 
 (caches/register-derived
  {:id :R3 :label "Resident derived values" :cache :resident :kind :cache :keyed-by :context
@@ -635,7 +693,7 @@
   :reads [:index :M1]
   :retired-by (assoc (caches/on-every :G*) :caches-cleared :W :cleared :W)
   :computed :read :imaged? false :at [[:qcn]]
-  :live (fn [kb] (let [now (change-clock)]
+  :live (fn [kb] (let [now (change-clock (:clock kb))]
                    (count (filter #(and (map? %) (== now (long (:clock % -1))))
                                   (vals @(reasoning/qcn kb))))))
   :note "networks and passes by `[calc ctx]`, each keyed by the change clock and rebuilt from its stale value; `newly-seen?` markers carry no clock"})

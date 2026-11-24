@@ -75,7 +75,7 @@
     {:count     (count hs)
      :handles   (set hs)
      :sorted    (vec (sort hs))
-     :believed  (into (sorted-set) (filter #(v/in? kb %)) hs)
+     :believed  (into (sorted-set) (filter #(v/believed? kb %)) hs)
      :milk      (set (v/ask kb '(likes ?x Milk) 'CxTest))
      :cats      (set (v/ask kb '(isa ?x Cat) 'CxTest))
      :every-in? (every? #(contains? hs %) hs)}))

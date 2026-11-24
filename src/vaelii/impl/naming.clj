@@ -64,7 +64,7 @@
                            (some? (re-matches #"[A-Z][A-Za-z0-9]*" (nm x)))
                            (not (context? x))))
 (defn function-spelled?
-  "Is `x` an `individual?` whose name ends in `Fn` (`FatherFn`, `QuantityFn`), the
+  "Is `x` an `individual?` whose name ends in `Fn` (`StartFn`, `QuantityFn`), the
   spelling of a function?  `individual?` answers true for it as well; a relation slot in
   `vaelii.impl.wff` reads this to admit a function (docs/naming.md)."
   [x]
@@ -214,7 +214,17 @@
        ;; two, the length of most antecedent lists: one comparison; a tie keeps `coll`'s order
        2 (let [a (nth v 0) b (nth v 1)]
            (if (pos? (cmp (keyfn a) (keyfn b))) [b a] v))
-       (->> v (mapv (fn [x] [(keyfn x) x])) (sort-by first cmp) (mapv second))))))
+       ;; positions sorted over the keys, so no pair or transient vector is built per call
+       (let [n   (count v)
+             ks  (object-array n)
+             ix  (object-array n)
+             out (object-array n)]
+         (dotimes [i n]
+           (aset ks i (keyfn (nth v i)))
+           (aset ix i (Integer/valueOf (int i))))
+         (java.util.Arrays/sort ix (fn [i j] (cmp (aget ks (int i)) (aget ks (int j)))))
+         (dotimes [i n] (aset out i (nth v (int (aget ix i)))))
+         (vec out))))))
 
 (defn min-by-content-key
   "`(first (sort-by-content-key keyfn cmp coll))` in one pass, building the key once per

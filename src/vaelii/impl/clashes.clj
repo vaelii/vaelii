@@ -619,8 +619,8 @@
 ;; (docs/contexts.md).
 
 (defn- believed-xf
-  "A transducer from handles to the believed, positive sentexes among them.  Belief is
-  `jtms/in?`, so a superseded spelling drops out with a defeated one."
+  "A transducer from handles to the IN, positive sentexes among them.  The test is
+  `jtms/in?`, so a superseded spelling drops out and a defeated one stays."
   [kb]
   (comp (filter #(jtms/in? (reasoning/tms kb) %))
         (keep #(p/get-sentex (:records kb) %))
@@ -634,8 +634,8 @@
     (into [] (believed-xf kb) (reads/as-stored-with-arg-global (:index kb) 1 term))))
 
 (defn believed-memberships
-  "The believed positive unary memberships of `x`, as `[type context handle]` triples,
-  in content order."
+  "The positive unary memberships of `x` the network holds IN, a defeated one included
+  (`believed-xf`), as `[type context handle]` triples, in content order."
   [kb x]
   ;; `compare` on the symbols: a keyfn runs per comparison and would allocate each time.
   ;; Symbols order by namespace then name.
@@ -680,17 +680,42 @@
                           (when (seq m) m)))
                       (distinct (tax/disjointness-witnesses tax t1 t2))))))}))
 
+(defn- pair-decision?
+  "Is the placed `defeat` or `(contradicts …)` at `d` one between the memberships `h1` and
+  `h2` alone: a defeat whose nogood's members are the two (`exc/defeat-member-sets`), or a
+  conflict naming the two?"
+  [kb d h1 h2]
+  (let [pair #{h1 h2}
+        s    (:sentence (p/get-sentex (:records kb) d))]
+    (if (= 'contradicts (nm/functor s))
+      (= pair (into #{} (keep sx/handle-id) (rest s)))
+      (boolean (some #(= pair (set %)) (exc/defeat-member-sets kb d))))))
+
+(defn- sees-both?
+  "Does `context` believe and see the memberships `h1` and `h2`, a decision between the two
+  aside (`pair-decision?`)?  A membership an except hides there, or one a defeat or a
+  conflict of another nogood hides, answers false."
+  [kb context h1 h2]
+  (let [hidden? (exc/hidden-fn kb context)
+        seen?   (fn [h] (or (not (and hidden? (hidden? h)))
+                            (and (not (exc/excepted-in-network? kb h context))
+                                 (let [ds (exc/defeats-hiding kb h context)]
+                                   (and (seq ds) (every? #(pair-decision? kb % h1 h2) ds))))))]
+    (and (seen? h1) (seen? h2))))
+
 (defn- exposed-clashes-for-term
-  "The `:disjoint` entries for the jointly-visible clashes among `x`'s believed
-  memberships.  `probes` is `exposure-probes`' answer."
+  "The `:disjoint` entries for the jointly-visible clashes among `x`'s IN memberships,
+  each naming the contexts `visible-from` answers that believe and see both, decided or not
+  (`sees-both?`).  `probes` is `exposure-probes`' answer."
   [kb x {:keys [disjoint? visible-from]}]
   (let [ms (believed-memberships kb x)]
     (for [i (range (count ms))
           j (range (inc i) (count ms))
-          :let  [[t1 c1] (nth ms i)
-                 [t2 c2] (nth ms j)]
+          :let  [[t1 c1 h1] (nth ms i)
+                 [t2 c2 h2] (nth ms j)]
           :when (and (not= t1 t2) (disjoint? t1 t2))
-          :let  [mx (visible-from t1 c1 t2 c2)]
+          :let  [mx (not-empty (into #{} (filter #(sees-both? kb % h1 h2))
+                                     (visible-from t1 c1 t2 c2)))]
           :when mx]
       {:violation :disjoint
        :detail    {:term         x

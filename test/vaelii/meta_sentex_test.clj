@@ -4,7 +4,7 @@
   "Meta-sentexes: a sentex that names another sentex through a **handle**.
 
   A handle `(sentexHandle <id>)` is the term form of a stored sentex's integer handle,
-  so `exceptWhen` (a rule's exception) and `except` (visibility removal) reference the
+  so `exceptWhen` (a rule's exception) and `except` (belief removal) reference the
   sentex they are about rather than inlining it.  This namespace grows with the feature;
   it starts with the handle term primitives (`vaelii.impl.sentex`)."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
@@ -191,10 +191,10 @@
       (is (empty? (v/sentexes-matching kb (list flies Opus) ctx)))
       (is (seq (v/sentexes-matching kb (list flies Tweety) ctx))))))
 
-;; ---- except: visibility removal down a context subtree -------------------
+;; ---- except: belief removal down a context subtree -----------------------
 
 (tu/deftest-kb except-hides-a-sentex-from-a-context-and-its-descendants
-  ;; (except (sentexHandle H)) asserted in C removes visibility of sentex H from C and
+  ;; (except (sentexHandle H)) asserted in C removes sentex H from belief at C and
   ;; every context that sees C (its descendants), leaving the more general contexts C
   ;; sees untouched.  It rides the ordinary genlCx up-closure — the except is a
   ;; belief-following fact, visible from exactly where it hides its target.
@@ -214,14 +214,14 @@
           (is (not (v/ask? kb (list shiny gold) cm)) "and in its descendant")
           (is (empty? (v/sentexes-matching kb (list shiny gold) pm)) "exact-context query hides it too")
           (is (seq (v/sentexes-matching kb (list shiny gold) '?ctx)) "an any-context read still finds it above"))
-        (testing "retracting the except restores visibility — belief-following"
+        (testing "retracting the except restores belief"
           (v/retract! kb eh)
           (is (v/ask? kb (list shiny gold) cm)))))))
 
 (tu/deftest-kb except-hides-a-membership-from-the-type-reads-too
   ;; `types-of` and `isa?` are retrieval, not a separate notion of what the KB holds, so
-  ;; they apply the same three filters the matcher does — believed, visible, not
-  ;; excepted.  The third one matters most to the definitional checks, which are built
+  ;; they apply the matcher's filter, belief at the reader, which reads the `genlCx`
+  ;; ancestor set and the excepts.  The excepts matter most to the definitional checks, which are built
   ;; on these two: a hidden membership that still answered `types-of` would let
   ;; disjointness refuse a sentence on a ground its context cannot see.
   (let [ctx (tu/tmp-ctx "Sub") dog (tu/tmp-type "dog") Muffet (tu/tmp-ind "Muffet")]
@@ -233,10 +233,8 @@
         (testing "hidden from both reads where the except is visible"
           (is (empty? (v/types-of kb Muffet ctx)))
           (is (not (v/isa? kb Muffet dog ctx))))
-        (testing "an any-context read still finds it, as with query"
-          ;; an except hides its target from the contexts that *see* it, not from the
-          ;; general ones above — so a read that stands nowhere in particular is unmoved
-          (is (= [dog] (vec (v/types-of kb Muffet)))))
+        (testing "a read naming no context answers at the membership's own context, where the except hides it"
+          (is (= [] (vec (v/types-of kb Muffet)))))
         (testing "and both come back when the except goes — belief-following"
           (v/retract! kb eh)
           (is (= [dog] (vec (v/types-of kb Muffet ctx))))
@@ -245,7 +243,7 @@
 ;; ---- except: the full derivation block ----------------------------------
 
 (tu/deftest-kb except-blocks-a-derivation-that-rests-on-the-hidden-fact
-  ;; `except` removes visibility for derivation as well as reads: a rule firing that
+  ;; `except` removes belief for derivation as well as reads: a rule firing that
   ;; used the hidden fact as an antecedent and placed its conclusion in the ancestor set rests
   ;; on a fact that context can no longer see, so the conclusion is swept — and revived
   ;; when the except is retracted.  A conclusion the except does not reach (placed above
@@ -423,9 +421,9 @@
 
 ;; ---- meta-exception: excepting an except cascades -------------------------
 
-(tu/deftest-kb meta-exception-cascades-restoring-visibility
+(tu/deftest-kb an-except-of-an-except-restores-its-target-and-each-depth-toggles-it
   ;; A meta-exception — (except (sentexHandle E)) where E is itself an (except …) —
-  ;; cascades: hiding the except suppresses its effect and restores visibility of the
+  ;; cascades: hiding the except suppresses its effect and restores belief in the
   ;; target the inner except was hiding.
   (let [ctx (tu/tmp-ctx "MetaEx") shiny (tu/tmp-pred) gold (tu/tmp-ind)]
     (v/assert kb (list 'genlCx ctx 'CxWell) 'CxUniverse {:strength :monotonic})
@@ -436,9 +434,9 @@
         (testing "P is hidden after excepting"
           (is (not (v/ask? kb (list shiny gold) ctx))))
         (let [m (v/assert kb (list 'except (sx/sentex-handle e)) ctx {:strength :monotonic})]
-          (testing "excepting the except restores visibility — the cascade"
+          (testing "excepting the except restores belief — the cascade"
             (is (v/ask? kb (list shiny gold) ctx)
-                "P should be visible again: E hides H, M hides E, so E's effect is suppressed"))
+                "P is believed again: E hides H, M hides E, so E's effect is suppressed"))
           (testing "the inner except E is hidden"
             (is (not (v/ask? kb (list 'except (sx/sentex-handle h)) ctx))
                 "the except itself is hidden by the meta-except"))
@@ -446,7 +444,7 @@
             (let [m2 (v/assert kb (list 'except (sx/sentex-handle m)) ctx {:strength :monotonic})]
               (is (not (v/ask? kb (list shiny gold) ctx)) "M2 hides M, so E hides P again")
               (v/retract! kb m2)
-              (is (v/ask? kb (list shiny gold) ctx) "without M2, M hides E and P is visible")))
+              (is (v/ask? kb (list shiny gold) ctx) "without M2, M hides E and P is believed")))
           (testing "retracting the meta-except re-hides P"
             (v/retract! kb m)
             (is (not (v/ask? kb (list shiny gold) ctx))
@@ -522,7 +520,7 @@
                                                    (real-disintegrate kb sentex))]
         (v/retract! kb eh))
       ;; The fact should be visible again after retracting the except
-      (is (v/ask? kb (list pred ind) ctx) "retracting except restores visibility")
+      (is (v/ask? kb (list pred ind) ctx) "retracting except restores belief")
       ;; The structural contract: except-target must appear before disintegrate
       (let [events @log
             target-idx      (.indexOf ^java.util.List events :except-target)

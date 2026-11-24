@@ -169,7 +169,7 @@
   [kb]
   (vec
    (for [h (p/sentex-ids (:records kb))
-         :let [in? (v/in? kb h)]]
+         :let [in? (v/believed? kb h)]]
      [(content-of kb h) (if in? :in (:reason (v/why-not kb h)))])))
 
 (defn- taxonomy [kb]
@@ -1065,8 +1065,8 @@
           (testing "the rebuild finishes rather than throwing on the missing record"
             (is (nil? (v/sentex kb2 mid)) "and the record is still not there"))
           (testing "and does not believe it, since no node was minted for it"
-            (is (not (v/in? kb2 mid)))
-            (is (not (v/in? kb2 end))
+            (is (not (v/believed? kb2 mid)))
+            (is (not (v/believed? kb2 end))
                 "nor the conclusion, which had nothing left to rest on"))
           (testing "so belief and the record agree: the handle reads absent either way"
             (is (nil? (:sentence (tu/why-root kb2 mid))))

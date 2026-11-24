@@ -240,7 +240,7 @@
   (let [read #(some-> (v/sentex kb %) v/sentence-of)]
     (into {} (for [c cs
                    s (v/sentexes-matching kb (list c '?x) '?c)
-                   :when (v/in? kb (:id s))]
+                   :when (v/believed? kb (:id s))]
                [(:sentence s)
                 (into #{} (map (fn [j] [(read (:informant j)) (into #{} (map read) (:antecedents j))]))
                       (v/supporting-justifications kb (:id s)))]))))

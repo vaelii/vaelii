@@ -1,0 +1,16 @@
+; The timetable of timetable.vae under the readings #solve selects. Cost vectors compare
+; lexicographically, highest level first, so the bound [2 5] admits the two optima at
+; [1 2] and every timetable at [2 2]: 15 in all. Ignoring the objective admits all 48
+; timetables, and a limit of 3 takes three of them. The usc strategy reaches the two
+; optima the default bb strategy does. Twin: timetable-readings.lp.
+#base core
+#include "timetable.vae"
+#context CxTimetable
+#solve {:among [2 5]}
+#models (scheduledAt ?t ?s)
+#solve {:among :all}
+#models (scheduledAt ?t ?s)
+#solve {:among :all :limit 3}
+#models (scheduledAt ?t ?s)
+#solve {:opt-strategy :usc}
+#models (scheduledAt ?t ?s)

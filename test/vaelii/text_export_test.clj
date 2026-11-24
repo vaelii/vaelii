@@ -76,7 +76,7 @@
      :strengths (into #{} (comp (filter #(some? (:strength %)))
                                 (map #(vector (content-key kb %) (:strength %))))
                       sxs)
-     :believed  (into #{} (comp (filter #(v/in? kb (:id %)))
+     :believed  (into #{} (comp (filter #(v/believed? kb (:id %)))
                                 (map #(content-key kb %)))
                       sxs)}))
 
@@ -526,7 +526,7 @@
           (let [h (v/handle-of kb (list bird Tweety) CxText)]
             (is (integer? h) "the sentence is stored")
             (is (nil? (:strength (v/sentex kb h))) "and is no premise")
-            (is (false? (v/in? kb h)))
+            (is (false? (v/believed? kb h)))
             (is (false? (v/ask? kb (list bird Tweety) CxText)))
             (is (nil? (v/handle-of kb (list flies Tweety) CxText)) "the forward rule did not fire")
             (is (not (true? (v/ask? kb (list flies Tweety) CxText))))
@@ -580,7 +580,7 @@
             (let [h (v/handle-of kb (list bird Tweety) CxText)]
               (is (integer? h) "the reload stores the sentence")
               (is (nil? (:strength (v/sentex kb h))))
-              (is (false? (v/in? kb h))))
+              (is (false? (v/believed? kb h))))
             (v/export-text! kb (.getPath b)))
           (is (= text (slurp (io/file b file))) "a second export is byte-identical"))))))
 
@@ -602,7 +602,7 @@
             (let [m (v/handle-of kb (list 'except (v/sentex-handle (v/handle-of kb fact 'CxUniverse)))
                                  CxText)]
               (is (some? m))
-              (is (false? (v/in? kb m))))
+              (is (false? (v/believed? kb m))))
             (is (= :unresolved-reference
                    (:type (ex-data (try (v/assert-inert kb (list 'except (list dog Ghost)) CxText) nil
                                         (catch clojure.lang.ExceptionInfo e e)))))
@@ -668,3 +668,12 @@
          (text/form-spans (java.io.StringReader.
                            (str ";; a header\n(genl dog mammal)\n\n"
                                 "(implies (and (dog ?x))\n         (mammal ?x)) ; a tail\n"))))))
+
+(deftest a-tag-reads-as-a-directive-only-under-a-directive-table
+  (let [src "(dog Rex)\n#show\n  (dog ?x)\n"]
+    (is (= [{:form '(dog Rex) :start 1 :end 1}
+            {:directive 'show :arg '(dog ?x) :start 2 :end 3}]
+           (text/form-spans (java.io.StringReader. src) {:directives '#{show}})))
+    (is (= :unreadable
+           (:type (ex-data (try (text/form-spans (java.io.StringReader. src))
+                                (catch clojure.lang.ExceptionInfo e e))))))))

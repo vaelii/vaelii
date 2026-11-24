@@ -473,22 +473,34 @@
                                   sx)))]
       (fn [sx] (own? #{(:id sx)} sx)))))
 
-(defn orphan?
-  "Is the reified constant `k` an orphan: is every stored sentex naming it one of its own
-  (`own-sentex-test`)?  False when no believed `natFormula` maps `k`.  A `cx/` constant
-  with a non-empty extent is not one, read by one `count-in-context` before the
-  term-index read.  Uses count by storage; only the map read follows belief.  Decided
-  against the authoritative expression, the one `bookkeeping-handles` retracts for
-  (docs/nat.md, Rename and remove)."
+(defn- own-reading
+  "`k`'s stored sentexes and its own-sentex test (`own-sentex-test`).  Nil when no
+  believed `natFormula` maps `k`, or when `k` is a `cx/` constant with a non-empty extent,
+  read by one `count-in-context` before the term-index read."
   [kb k]
   (let [ctx? (nat-read/reified-context-symbol? k)]
-    (if (and ctx? (pos? (long (reads/stored-count-in-context (:index kb) k))))
-      false
+    (when-not (and ctx? (pos? (long (reads/stored-count-in-context (:index kb) k))))
       (let [all  (kb/find-sentexes kb k)
             live (filterv #(jtms/in? (reasoning/tms kb) (:id %)) all)]
-        (boolean
-         (when-let [E (denoted-expression kb (own-maps k live))]
-           (every? (own-sentex-test kb k E all) all)))))))
+        (when-let [E (denoted-expression kb (own-maps k live))]
+          {:all all :own? (own-sentex-test kb k E all)})))))
+
+(defn- every-own?
+  "Is every sentex of `reading` (`own-reading`) its constant's own, or a handle
+  `own-handle?` accepts?"
+  [{:keys [all own?]} own-handle?]
+  (every? #(or (own-handle? (:id %)) (own? %)) all))
+
+(defn orphan?
+  "Is the reified constant `k` an orphan: is every stored sentex naming it one of its own
+  (`own-sentex-test`)?  False when no believed `natFormula` maps `k`, and for a `cx/`
+  constant with a non-empty extent.  Uses count by storage; only the map read follows
+  belief.  Decided against the authoritative expression, the one `bookkeeping-handles`
+  retracts for (docs/nat.md, Rename and remove).  A handle `own-handle?` accepts counts
+  as `k`'s own."
+  ([kb k] (orphan? kb k (constantly false)))
+  ([kb k own-handle?]
+   (boolean (some-> (own-reading kb k) (every-own? own-handle?)))))
 
 (defn orphaned-constants
   "Every reified constant the KB maps that is an orphan (`orphan?`).  Reads the whole
@@ -499,12 +511,6 @@
        distinct
        (filter nat-read/reified-nat-symbol?)
        (filterv #(orphan? kb %))))
-
-(defn- orphaned-among
-  "The orphans among `candidates`.  A candidate in neither reserved namespace is dropped
-  unprobed."
-  [kb candidates]
-  (into [] (comp (filter nat-read/reified-nat-symbol?) (distinct) (filter #(orphan? kb %))) candidates))
 
 (defn reified-nats-in
   "Every reified constant `form` names, at any nesting, in a list or a vector."
@@ -519,12 +525,6 @@
                       (cond-> (reified-nats-in (sx/sentence-of sx))
                         (nat-read/reified-context-symbol? (:context sx)) (conj (:context sx)))))
         sentexes))
-
-(defn orphans-named-by
-  "The orphans among the constants the removed `sentexes` named: the candidate set of one
-  round of a teardown's sweep."
-  [kb sentexes]
-  (orphaned-among kb (constants-named-by sentexes)))
 
 (defn bookkeeping-handles
   "The handles of constant `k`'s bookkeeping sentexes, stored, believed or not: its
@@ -546,6 +546,82 @@
 
 ;; ---- write-mode reify: mint + result-type materialization ----------------
 
+(defn departed-map
+  "`[k E]` for `sentence` `(natFormula k E)` with `k` an object constant, else nil: the
+  pair a map leaving the store takes with it."
+  [sentence]
+  (when (and (seq? sentence) (= 'natFormula (first sentence)))
+    (let [[_ k E] sentence]
+      (when (and (nat-read/reified-object-symbol? k) (sequential? E)) [k E]))))
+
+(defn support-maps
+  "The object constants whose `natFormula` map is a premise the support of the believed
+  handles among `hs` reaches, read up the justifications of every handle that is no
+  premise."
+  [kb hs]
+  (let [tms (reasoning/tms kb)]
+    (loop [seen #{}, stack (filterv #(jtms/in? tms %) hs), ks #{}]
+      (if-let [h (peek stack)]
+        (let [stack (pop stack)]
+          (cond
+            (contains? seen h)    (recur seen stack ks)
+            (jtms/premise? tms h) (recur (conj seen h) stack
+                                         (if-let [[k] (some-> (p/get-sentex (:records kb) h) :sentence departed-map)]
+                                           (conj ks k)
+                                           ks))
+            :else                 (recur (conj seen h)
+                                         (into stack (comp (keep #(jtms/justification tms %))
+                                                           (mapcat #(cond-> (vec (:antecedents %))
+                                                                      (integer? (:informant %)) (conj (:informant %)))))
+                                               (jtms/supports tms h))
+                                         ks)))
+        ks))))
+
+(defn orphans-in-cycle
+  "The orphans among `candidates`, read jointly.  A constant is one when every stored
+  sentex naming it is its own (`orphan?`), or is derived and read OUT by
+  `jtms/grounded-in-region` with the bookkeeping of every orphan forced OUT.  A candidate
+  with a premise use, a use believed without that bookkeeping, or a stored use OUT that
+  is not its own, is none (docs/nat.md, Rename and remove)."
+  [kb candidates]
+  (let [tms         (reasoning/tms kb)
+        derived-in? #(and (jtms/in? tms %) (not (jtms/premise? tms %)))
+        readings    (into {} (keep #(some->> (own-reading kb %) (vector %)))
+                          (into #{} (filter nat-read/reified-nat-symbol?) candidates))
+        plain       (into #{} (keep (fn [[k r]] (when (every-own? r (constantly false)) k))) readings)
+        open        (into #{} (keep (fn [[k r]] (when (and (not (plain k)) (every-own? r derived-in?)) k)))
+                          readings)]
+    (loop [ks open]
+      (if (empty? ks)
+        (vec (sort plain))
+        (let [{:keys [region in]} (jtms/grounded-in-region
+                                   tms (into #{} (mapcat #(bookkeeping-handles kb %)) (into plain ks)))
+              rests-on? #(and (contains? region %) (not (contains? in %)) (not (jtms/premise? tms %)))
+              ks'       (into #{} (filter #(orphan? kb % rests-on?)) ks)]
+          (if (= ks' ks)
+            (vec (sort (into plain ks)))
+            (recur ks')))))))
+
+(defn orphans-named-by
+  "The orphans among the constants the removed `sentexes` named and the constants `extra`
+  names, read jointly (`orphans-in-cycle`): the candidate set of one round of a
+  teardown's sweep."
+  ([kb sentexes] (orphans-named-by kb sentexes nil))
+  ([kb sentexes extra]
+   (orphans-in-cycle kb (into (constants-named-by sentexes) extra))))
+
+(defn- hold-result-types!
+  "Materialize the types the `result` and `genlResult` declarations of `head` give the
+  `nat/` constant `k`: `(T k)` and `(genl k T)`, each justified by `k`'s map `mh` and its
+  declaration (`hold-on!`), stored under `opts`."
+  [kb k head mh opts]
+  (let [rs (result-declarations kb 'result head)]
+    (doseq [t (result-types kb head)]
+      (hold-on! kb (list t k) opts 'result mh (get rs t))))
+  (let [gs (result-declarations kb 'genlResult head)]
+    (doseq [t (genl-result-types kb head)]
+      (hold-on! kb (list 'genl k t) opts 'genlResult mh (get gs t)))))
+
 (defn mint-nat!
   "Mint the reified constant `K` for the ground NAT expression `E` in reify namespace `ns`
   (`cx/` for a context slot, `nat/` for an argument) and return it.  Asserts `(natFormula
@@ -561,18 +637,13 @@
          k    (constant-for ns E)
          univ nat-read/universal-context
          opts {:strength :monotonic :chain? chain?}]
-     (binding [nat-read/*minting?* true]
+     (binding [nat-read/*minting?* true nat-read/*mint-chains?* chain?]
        ;; a `resultArg` of `head` types `k` off this fact (`checks/result-arg-rows`)
        (let [mh (wiring/assert-sentence kb (list 'natFormula k E) univ
                                         (assoc opts :chain? (and chain? (not ctx?)
                                                                  (boolean (seq (result-arg-declared kb head))))))]
          (when-not ctx?
-           (let [rs (result-declarations kb 'result head)]
-             (doseq [t (result-types kb head)]
-               (hold-on! kb (list t k) opts 'result mh (get rs t))))
-           (let [gs (result-declarations kb 'genlResult head)]
-             (doseq [t (genl-result-types kb head)]
-               (hold-on! kb (list 'genl k t) opts 'genlResult mh (get gs t)))))))
+           (hold-result-types! kb k head mh opts))))
      ;; after the result types, which the projection is arg-checked against
      (when-not ctx? (nat-read/note-values kb [(list 'natFormula k E)] true))
      k)))
@@ -687,12 +758,13 @@
   (docs/context-nat.md).  With `mint?` (the write path) any `context-application?`
   reifies, minting as needed.  Without it (a read) only a
   `readable-context-application?` does, resolving to an existing term or `no-match`.  Any
-  other slot passes through unchanged."
-  ([kb context] (maybe-reify-context kb context true))
-  ([kb context mint?]
+  other slot passes through unchanged.  `chain?` is the write's `:chain?`, which a mint
+  takes (`mint-nat!`)."
+  ([kb context mint?] (maybe-reify-context kb context mint? false))
+  ([kb context mint? chain?]
    (if (if mint? (context-application? context) (readable-context-application? kb context))
      (if mint?
-       (reify-or-mint-nat kb (context-form kb context) nat-read/context-namespace false nil)
+       (reify-or-mint-nat kb (context-form kb context) nat-read/context-namespace chain? nil)
        ;; the read leaf, so a slot the write path stored under a `rewriteOf` target
        ;; resolves to it
        (nat-read/reify-nat-for-read kb (context-form kb context) nat-read/context-namespace nil))
@@ -811,13 +883,34 @@
                       p (kb/find-sentex-handle kb (list 'natFormula k E) nat-read/universal-context)
                       decls)))))))
 
+(defn- reconcile-stated-map!
+  "Materialize the result types of a `nat/` constant `K` whose `(natFormula K E)` map is
+  asserted rather than minted, as a text KB's reload asserts a mint's map.  `K` gets the
+  `(T K)` and `(genl K T)` the mint writes (`hold-result-types!`), justified by the stored
+  map.  So a map stated after `E`'s function's `result` declaration holds the
+  justifications a mint or a late declaration (`reconcile-declared-result!`) leaves.  Only
+  a mint's own map is read: one whose `K` is the constant `E` names (`constant-for`).  A
+  no-op for any other sentence or map, and for an `E` whose function is not a reifiable
+  function."
+  [kb sentence]
+  (when (and (= 'natFormula (first sentence)) (= 3 (count sentence)))
+    (let [k (second sentence)]
+      (when (nat-read/reified-object-symbol? k)
+        (doseq [{mh :id [_ _ E] :sentence} (own-maps k (kb/find-sentexes kb k))
+                :when (and (seq? E)
+                           (= k (constant-for nat-read/nat-namespace E))
+                           (nat-read/reifiable-function? kb (first E)))]
+          (hold-result-types! kb k (first E) mh {:strength :monotonic}))))))
+
 (defn reconcile-nats!
   "The reified-constant maintenance a just-asserted `sentence` owes beside the collision
   repair (`collision-merges`): a result declaration reaching the constants minted before
-  it.  `nat-maintenance/reconcile-assert` calls it behind `any-reified-constants?`, and
-  queues the correspondence derivations itself."
+  it, and a stated map reaching the result declarations stored before it.
+  `nat-maintenance/reconcile-assert` calls it behind `any-reified-constants?`, and queues
+  the correspondence derivations itself."
   [kb sentence]
-  (reconcile-declared-result! kb sentence))
+  (reconcile-declared-result! kb sentence)
+  (reconcile-stated-map! kb sentence))
 
 ;; ---- a reifiable mark moving: the reads `chain/reconcile-reified!` runs on --
 ;; docs/nat.md, A reifiable mark moving.
@@ -834,14 +927,6 @@
   "Does `sentence` hold an application of `f`, at any nesting?"
   [f sentence]
   (boolean (some #(and (sequential? %) (= f (first %))) (tree-seq sequential? seq sentence))))
-
-(defn departed-map
-  "`[k E]` for `sentence` `(natFormula k E)` with `k` an object constant, else nil: the
-  pair a map leaving the store takes with it."
-  [sentence]
-  (when (and (seq? sentence) (= 'natFormula (first sentence)))
-    (let [[_ k E] sentence]
-      (when (and (nat-read/reified-object-symbol? k) (sequential? E)) [k E]))))
 
 (defn written-as
   "`form` with every object constant expanded, recursively, to the expression it maps to,

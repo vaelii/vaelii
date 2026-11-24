@@ -18,6 +18,7 @@
             [vaelii.impl.context-nat :as cn]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
+            [vaelii.impl.point-order :as po]
             [vaelii.impl.profile :as prof]
             [vaelii.test-util :as tu]))
 
@@ -273,6 +274,22 @@
           (is (not (v/sees? kb ke CxStory)))
           (is (not (v/sees? kb kl CxStory))))))))
 
+(tu/deftest-kb a-forward-rule-concludes-at-a-context-minted-after-its-antecedents
+  (doseq [mint-first? [true false]]
+    (tu/with-terms [pp qq rr mark Zed CxP CxQ]
+      (let [cxfn (fresh-cxfn "Pair")
+            pair (list cxfn CxP CxQ)
+            mint #(v/assert kb (list mark Zed) pair)]
+        (v/assert kb (list 'result cxfn 'context) 'CxUniverse)
+        (doseq [pos [1 2]] (v/assert kb (list 'contextArgGenlCx cxfn pos) 'CxUniverse))
+        (v/assert kb (list 'implies (list 'and (list pp '?x) (list qq '?x)) (list rr '?x)) 'CxUniverse
+                  {:direction :forward})
+        (when mint-first? (mint))
+        (v/assert kb (list pp Zed) CxP)
+        (v/assert kb (list qq Zed) CxQ)
+        (when-not mint-first? (mint))
+        (is (true? (v/ask? kb (list rr Zed) pair)) (str "minted first: " mint-first?))))))
+
 (tu/deftest-kb a-hand-written-natformula-places-its-context-under-the-argument-until-it-is-retracted
   (doseq [declaration-first? [true false]]
     (tu/with-terms [CxStory CxNamed]
@@ -285,6 +302,39 @@
           (is (v/sees? kb CxNamed CxStory))
           (v/retract! kb nf)
           (is (not (v/sees? kb CxNamed CxStory))))))))
+
+(defn- denied-edge-reading
+  "`[before after]`: whether a hand-written map's context sees its argument before and
+  after the denial is retracted.  The map, its function's `contextArgGenlCx` declaration,
+  a denial of the one `denied` names (`:map` or `:declaration`) and a fact in the argument
+  arrive in `order`."
+  [kb denied order]
+  (tu/with-terms [CxStory CxNamed p]
+    (let [cxfn (declare-datetime-dimension! kb)
+          s    {:declaration (list 'contextArgGenlCx cxfn 1)
+                :map         (list 'natFormula CxNamed (list cxfn CxStory (list 'DatetimeFn "2000")))}
+          hs   (into {} (for [k order]
+                          [k (case k
+                               :fact (v/assert kb (list p) CxStory)
+                               :deny (v/assert kb (list 'not (s denied)) 'CxUniverse {:strength :monotonic})
+                               (v/assert kb (s k) 'CxUniverse))]))
+          seen #(v/sees? kb CxNamed CxStory)
+          before (seen)]
+      (v/retract! kb (:deny hs))
+      [before (seen)])))
+
+(defn- denied-edge-readings
+  [kb orders]
+  (into #{} (for [denied [:map :declaration] order orders]
+              [denied (denied-edge-reading kb denied order)])))
+
+(tu/deftest-kb a-denied-map-or-declaration-orders-no-context-until-the-denial-goes
+  (is (= #{[:map [false true]] [:declaration [false true]]}
+         (denied-edge-readings kb [[:declaration :map :deny :fact] [:fact :deny :map :declaration]]))))
+
+(tu/deftest-kb ^:slow a-denied-map-or-declaration-orders-no-context-until-the-denial-goes-in-every-order
+  (is (= #{[:map [false true]] [:declaration [false true]]}
+         (denied-edge-readings kb (tu/permutations [:declaration :map :deny :fact])))))
 
 (tu/deftest-kb a-read-of-an-unwritten-application-sees-its-argument
   (tu/with-terms [CxStory p]
@@ -347,9 +397,9 @@
               {:strength :monotonic})
     (v/assert kb (list 'contextArgSubrelation cxfn 2 'subintervalOf) 'CxUniverse)
     (testing "a defeated declaration builds no edge"
-      (is (not (v/in? kb (:id (tu/sentex-matching
-                               kb (list 'contextArgSubrelation cxfn 2 'subintervalOf)
-                               'CxUniverse))))
+      (is (not (v/believed? kb (:id (tu/sentex-matching
+                                     kb (list 'contextArgSubrelation cxfn 2 'subintervalOf)
+                                     'CxUniverse))))
           "the declaration is stored but OUT")
       (is (not (v/sees? kb km ky))))
     ;; retract the monotonic negation — the declaration REVIVES with no further assert
@@ -772,7 +822,7 @@
             kb'     (:context (v/sentex kb (v/assert kb (list 'weather Rain) (at B))))
             _       (add! first-dir)
             _       (add! (- 1 first-dir))
-            held    #(boolean (some->> (tu/sentex-matching kb % U) :id (v/in? kb)))
+            held    #(boolean (some->> (tu/sentex-matching kb % U) :id (v/believed? kb)))
             state   #(vector [(held (list 'genlCx ka kb')) (held (list 'genlCx kb' ka))
                               (held (apply list 'contextsOrderedBothWays (sort [ka kb'])))]
                              (vec (for [x [A B]] (set (map '?w (v/ask kb '(weather ?w) (at x)))))))
@@ -909,7 +959,7 @@
           (is (= [true false] [(v/sees? kb ki ko) (v/sees? kb ko ki)])))))))
 
 (tu/deftest-kb a-slice-at-an-intersection-is-ordered-under-each-argument-and-what-holds-one
-  (doseq [fact-last? [false true]]
+  (doseq [fact-last? [false true], meet-last? [false true]]
     (let [cxfn (declare-calendar-dimension! kb)]
       (tu/with-terms [A B Z Fog Rain Hail]
         (let [at    #(list cxfn 'CxMonad %)
@@ -917,11 +967,111 @@
               fact! #(v/assert kb (list 'subintervalOf A Z) 'CxUniverse)
               _     (when-not fact-last? (fact!))
               kz    (cx Fog Z)
+              ka    (when meet-last? (cx Hail A))
               kab   (cx Rain (list 'TimeIntersectionFn B A))
-              ka    (cx Hail A)
+              ka    (or ka (cx Hail A))
               _     (when fact-last? (fact!))]
           (is (= kab (cx Rain (list 'TimeIntersectionFn A B))))
-          (is (= [true true false] [(v/sees? kb kab ka) (v/sees? kb kab kz) (v/sees? kb ka kab)])))))))
+          (is (= [true true false] [(v/sees? kb kab ka) (v/sees? kb kab kz) (v/sees? kb ka kab)])
+              (pr-str {:fact-last fact-last? :meet-last meet-last?})))))))
+
+(defn- frame-pair-row!
+  "Slices at A and C and two link groups, `:a`, `:c`, `:starts`, `:ends`, arriving in
+  `order`.  `:split` orders the starts through local moments and the ends through UTC
+  ones.  `:across` runs start(C) through a local moment to M and on through a UTC moment
+  to start(A), so no one-frame comparison places start(C) at or before start(A).  `:local`
+  keeps that chain in one frame.  Returns whether A lies under C, whether C lies under A,
+  and whether A lies under C once the last start link is retracted."
+  [kb row order]
+  (let [cxfn (declare-calendar-dimension! kb)]
+    (tu/with-terms [A C M Fog Rain]
+      (let [L      #(list 'InstantFn % 1 1 0 0 0)
+            U      #(list 'StartFn (list 'DatetimeFn (str % "-01-01T00:00Z")))
+            T      (if (= :local row) L U)
+            starts (if (= :split row)
+                     [(list 'instantNotAfter (list 'StartFn C) (L 2000)) (list 'instantNotAfter (L 2001) (list 'StartFn A))]
+                     [(list 'instantNotAfter (list 'StartFn C) (L 2000)) (list 'instantNotAfter (L 2001) M)
+                      (list 'instantNotAfter M (T 2002)) (list 'instantNotAfter (T 2003) (list 'StartFn A))])
+            ends   (if (= :split row)
+                     [(list 'instantNotAfter (list 'EndFn A) (U 2002)) (list 'instantNotAfter (U 2003) (list 'EndFn C))]
+                     [(list 'instantNotAfter (list 'EndFn A) (list 'EndFn C))])
+            cx     (volatile! {})
+            hs     (volatile! [])]
+        (doseq [u order]
+          (case u
+            :a      (vswap! cx assoc :a (:context (v/sentex kb (v/assert kb (list 'weather Fog) (list cxfn 'CxMonad A)))))
+            :c      (vswap! cx assoc :c (:context (v/sentex kb (v/assert kb (list 'weather Rain) (list cxfn 'CxMonad C)))))
+            :starts (vswap! hs into (map #(v/assert kb % 'CxUniverse) starts))
+            :ends   (run! #(v/assert kb % 'CxUniverse) ends)))
+        (let [{ka :a kc :c} @cx
+              ordered [(v/sees? kb ka kc) (v/sees? kb kc ka)]]
+          (v/retract! kb (peek @hs))
+          (conj ordered (v/sees? kb ka kc)))))))
+
+(tu/deftest-kb a-slice-pair-compares-each-pair-of-points-within-one-calendar-frame
+  (doseq [[row want] [[:split true] [:across false] [:local true]]
+          order [[:a :c :starts :ends] [:starts :ends :c :a]]]
+    (is (= [want false false] (frame-pair-row! kb row order)) (pr-str row order))))
+
+(tu/deftest-kb ^:slow a-slice-pair-compares-each-pair-of-points-within-one-calendar-frame-in-every-arrival-order
+  (doseq [[row want] [[:split true] [:across false] [:local true]]
+          order (tu/permutations [:a :c :starts :ends])]
+    (is (= [want false false] (frame-pair-row! kb row order)) (pr-str row order))))
+
+(defn- inside-by-path?
+  "Does the order over time points place the symbol time `a` inside `b`, one
+  `point-order/path` per comparison: start(b) at or before start(a), end(a) at or before
+  end(b)?"
+  [kb a b]
+  (po/with-memo
+    (boolean (and (po/path kb false (list 'StartFn b) (list 'StartFn a))
+                  (po/path kb false (list 'EndFn a) (list 'EndFn b))))))
+
+(defn- story-slices-row
+  "Chain `n` events, each starting before the next and ending where it starts, every four
+  of them a trick, with a slice at every event and trick.  `order` puts the links before
+  the slices, after them, or each slice after the links naming its time's predecessor.
+  Returns the pairs of times `[a b]` whose slices `v/sees?` orders where `inside-by-path?`
+  does not, or the reverse."
+  [kb n order]
+  (let [cxfn  (declare-calendar-dimension! kb)
+        e     (vec (repeatedly n #(tu/tmp-ind "Ev")))
+        t     (vec (repeatedly (quot n 4) #(tu/tmp-ind "Trick")))
+        S     #(list 'StartFn %)
+        E     #(list 'EndFn %)
+        link  (fn [i] [(list 'instantBefore (S (e i)) (S (e (inc i))))
+                       (list 'instantEqual (E (e i)) (S (e (inc i))))])
+        trick (fn [j] (cond-> [(list 'instantEqual (S (t j)) (S (e (* 4 j))))
+                               (list 'instantEqual (E (t j)) (E (e (+ 3 (* 4 j)))))]
+                        (pos? j) (conj (list 'instantBefore (E (t (dec j))) (S (t j))))))
+        k     (volatile! {})
+        step! (fn [[what x]]
+                (if (= :mint what)
+                  (vswap! k assoc x (:context (v/sentex kb (v/assert kb (list 'weather (tu/tmp-ind "Fog"))
+                                                                     (list cxfn 'CxMonad x)))))
+                  (run! #(v/assert kb % 'CxUniverse) (if (= :link what) (link x) (trick x)))))
+        links (concat (map #(vector :link %) (range (dec n))) (map #(vector :trick %) (range (count t))))
+        mints (map #(vector :mint %) (concat e t))
+        ts    (concat e t)]
+    (run! step! (case order
+                  :links-first  (concat links mints)
+                  :slices-first (concat mints links)
+                  :interleaved  (cons [:mint (e 0)]
+                                      (mapcat (fn [i] (cond-> [[:link i] [:mint (e (inc i))]]
+                                                        (= 3 (mod (inc i) 4))
+                                                        (conj [:trick (quot i 4)] [:mint (t (quot i 4))])))
+                                              (range (dec n))))))
+    (let [pairs (fn [ordered?] (set (for [a ts, b ts :when (and (not= a b) (ordered? a b))] [a b])))
+          want  (pairs #(inside-by-path? kb %1 %2))
+          got   (pairs #(v/sees? kb (@k %1) (@k %2)))]
+      (set/union (set/difference want got) (set/difference got want)))))
+
+(tu/deftest-kb slices-along-a-story-are-ordered-as-one-path-per-comparison
+  (is (= #{} (story-slices-row kb 8 :interleaved))))
+
+(tu/deftest-kb ^:slow slices-along-a-story-are-ordered-as-one-path-per-comparison-in-any-arrival-order
+  (doseq [order [:links-first :slices-first :interleaved]]
+    (is (= #{} (story-slices-row kb 12 order)) (str order))))
 
 (tu/deftest-kb a-declared-time-position-takes-one-spelling-of-each-calendar-time
   (let [cxfn (declare-calendar-dimension! kb)

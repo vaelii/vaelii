@@ -125,6 +125,49 @@
         (v/retract! kb decl)
         (is (empty? (v/sentexes-matching kb (list traced Alarm) '?ctx)))))))
 
+(defn- two-declarations-reading
+  "Whether `(traced Alarm)` is believed in CxA once the steps `order` names arrive in that
+  order and `then` runs: a monotonic `(transitive causes)` in CxA, a default duplicate in
+  CxUniverse, a monotonic denial there, the forward rule and the two hops."
+  [kb order then]
+  (tu/with-terms [causes traced Spark Fire Alarm CxA]
+    (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+    (let [m    {:strength :monotonic}
+          U    'CxUniverse
+          step {:decl  #(v/assert kb (list 'transitive causes) CxA m)
+                :dup   #(v/assert kb (list 'transitive causes) U)
+                :deny  #(v/assert kb (list 'not (list 'transitive causes)) U m)
+                :rule  #(v/assert kb (list 'implies (list causes Spark '?c) (list traced '?c)) CxA
+                                  {:direction :forward})
+                :edges #(do (v/assert kb (list causes Spark Fire) CxA)
+                            (v/assert kb (list causes Fire Alarm) CxA))}
+          hs   (into {} (for [k order] [k ((step k))]))]
+      (case then
+        :none        nil
+        :retract-dup (v/retract! kb (:dup hs))
+        :except-dup  (v/assert kb (list 'except (list 'sentexHandle (:dup hs))) U m)
+        :restore-dup (do (v/retract! kb (:deny hs)) (v/retract! kb (:decl hs))))
+      (v/ask? kb (list traced Alarm) CxA))))
+
+(def ^:private two-declarations-rows
+  "`[steps then]`: the duplicate defeated, then restored and left alone; and undefeated,
+  then retracted or excepted."
+  [[[:decl :dup :deny :rule :edges] :none]
+   [[:decl :dup :deny :rule :edges] :restore-dup]
+   [[:decl :dup :rule :edges] :retract-dup]
+   [[:decl :dup :rule :edges] :except-dup]])
+
+(tu/deftest-kb a-walk-rests-on-each-believed-declaration-apart
+  (is (= #{true}
+         (into #{} (for [[ks then] two-declarations-rows]
+                     (two-declarations-reading kb ks then))))))
+
+(tu/deftest-kb ^:slow a-walk-rests-on-each-believed-declaration-apart-in-every-order
+  (is (= #{true}
+         (into #{} (for [[ks then] two-declarations-rows
+                         order     (tu/permutations ks)]
+                     (two-declarations-reading kb order then))))))
+
 (tu/deftest-kb a-rule-that-concludes-what-it-would-walk-takes-the-matcher-alone
   ;; The written-out closure and the walk must not both run: a rule storing `(P x z)` from
   ;; `(P x y)` and `(P y z)` moves its own graph inside the fixpoint, so which chain was
@@ -192,11 +235,11 @@
       (v/assert kb (list causes Fire Alarm) W)
       (is (v/ask? kb (list traceable Spark Alarm) W))
       (let [d (v/assert kb (list 'not (list causes Spark Fire)) W {:strength :monotonic})]
-        (is (not (v/in? kb near)) "the stronger negation defeats the first hop")
+        (is (not (v/believed? kb near)) "the stronger negation defeats the first hop")
         (is (not (v/ask? kb (list traceable Spark Alarm) W))
             "so the chain is broken and the far conclusion goes")
         (v/retract! kb d)
-        (is (v/in? kb near) "the edge revives...")
+        (is (v/believed? kb near) "the edge revives...")
         (is (v/ask? kb (list traceable Spark Alarm) W) "...and so does the conclusion")))))
 
 (tu/deftest-kb a-join-binding-both-ends-walks-a-diamond-and-a-cycle

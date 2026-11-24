@@ -151,7 +151,7 @@ vaelii.examples-test	6.68
 vaelii.except-gnarly-test	6.06
 vaelii.except-monotonic-test	0.09
 vaelii.except-recheck-test	3.87
-vaelii.except-rule-visibility-test	0.12
+vaelii.except-rule-target-test	0.12
 vaelii.except-strength-test	0.13
 vaelii.except-test	0.34
 vaelii.exempt-reads-test	0.02
@@ -261,7 +261,7 @@ vaelii.name-string-test	4.78
 vaelii.named-reflection-test	0.23
 vaelii.naming-test	0.08
 vaelii.nat-context-test	0.65
-vaelii.nat-test	90.65
+vaelii.nat-test	229.97
 vaelii.nat-value-maintenance-test	0.76
 vaelii.negated-antecedent-index-test	0.03
 vaelii.negated-decontextualized-test	2.00

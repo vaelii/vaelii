@@ -6,27 +6,38 @@
 # in one place so the two runners cannot drift: `test-parallel.sh` shards the namespaces,
 # `test-matrix.sh` fans out the configurations, and both size their fan-out from here.
 #
-# The rule is two terms:
+# The rule is three terms:
 #
-#   slots = P − 2 − (vaelii JVMs already running)        floored at 1
+#   slots = min(base − (vaelii JVMs already running), memory)        floored at 1
+#   base  = P − 2, and on Apple Silicon at most 3/4 of all cores
 #
-#   - **P − 2**, where P is the performance-core count read from `hw.perflevel0.logicalcpu`
-#     on Apple Silicon — the performance tier alone, the efficiency cores NOT folded in.  Two
-#     are held back for the concurrent `lint` stage and the OS.  On a 10-core (8P + 2E) box
-#     that is 6 test JVMs, leaving two performance cores plus both efficiency cores free:
-#     because P counts only performance cores, `P − 2` never reaches down into the E-cores the
-#     way a naive `ncpu − 2` would.  A homogeneous box — an Intel Mac, or Linux CI — has no
-#     `perflevel` key and falls back to `ncpu` / `nproc`, where `− 2` just leaves two cores
-#     for everything else.
+#   - **base.**  P counts the cores of every tier macOS does not name `Efficiency`
+#     (`hw.perflevel<i>.name`): 8 on an 8P + 2E chip, and 36 on one with 12 Super and 24
+#     Performance cores.  Two are held back for the concurrent `lint` stage and the OS.  A
+#     test JVM takes about 4/3 cores over a run, with its GC and JIT threads, hence the 3/4:
+#     6 slots on 8P + 2E, where the excess runs on the E-cores, and 27 on 12S + 24P.  Where
+#     the tiers have no name P is `hw.perflevel0`'s count, and with no tiers (an Intel Mac,
+#     Linux) base is `ncpu` or `nproc` − 2.
 #   - **minus the vaelii JVMs already up.**  This is a shared checkout (several writers in one
 #     tree) beside sibling checkouts, so a bench, a dev REPL or another `lein gate` is often already
 #     eating cores.  Each such JVM is a slot this run should not also claim, so the count is
 #     load-aware rather than a constant.
+#   - **memory.**  The term counts how many more test JVMs fit in the memory the OS can
+#     hand out, less MEMORY_RESERVE_GIB, at `test_jvm_kib` each.  Each running vaelii JVM is
+#     charged the part of that charge it does not hold yet, because its heap grows over a
+#     run.  A box that also serves a large model has spare cores but not spare memory.
+#     When the JVMs need more memory than the box has, macOS's jetsam ends processes with
+#     KILL, the largest first.
 #
-# That second term makes the answer depend on what else is running, so it is NOT the plain
-# `P − 2` default — `default_slots` says so on stderr when the subtraction changes the number,
-# and stays quiet on an idle box where the two agree.  The count on stdout is the only thing
-# a caller captures (`jobs=$(default_slots)`); the note is stderr.
+# `test-matrix.sh` runs `slots` configurations at once.  `test-parallel.sh` bounds its
+# shards further (`suite_shards`): at most SUITE_MAX_SHARDS, and at least a third of base
+# or 3, the share that leaves room for a matrix and a second suite.  The memory term
+# lowers a count below that floor, and lowers a count named with `--jobs` too.
+#
+# The second and third terms make the answer depend on what else is running, so
+# `default_slots` says so on stderr when either lowers the number, and prints nothing
+# there on an idle box.  The count on stdout is the only thing a caller captures
+# (`jobs=$(default_slots)`); the note is stderr.
 #
 # Sourced, never executed:
 #   . scripts/lib/slots.sh
@@ -37,49 +48,157 @@
 # a `tail -f` on a log or this call is never counted; the `java.*vaelii` shape keeps it to
 # JVMs.  A rough estimate across this checkout AND its siblings — erring toward fewer slots.
 # The arguments are process groups whose JVMs are not counted: a running matrix passes its
-# own configurations' groups, so it does not count its own JVMs as load.
-running_vaelii_count() {
-  local pids pid row pg cmd n=0 skip=" $* "
+# own configurations' groups, so it does not count its own JVMs as load.  It prints each
+# JVM's resident memory in KiB, one line per JVM.
+running_vaelii_jvms() {
+  local pids pid row pg rss cmd skip=" $* "
   pids=$(pgrep -f 'java.*vaelii' 2>/dev/null) || pids=''
   for pid in $pids; do
-    row=$(ps -o pgid=,command= -p "$pid" 2>/dev/null) || continue
-    read -r pg cmd <<<"$row"
+    row=$(ps -o pgid=,rss=,command= -p "$pid" 2>/dev/null) || continue
+    read -r pg rss cmd <<<"$row"
     case "$cmd" in
       *leiningen.core.main*) continue ;;   # the launcher parent; its project JVM is counted
     esac
-    [[ "$skip" == *" $pg "* ]] || n=$((n + 1))
+    [[ "$skip" == *" $pg "* ]] || printf '%s\n' "$rss"
   done
+}
+
+# The memory the memory term leaves to the OS and to programs that start after the suite.
+MEMORY_RESERVE_GIB=16
+
+# test_jvm_kib prints the memory one test JVM may hold, in KiB: the heap ceiling the
+# `:test` profile gives it (VAELII_TEST_HEAP, else 4g; project-env.clj) and 1 GiB outside
+# the heap.  The 20 test JVMs of one `lein gate` run peaked at 1.6-2.4 GiB resident under
+# the 4g ceiling (2026-11-23).
+test_jvm_kib() {
+  local heap=${VAELII_TEST_HEAP:-4g} kib
+  case "$heap" in
+    *[gG]) kib=$(( ${heap%?} * 1048576 )) ;;
+    *[mM]) kib=$(( ${heap%?} * 1024 )) ;;
+    *[kK]) kib=${heap%?} ;;
+    *)     kib=$(( heap / 1024 )) ;;
+  esac
+  printf '%s\n' $(( kib + 1048576 ))
+}
+
+# available_kib prints the memory the OS can hand out now, in KiB: MemAvailable on Linux;
+# on macOS the free, file-backed and purgeable pages.  Inactive pages are left out: an idle
+# GPU process's wired pages become inactive, and the OS compresses them rather than hand
+# them out, so counting them shows an idle model server's memory as free.  It prints
+# nothing where neither reads.
+available_kib() {
+  if [[ -r /proc/meminfo ]]; then
+    awk '/^MemAvailable:/ { print $2; exit }' /proc/meminfo
+  elif command -v vm_stat >/dev/null; then
+    vm_stat | awk '/page size of/ { for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) size = $i }
+                   /^(Pages free|File-backed pages|Pages purgeable):/ { gsub(/\./, "", $NF); pages += $NF }
+                   END { if (size) printf "%d\n", pages * size / 1024 }'
+  fi
+}
+
+# memory_slots <resident KiB, one line per running vaelii JVM> prints how many more test
+# JVMs the memory term admits, or nothing when available_kib reads nothing.
+memory_slots() {
+  local avail per owed=0 rss n
+  per=$(test_jvm_kib)
+  avail=$(available_kib)
+  [[ "$avail" =~ ^[0-9]+$ ]] || return 0
+  for rss in $1; do
+    (( rss < per )) && owed=$((owed + per - rss))
+  done
+  n=$(( (avail - MEMORY_RESERVE_GIB * 1048576 - owed) / per ))
+  (( n < 0 )) && n=0
   printf '%s\n' "$n"
 }
 
-# slots_beside [pgid…] prints `<slots> <running> <base>`: the rule above, with the JVMs in
-# those process groups left out of `running`.  A running matrix re-reads it
-# (scripts/test-matrix.sh).
+# slot_base prints the base of the rule above.
+slot_base() {
+  local tiers all='' p=0 i n name base
+  tiers=$(sysctl -n hw.nperflevels 2>/dev/null) || tiers=''
+  if [[ "$tiers" =~ ^[1-9][0-9]*$ ]]; then
+    for ((i = 0; i < tiers; i++)); do
+      n=$(sysctl -n "hw.perflevel$i.logicalcpu" 2>/dev/null) || continue
+      name=$(sysctl -n "hw.perflevel$i.name" 2>/dev/null) || name=''
+      # an unnamed tier counts only as the first, which is the fastest
+      if [[ -z "$name" ]]; then (( i == 0 )) && p=$((p + n))
+      elif [[ "$name" != Efficiency ]]; then p=$((p + n)); fi
+    done
+  fi
+  all=$(sysctl -n hw.ncpu 2>/dev/null) || all=''
+  [[ -n "$all" ]] || all=$(nproc 2>/dev/null) || all=''
+  [[ -n "$all" ]] || all=4
+  if (( p > 0 )); then
+    base=$((p - 2))
+    (( base > all * 3 / 4 )) && base=$((all * 3 / 4))
+  else
+    base=$((all - 2))
+  fi
+  (( base < 1 )) && base=1
+  printf '%s\n' "$base"
+}
+
+# slots_beside [pgid…] prints `<slots> <running> <base> <memory>`: the rule above, with the
+# JVMs in those process groups left out of `running`, and `-` for a memory the OS does not
+# report.  A running matrix re-reads it (scripts/test-matrix.sh).
 # shellcheck disable=SC2120  # scripts/test-matrix.sh passes the process groups
 slots_beside() {
-  local pcores=''
-  # perflevel0 is the performance tier on Apple Silicon; the key is absent everywhere else.
-  pcores=$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null) || pcores=''
-  [[ -n "$pcores" ]] || pcores=$(sysctl -n hw.ncpu 2>/dev/null) || pcores=''
-  [[ -n "$pcores" ]] || pcores=$(nproc 2>/dev/null) || pcores=''
-  [[ -n "$pcores" ]] || pcores=4
-
-  local base=$((pcores - 2)); (( base < 1 )) && base=1
-  local running; running=$(running_vaelii_count "$@")
-  local slots=$((base - running)); (( slots < 1 )) && slots=1
-  printf '%s %s %s\n' "$slots" "$running" "$base"
+  local base; base=$(slot_base)
+  local jvms; jvms=$(running_vaelii_jvms "$@")
+  local running=0; [[ -z "$jvms" ]] || running=$(wc -l <<<"$jvms" | tr -d ' ')
+  local memory; memory=$(memory_slots "$jvms")
+  local slots=$((base - running))
+  [[ -n "$memory" ]] && (( memory < slots )) && slots=$memory
+  (( slots < 1 )) && slots=1
+  printf '%s %s %s %s\n' "$slots" "$running" "$base" "${memory:--}"
 }
 
 default_slots() {
-  local slots running base
-  read -r slots running base < <(slots_beside)
+  local slots running base memory
+  read -r slots running base memory < <(slots_beside)
 
-  # Say when the load term moved the number off the plain P−2 default; quiet when it did not.
-  if (( running > 0 )); then
-    printf 'slots: %d vaelii JVM(s) already running — using %d, not the default P-2=%d\n' \
-      "$running" "$slots" "$base" >&2
-  fi
+  slots_note "$slots" "$running" "$base" "$memory"
   printf '%s\n' "$slots"
+}
+
+# slots_note <count> <running> <base> <memory> says on stderr when the load or memory term
+# applied.
+slots_note() {
+  if (( $2 > 0 )); then
+    printf 'slots: %d vaelii JVM(s) already running — using %d (base %d on this box)\n' \
+      "$2" "$1" "$3" >&2
+  fi
+  if [[ "$4" =~ ^[0-9]+$ ]] && (( $4 < $3 - $2 )); then
+    printf 'slots: memory for %d more test JVM(s) of %d GiB — using %d\n' \
+      "$4" $(( $(test_jvm_kib) / 1048576 )) "$1" >&2
+  fi
+}
+
+# The shard count past which a suite stops getting faster: its longest namespace sets the
+# wall time from there.
+SUITE_MAX_SHARDS=18
+
+# suite_shards prints one sharded suite's default shard count: the slots, at most
+# SUITE_MAX_SHARDS and at least TEST_MIN_JOBS (default: a third of base, or 3), and never
+# more than the memory term admits.
+suite_shards() {
+  local slots running base memory least
+  read -r slots running base memory < <(slots_beside)
+  least=$((base / 3)); (( least < 3 )) && least=3
+  least=${TEST_MIN_JOBS:-$least}
+  (( slots > SUITE_MAX_SHARDS )) && slots=$SUITE_MAX_SHARDS
+  (( slots < least )) && slots=$least
+  slots=$(memory_bound "$slots" "$memory")
+  slots_note "$slots" "$running" "$base" "$memory"
+  printf '%s\n' "$slots"
+}
+
+# memory_bound <count> <memory> prints the count held to the memory term's admission,
+# floored at 1, or the count unchanged when <memory> is not a number.
+memory_bound() {
+  local n=$1
+  if [[ "$2" =~ ^[0-9]+$ ]] && (( n > $2 )); then n=$2; fi
+  (( n < 1 )) && n=1
+  printf '%s\n' "$n"
 }
 
 # ---- the heavy runs belong to the primary checkout ---------------------------------------
@@ -324,7 +443,7 @@ matrix_red_recent() {
 # `box_state_dir` while it measures.
 #
 # `lein test-parallel` sizes its shard count from the vaelii JVMs already running
-# (`default_slots`, floored at `TEST_MIN_JOBS`), so seven suites started together would each
+# (`suite_shards`, floored at `TEST_MIN_JOBS`), so seven suites started together would each
 # start that floor's shards. So a sharded suite holds one of GATE_MAX_CONCURRENT gate slots
 # (2 by default, `0` for no cap), `gate-lock.1` … `gate-lock.<n>` in `box_state_dir`, shared
 # by every clone and worktree on the box. `lein gate` takes its slot for its test stage alone

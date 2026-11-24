@@ -58,7 +58,8 @@ with the tools installed inside the distribution. The suite's tests over a
 lein lint    # glossary, versions, doc links, doc drift, conflict markers, clj-kondo,
              # cljfmt, shellcheck, reflect (a compile pass), unused (a public var nothing
              # calls), prose, derived (a stateful def with no register row), doc-size
-             # (docstring and comment lines over a file's budget), in three concurrent lanes
+             # (docstring and comment lines over a file's budget), perf-owed (the tests of
+             # the selector `lein perf --owed` reads), in three concurrent lanes
 lein fix     # reformats in place; cljfmt is the only auto-repairable check
 lein gate    # lint alongside the suite — the check before you push
 lein release-gate  # ...and the uberjar and the perf claims, before a tag or a perf-sensitive land
@@ -76,7 +77,14 @@ warning (a restricted native call, a `sun.misc.Unsafe` caller, a deprecated `-XX
 or lein's leaked `$CLASSPATH` — so a dependency or a JDK that brings one in goes red here.
 **Perf is opt-in**: `lein release-gate` adds the scaling claims before a tag or a
 perf-sensitive land, `--perf` adds them without the release framing, and a `lein gate` run
-that lands a hot-path change without them prints "perf owed". `lein release-gate` also
+that lands a change reaching a perf check without them prints "perf owed". `lein perf
+--owed` runs those checks alone, `-n` lists each with the changed code that selects it, and
+`lein perf-ab <base> --owed` runs the perf-ab probes the change reaches. The selection reads
+the reach map `lein perf --reach` measures under the JaCoCo agent (about 22 minutes, from
+the primary): the engine fns each check and probe executes, and per line of src/ the
+checks and probes that executed it. A change inside a fn selects those that executed the
+call or branch around it (`scripts/perf-owed.py` gives the rule). Re-measure it at a release and
+after adding a check; with no map, the selection falls back to per-file rules. `lein release-gate` also
 runs an `uberjar` stage, which AOT-compiles every namespace into the standalone jar and
 loads `vaelii.core` from it. A `lein gate` run at `:default` that
 lands an index, TMS or inference change prints "slow owed" (§5).
@@ -196,7 +204,8 @@ tests look more paranoid than a unit test needs to be.
   [`docs/contexts.md`](docs/contexts.md)
 - **Belief filtering.** A stored sentex is not a believed one. Matching, closures and
   cached relations answer from belief, and a raw index read goes through
-  `reads/believed-…` or `reads/as-stored-…`, which name the reading the caller gets.
+  `reads/in-…` (the IN label alone) or `reads/as-stored-…`, which name the reading the
+  caller gets.
   [`docs/taxonomy.md`](docs/taxonomy.md)
 - **Separated state.** Knowledge lives in the KB, belief-free indexes live in the
   IndexStore, and belief and every structure that reads it live outside both. A cache
@@ -842,7 +851,9 @@ mocks — the in-memory stores by default, with no external dependency.
   out of the log. Redirect to a file, read the status, then grep it.
 
 When verifying a fix has a regression test: stash *only* the fix, run the test, confirm
-it fails; restore, confirm it passes.
+it fails; restore, confirm it passes. A new re-join channel takes the same check: a test
+of its own fires with the channel on and fails with that channel alone off
+(`inherit_forward_test/each-re-join-channel-fires-what-its-arrival-licenses`).
 
 **Coverage expectation.** Added code should be covered by tests; modified code should
 be exercised by existing or new tests. The standard is not a percentage, it is "every
@@ -950,6 +961,13 @@ remote shell. See [`.github/SECURITY.md`](.github/SECURITY.md).
   figure. When every namespace slowed together, `scripts/ci-weights.sh <run-id>`
   rewrites both files from your pull request's run, where `<run-id>` is the number in
   the run's URL.
+- **A red `perf` check names a probe your change made slower.** The `perf` workflow runs
+  the perf-ab probes `scripts/perf-owed.py` selects for your change, against the pull
+  request's base. The run's **Summary** page lists what was selected and the changed file
+  that selected each, then a table of each probe's base and head milliseconds. A probe
+  fails when the median head/base ratio of three reps passes 1.25x. Reproduce one with
+  `lein perf-ab <base> --only <probe>`. When the change is slower on purpose, state in
+  the pull request which probe is slower, by how much, and why.
 - **Don't `--no-verify`**: fix the hook failure rather than bypassing it.
 - **Don't amend pushed commits**: make a new one.
 - **Merges may be rewritten.** Vaelii may squash, reword or amend your commits when

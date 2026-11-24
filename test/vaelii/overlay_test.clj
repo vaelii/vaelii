@@ -30,6 +30,7 @@
             [vaelii.impl.overlay.store :as ostore]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.reads :as reads]
+            [vaelii.impl.sentex :as sx]
             [vaelii.kv-backend-test :as kvt]
             [vaelii.round-trip-test :as rtt]
             [vaelii.test-util :as tu])
@@ -160,7 +161,8 @@
           spec {:backend :disk-log :dir dir :recover? false}]
       (try
         (let [b (v/open-kb spec)
-              e (try (v/open-kb {:backend :overlay :base-stores {:records (:records b) :index (:index b)}
+              e (try (v/open-kb {:backend :overlay :base-stores {:records (:records b) :index (:index b)
+                                                                 :clock (:clock b)}
                                  :overlay spec :recover? false})
                      nil
                      (catch clojure.lang.ExceptionInfo e e))]
@@ -175,7 +177,8 @@
         (v/assert b '(dog Rex) 'CxUniverse)
         (let [before (p/sentex-ids (:records b))
               e      (try (v/open-kb {:backend :overlay
-                                      :base-stores {:records (:records b) :index (:index b)}
+                                      :base-stores {:records (:records b) :index (:index b)
+                                                    :clock (:clock b)}
                                       :overlay spec :recover? false})
                           nil
                           (catch clojure.lang.ExceptionInfo e e))]
@@ -332,6 +335,15 @@
     (v/close! f)
     (v/clear! base)))
 
+(deftest a-base-write-retires-its-fork-s-cached-answers
+  (let [base (fresh-base 27)
+        f    (v/fork base)
+        ask  #(set (map (fn [s] (get s '?x)) (v/ask f '(ownerOf Ann ?x) 'CxOverlay)))]
+    (is (= '#{Muffet} (ask)))
+    (v/retract! base (v/handle-of base '(ownerOf Ann Muffet) 'CxOverlay))
+    (is (= #{} (ask)) "the fork no longer answers the fact its base retracted")
+    (v/close! f)
+    (v/clear! base)))
 (deftest a-fork-can-be-cleared-back-to-empty-without-emptying-the-base
   (let [base   (fresh-base 5)
         before (base-snapshot base)
@@ -657,39 +669,6 @@
         (v/clear! grown)
         (v/clear! base)))))
 
-(deftest a-fork-is-refused-over-a-base-rebuilt-in-another-order
-  ;; The base did not grow, so no watermark sees it — but the handle the fork's tombstone
-  ;; names now holds another sentence, which the tombstone would hide.  The fork recorded
-  ;; the digest of the base record it removed, and the mount compares.
-  (let [n      (gensym)
-        mk     (fn [tag ss]
-                 (let [kb (doto (v/open-kb {:backend :memory :space [tag n] :recover? false})
-                            (v/clear!))]
-                   (doseq [s ss] (v/assert kb s 'CxOverlay {:strength :monotonic}))
-                   kb))
-        base   (mk ::order-a '[(dog Ace) (dog Bo)])
-        same   (mk ::order-same '[(dog Ace) (dog Bo)])
-        turned (mk ::order-turned '[(dog Bo) (dog Ace)])
-        dir    (tu/tmpdir "vaelii-overlay-")
-        h      (v/handle-of base '(dog Ace) 'CxOverlay)]
-    (try
-      (let [f (v/fork base {:backend :disk-log :dir dir})]
-        (v/retract! f h)
-        (v/close! f))
-      (testing "over a base rebuilt in the same order the removal stands"
-        (let [f2 (v/fork same {:backend :disk-log :dir dir})]
-          (is (= '#{(dog Bo)} (sentences (v/sentexes-matching f2 '(dog ?x) 'CxOverlay))))
-          (v/close! f2)))
-      (testing "over one rebuilt in another order the mount is refused, naming the handle"
-        (let [e (try (v/fork turned {:backend :disk-log :dir dir}) nil
-                     (catch clojure.lang.ExceptionInfo e e))]
-          (is (= :fork-base-overlap (:type (ex-data e))))
-          (is (= [h] (:handles (ex-data e))))))
-      (finally
-        (disk/close-dir! dir)
-        (tu/rm-rf! dir)
-        (doseq [kb [base same turned]] (v/clear! kb))))))
-
 (deftest a-fork-whose-digests-sit-under-the-alternate-key-is-checked-on-remount
   ;; A durable fork's bookkeeping may hold its digested handles under `::ostore/base-pinned`
   ;; rather than `::ostore/base-digested`.  The mount reads both keys: a matching digest
@@ -812,7 +791,8 @@
       (is (= :unknown-option
              (:type (ex-data (try (kb/open-kb {:records :overlay :index :overlay
                                                :base-stores {:records (:records base)
-                                                             :index (:index base)}
+                                                             :index (:index base)
+                                                             :clock (:clock base)}
                                                :overlay {:backend :memory :space [::fork-of (gensym)]}
                                                :fork-dirs [dir] :recover? false}
                                               v/recover v/reindex)
@@ -905,26 +885,188 @@
         (tu/rm-rf! dir)
         (v/clear! base)))))
 
-(deftest a-reopen-over-a-base-changed-below-its-content-end-is-refused
-  (let [n     (gensym)
-        base  (fresh-base n)
-        dir   (tu/tmpdir "vaelii-overlay-")]
+(defn- load-base!
+  "Assert `items` into `kb` in order: a sentence at `:monotonic`, `[:default s]` at
+  `:default`, or `[:rule antecedents consequent]` a forward rule."
+  [kb items]
+  (doseq [i items]
+    (cond (= :rule (first i))    (v/assert-rule kb (nth i 1) (nth i 2) 'CxOverlay {:direction :forward})
+          (= :default (first i)) (v/assert kb (second i) 'CxOverlay)
+          :else                  (v/assert kb i 'CxOverlay {:strength :monotonic})))
+  kb)
+
+(defn- base-in
+  "A base on its own space holding `items` in that order, opened with `:fork-dirs` `dirs`."
+  [items dirs]
+  (load-base! (doto (v/open-kb {:backend :memory :space [::base-in (gensym)] :recover? false
+                                :fork-dirs dirs})
+                (v/clear!))
+              items))
+
+(def ^:private named-base
+  "A base whose records `fork-writes!` names.  It removes one, releases one's premise mark,
+  strengthens one and excepts one.  Its denial clashes with one, and a justification of its
+  names a base rule firing over a fork fact.  It names nothing of the last one."
+  '[(genl dog animal) [:rule [(dog ?x)] (mammal ?x)] (dog Muffet) (ownerOf Ann Muffet)
+    (mammal Muffet) [:default (cat Felix)] (dog Bo) [:default (likes Ann Bob)] (ownerOf Bob Fido)])
+
+(defn- fork-writes!
+  "The writes each case makes in a fork of `named-base`, by content; the except only where
+  the base holds the record it names."
+  [f]
+  (let [h #(v/handle-of f % 'CxOverlay)]
+    (v/assert f '(dog Rex) 'CxOverlay {:strength :monotonic})
+    (v/retract! f (h '(ownerOf Ann Muffet)))
+    (v/retract! f (h '(mammal Muffet)))
+    (v/assert f '(cat Felix) 'CxOverlay {:strength :monotonic})
+    (when-let [bo (h '(dog Bo))] (v/assert f (list 'except (sx/sentex-handle bo)) 'CxOverlay))
+    (v/assert f '(not (likes Ann Bob)) 'CxOverlay {:strength :monotonic})
+    (v/assert-rule f '[(cat ?x)] '(pet ?x) 'CxOverlay {:direction :forward})
+    f))
+
+(defn- by-content
+  "`form` with each handle it names given as the content `kb` holds there, so two KBs holding
+  one content at different handles compare equal."
+  [kb form]
+  (let [at #(when-let [r (p/get-sentex (:records kb) %)]
+              [(by-content kb (sx/sentence-of r)) (:context r)])]
+    (cond (sx/sentex-handle? form) (list 'sentexHandle (at (sx/handle-id form)))
+          (and (seq? form) (= 'except (first form)) (integer? (second form))) (list 'except (at (second form)))
+          (sequential? form) (apply list (map #(by-content kb %) form))
+          :else form)))
+
+(defn- beliefs
+  "The content of each sentex `kb` believes in the context it is stored in (`by-content`)."
+  [kb]
+  (into #{} (keep #(when-let [r (p/get-sentex (:records kb) %)]
+                     (when (v/believed? kb % (:context r))
+                       [(by-content kb (sx/sentence-of r)) (:context r)])))
+        (p/sentex-ids (:records kb))))
+
+(defn- premises
+  "`{content strength}` over `kb`'s premises (`by-content`)."
+  [kb]
+  (into {} (keep #(when-let [r (p/get-sentex (:records kb) %)]
+                    [[(by-content kb (sx/sentence-of r)) (:context r)] (p/premise-strength (:records kb) %)]))
+        (p/premise-ids (:records kb))))
+
+(defn- minted-content
+  "`{handle content}` for each record the fork `f` holds at a handle its base does not."
+  [f base]
+  (into {} (keep #(when-not (p/get-sentex (:records base) %)
+                    [% (by-content f (sx/sentence-of (p/get-sentex (:records f) %)))]))
+        (p/sentex-ids (:overlay (:records f)))))
+
+(defn- names-held?
+  "Does every record `form` names (`by-content`) sit in `base` or among `contents`?"
+  [base contents form]
+  (every? (fn [x] (or (not (and (seq? x) (= 'sentexHandle (first x)) (vector? (second x))))
+                      (let [[s c] (second x)] (or (contains? contents s) (v/handle-of base s c)))))
+          (tree-seq sequential? seq form)))
+
+(defn- same-as-a-fresh-fork
+  "Reopen the durable fork at `dir`, written over another base, over `base`.  Check it
+  against a fork of `base` given `fork-writes!` from scratch: the same beliefs and premises,
+  and every handle the fork minted holding its content unless that names a record `base`
+  lacks.  Then check its index against a reindex's."
+  [base dir minted]
+  (let [fresh (fork-writes! (v/fork base))
+        f     (v/fork base {:backend :disk-log :dir dir})
+        held  (into {} (filter #(names-held? base (set (vals minted)) (val %))) minted)]
     (try
-      (let [f (v/fork base {:backend :disk-log :dir dir})]
-        (v/assert f '(dog Rex) 'CxOverlay {:strength :monotonic})
+      (is (= (beliefs fresh) (beliefs f)) "the beliefs of a fork written over this base")
+      (is (= (premises fresh) (premises f)) "its premises, the strengthened and the released ones included")
+      (is (= held (select-keys (minted-content f base) (keys minted)))
+          "every handle the fork minted holds what it held, and one naming a lost record is gone")
+      (is (empty? (v/sentexes-matching f '(ownerOf Ann Muffet) 'CxOverlay)) "the removal applies")
+      (is (empty? (v/sentexes-matching f '(dog Bo) 'CxOverlay)) "the except applies")
+      (is (= [] (index-against-reindex f)))
+      (finally (v/close! fresh) (v/close! f) (disk/close-dir! dir)))))
+
+(defn- reopen-over-each!
+  "For each of `orders`, the load order of a changed base: write `fork-writes!` in a durable
+  fork of `named-base`, then reopen it over that base (`same-as-a-fresh-fork`)."
+  [orders]
+  (doseq [items orders]
+    (let [dir  (tu/tmpdir "vaelii-overlay-")
+          base (base-in named-base [])]
+      (try
+        (let [f      (fork-writes! (v/fork base {:backend :disk-log :dir dir}))
+              minted (minted-content f base)]
+          (v/close! f)
+          (disk/close-dir! dir)
+          (let [b (base-in items [dir])]
+            (try (same-as-a-fresh-fork b dir minted) (finally (v/clear! b)))))
+        (finally (disk/close-dir! dir) (tu/rm-rf! dir) (v/clear! base))))))
+
+(deftest a-durable-fork-reopens-over-a-base-that-gained-records-in-the-middle-of-its-load-order
+  (let [[head tail] (split-at 4 named-base)
+        gained      '[(dog Ace) (cat Tom) (ownerOf Bob Rex)]]
+    (reopen-over-each! [(concat head gained tail)
+                        (concat (reverse tail) gained (reverse head))])))
+
+(deftest a-durable-fork-reopens-over-a-base-rebuilt-in-another-order
+  (reopen-over-each! [(reverse named-base)
+                      (let [[head tail] (split-at 3 named-base)] (concat tail head))]))
+
+(deftest a-durable-fork-reopens-over-a-base-edited-in-place-at-an-unchanged-record-count
+  ;; the edited record is one the fork does not name, so only the base's summary moves
+  (let [edited (conj (pop named-base) '(cat Tom))
+        nexts  (for [items [named-base edited]]
+                 (let [b (base-in items [])] (try (p/next-id (:records b)) (finally (v/clear! b)))))]
+    (is (apply = nexts))
+    (reopen-over-each! [edited (reverse edited)])))
+
+(deftest a-reopen-voids-what-names-a-base-record-the-rebuilt-base-no-longer-holds
+  (let [kept (remove #{'(dog Bo) [:default '(likes Ann Bob)]} named-base)]
+    (reopen-over-each! [(reverse kept) (concat (rest kept) [(first kept)])])))
+
+(deftest a-reindexed-fork-is-refused-over-a-base-changed-below-its-end
+  (let [dir  (tu/tmpdir "vaelii-overlay-")
+        base (base-in named-base [])]
+    (try
+      (let [f (fork-writes! (v/fork base {:backend :disk-log :dir dir}))]
+        (v/reindex f)
         (v/close! f))
-      (let [grown (grown-base n ::grown [dir] [])]
-        (v/retract! grown (v/handle-of grown '(ownerOf Ann Muffet) 'CxOverlay))
-        (v/assert grown '(dog Ace) 'CxOverlay {:strength :monotonic})
-        (let [e (try (v/fork grown {:backend :disk-log :dir dir}) nil
-                     (catch clojure.lang.ExceptionInfo e e))]
-          (is (= :fork-base-overlap (:type (ex-data e))))
-          (is (re-find #"at handles 0 to \d+ are not the ones" (ex-message e))))
-        (v/clear! grown))
-      (finally
+      (disk/close-dir! dir)
+      (let [turned (base-in (reverse named-base) [dir])]
+        (try
+          (is (= :fork-base-overlap
+                 (:type (ex-data (try (v/fork turned {:backend :disk-log :dir dir}) nil
+                                      (catch clojure.lang.ExceptionInfo e e))))))
+          (finally (v/clear! turned))))
+      (finally (disk/close-dir! dir) (tu/rm-rf! dir) (v/clear! base)))))
+
+(deftest a-fork-holding-digests-names-its-base-handles-at-its-first-accepted-mount
+  ;; the bookkeeping is rewritten to hold digests for the handles its sets list, alone
+  (let [dir  (tu/tmpdir "vaelii-overlay-")
+        base (base-in named-base [])
+        recs (:records base)
+        dig  #(if-let [sx (p/get-sentex recs %)]
+                (fp/record-hash % sx)
+                (fp/justification-hash % (p/get-justification recs %)))]
+    (try
+      (let [f      (fork-writes! (v/fork base {:backend :disk-log :dir dir}))
+            minted (minted-content f base)
+            m      (:meta-kv (:records f))
+            sets   (mapcat #(p/kv-members m %) [::ostore/sentex-tombstoned ::ostore/justification-tombstoned
+                                                ::ostore/provenance-tombstoned ::ostore/premise-released])]
+        (doseq [h (p/kv-members m ::ostore/base-named)] (p/kv-delete m [::ostore/base-content h]))
+        (doseq [h sets :when (or (p/get-sentex recs h) (p/get-justification recs h))]
+          (p/kv-put m [::ostore/base-digest h] (dig h))
+          (p/kv-add-to-set m ::ostore/base-digested h))
+        (p/kv-delete m ::ostore/base-named)
+        (p/kv-delete m ::ostore/names-complete)
+        (v/close! f)
         (disk/close-dir! dir)
-        (tu/rm-rf! dir)
-        (v/clear! base)))))
+        (let [f (v/fork base {:backend :disk-log :dir dir})]
+          (is (ostore/names-complete? (:records f)))
+          (is (empty? (p/kv-members (:meta-kv (:records f)) ::ostore/base-digested)))
+          (v/close! f))
+        (disk/close-dir! dir)
+        (let [turned (base-in (reverse named-base) [dir])]
+          (try (same-as-a-fresh-fork turned dir minted) (finally (v/clear! turned)))))
+      (finally (disk/close-dir! dir) (tu/rm-rf! dir) (v/clear! base)))))
 
 (deftest a-reopen-a-crash-cut-finishes-at-the-next-one
   ;; The catch-up's ops are recorded before they are applied, and a reopen that finds them
@@ -1310,7 +1452,7 @@
   [base store n]
   (clear-fork-space! n)
   (v/open-kb {:backend :overlay
-              :base-stores {:records store :index (:index base)}
+              :base-stores {:records store :index (:index base) :clock (:clock base)}
               :overlay (fork-opts n)
               :recover? :auto}))
 

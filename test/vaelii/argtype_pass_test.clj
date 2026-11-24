@@ -79,7 +79,7 @@
   (let [row #(let [sx (p/get-sentex (:records kb) %)] (tu/handle-free kb [(:sentence sx) (:context sx)]))
         hs  (tu/sentex-ids kb)]
     {:stored    (set (map row hs))
-     :believed  (set (map row (filter #(v/in? kb %) hs)))
+     :believed  (set (map row (filter #(v/believed? kb %) hs)))
      :justified (set (for [h hs, j (v/supporting-justifications kb h)]
                        [(row h) (:informant j) (set (map row (:antecedents j)))]))}))
 
@@ -401,7 +401,9 @@
 (defn- asking-every-mint
   "`(f)` with no mint passed over before its checks."
   [f]
-  (with-redefs-fn {#'special/unchanged-mint? (constantly false)} f))
+  (with-redefs-fn {#'special/unchanged-mint? (constantly false)
+                   #'special/held-mint?      (constantly false)}
+    f))
 
 (defn- add-changed!
   "Facts whose mints the store does not hold as the pass would draw them: `(bRel nx Y1)`,

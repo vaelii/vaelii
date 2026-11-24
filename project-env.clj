@@ -34,28 +34,33 @@
                 (concat on-path installs))))
       "bash"))
 
+;; `heap-cap` returns `["-Xmx<size>"]`, or `[]` when the environment's `JVM_OPTS` already
+;; names `-Xmx`. Leiningen places `JVM_OPTS` before the project's `:jvm-opts` and the JVM
+;; takes the last `-Xmx` it is given, so a cap added over a `JVM_OPTS` heap would replace
+;; it. `JVM_OPTS` is the launcher's variable, read through `env` for the reason `bash`
+;; gives.
+(defn heap-cap [size]
+  (let [env #(System/getenv %)]
+    (if (re-find #"-Xmx" (str (env "JVM_OPTS"))) [] [(str "-Xmx" size)])))
+
 ;; The `:test` profile's heap and collector flags. A test JVM's live set after a full
-;; collection is 0.22-0.43 GB (three matrix configurations, 2026-10-10), and with no
-;; `-Xmx` the ceiling is a quarter of RAM, so G1 grew each JVM to 1-2 GB of mostly dead
-;; young generation; a dozen of them beside a full-KB load paged the machine.
+;; collection is 0.22-0.43 GB (three matrix configurations, 2026-10-10). Under a ceiling
+;; of a quarter of RAM, G1 grew each JVM to 1-2 GB of mostly dead young generation, and a
+;; dozen of them beside a full-KB load paged the machine.
 ;;
-;; `VAELII_TEST_HEAP` sets the ceiling, 4g by default. A `JVM_OPTS` that already names
-;; `-Xmx` keeps it (`lein test-full-kb` passes `VAELII_HEAP`'s there), because leiningen
-;; places these flags after `JVM_OPTS` and the last `-Xmx` wins. The free-ratio pair and
-;; the periodic collection return freed heap to the OS between tests. Two parallel and
-;; one concurrent collector thread per JVM keep a dozen concurrent suites from running
-;; ~100 collector threads on ten cores.
+;; `VAELII_TEST_HEAP` sets the ceiling, 4g by default, and `heap-cap` keeps a `JVM_OPTS`
+;; heap when the variable is unset (`lein test-full-kb` passes `VAELII_HEAP`'s there).
+;; The free-ratio pair and the periodic collection return freed heap to the OS between
+;; tests. Two parallel and one concurrent collector thread per JVM keep a dozen
+;; concurrent suites from running ~100 collector threads on ten cores.
 ;;
 ;; `VAELII_TEST_TMPDIR` becomes the test JVM's `java.io.tmpdir`, which every directory a
 ;; test builds is created under: the disk backends' stores, `tu/temp-dir` and the
 ;; `^:fuzz` probes. A RAM disk there keeps the suite's stores and fsyncs off the SSD.
 (def test-jvm-opts
-  (let [heap     (some-> (System/getenv "VAELII_TEST_HEAP") .trim not-empty)
-        tmpdir   (some-> (System/getenv "VAELII_TEST_TMPDIR") .trim not-empty)
-        ;; the launcher's variable, read through `env` for the reason `bash` gives
-        env      #(System/getenv %)
-        jvm-opts (str (env "JVM_OPTS"))]
-    (cond-> ["-XX:MinHeapFreeRatio=10" "-XX:MaxHeapFreeRatio=30"
-             "-XX:G1PeriodicGCInterval=15000" "-XX:ParallelGCThreads=2" "-XX:ConcGCThreads=1"]
-      (or heap (not (re-find #"-Xmx" jvm-opts))) (conj (str "-Xmx" (or heap "4g")))
-      tmpdir                                     (conj (str "-Djava.io.tmpdir=" tmpdir)))))
+  (let [heap   (some-> (System/getenv "VAELII_TEST_HEAP") .trim not-empty)
+        tmpdir (some-> (System/getenv "VAELII_TEST_TMPDIR") .trim not-empty)]
+    (cond-> (into ["-XX:MinHeapFreeRatio=10" "-XX:MaxHeapFreeRatio=30"
+                   "-XX:G1PeriodicGCInterval=15000" "-XX:ParallelGCThreads=2" "-XX:ConcGCThreads=1"]
+                  (if heap [(str "-Xmx" heap)] (heap-cap "4g")))
+      tmpdir (conj (str "-Djava.io.tmpdir=" tmpdir)))))

@@ -187,27 +187,30 @@ deliberately, because that is what the caller asked for.
 - **A base that changed between mounts.** The boundary holds over the base the handles
   were minted against, and so do the fork's removals and copy-on-write counters: a key
   the fork emptied stays deleted, so it would hide what a grown base has since added under
-  it. A durable fork reopened over a base that gained records takes them in, below. Each
-  mount also records the base's `next-id` in the bookkeeping, and an ephemeral fork, or a
-  durable one whose bookkeeping holds no base summary, looks for a base record at or
-  above it. A base that holds one has grown, and such a fork that has written anything
-  (a record, a tombstone, a released mark, a `reindex`) is refused (`:type
-  :fork-base-overlap`, `:handles` naming the fork's own handles the base now also holds)
-  rather than served over it, and the refused mount releases the fork's directory lock
-  unless the directory was open before. A fork that has written nothing mounts.
-  A base rebuilt in another order grows nothing, so before the fork writes a tombstone,
-  an override or a released mark at a base handle it **records the base digest** there —
-  the content digest of the base record, in the bookkeeping — and a mount over a base
-  holding another record at a digested handle is refused the same way, naming it. A write
-  at a handle the fork minted records no digest. A fork whose bookkeeping holds no watermark, mounted before it was
-  recorded, is checked once by content instead: each of its own records at a handle the
-  base holds must match the base's record except in its strength, as an override does.
-  What none of this sees is a fork justification or except naming a base handle the fork
-  wrote no state at: over a reordered base, that names the record now there.
-  To carry a refused fork onto the grown base, mount it over the base it was taken
-  against and import the grown base's dump with `:rebase? true` (below), which
-  re-asserts the fork's premises by content and re-points each `except` at the new
-  handle of its target.
+  it. A durable fork follows a base that grew or changed (below). For that, the fork
+  **names by content** each base handle it refers to. The first time a write tombstones,
+  overrides or releases a base record, the bookkeeping records the content there. A fork
+  sentence or justification referring to one, and a posting the fork's index half adds or
+  removes at one, record it too. The content is a sentex's sentence and context, or a
+  justification's informant, antecedents and consequence, each handle given as its
+  sentex's content. A handle the fork minted records nothing.
+  Each mount also records the base's `next-id`, and an ephemeral fork, or a durable one
+  whose bookkeeping holds no base summary, looks for a base record at or above it. A base
+  that holds one has grown, and such a fork that has written anything (a record, a
+  tombstone, a released mark, a `reindex`) is refused (`:type :fork-base-overlap`,
+  `:handles` naming the fork's own handles the base now also holds) rather than served over
+  it, and the refused mount releases the fork's directory lock unless the directory was
+  open before. Such a fork is refused the same way over a base holding other content at a
+  named handle, naming it. A fork that has written nothing mounts. A durable fork whose
+  bookkeeping holds a digest per handle in place of its content is checked by digest. A
+  mismatch refuses it, and its first accepted mount names every base handle it refers to,
+  one pass over its own records and index half. A fork whose bookkeeping holds no watermark,
+  mounted before it was recorded, is checked once by content instead: each of its own
+  records at a handle the base holds must match the base's record except in its strength,
+  as an override does. To carry a refused fork onto the changed base, mount it over the
+  base it was taken against and import the changed base's dump with `:rebase? true`
+  (below), which re-asserts the fork's premises by content and re-points each `except` at
+  the new handle of its target.
 - **Reserved handles.** A fork records in its bookkeeping the `[lo hi)` ranges it mints
   handles in. A range reaches 1,024 handles past the fork's last mint, so the bookkeeping
   takes one write per 1,024 mints, and the write precedes the handle's use. A base
@@ -274,12 +277,12 @@ in. Three steps run at the reopen, in `core/fork` and `open-kb`, before anything
 fork.
 
 1. **Acceptance.** The mount sums the base's content digests per 1,024 handles below the
-   recorded end, in the pass that records the summary. A block whose sum differs refuses
-   the reopen (`:fork-base-overlap`), naming the block's handles: a base that lost a record
-   below the end, holds another one there, or was loaded in another order is refused. A new
-   base record at a handle inside a range the fork minted refuses the reopen too, naming the
-   handles in `:handles`. A base opened with `:fork-dirs` naming the fork's directory gives
-   no new record such a handle.
+   recorded end, in the pass that records the summary. A block whose sum differs owes the
+   remap of the next section: the base lost a record below the end, holds another one
+   there, or was loaded in another order. A new base record at a handle inside a range the
+   fork minted refuses the reopen (`:fork-base-overlap`), naming the handles in
+   `:handles`. A base opened with `:fork-dirs` naming the fork's directory gives no new
+   record such a handle.
 2. **The index catch-up** (`rebase/follow-base!`). The fork's own index half holds its
    writes as differences from the base index it was written over, and the base's index now
    also holds the new records' postings. Several families decide an entry from other keys'
@@ -305,13 +308,65 @@ The acceptance pass reads every base record. The catch-up costs the new records 
 index keys each one writes. The firings cost what asserting the new records costs.
 `overlay_test` checks each accepted case against a `reindex` of the same fork.
 
-- **A base changed below the end is refused**, never followed: a fork reference to a base
-  handle below the end names the record it named only while that content is unchanged.
+- **A base changed below the end** is followed by content instead (next section).
 - **The re-check index keeps the base's postings** for the new rules beside the ones the
   fork's taxonomy adds, so it can hold more keys than a `reindex` posts. An extra key costs
   a re-check and moves no belief.
 - **A new record whose sentence and context a fork record also holds** leaves both stored.
   Belief over the two is the belief over either one.
+
+## A base changed below its end
+
+A durable fork reopened over a base changed below the end its summary records keeps every
+handle it minted. The base may be loaded in another order, grown in the middle of its load
+order or edited in place, and the fork resolves each base handle it names by content. The
+mount owes a remap when a named handle holds other content in the base, one read per named
+handle. It owes one too when the base's summary differs from the recorded one: the
+acceptance pass reads it over a base that grew, and the same pass runs at every other mount
+of a fork that has written anything. Three steps run before anything reads the fork, each
+recorded in the bookkeeping before it applies, so a reopen after a crash finishes the same
+remap (`rebase/remap!`).
+
+1. **Resolution.** Each moved named sentex is looked up by its sentence and context at
+   its trie leaf in the base's index. A moved named justification is matched on its
+   informant, antecedents and consequence, resolved the same way, in one pass over the
+   base's justifications, taken only when the fork names a justification that moved. A
+   content the base holds nowhere has departed.
+2. **The record rewrite.** An override at a moved handle moves with it, with its premise
+   mark and provenance. A tombstone, a released mark and a recorded content follow their
+   handle. A fork sentence naming a moved handle (`(sentexHandle n)`, an `(except n)`)
+   names its new one. A fork justification's antecedents, consequence and rule informant
+   follow theirs. A fork handle never moves. What names a departed record is dropped. A
+   tombstone, override or released mark naming one is void, and a fork sentence naming one
+   is deleted. A fork justification resting on one or on a deleted sentence is deleted, so
+   `recover` labels its conclusion from the support that remains.
+3. **The index replay and the firings.** The fork's own index half holds differences from
+   the base index it was written over, and the base's postings now sit at other handles.
+   A scratch layer over the base's index takes out each base record the fork tombstoned.
+   It takes in each record the fork minted, as `reindex` posts them, and the re-check
+   postings the fork's index half holds, under the resolution. At each key the fork's index
+   half or the scratch layer wrote, the fork's index half takes the difference
+   (`okv/align-ops`), recorded and applied as the catch-up's ops are. Below the end, the
+   base records the fork has not seen cannot be told apart from the ones it has. So the
+   firings owed are those of every record the fork holds: a chaining run from each believed
+   one, then a settle. The run fires a fork rule over the base's records and a base rule
+   over the fork's facts.
+
+The remap costs the fork's named handles to resolve, a pass over the fork's own records
+and index half, one pass over the base for its summary, and the chaining run over the
+fork's records. `lein perf`'s `fork-remap-base-size` checks that the reopen costs the same
+per fork record over bases of 1,000 and 16,000 records. `overlay_test` checks four cases in
+two load orders each. The cases are a base grown in the middle of its load order, one
+rebuilt in another order, one edited in place at an unchanged record count, and one that
+lost records the fork named. Each reopened fork is compared with a fork of the changed base
+given the same writes, and its index with a `reindex`.
+
+- **A fork whose index half `reindex` rebuilt** holds every base posting at its handle,
+  so its index half names no base handle, and a remap is refused for it
+  (`:fork-base-overlap`).
+- **A symmetric literal whose two arguments are handles** keeps the argument order it
+  was stored in after its handles are rewritten, since the remap runs before the taxonomy
+  that marks a predicate symmetric is built.
 
 ## The frozen mount
 
@@ -321,6 +376,12 @@ write path that forgot to divert fails loudly at the boundary instead of silentl
 what every other fork is reading. It is a decorator, not a file mode, so it says nothing
 about how the underlying store was opened — which is what makes the composition safe
 whatever the base is.
+
+The base's own KB still writes the base. A fork's change clock adds the base store's count
+to its own (`observe/new-clock`), so a base write retires the fork's cached answers, its
+held yield answer and an export it is writing. `fork` hands the base KB's clock over in
+`:base-stores`, and `open-kb` refuses a `:base-stores` without one. A base mounted from
+`:base` opts reads the count of the store those opts name.
 
 One call is deliberately not a refusal: `next-id` on the frozen record store. It hands out
 a handle nobody holds and touches no stored record. The mount seeds the fork's id

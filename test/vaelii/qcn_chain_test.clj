@@ -159,6 +159,23 @@
                (set (map :sentence (v/sentexes-matching kb (list selfPart '?x) '?ctx)))))
         (is (contains? (set (keys (:nodes (v/why kb h)))) decl))))))
 
+(tu/deftest-kb the-diagonal-rests-on-each-reflexive-declaration-apart
+  ;; A second `(reflexive partOfRegion)`, in the firing's context and then retracted,
+  ;; leaves each firing resting on the shipped one.
+  (tu/with-terms [RegA RegB selfPart CxDiagonalSpace]
+    (with-spatial kb
+      (v/assert kb (list 'genlCx CxDiagonalSpace 'CxWell) 'CxUniverse
+                {:strength :monotonic})
+      (v/assert kb (list 'arg selfPart 1 'thing) 'CxUniverse {:strength :monotonic})
+      (let [dup (v/assert kb '(reflexive partOfRegion) CxDiagonalSpace {:strength :monotonic})]
+        (v/assert-rule kb [(list 'partOfRegion '?x '?x)] (list selfPart '?x)
+                       CxDiagonalSpace {:direction :forward})
+        (v/assert kb (list 'nonTangentialProperPart RegA RegB) CxDiagonalSpace
+                  {:strength :monotonic})
+        (v/retract! kb dup)
+        (is (= #{(list selfPart RegA) (list selfPart RegB)}
+               (set (map :sentence (v/sentexes-matching kb (list selfPart '?x) '?ctx)))))))))
+
 (tu/deftest-kb an-entailment-in-an-unsatisfiable-network-concludes-nothing
   (tu/with-terms [RegA RegB RegC contained CxClashChain]
     (with-spatial kb
@@ -284,8 +301,8 @@
                  "4 regions cost " small " builds and 16 cost " big))))))
 
 (tu/deftest-kb a-settle-over-calculus-facts-reads-no-network-and-still-files-an-unsatisfiable-one
-  ;; docs/qcn.md, "The settle asks every write": past the first settle, a fact of the
-  ;; calculus closes the recorded pass again from its own constraint
+  ;; docs/qcn.md, "An impossible network is a stored contradiction": a calculus with no
+  ;; narrowing reads the touched component off its nodes' argument index
   (tu/with-terms [CxSettled]
     (with-spatial kb
       (v/assert kb (list 'genlCx CxSettled 'CxWell) 'CxUniverse {:strength :monotonic})

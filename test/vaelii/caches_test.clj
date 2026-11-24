@@ -26,8 +26,12 @@
             [taoensso.trove :as trove]
             [vaelii.core :as v]
             [vaelii.impl.caches :as caches]
+            [vaelii.impl.literal-cache :as lc]
+            [vaelii.impl.observe :as observe]
             [vaelii.impl.provers :as provers]
+            [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu])
   (:import [java.io File]))
 
@@ -694,6 +698,8 @@
                                      "search bound, nothing retained")
    "wrap-body-limit"     "guard.clj — the HTTP request-body ceiling"
    "graph-side-budget"   "web.clj — how many expansions a term page's picture may spend"
+   "graph-edge-budget"   (str "web.clj — how many more expansions one side of a term "
+                              "page's picture may spend reading the edges among its nodes")
    "matrix-node-limit"   "web.clj — how many nodes the network page will draw"
    "graph-row-limit"     (str "web.clj — how many direct neighbours one node of a term "
                               "page's picture may have and still have a row drawn; a "
@@ -718,7 +724,10 @@
                                   "read bound, nothing retained")
    "default-describe-limit" (str "core.clj — how many entries one of `describe`'s bounded "
                                  "lists carries; a per-read truncation of an answer computed "
-                                 "fresh each call, nothing retained")})
+                                 "fresh each call, nothing retained")
+   "contrary-limit" (str "special.clj — how many contraries of one predicate a re-check "
+                         "queues a marker each for; a per-settle queueing bound, nothing "
+                         "retained")})
 
 (def ^:private bound-to-cache
   "The cache each remaining constant bounds.  Every one of them is a row on the page,
@@ -736,7 +745,6 @@
    "lengths-cache-limit"   :arity-lengths
    "supporter-cache-limit" :taxonomy-supporters
    "parse-memo-limit"      :source-parses
-   "crossing-reads-limit"  :preservation-crossing
    "clock-frame-limit"     :resident
    "holds-limit"           :resident})
 
@@ -804,3 +812,45 @@
     (testing "its tally counts each read as a hit or a miss, and each entry evicted"
       (is (= {:hits 2 :misses 2 :evicted 5}
              (select-keys (caches/tally-map (:tally lru)) [:hits :misses :evicted]))))))
+
+(deftest a-write-to-one-kb-leaves-another-kb-s-clocked-entries-current
+  (let [open (fn [tag] (v/open-kb {:backend :memory :space [::two-kbs tag] :recover? false}))
+        a    (open :a)
+        b    (open :b)
+        lm   #(select-keys (lc/stats a) [:hits :misses])
+        r3   #(select-keys (caches/tally-map (caches/tally-of (reasoning/qcn a) :R3)) [:hits :misses])]
+    (try
+      (tu/with-terms [livesIn marriedTo Ann Bob Dover CxTwo]
+        (v/assert a (list livesIn Ann Dover) CxTwo)
+        (v/assert b (list livesIn Bob Dover) CxTwo)
+        (testing "a write to B leaves A's literal-match entry a hit"
+          (dotimes [_ 2] (doall (res/matches-visible a (list livesIn '?x Dover) CxTwo)))
+          (let [before (lm)]
+            (v/assert b (list livesIn Ann Dover) CxTwo)
+            (doall (res/matches-visible a (list livesIn '?x Dover) CxTwo))
+            (is (= (update before :hits inc) (lm)))))
+        (testing "a respell in B leaves A's correspondence read a hit"
+          (dotimes [_ 2] (res/stored-correspondences a))
+          (let [before (r3)
+                n      (observe/respell-count (:clock b))]
+            (v/assert b (list marriedTo Bob Ann) CxTwo)
+            (v/assert b (list 'symmetric marriedTo) 'CxUniverse)
+            (is (< n (observe/respell-count (:clock b))) "B respelled a stored sentex")
+            (res/stored-correspondences a)
+            (is (= (update before :hits inc) (r3))))))
+      (finally (doseq [kb [a b]] (v/clear! kb) (v/close! kb))))))
+
+(deftest a-write-through-another-value-over-one-store-retires-this-value-s-clocked-entries
+  (let [space [::one-store (gensym)]
+        b     (v/open-kb {:backend :memory :space space :recover? false})]
+    (try
+      (tu/with-terms [livesIn Ann Dover CxTwo]
+        (let [h   (v/assert b (list livesIn Ann Dover) CxTwo {:strength :monotonic})
+              a   (v/open-kb {:backend :memory :space space})
+              ask #(set (map (fn [s] (get s '?x)) (v/ask a (list livesIn '?x Dover) CxTwo)))]
+          (is (= #{Ann} (ask)))
+          (let [n (observe/change-clock (:clock a))]
+            (v/retract! b h)
+            (is (< n (observe/change-clock (:clock a))) "B's retraction moved A's clock")
+            (is (= #{} (ask)) "A no longer answers the retracted fact"))))
+      (finally (v/clear! b) (v/close! b)))))

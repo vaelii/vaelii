@@ -1,0 +1,30 @@
+; Assigning three workers to three tasks at least total cost. A choice per pairing, one
+; worker per task and at most one task per worker as bounds, and asp/minimize summing the
+; cost of each chosen pairing. Three assignments reach the optimum of 12. Twin:
+; assignment.lp.
+#base core
+#context CxStaff
+(worker Ann)
+(worker Bob)
+(worker Cal)
+(work_task T1)
+(work_task T2)
+(work_task T3)
+(taskCost Ann T1 4)
+(taskCost Ann T2 2)
+(taskCost Ann T3 8)
+(taskCost Bob T1 4)
+(taskCost Bob T2 3)
+(taskCost Bob T3 7)
+(taskCost Cal T1 3)
+(taskCost Cal T2 1)
+(taskCost Cal T3 6)
+(set/assumptionRule (implies (and (worker ?p) (work_task ?t)) (assignedTo ?p ?t)))
+(asp/atLeast 1 ?p (assignedTo ?p ?t))
+(asp/atMost 1 ?p (assignedTo ?p ?t))
+(asp/atMost 1 ?t (assignedTo ?p ?t))
+(asp/minimize 1 ?w (and (assignedTo ?p ?t) (taskCost ?p ?t ?w)))
+#models (assignedTo ?p ?t)
+#model (assignedTo ?p ?t)
+#brave (assignedTo Ann ?t)
+#cautious (assignedTo ?p ?t)

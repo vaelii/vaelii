@@ -46,7 +46,6 @@
   `sx` is a rule (the caller's rule tally)."
   [index sx h]
   (p/index-sentex index sx h)
-  (exc/note-stored! nil sx true)
   (let [rule? (rules/rule? sx)]
     (when rule?
       (rules/index-rule index h
@@ -64,7 +63,6 @@
   re-posts the predicates its rule's other exceptions still watch."
   [index sx h]
   (p/unindex-sentex! index sx h)
-  (exc/note-stored! nil sx false)
   (when (rules/rule? sx)
     (rules/unindex-rule! index h
                          (rules/antecedent-keys (:antecedent sx))
@@ -109,7 +107,7 @@
     ;; the index moves wholesale here rather than through the per-sentex choke point, so
     ;; the clock a resident derived structure is keyed by is bumped by hand — as
     ;; `core/clear!` does, and for the same reason
-    (observe/note-change)
+    (observe/note-change (:clock kb))
     (let [counts
           (with-open [r (progress/start ::index-sentexes
                                         "reindex: index the sentexes"
@@ -130,5 +128,6 @@
              ;; trips and cannot waste one.  Nil for every store that does not prefetch, which is
              ;; every store the engine ships, and then this is `(p/sentex-ids records)`.
              (cap/hinting (cap/prefetcher records) cap/recovery-hint-chunk (p/sentex-ids records))))]
+      (exc/note-rewritten kb)
       (special/post-taxonomy-supporters! kb)
       counts)))

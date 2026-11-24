@@ -80,7 +80,7 @@
     (load kb n ctx)
     ;; the network is resident on the KB, so bump the change clock to make the read
     ;; below a real one — what is being sized here is building it, not serving it
-    (observe/note-change)
+    (observe/note-change (:clock kb))
     (let [[read-ms net] (ms #(qkb/network kb calc ctx))
           nodes         (qkb/nodes net)
           ;; a fresh calculus value per driver, so neither the shipped pc-cache nor the

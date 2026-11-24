@@ -86,11 +86,11 @@
       ;; the companion rule is derived, justified by the defn* fact alone
       (let [rh (v/handle-of kb (list 'implies (list bachelor '?x) (list unmarried '?x))
                             'CxUniverse)]
-        (is (and rh (v/in? kb rh)) "the companion rule is believed while the defn* is")
+        (is (and rh (v/believed? kb rh)) "the companion rule is believed while the defn* is")
         (v/retract! kb dh)
         (is (not (believes? kb (list unmarried Tom) 'CxUniverse))
             "retracting the definition withdraws the conclusion it licensed")
-        (is (not (v/in? kb rh))
+        (is (not (v/believed? kb rh))
             "and the companion rule is no longer believed")))))
 
 (tu/deftest-kb retracting-the-member-withdraws-only-its-own-conclusion

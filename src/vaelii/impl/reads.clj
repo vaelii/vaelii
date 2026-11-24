@@ -22,11 +22,11 @@
     scope.  A caller reaching one is saying it wants storage: a candidate set it filters
     itself, a name set that must over-approximate, a diagnostic that reports what is
     written.  Each entry point below says what a stored-but-disbelieved answer is *for*.
-  - **`believed-…` takes the KB.**  Belief lives in the JTMS, so a believed read is a
-    question about the KB and not about the index — which is exactly the distinction the
-    arglists carry.  The filter is `jtms/in?`, which already drops a **superseded**
-    spelling along with a defeated one (`vaelii.impl.jtms`'s `-in?`), so a believed entry point
-    means what `kb/sentexes-matching` means for the handles it yields.
+  - **`in-…` takes the KB.**  Labels live in the JTMS, so this read is a question
+    about the KB and not about the index, which is the distinction the arglists carry.
+    The filter is `jtms/in?`: it drops a **superseded** spelling and keeps a defeated
+    sentex.  A caller that answers belief at a context filters again through
+    `vaelii.impl.except`.
 
   An entry point over a named method is a **wrapper and never a rewrite**: one call to
   the method, the same laziness, the same count-aware path.  An entry point over the
@@ -46,7 +46,7 @@
 
   - **The cardinalities** (`stored-count-…`) count a posting set's members.  Belief is
     not in the index, so there is no O(1) believed count and this namespace does not
-    pretend otherwise — a believed count is `(count (believed-… …))` and is O(n).  The
+    pretend otherwise: a count of IN records is `(count (in-… …))` and is O(n).  The
     public readers state the same thing (`vaelii.core/count-with-functor`).
   - **The vocabulary** (`stored-terms-global`, `stored-term-count-global`) is the set
     of names the term index is keyed by.  A name enters with the first sentex mentioning it and leaves
@@ -60,10 +60,10 @@
 
   ## Two belief questions this namespace does not answer
 
-  - **A rule's** belief is `resolution/rule-believed?` and not `jtms/in?`: a sentex the
-    TMS holds no node for is *available* rather than disbelieved, which is an arm a plain
-    membership test does not have.  So `as-stored-rules-by-antecedent-global` and its
-    consequent twins have no believed sibling here, and a chainer asks
+  - **Whether a rule may fire** is `resolution/rule-believed?`, a read of the network
+    label, and not `jtms/in?`: a sentex the TMS holds no node for is *available*, an arm
+    a plain membership test does not have.  So `as-stored-rules-by-antecedent-global` and
+    its consequent twins have no `in-…` sibling here, and a chainer asks
     `res/rule-believed?` of each handle it means to fire.
   - **`resolution/*belief-blind*`** is not read here.  It is a named opt-out scoped to
     the retrieval entry point that resolves `CxEverything`, and no caller of these entry points is on
@@ -114,7 +114,7 @@
   The candidate-set read: a caller narrowing by predicate almost always fetches each
   record and decides on its polarity, its context and its belief together, and doing so
   one handle at a time is cheaper than two passes over the same set.  A caller whose
-  filter is belief alone takes `believed-with-functor` instead."
+  filter is the IN label alone takes `in-with-functor` instead."
   [index pred]
   (p/sentexes-with-functor index pred))
 
@@ -227,23 +227,23 @@
   [index pattern]
   (p/lookup index pattern))
 
-(defn believed-with-functor
-  "Handles of fact sentexes with functor `pred` that the KB **believes** — the extent
-  above, filtered by `jtms/in?`.
+(defn in-with-functor
+  "Handles of fact sentexes with functor `pred` that are **IN** — the extent above,
+  filtered by `jtms/in?`, so a defeated one is kept.
 
   Lazy, as the posting read is: the filter is applied as the seq is walked, so a consumer
   taking a prefix pays a TMS probe per handle it takes and not per handle in the root.  A
-  superseded spelling drops out with a defeated one, since that is what `in?` answers."
+  superseded spelling drops out, since that is what `in?` answers."
   [kb pred]
   (let [tms (reasoning/tms kb)]
     (filter #(jtms/in? tms %) (p/sentexes-with-functor (:index kb) pred))))
 
-(defn believed-with-args
-  "Handles with functor `pred` AND each `[pos term]` of `pos-terms` that the KB
-  **believes** — `as-stored-with-args` filtered by `jtms/in?`, lazily.
+(defn in-with-args
+  "Handles with functor `pred` AND each `[pos term]` of `pos-terms` that are **IN** —
+  `as-stored-with-args` filtered by `jtms/in?`, lazily, so a defeated one is kept.
 
-  The narrowing read's believed entry point: a caller that knows several of a sentence's terms
-  and wants only what holds asks here rather than intersecting and then filtering by
+  The narrowing read's IN entry point: a caller that knows several of a sentence's terms
+  and wants only what is supported asks here rather than intersecting and then filtering by
   hand."
   [kb pred pos-terms]
   (let [tms (reasoning/tms kb)]
@@ -689,10 +689,10 @@
   "Handles of rules with an antecedent on `pred`, stated in any context — every rule,
   whatever its direction, belief unread.
 
-  Belief for a **rule** is `resolution/rule-believed?` and not `jtms/in?`, which is why
-  there is no believed entry point beside this one: a rule the TMS holds no node for is available
-  rather than disbelieved, and a chainer asks that question of each handle it means to
-  fire."
+  Whether a **rule** may fire is `resolution/rule-believed?` and not `jtms/in?`, which is
+  why there is no `in-…` entry point beside this one: a rule the TMS holds no node for is
+  available rather than unsupported, and a chainer asks that question of each handle it
+  means to fire."
   [index pred]
   (prof/record-read :rule-index)
   (p/family-handles index :rule-antecedent [pred] p/every-context))
@@ -708,7 +708,7 @@
   "Handles of rules concluding `pred` stated in one of `contexts`, a set — every rule,
   whatever its direction, belief unread.
 
-  `resolution/rule-believed?` is the belief question, as for the antecedent entry point above.  A
+  `resolution/rule-believed?` is the firing question, as for the antecedent entry point above.  A
   rule whose consequent functor is a variable files under `protocols/var-consequent-key`
   rather than under a canonical `?var0`, so a concrete goal's answer is this bucket
   unioned with that catch-all (`resolution/concluding-rule-handles`)."
@@ -894,7 +894,7 @@
 
   The set stores no truth value, so there is no second entry point: it answers which rules
   carry an `exceptWhen` at all, never whether one holds.  Whether the exception *fires* is
-  `provers/exceptions-block?`, and whether the rule itself is believed is
+  `provers/exceptions-block?`, and whether the rule itself may fire is
   `resolution/rule-believed?`."
   [index handle]
   (prof/record-read :exception-index)

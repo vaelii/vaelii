@@ -38,7 +38,7 @@
   (into #{}
         (map (fn [h]
                (let [sx (p/get-sentex (:records kb) h)]
-                 [(:sentence sx) (:context sx) (:truth sx) (:strength sx) (v/in? kb h)])))
+                 [(:sentence sx) (:context sx) (:truth sx) (:strength sx) (v/believed? kb h)])))
         (v/handles kb)))
 
 (defn- justification-content

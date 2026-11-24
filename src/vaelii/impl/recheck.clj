@@ -278,21 +278,30 @@
               (special/names-any? moved (:bindings j))))
           firings))
 
+(defn- firings-placed-in
+  "The members of `firings` whose conclusion is stated in a context of `ctxs`."
+  [kb firings ctxs]
+  (let [tms (reasoning/tms kb) recs (:records kb)]
+    (filter (fn [jid]
+              (when-let [j (jtms/justification tms jid)]
+                (contains? ctxs (:context (p/get-sentex recs (:consequence j))))))
+            firings)))
+
 (defn exception-candidates
   "The justifications of the queued rules whose block condition the queued triggers could
-  have flipped.  One record fetch per rule, and none for a rule queued `:all`, which
-  keeps every firing.  The block literals are the exception conjuncts read through their
-  query frames (`rules/watched-literals`), the NAF inner queries, the aggregate bodies and
-  the closed-extent negatives (`chain/redecided-negative-antecedents`, docs/naf.md).  A
-  withdrawal marker adds the firings its own test keeps (`entailment-candidates`,
-  `preserving-candidates`, `except-candidates`, `firings-naming`), and `::computed` keeps
-  every firing.  A `different`-only rule's triggers narrow to the firings naming the
-  terms they moved (`special/different-rechecked-terms`).
+  have flipped: one record fetch per rule, none for one queued `:all`.  The block literals
+  are the exception conjuncts read through their query frames (`rules/watched-literals`),
+  the NAF inner queries, the aggregate bodies and the closed-extent negatives
+  (`chain/redecided-negative-antecedents`, docs/naf.md).  A withdrawal marker adds the
+  firings its test keeps (`entailment-candidates`, `preserving-candidates`,
+  `except-candidates`, `firings-naming`, `chain/guard-owed?`, `firings-placed-in`);
+  `::computed` keeps every firing.  A `different`-only rule's triggers narrow to the
+  firings naming the terms they moved (`special/different-rechecked-terms`).
 
   One question memo (`inherit/with-memo`) holds every marker's `moved-goal-test` reads:
   the markers one settle pass queues share their terms, and a `genl` edge into a broad
-  type reads that type's whole reach, which a memo per marker read again for each edge.
-  The re-check moves no belief, so the memo needs no invalidation."
+  type reads that type's whole reach.  The re-check moves no belief, so the memo needs no
+  invalidation."
   [kb queued]
   (inherit/with-memo
     (let [tms      (reasoning/tms kb)
@@ -344,6 +353,10 @@
                                ;; a computed answer moves with every source the prover
                                ;; reads, which no argument of the firing names
                                (when (some #{::special/computed} marks) @firings)
+                               (when (some #{::special/deniable} marks)
+                                 (filter #(chain/guard-owed? kb %) @firings))
+                               (when-let [cs (seq (keep ::special/placed-in marks))]
+                                 (firings-placed-in kb @firings (into #{} cat cs)))
                                (when (seq seps) (firings-naming kb @firings (into #{} cat seps)))
                                (when-let [ms (seq (keep ::special/merged marks))]
                                  (firings-naming kb @firings (into #{} cat ms)))

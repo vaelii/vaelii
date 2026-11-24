@@ -311,11 +311,12 @@ Two withdrawals belong to a rule's firings rather than to its exception, and eac
 posted on ordinary fact arrival: an **unsatisfiable network** (`chain/entailment-withdrawn?`,
 posted by `special/recheck-on-qualitative` for every rule joining on a calculus the
 sentence moves, [qcn.md](qcn.md), and by `special/composed-exception-rules` for every
-rule whose block literal the calculus answers, "Five channels" below) and a **more
-specific `:monotonic` contrary claim** (`chain/inheritance-withdrawn?`, posted by
+rule whose block literal the calculus answers, "Five channels" below) and an **inherited
+antecedent with no claim for it left** (`chain/inheritance-withdrawn?`, posted by
 `special/recheck-preserving-firings` for every
 rule with an antecedent on a preserved predicate the sentence moves,
-[inherit.md](inherit.md); a `:default` one places a defeat instead). The sentence is no
+[inherit.md](inherit.md); the same re-check places the guard defeat of a contrary claim).
+The sentence is no
 narrowing trigger for either: a constraint
 moves entailments network-wide, and a claim or a reach edge shares no argument with the
 goals it moves, and `:all` would re-decide every firing the rule has made on every
@@ -353,8 +354,8 @@ Neither marker narrows what the pass re-chains or which refusals it re-asks: a m
 takes both as an `:all` one does. The entailment test costs the governing networks'
 satisfiability per settle, with nothing per firing, and `lein perf`'s
 `qcn-arrival-over-standing-firings` bounds an arrival over standing firings. The
-preservation test still reads one record per firing, and the chainer's full re-join of the
-same rules (`inherit/rejoin-rules`) is linear in the claims beside it.
+preservation test still reads one record per firing, and the chainer's full re-join of
+those rules a sentence can license (`inherit/rejoin-rules`) is linear in the claims beside it.
 
 ### Re-chaining what was released, not what was touched
 
@@ -430,7 +431,7 @@ withdraws the defeat when the blocker goes OUT.
 | a post-join literal had no answer | no | an aggregate is a *value* that moved, and a queued aggregate rule is re-joined whatever the blocked set did (`settle/rejoin-on-arrival-rules`) |
 | the settle blocks a placed firing, and the sweep deletes it | yes, by `chain/record-swept-firing!`, for a forward rule | the conclusion is gone from the store, so the record is what a trigger lifting the block re-derives it from, as for a firing refused at its placement. A release re-derives no firing of a rule that does not forward-chain (`chain/refusal-state`), so that firing has no entry |
 | the conclusion, a `genl` edge or a closed-extent grant, closes a cycle through negation | yes, with the cycle's members, which the settle re-decides it on ([naf.md](naf.md#stratification-from-both-arrival-orders)) | the conclusion is dropped, and only the record names what derived it |
-| a visibility `except` hides an antecedent | no | an `except` arriving or leaving, a `genlCx` edge moving which contexts see it, or a hidden datum gaining a route the `except` does not hide (`special/recheck-route-gains!`), re-joins from its target's consequence closure and the antecedents of the justifications resting on it, and re-joins each rule of that closure over its extent (`special/drain-except-moves!`), and the refusal is re-derived there. An entry would be one nothing reads |
+| an `except` hides an antecedent | no | an `except` arriving or leaving, a `genlCx` edge moving which contexts see it, or a hidden datum gaining a route the `except` does not hide (`special/recheck-route-gains!`), re-joins from its target's consequence closure and the antecedents of the justifications resting on it, and re-joins each rule of that closure over its extent (`special/drain-except-moves!`), and the refusal is re-derived there. An entry would be one nothing reads |
 
 A firing whose conclusion an argument conviction convicts is not a refusal and has no
 entry: the conclusion is stored with its justification and held OUT by the argument hold,
@@ -461,7 +462,7 @@ the shape an answer has:
 - **It never decides belief.** It says which firings to re-ask, never what the answer
   is. Every entry is re-decided from scratch when it is read (`chain/refusal-state`),
   by the judgement a blocked justification is re-decided by
-  (`chain/justification-excepted?`): the visibility `except` check,
+  (`chain/justification-excepted?`): the `except` check,
   `chain/lazy-firing-blocked?` and `chain/rule-firing-blocked?`. So blocking cannot drift
   from belief, and the two paths cannot drift from each other.
 - **Nothing in it is a nogood**, and nothing in it reaches `contradictions`. Nothing was
@@ -605,6 +606,17 @@ an answer differently.
   (the contexts under `sub` and the other parents they reach). Every context under `sub`
   then sees `super`'s content and nothing more, so each guard reads there as it reads at
   `super`, and no defeat is stored there to withdraw.
+
+  A rule on a preserved predicate is re-checked per contrary
+  (`special/recheck-contraries-across`). The edge shows or hides `context-move`'s
+  `:moved`, so a firing placed on one side of `:moved` against the rest of `:seen` meets
+  or leaves a contrary of its inherited claim stored on the other
+  (`inherit/deniable-in?`). Each such contrary is queued as its arrival queues it
+  (`special/recheck-preserving-firings`), and the settle re-places only the firings whose
+  goal it can deny. Past `contrary-limit` (64) contraries of one predicate, the rules are
+  queued with a `::placed-in` marker that keeps the firings placed on the other side
+  (`inherit_forward_test`'s `:context-edge-showing-a-contrary-last` and
+  `:context-edge-showing-a-firing-last` rows).
 
   **A rule an arrival can release is waved through that narrowing**
   (`special/arrival-releasable-rule?`). An aggregate binds a **value**, so a census that

@@ -337,17 +337,200 @@
 
 (deftest a-term-page-opens-the-assert-form-on-each-missing-part-of-its-block
   (let [body (:body (GET "/term" "q=parentOf"))]
-    (is (re-find #"Definitional block" body))
-    (is (re-find #"<dt>arg declarations</dt>" body))
+    (is (re-find #"<h3>Definition</h3>" body) "the block's section is headed Definition")
+    (is (not (re-find #"Definitional block" body)))
+    (is (re-find #"<dt>arg constraints</dt>" body))
     (is (re-find #"tag-missing\">missing</span> <a class=\"action\" href=\"/assert\?text=%28\+parentOf%29\">add</a>"
                  body)
         "parentOf carries no relation property, and the link seeds the form with one")))
 
-(deftest a-predicates-arity-class-seed-names-the-class-of-its-arity
-  (let [seed (second (@#'web/block-parts :arity-class))]
-    (is (= ["(ternary_predicate p)" "(binary_predicate p)" "(  p)" "(unary_predicate t)"]
-           [(seed "p" {:role :predicate :arity 3}) (seed "p" {:role :predicate :arity 2})
-            (seed "p" {:role :predicate}) (seed "t" {:role :type})]))))
+(defn- block-line
+  "The `<dd>` the Definition block of the term page `body` draws beside the label `dt`,
+  or nil when the block draws no such line."
+  [body dt]
+  (let [block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))]
+    (second (re-find (re-pattern (str "(?s)<dt>" dt "</dt><dd>(.*?)</dd>")) block))))
+
+(defn- linked-terms
+  "The terms a block line links to, by their page links, in order."
+  [line]
+  (mapv #(symbol (java.net.URLDecoder/decode ^String (second %) "UTF-8"))
+        (re-seq #"href=\"/term\?q=([^\"]+)\"" line)))
+
+(deftest a-predicates-arity-line-stands-in-for-its-arity-class
+  (let [body (:body (GET "/term" "q=parentOf"))]
+    (is (= "2" (block-line body "arity")))
+    (is (nil? (block-line body "arity class")) "the arity class has no line of its own")
+    (is (not (some #{'binary_predicate} (linked-terms (or (block-line body "kind") ""))))
+        "nor is it a kind")))
+
+(tu/deftest-kb a-types-kind-line-lists-no-arity-class
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing) (list 'type kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body (:body (GET "/term" (str "q=" (name kindT))))]
+      (is (= '[type] (linked-terms (block-line body "kind"))))
+      (is (nil? (block-line body "arity class"))))))
+
+(tu/deftest-kb a-predicates-arity-line-reads-the-length-that-binds-it
+  (tu/with-terms [relP relQ relR relS relT relU]
+    (doseq [s [(list 'ternary_predicate relP)
+               (list 'binary_predicate relQ) (list 'genl relR relQ)
+               (list 'variable_arity_predicate relS) (list 'unbounded_arity_predicate relS)
+               (list 'arityMin relS 2)
+               (list 'variable_arity_predicate relT) (list 'unbounded_arity_predicate relT)
+               (list 'arityMin relT 1)
+               (list 'unbounded_arity_predicate relU)]]
+      (v/assert kb s 'CxUniverse))
+    (let [line #(block-line (:body (GET "/term" (str "q=" (name %)))) "arity")]
+      (is (= "3" (line relP)))
+      (is (= "2" (line relR)) "a length a super-predicate binds")
+      (is (= "≥2" (line relS)))
+      (is (= "any" (line relT)) "a floor of one is no floor")
+      (is (= "any" (line relU)) "an unbounded predicate no floor binds"))))
+
+(tu/deftest-kb a-types-examples-are-one-comma-separated-line
+  (tu/with-terms [kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'positiveExampleComment kindT "one made up")
+               (list 'positiveExampleComment kindT "another made up")
+               (list 'negativeExampleComment kindT "none made up")]]
+      (v/assert kb s 'CxUniverse))
+    (let [body (:body (GET "/term" (str "q=" (name kindT))))]
+      (is (= "<q>another made up</q>, <q>one made up</q>" (block-line body "positive examples")))
+      (is (= "<q>none made up</q>" (block-line body "negative examples"))))))
+
+(tu/deftest-kb a-terms-see-also-line-lists-the-terms-it-is-linked-to
+  (tu/with-terms [relP relQ relR relS kindT]
+    (doseq [s (concat (for [r [relP relQ relR relS]] (list 'binary_predicate r))
+                      [(list 'unary_predicate kindT)
+                       (list 'seeAlso relP relS) (list 'termsRelated relP relR relQ)
+                       (list 'termsRelated relS relP)])]
+      (v/assert kb s 'CxUniverse))
+    (let [line (block-line (:body (GET "/term" (str "q=" (name relP)))) "see also")]
+      (is (= (vec (sort-by str [relQ relR relS])) (linked-terms line)))
+      (is (not (re-find #"badge-link" line)) "the line draws no sentence"))))
+
+(tu/deftest-kb a-unary-relation-property-is-drawn-as-the-property
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'irreflexive relP) (list 'functionalInArg relP 2)]]
+      (v/assert kb s 'CxUniverse))
+    (let [line (block-line (:body (GET "/term" (str "q=" (name relP)))) "relation properties")
+          h    #(v/handle-of kb % 'CxUniverse)]
+      (is (= 'irreflexive (first (linked-terms line))) "the unary property, as a term")
+      (is (not (re-find (re-pattern (str "/sentex/" (h (list 'irreflexive relP)) "\"")) line))
+          "and not as its sentence")
+      (is (re-find (re-pattern (str "/sentex/" (h (list 'functionalInArg relP 2)) "\"")) line)
+          "a sentence with more arguments is drawn whole"))))
+
+(tu/deftest-kb an-unbounded-arity-predicates-arity-line-offers-no-arity
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unbounded_arity_predicate relP) 'CxUniverse)
+    (let [body (:body (GET "/term" (str "q=" (name relP))))]
+      (is (re-find #"<h3>Definition</h3>" body))
+      (is (= "any" (block-line body "arity")) "never missing")
+      (is (not (str/includes? body (str "text=%28arity+" (name relP))))
+          "and no link seeding an arity, which would be ill-formed"))))
+
+(tu/deftest-kb an-unlisted-definitional-predicate-is-the-last-line-of-the-definition
+  (tu/with-terms [relP kindT defRel]
+    (doseq [s [(list 'unary_predicate kindT) (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+               (list 'comment relP "a relation") (list 'transitive relP)
+               (list 'irreflexive relP) (list 'seeAlso relP 'genl)
+               (list 'binary_predicate defRel) (list 'definitional_predicate defRel)
+               (list 'arg defRel 1 'predicate) (list 'arg defRel 2 'thing)
+               (list defRel relP kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body  (:body (GET "/term" (str "q=" (name relP))))
+          block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+          lines (re-seq #"(?s)<dt>([^<]*)</dt><dd>(.*?)</dd>" block)
+          h     (v/handle-of kb (list defRel relP kindT) 'CxUniverse)
+          shows (fn [[_ _ dd]] (re-find (re-pattern (str "/sentex/" h "\"")) dd))]
+      (is (some shows lines) "a definitional predicate no predicateDisplayOrder fact names is shown")
+      (is (shows (last lines)) "on the block's last line, after every listed one")
+      (is (= '[transitive irreflexive]
+             (filterv '#{transitive irreflexive}
+                      (linked-terms (block-line body "relation properties"))))
+          "and inside a line, an unlisted predicate follows the listed ones"))))
+
+(defn- arg-table
+  "The argument constraint table the Definition block of the term page `body` draws, as
+  `[[header …] [cell …]]`, the cells as the terms each links; nil where it draws none."
+  [body]
+  (when-let [line (block-line body "arg constraints")]
+    [(mapv second (re-seq #"<th>([^<]*)</th>" line))
+     (mapv #(linked-terms (second %)) (re-seq #"(?s)<td>(.*?)</td>" line))]))
+
+(tu/deftest-kb a-predicates-argument-types-are-one-table-with-a-column-per-position
+  (tu/with-terms [relP kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'unary_predicate kindU)
+               (list 'binary_predicate relP)
+               (list 'arg relP 1 kindT) (list 'arg relP 1 kindU) (list 'arg relP 2 kindT)
+               (list 'quotedArg relP 2 'closed_expression)
+               (list 'interArgEqual relP 2 7 1 kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body  (:body (GET "/term" (str "q=" (name relP))))
+          block (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+          other (block-line body "arg declarations")
+          [heads cells] (arg-table body)]
+      (is (= ["arg constraints"]
+             (filter #(re-find #"constraints" %) (map second (re-seq #"<dt>([^<]*)</dt>" block))))
+          "one line for every position")
+      (is (= ["arg1" "arg2" "quoted arg2"] heads))
+      (is (= [(vec (sort-by str [kindT kindU])) [kindT] '[closed_expression]] cells))
+      (is (not (re-find #"badge-link" (block-line body "arg constraints"))) "types, not sentences")
+      (is (re-find (re-pattern (str "/sentex/" (v/handle-of kb (list 'interArgEqual relP 2 7 1 kindT)
+                                                            'CxUniverse) "\""))
+                   (str other))
+          "a declaration the table does not hold keeps its sentence"))))
+
+(tu/deftest-kb a-five-place-predicates-table-has-a-cell-for-every-position
+  (tu/with-terms [relP kindT]
+    (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+               (list 'quinary_predicate relP) (list 'arg relP 1 'relation)
+               (list 'arg relP 2 'positive_integer) (list 'arg relP 4 'positive_integer)
+               (list 'genlArg relP 5 kindT)]]
+      (v/assert kb s 'CxUniverse))
+    (let [body (:body (GET "/term" (str "q=" (name relP))))
+          line (block-line body "arg constraints")]
+      (is (= [["arg1" "arg2" "arg3" "arg4" "arg5"]
+              ['[relation] '[positive_integer] [] '[positive_integer] [kindT]]]
+             (arg-table body))
+          "an unconstrained position is an empty cell")
+      (is (re-find #"⊆ <a" line) "a genlArg type is marked as the genl it must specialize")
+      (is (nil? (block-line body "arg declarations"))
+          "every declaration is in the table, so the line is not drawn"))))
+
+(tu/deftest-kb an-unbounded-arity-predicates-tail-column-says-where-it-starts
+  (tu/with-terms [relP kindT kindU]
+    (doseq [s [(list 'unary_predicate kindT) (list 'unary_predicate kindU)
+               (list 'unbounded_arity_predicate relP)
+               (list 'arg relP 1 kindT) (list 'argAndRest relP 2 kindU)]]
+      (v/assert kb s 'CxUniverse))
+    (is (= [["arg1" "arg2…"] [[kindT] [kindU]]]
+           (arg-table (:body (GET "/term" (str "q=" (name relP)))))))))
+
+(tu/deftest-kb a-predicate-with-no-argument-constraint-draws-no-table
+  (tu/with-terms [relP]
+    (v/assert kb (list 'unary_predicate relP) 'CxUniverse)
+    (v/assert kb (list 'arity relP 1) 'CxUniverse)
+    (is (nil? (arg-table (:body (GET "/term" (str "q=" (name relP)))))))))
+
+(tu/deftest-kb a-types-siblings-line-shows-twelve-and-opens-the-rest-in-place
+  (let [kids (vec (repeatedly 15 #(tu/tmp-type "sib")))
+        root (tu/tmp-type "sibroot")]
+    (doseq [s (cons (list 'genl root 'thing) (map #(list 'genl % root) kids))]
+      (v/assert kb s 'CxUniverse))
+    (let [line          (block-line (:body (GET "/term" (str "q=" (name (first kids))))) "siblings")
+          [shown folded] (str/split line #"<details" 2)
+          siblings      (vec (sort-by pr-str (rest kids)))]
+      (is (= (subvec siblings 0 12) (linked-terms shown)) "the first twelve, in order")
+      (is (re-find #"<summary>\+ 2 more</summary>" (str folded)))
+      (is (= (subvec siblings 12) (linked-terms (str folded)))
+          "and the other two on the page, behind the control"))))
 
 (deftest ^:slow the-stats-page-tallies-the-definitional-blocks-as-a-read-job
   (is (re-find #"action=\"/stats/blocks\"" (:body (GET "/stats"))))
@@ -800,16 +983,18 @@
       (is (seq hs))
       (is (= '(comment dog) (take 2 (:sentence (v/sentex tu/*kb* (first hs)))))))))
 
-(deftest a-terms-own-comment-is-the-first-row-of-its-group
-  ;; `(comment dog "…")` sits at argument position 1 like every declaration, and
-  ;; allocation order puts it wherever it was asserted.  It is what the term says it is,
-  ;; so it is read first — part of the sort key, never a row lifted out of the sequence,
-  ;; because paging re-slices this sequence at an offset.
-  (let [body  (:body (GET "/term" "q=dog"))
-        grp   (second (re-find #"(?s)aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))
+(deftest a-terms-own-comment-is-its-blocks-comment-line-and-the-first-row-of-its-group
+  ;; `(comment dog "…")` is what the term says it is, so it sorts first in its group: part
+  ;; of the sort key, never a row lifted out of the sequence, because paging re-slices
+  ;; this sequence at an offset (docs/web.md).
+  (let [body      (:body (GET "/term" "q=dog"))
+        block     (second (re-find #"(?s)<div class=\"def-block\">(.*?)</dl>" body))
+        grp       (second (re-find #"(?s)aria-label=\"Argument position 1\" class=\"sx-list\">(.*?)</ul>" body))
         first-row (second (re-find #"(?s)<li[^>]*>(.*?)</li>" grp))]
+    (is (re-find #"<dt>comment</dt><dd><span class=\"sx t-str\">" block)
+        "the comment is the block's comment line")
     (is (re-find #">comment</a>" first-row)
-        "the comment leads the group it lands in"))
+        "and it leads the group it lands in"))
   (testing "the key is total, so the order is one a continuation reproduces"
     (let [rows (fn [off] (re-seq #"data-h=\"(\d+)\""
                                  (:body (GET "/term/rows" (str "q=dog&g=0&offset=" off)))))
@@ -844,10 +1029,14 @@
     (mapv #(Long/parseLong %) [x y h w])))
 
 (defn- segments
-  "Every edge, as `[x1 y1 x2 y2]`."
+  "Every edge, a `<line>` or a `<polyline>`, as `[x1 y1 x2 y2]` from its tail to its head."
   [svg]
-  (for [[_ x1 x2 y1 y2] (re-seq #"<line marker-end=\"[^\"]*\"(?: marker-start=\"[^\"]*\")? x1=\"(-?\d+)\" x2=\"(-?\d+)\" y1=\"(-?\d+)\" y2=\"(-?\d+)\"" (or svg ""))]
-    (mapv #(Long/parseLong %) [x1 y1 x2 y2])))
+  (concat
+   (for [[_ x1 x2 y1 y2] (re-seq #"<line marker-end=\"[^\"]*\"(?: marker-start=\"[^\"]*\")? x1=\"(-?\d+)\" x2=\"(-?\d+)\" y1=\"(-?\d+)\" y2=\"(-?\d+)\"" (or svg ""))]
+     (mapv #(Long/parseLong %) [x1 y1 x2 y2]))
+   (for [[_ pts] (re-seq #"<polyline marker-end=\"[^\"]*\"(?: marker-start=\"[^\"]*\")? points=\"([^\"]*)\"" (or svg ""))
+         :let [xy (mapv #(Long/parseLong %) (re-seq #"-?\d+" pts))]]
+     [(xy 0) (xy 1) (xy (- (count xy) 2)) (peek xy)])))
 
 (deftest the-taxonomy-graph-draws-where-a-term-sits
   (let [body (:body (GET "/term" "q=animal"))
@@ -899,11 +1088,12 @@
 
 (defn- frames
   "Every cover group frame, as `{:x :w :label}`, in drawing order: the frame boxes and
-  their labels are drawn in one order."
+  their labels are drawn in one order.  A label's lines are joined with a space."
   [svg]
-  (map (fn [[_ w x] [_ label]] {:x (Long/parseLong x) :w (Long/parseLong w) :label label})
+  (map (fn [[_ w x] [_ label]] {:x (Long/parseLong x) :w (Long/parseLong w)
+                                :label (str/join " " (map second (re-seq #">([^<>]+)<" (str label "<"))))})
        (re-seq #"<rect class=\"g-frame\" height=\"\d+\" rx=\"\d+\" width=\"(\d+)\" x=\"(-?\d+)\"" (or svg ""))
-       (re-seq #"<text class=\"g-frame-label\"[^>]*>([^<]*)</text>" (or svg ""))))
+       (re-seq #"<text class=\"g-frame-label\"[^>]*>(.*?)</text>" (or svg ""))))
 
 (defn- node-xs
   "Each drawn term's box as `[left right]`, by the node's title."
@@ -946,8 +1136,8 @@
     (v/assert kb (list 'genl tone_a tone_b) 'CxUniverse {:chain? false})
     (v/assert kb (list 'disjoint tone_a tone_c) 'CxUniverse {:chain? false})
     (let [svg (svg-of (:body (GET "/term" (str "q=" tone_a))))]
-      (is (re-find #"<g class=\"g-edge g-genl\"><line marker-end=\"url\(#g-arrow-sub\)\"" svg))
-      (is (re-find #"<g class=\"g-edge g-rel g-rel-disjoint\"><line marker-end=\"url\(#g-arrow-disjoint\)\"" svg))
+      (is (re-find #"<g class=\"g-edge g-genl\"><(?:line|polyline) marker-end=\"url\(#g-arrow-sub\)\"" svg))
+      (is (re-find #"<g class=\"g-edge g-rel g-rel-disjoint\"><(?:line|polyline) marker-end=\"url\(#g-arrow-disjoint\)\"" svg))
       (is (re-find #"class=\"g-edge-label\"[^>]*>disjoint<" svg) "the label stays"))))
 
 (deftest the-edge-stroke-colours-are-defined-in-both-modes
@@ -1390,7 +1580,7 @@
   ;; capped.  The row is asserted exactly: the first eight in sort order, not whichever
   ;; eight the index returned first.
   (let [grow (ns-resolve 'vaelii.browser.web 'grow)
-        {:keys [rows direct]} (grow tu/*kb* 'genl :down 1 'mammal 1)]
+        {:keys [rows direct]} (grow tu/*kb* 'genl :down 1 'mammal 1 nil)]
     (is (= '#{cat cow dog fox hare horse human lion}
            (set (map :term (first rows)))))
     (is (= {:shown 8 :total 12 :exact? true :more? false} direct))))
@@ -1441,9 +1631,11 @@
     @counts))
 
 (def ^:private graph-read-budget
-  "What the picture may cost a term page, in facade reads.  Twelve expansions — six a side
-  — and the radial graph spends at most twelve.  Stated here and asserted below, because a graph that renders without a click may
-  never be the reason a term page is slow."
+  "What the picture may cost one of the hub pages below, in facade reads: the 24 its twelve
+  row expansions, six a side, may spend.  A hub's subtypes are leaves one read names
+  together, so the page spends nothing on edges (`graph-edge-budget`).  Stated here and
+  asserted below, because a graph that renders without a click may never be the reason a
+  term page is slow."
   24)
 
 (tu/deftest-kb the-graph-costs-a-bounded-number-of-reads-whatever-the-fan-out
@@ -1519,7 +1711,7 @@
     (let [h (v/assert kb (list worksWith TmpX TmpY) CxDefeat)]
       (is (some? (svg-of (:body (GET "/term" (str "q=" TmpX))))) "drawn while believed")
       (v/assert kb (list 'not (list worksWith TmpX TmpY)) CxDefeat {:strength :monotonic})
-      (is (false? (v/in? kb h)) "the default is defeated by the known-true negation")
+      (is (false? (v/believed? kb h)) "the default is defeated by the known-true negation")
       (let [body (:body (GET "/term" (str "q=" TmpX)))]
         (is (nil? (svg-of body))
             "the only edge is gone, so the node it reached is gone, so there is nothing to draw")
@@ -1541,7 +1733,7 @@
   [dir hops term]
   (let [grow (ns-resolve 'vaelii.browser.web 'grow)]
     (mapv (fn [row] (into #{} (map (juxt :term :from)) row))
-          (:rows (grow tu/*kb* 'genl dir hops term 6)))))
+          (:rows (grow tu/*kb* 'genl dir hops term 6 nil)))))
 
 (tu/deftest-kb a-stated-genl-to-a-farther-supertype-is-not-drawn-as-a-direct-neighbour
   ;; `near_sub ⊂ near_mid ⊂ near_top`, and `(genl near_sub near_top)` is stated beside them
@@ -1594,9 +1786,8 @@
     (v/assert kb (list 'genl near_sub near_mid) 'CxUniverse)
     (v/assert kb (list 'genl near_sub near_top) 'CxUniverse)
     (let [grow  (ns-resolve 'vaelii.browser.web 'grow)
-          pairs (ns-resolve 'vaelii.browser.web 'drawn-subsumptions)
-          up    (pairs (grow kb 'genl :up 2 near_sub 6) :up)
-          down  (pairs (grow kb 'genl :down 2 near_top 6) :down)]
+          up    (:edges (grow kb 'genl :up 2 near_sub 6 nil))
+          down  (:edges (grow kb 'genl :down 2 near_top 6 nil))]
       (is (contains? up [near_sub near_mid]))
       (is (contains? up [near_mid near_top]))
       (is (not (contains? up [near_sub near_top])))
@@ -1607,7 +1798,7 @@
   [dir hops c]
   (let [grow (ns-resolve 'vaelii.browser.web 'grow)]
     (mapv (fn [row] (into #{} (map (juxt :term :from)) row))
-          (:rows (grow tu/*kb* 'genlCx dir hops c 6)))))
+          (:rows (grow tu/*kb* 'genlCx dir hops c 6 nil)))))
 
 (tu/deftest-kb a-stated-genlCx-to-a-farther-context-is-not-drawn-as-a-direct-neighbour
   ;; `CxNearLeaf → CxNearMid → CxNearTop`, and `(genlCx CxNearLeaf CxNearTop)` is stated
@@ -1643,6 +1834,144 @@
     (let [ys (node-ys (svg-of (:body (GET "/term" (str "q=" CxDiaLeaf)))))]
       (is (= (ys (str CxDiaLeft)) (ys (str CxDiaRight))))
       (is (< (ys (str CxDiaTop)) (ys (str CxDiaLeft)) (ys (str CxDiaLeaf)))))))
+
+(defn- scenes-of
+  "The scenes `svg/scene` drew while the browser answered `uri` with query `qs`."
+  [uri qs]
+  (let [seen (atom [])
+        orig svg/scene]
+    (with-redefs [svg/scene (fn [s] (swap! seen conj s) (orig s))]
+      (GET uri qs))
+    @seen))
+
+(tu/deftest-kb no-picture-on-the-named-pages-has-an-overlap-or-a-crossing
+  (tu/with-terms [lay_top lay_mid lay_left lay_right lay_low lay_leaf]
+    (v/assert-many kb [(list 'genl lay_mid lay_top) (list 'genl lay_left lay_mid)
+                       (list 'genl lay_right lay_top) (list 'genl lay_low lay_left)
+                       (list 'genl lay_low lay_right) (list 'genl lay_leaf lay_low)]
+                   'CxUniverse {:chain? false})
+    (doseq [[uri qs] [["/term" "q=thing"] ["/term" "q=animal"] ["/term" "q=organism"]
+                      ["/term" "q=parentOf"] ["/term" "q=CxWell"]
+                      ["/closure" (str "dir=genls&q=" lay_leaf)] ["/closure" "dir=specs&q=animal"]
+                      ["/closure" "dir=genls&q=CxWell"]]]
+      (is (= [] (mapcat svg/faults (scenes-of uri qs))) (str uri "?" qs)))))
+
+(tu/deftest-kb every-edge-between-two-drawn-nodes-is-drawn
+  (testing "a diamond draws both edges into its top"
+    (tu/with-terms [dia_leaf dia_left dia_right dia_top]
+      (v/assert-many kb [(list 'genl dia_left dia_top) (list 'genl dia_right dia_top)
+                         (list 'genl dia_leaf dia_left) (list 'genl dia_leaf dia_right)]
+                     'CxUniverse {:chain? false})
+      (is (= 4 (count (re-seq #"class=\"g-edge g-genl\""
+                              (svg-of (:body (GET "/term" (str "q=" dia_leaf))))))))))
+  (testing "seven parent contexts each draw an edge into the context all seven see"
+    (tu/with-terms [CxWide CxOne CxTwo CxThree CxFour CxFive CxSix CxSeven CxAbove]
+      (let [ps [CxOne CxTwo CxThree CxFour CxFive CxSix CxSeven]]
+        (v/assert-many kb (concat (for [p ps] (list 'genlCx CxWide p))
+                                  (for [p ps] (list 'genlCx p CxAbove)))
+                       'CxUniverse {:chain? false})
+        (is (= 14 (count (re-seq #"class=\"g-edge g-genlCx\""
+                                 (svg-of (:body (GET "/term" (str "q=" CxWide))))))))))))
+
+(tu/deftest-kb a-second-row-whose-nodes-hang-off-different-parents-is-drawn
+  (tu/with-terms [dep_top dep_left dep_right dep_l1 dep_l2 dep_r1 dep_r2]
+    (v/assert-many kb [(list 'genl dep_left dep_top) (list 'genl dep_right dep_top)
+                       (list 'genl dep_l1 dep_left) (list 'genl dep_l2 dep_left)
+                       (list 'genl dep_r1 dep_right) (list 'genl dep_r2 dep_right)
+                       (list 'genl dep_r1 dep_l1)]
+                   'CxUniverse {:chain? false})
+    (let [svg (svg-of (:body (GET "/term" (str "q=" dep_top))))]
+      (is (= (set (map str [dep_top dep_left dep_right dep_l1 dep_l2 dep_r1 dep_r2]))
+             (drawn-terms svg)))
+      (is (= 7 (count (re-seq #"class=\"g-edge g-genl\"" svg)))
+          "dep_r1 ⊂ dep_l1 joins two second-row nodes found from different parents"))))
+
+(deftest a-node-an-unread-edge-could-join-is-not-drawn
+  (let [drop-unread (ns-resolve 'vaelii.browser.web 'drop-unread)
+        depth       '{c 0 a 1 b 1 x 2}]
+    (is (= '#{c a b} (drop-unread '#{c a b x} 'c :down depth {} '{c #{a b} a #{x}})))
+    (is (= '#{c a b x} (drop-unread '#{c a b x} 'c :down depth '{x #{a}} '{c #{a b} a #{x} x #{}})))))
+
+(tu/deftest-kb a-context-page-says-how-many-contexts-that-see-it-it-did-not-draw
+  (tu/with-terms [CxHigh CxMiddle CxLow CxDeep]
+    (v/assert-many kb [(list 'genlCx CxMiddle CxHigh) (list 'genlCx CxLow CxMiddle)
+                       (list 'genlCx CxDeep CxLow)]
+                   'CxUniverse {:chain? false})
+    (let [body (:body (GET "/term" (str "q=" CxHigh)))]
+      (is (not (contains? (drawn-terms (svg-of body)) (str CxDeep)))
+          "three rows down is past the picture's two")
+      (is (str/includes? body "showing 2 of 3 contexts that see it")))))
+
+(tu/deftest-kb a-related-term-the-rows-draw-is-drawn-once
+  (tu/with-terms [dup_top dup_sub namesKind]
+    (v/assert-many kb [(list 'genl dup_sub dup_top) (list namesKind dup_top dup_sub)]
+                   'CxUniverse {:chain? false})
+    (let [body (:body (GET "/term" (str "q=" dup_top)))]
+      (is (= 1 (count (re-seq (re-pattern (str "<title>" dup_sub "</title>")) (svg-of body)))))
+      (is (str/includes? body (str dup_sub ", drawn in the rows, is also related by " namesKind))))))
+
+(tu/deftest-kb a-picture-read-at-a-context-draws-only-what-that-context-sees
+  (tu/with-terms [CxSeen CxSibling CxReader seen_top seen_kind seen_part far_top relatesTo
+                  Ann Bob Carl]
+    (v/assert-many kb [(list 'genlCx CxReader CxSeen) (list 'genlCx CxSibling CxSeen)]
+                   'CxUniverse {:chain? false})
+    (v/assert-many kb [(list 'genl seen_kind seen_top) (list 'genl seen_part seen_top)
+                       (list relatesTo Ann Bob)]
+                   CxSeen {:chain? false})
+    (v/assert-many kb [(list 'genl seen_kind far_top) (list relatesTo seen_part seen_kind)
+                       (list 'partition seen_top seen_kind seen_part) (list relatesTo Ann Carl)]
+                   CxSibling {:chain? false})
+    (let [svg   (fn [q ctx] (svg-of (:body (GET "/term" (str "q=" q (when ctx (str "&ctx=" ctx)))))))
+          says? (fn [q ctx & words] (mapv #(str/includes? (svg q ctx) (str %)) words))]
+      (testing "a supertype, a related term and a cover stated in a sibling context"
+        (is (= [true false false] (says? seen_kind CxReader seen_top far_top relatesTo)))
+        (is (= [true true true] (says? seen_kind nil seen_top far_top relatesTo)))
+        (is (= [false true] [(first (says? seen_top CxReader "partition:"))
+                             (first (says? seen_top nil "partition:"))])))
+      (testing "an individual's relation stated in a sibling context"
+        (is (= [true false] (says? Ann CxReader Bob Carl)))
+        (is (= [true true] (says? Ann nil Bob Carl)))))))
+
+(tu/deftest-kb a-context-closure-draws-its-ancestor-and-descendant-sets
+  (tu/with-terms [CxTop CxMid CxLeaf CxSide]
+    (v/assert-many kb [(list 'genlCx CxMid CxTop) (list 'genlCx CxLeaf CxMid)
+                       (list 'genlCx CxLeaf CxSide) (list 'genlCx CxSide CxTop)]
+                   'CxUniverse {:chain? false})
+    (let [up   (:body (GET "/closure" (str "dir=genls&q=" CxLeaf)))
+          down (:body (GET "/closure" (str "dir=specs&q=" CxTop)))]
+      (is (every? (drawn-terms (svg-of up)) (map str [CxLeaf CxMid CxSide CxTop])))
+      (is (= 4 (count (re-seq #"class=\"g-edge g-genlCx\"" (svg-of down)))))
+      (is (str/includes? up "All descendant contexts"))
+      (is (str/includes? (:body (GET "/term" (str "q=" CxMid))) "All ancestor contexts")))))
+
+(tu/deftest-kb an-undeclared-functor-used-with-two-arguments-is-coloured-as-a-relation
+  (tu/with-terms [dislikes sneersAt Ann Bob]
+    (v/assert-many kb [(list dislikes Ann Bob) (list sneersAt Ann Bob) (list 'genl sneersAt dislikes)]
+                   'CxUniverse {:chain? false})
+    (is (= [false false] (mapv #(v/relation? kb %) [dislikes sneersAt])))
+    (is (= #{"g-node t-pred g-centre" "g-node t-pred"}
+           (set (map second (re-seq #"<g class=\"(g-node[^\"]*)\""
+                                    (svg-of (:body (GET "/term" (str "q=" dislikes)))))))))))
+
+(tu/deftest-kb an-out-conclusion-draws-its-justifications-and-what-holds-it-out
+  (tu/with-terms [bird penguin flies Opus Tweety CxFly]
+    (let [rule (list 'set/defaultRule (list 'set/forwardRule (list 'implies (list bird '?x) (list flies '?x))))]
+      (v/assert kb rule CxFly)
+      (v/assert kb (list 'exceptWhen (list penguin '?x) rule) CxFly)
+      (doseq [s [(list bird Opus) (list penguin Opus) (list bird Tweety)]] (v/assert kb s CxFly))
+      (v/assert kb (list 'not (list flies Tweety)) CxFly {:strength :monotonic})
+      (doseq [[ind says] [[Opus (str "excepted, since (" penguin " " Opus ") holds")]
+                          [Tweety (str "defeated by (not (" flies " " Tweety "))")]]]
+        (let [h    (v/handle-of kb (list flies ind) CxFly)
+              body (:body (GET (str "/why/" h)))
+              svg  (svg-of body)]
+          (testing (str ind)
+            (is (false? (v/believed? kb h)))
+            (is (str/includes? body "This sentex is not believed"))
+            (is (= 3 (count (re-seq #"<g class=\"g-node" svg))))
+            (is (str/includes? svg "g-rule g-blocked"))
+            (is (str/includes? svg (str "(" bird " " ind ")")))
+            (is (str/includes? body says))))))))
 
 ;; ---- hide derived, and the picture ---------------------------------------
 
@@ -1903,7 +2232,7 @@
     (tu/with-terms [Pref Dep]
       (let [h (v/assert kb (list bornIn Dep Chicago) CxName)]
         (v/assert kb (list 'rewriteOf Pref Dep) CxName)
-        (is (false? (v/in? kb h)) "the deprecated spelling is stored but not believed")
+        (is (false? (v/believed? kb h)) "the deprecated spelling is stored but not believed")
         (let [r (GET (str "/sentex/" h))]
           (is (= 200 (:status r)))
           (is (re-find #"tag-superseded" (:body r)))      ; the belief pill
@@ -2012,7 +2341,7 @@
   (tu/with-terms [flies Tweety CxNest]
     (let [pos (v/assert kb (list flies Tweety) CxNest {:strength :default})]
       (v/assert kb (list 'not (list flies Tweety)) CxNest {:strength :monotonic})
-      (is (false? (v/in? kb pos)) "the default loses to the monotonic negation")
+      (is (false? (v/believed? kb pos)) "the default loses to the monotonic negation")
       (let [r (GET (str "/sentex/" pos))]
         (is (re-find #"tag-defeated" (:body r)))
         (is (re-find #"Defeated" (:body r)))
@@ -2152,7 +2481,7 @@
       (let [fact (v/assert kb (list gladdenOf Cal Dee) 'CxUniverse)
             sep  (v/assert kb (list 'disjoint gladdenOf saddenOf) 'CxUniverse)
             ref  (re-pattern (str "through .*?/sentex/" sep "\\b"))]
-        (is (false? (v/in? kb fact)))
+        (is (false? (v/believed? kb fact)))
         (is (re-find #"bound through" (:body (GET (str "/sentex/" fact)))))
         (is (re-find ref (:body (GET (str "/sentex/" fact)))))
         (is (re-find ref (:body (GET "/term" (str "q=" gladdenOf)))))))))
@@ -2409,7 +2738,7 @@
       (testing "and the replacement really is an out-of-band swap"
         (is (re-find #"hx-swap-oob=" (:body r))))
       (testing "the unchanged line keeps its handle — no churn"
-        (is (v/in? kb h1)))
+        (is (v/believed? kb h1)))
       (testing "the changed line's old sentex is retracted"
         (is (nil? (v/sentex kb h2))))
       (testing "and the edited sentence is asserted"
@@ -2429,7 +2758,7 @@
           (is (= 200 (:status r)))
           (is (re-find #"expected a sentence, a context term or an options map"
                        (:body r)))))
-      (is (v/in? kb h1) "nothing was written"))))
+      (is (v/believed? kb h1) "nothing was written"))))
 
 (tu/deftest-kb a-line-that-does-not-read-at-all-is-an-unreadable-row-on-every-write-form
   ;; `(this is not a vector)` above reads as EDN and is graded on its shape.  A line that
@@ -2444,7 +2773,7 @@
         (let [r (POST "/edit" {"handles" (str h1) "text" unread})]
           (is (= 200 (:status r)))
           (is (str/includes? (:body r) "<span class=\"tag\">unreadable</span>"))
-          (is (v/in? kb h1) "and the selected sentex is untouched")))
+          (is (v/believed? kb h1) "and the selected sentex is untouched")))
       (testing "the assert form answers it too, with the reader's own complaint"
         (let [r (POST "/assert" {"text" unread "ctx" (str CxEdit)})]
           (is (= 200 (:status r)))
@@ -2919,7 +3248,7 @@
                              {"host" "localhost:3000" "referer" "http://evil.example/x"}]]]
         (let [r (POST "/edit" {"handles" (str h) "text" text} hdrs)]
           (is (= 403 (:status r)) label)))
-      (is (v/in? kb h) "the original is untouched")
+      (is (v/believed? kb h) "the original is untouched")
       (is (empty? (v/sentexes-matching kb (list likesOf Alice Carol) CxEdit)) "and nothing was asserted"))))
 
 (tu/deftest-kb a-same-origin-referer-is-accepted
@@ -2955,7 +3284,7 @@
           (is (= 413 (:status r)))
           (is (str/includes? (:body r) "exceeds"))
           (is (= n (v/sentex-count kb)) "the write never ran")
-          (is (v/in? kb h) "and the handle the edit named is untouched")))
+          (is (v/believed? kb h) "and the handle the edit named is untouched")))
       (testing "under it the same body edits as usual — which is also what says the
                 buffered copy the limit leaves behind is what wrap-params reads"
         (let [r (post)]
@@ -3081,7 +3410,7 @@
       (is (= 200 (:status r)))
       (is (re-find #"line 4" (:body r)) "the line the unbalanced form opens on")
       (is (re-find #"unreadable" (:body r)))
-      (is (v/in? kb h) "and nothing was written"))))
+      (is (v/believed? kb h) "and nothing was written"))))
 
 (tu/deftest-kb the-lookahead-says-what-a-save-would-do-and-writes-nothing
   (tu/with-terms [likesOf Alice Bob Carol CxAhead]
@@ -3093,7 +3422,7 @@
       (is (= 200 (:status r)))
       (is (re-find #"This save" (:body r)))
       (testing "it is a read: the sentex it would retract is still there"
-        (is (v/in? kb h))
+        (is (v/believed? kb h))
         (is (empty? (v/sentexes-matching kb (list likesOf Alice Carol) CxAhead))))
       (testing "and an unreadable form is reported there rather than at the save"
         (let [bad (POST "/edit/preview" {"handles" (str h) "text" "CxAhead\n(oops"}
@@ -3198,7 +3527,7 @@
           sup       (v/supporting-justifications kb h)
           bird-rule (v/handle-of kb bird-sentence CxFly)]
       (testing "the scenario is the one under test: IN, two supports, one of them blocked"
-        (is (v/in? kb h) "(flies Opus) is believed — carried by the bat rule")
+        (is (v/believed? kb h) "(flies Opus) is believed — carried by the bat rule")
         (is (= 2 (count sup)) "two justifications conclude it: the bird rule and the bat rule")
         (is (= [bird-rule] (map :informant (filter #(contains? (jtms/blocked (reasoning/tms kb)) (:id %)) sup)))
             "the bird justification is JTMS-blocked, not swept"))
@@ -3285,6 +3614,138 @@
 (deftest an-unknown-handle-has-no-proof-tree
   (is (re-find #"No sentex" (:body (GET "/why/999999")))))
 
+(defn- why-graph
+  "A hand-built `v/why` answer over handles: `sentences` maps a handle to its sentence, a
+  premise unless `steps` gives it justifications, each `[jid rule & antecedent-handles]`."
+  [root sentences steps]
+  {:root  root
+   :nodes (into {} (for [[h s] sentences]
+                     [h (if-let [js (steps h)]
+                          {:handle h :sentence s :context 'CxT :believed? true :premise? false
+                           :support (mapv (fn [[jid rule & because]]
+                                            {:justification jid :informant 0 :rule rule
+                                             :strength :default :verdict :supports
+                                             :because (vec because)})
+                                          js)}
+                          {:handle h :sentence s :context 'CxT :believed? true :premise? true
+                           :strength :default})]))})
+
+(deftest the-proof-walk-takes-each-step-in-content-order-not-handle-order
+  (let [w (why-graph 100 '{100 (a K) 3 (b K) 9 (c K) 2 (d K)}
+                     '{100 [[5 (implies (c ?x) (a ?x)) 2 9] [7 (implies (b ?x) (a ?x)) 3]]})]
+    (is (= [100 [100 7] 3 [100 5] 9 2] (:order (#'web/proof-walk w pr-str 40)))
+        "jid 5 and antecedent 2 are first by handle and last by content")))
+
+(deftest the-proof-walk-stops-at-the-first-step-past-the-cap
+  (let [w    (why-graph 100 '{100 (a K) 3 (b K) 9 (c K) 2 (d K)}
+                        '{100 [[5 (implies (c ?x) (a ?x)) 2 9] [7 (implies (b ?x) (a ?x)) 3]]})
+        walk (#'web/proof-walk w pr-str 4)]
+    (is (= [100 [100 7] 3] (:order walk)) "the second step and its two antecedents make six")
+    (is (:cut? walk))))
+
+(deftest a-cycle-back-to-the-conclusion-keeps-it-on-the-top-row
+  (let [w (why-graph 1 '{1 (p A) 2 (q A) 3 (r A)}
+                     '{1 [[10 (implies (q ?x) (p ?x)) 2] [12 (implies (r ?x) (p ?x)) 3]]
+                       2 [[11 (implies (p ?x) (q ?x)) 1]]})]
+    (is (= {1 0, [1 10] 1, [1 12] 1, 2 2, 3 2, [2 11] 3}
+           (#'web/proof-layers 1 (#'web/proof-walk w pr-str 40))))))
+
+(deftest a-shared-antecedent-sits-under-its-deepest-justification
+  (let [w (why-graph 1 '{1 (p A) 2 (m A) 3 (n A)}
+                     '{1 [[10 (implies (and (m ?x) (n ?x)) (p ?x)) 2 3]]
+                       2 [[11 (implies (n ?x) (m ?x)) 3]]})]
+    (is (= {1 0, [1 10] 1, 2 2, [2 11] 3, 3 4}
+           (#'web/proof-layers 1 (#'web/proof-walk w pr-str 40))))))
+
+(tu/deftest-kb a-drawing-writes-a-sentex-reference-as-the-sentence-it-names
+  (tu/with-terms [dog Fido CxRef]
+    (let [h (v/assert kb (list dog Fido) CxRef)]
+      (is (= (str "(except (" dog " " Fido "))")
+             (#'web/sentence-text (web/render-env kb {}) (list 'except (list 'sentexHandle h))))))))
+
+(tu/deftest-kb the-why-page-draws-the-proof-above-the-tree
+  (let [body (:body (GET (str "/why/" (v/handle-of kb '(grandparentOf Tom Ann) 'CxNaturalWorld))))
+        svg  (svg-of body)]
+    (is (< (str/index-of body "<figure class=\"kb-graph-fig\">") (str/index-of body "<ul class=\"why\">")))
+    (is (re-find #"aria-label=\"proof of \(grandparentOf Tom Ann\);" svg))
+    (testing "the conclusion, the rule it fires and the premises under it, each a kind"
+      (is (re-find #"class=\"g-node g-derived g-centre\"" svg))
+      (is (re-find #"class=\"g-node g-rule\"" svg))
+      (is (re-find #"class=\"g-node g-stated\"" svg)))
+    (is (re-find #"<title>\(parentOf Tom Bob\) in CxNaturalWorld · premise" svg)
+        "the whole sentence, where it holds and what the tree says of it")))
+
+(deftest the-proof-drawing-is-the-same-bytes-whatever-the-assertion-order
+  (let [rules '[[[(parentOf ?x ?y) (parentOf ?y ?z)] (grandparentOf ?x ?z)]
+                [[(grandparentOf ?x ?z) (parentOf ?z ?w)] (greatGrandparentOf ?x ?w)]]
+        facts '[(parentOf Tom Bob) (parentOf Bob Ann) (parentOf Ann Cal)]
+        rule! (fn [[ants c]] #(v/assert-rule % ants c 'CxProof {:direction :forward}))
+        fact! (fn [s] #(v/assert % s 'CxProof))
+        drawn (fn [steps]
+                (tu/with-cleared-kb [kb tu/isolated-fresh]
+                  (doseq [step steps] (step kb))
+                  (let [h (v/handle-of kb '(greatGrandparentOf Tom Cal) 'CxProof)]
+                    {:h   h
+                     :svg (some-> (:body ((web/app kb) {:request-method :get :uri (str "/why/" h)}))
+                                  svg-of (str/replace #"</?a\b[^>]*>" ""))})))
+        fwd   (drawn (concat (map rule! rules) (map fact! facts)))
+        bwd   (drawn (concat [(fact! '(parentOf Zed Yan))] (map fact! (rseq facts))
+                             (map rule! (rseq rules))))]
+    (is (not= (:h fwd) (:h bwd)) "the two KBs number the conclusion differently")
+    (is (= 7 (count (re-seq #"class=\"g-box\"" (:svg fwd)))) "two steps, three premises, two derived")
+    (is (= (:svg fwd) (:svg bwd)) "with the links stripped, as the textbook's figure tool strips them")))
+
+(tu/deftest-kb a-justification-that-does-not-support-is-drawn-dashed-and-labelled-blocked
+  (tu/with-terms [bird penguin bat flies Opus CxFly]
+    (let [rule #(list 'set/defaultRule (list 'set/forwardRule (list 'implies (list % '?x) (list flies '?x))))]
+      (v/assert kb (rule bird) CxFly)
+      (v/assert kb (rule bat) CxFly)
+      (v/assert kb (list 'exceptWhen (list penguin '?x) (rule bird)) CxFly)
+      (doseq [s [(list bird Opus) (list bat Opus) (list penguin Opus)]] (v/assert kb s CxFly))
+      (let [svg (svg-of (:body (GET (str "/why/" (v/handle-of kb (list flies Opus) CxFly)))))]
+        (is (= 1 (count (re-seq #"class=\"g-node g-rule g-blocked\"" svg))) "the guarded step")
+        (is (= 1 (count (re-seq #"class=\"g-node g-rule\"" svg))) "and the step that carries it")
+        (is (= 1 (count (re-seq #"class=\"g-edge g-proof g-blocked\"" svg))))
+        (is (re-find #">blocked</text>" svg))
+        (is (re-find #"<title>via [^<]* · blocked: a guard defeat" svg))))))
+
+(tu/deftest-kb what-the-kb-does-not-believe-is-drawn-out
+  (tu/with-terms [bird bat flies Opus CxFly]
+    (let [rule #(list 'set/defaultRule (list 'set/forwardRule (list 'implies (list % '?x) (list flies '?x))))
+          why  #(svg-of (:body (GET (str "/why/" (v/handle-of kb (list flies Opus) CxFly)))))]
+      (v/assert kb (rule bird) CxFly)
+      (v/assert kb (rule bat) CxFly)
+      (doseq [s [(list bird Opus) (list bat Opus)]] (v/assert kb s CxFly))
+      (v/assert kb (list 'not (list bird Opus)) CxFly {:strength :monotonic})
+      (testing "an antecedent, under the step it leaves blocked"
+        (let [svg (why)]
+          (is (= 1 (count (re-seq #"class=\"g-node g-out\"" svg))))
+          (is (str/includes? svg (str "<title>" (list bird Opus) " in " CxFly " · not believed</title>")))
+          (is (re-find #"class=\"g-node g-rule g-blocked\"" svg))))
+      (testing "a conclusion, over each justification it has"
+        (v/assert kb (list 'not (list bat Opus)) CxFly {:strength :monotonic})
+        (let [svg (why)]
+          (is (re-find #"class=\"g-node g-out g-centre\"" svg))
+          (is (= 2 (count (re-seq #"class=\"g-node g-rule g-blocked\"" svg))))
+          (is (= 2 (count (re-seq #"class=\"g-node g-out\"" svg))) "each antecedent"))))))
+
+(tu/deftest-kb a-proof-past-the-node-cap-says-what-it-left-out
+  (tu/with-terms [reached Wex CxWide]
+    (doseq [k (repeatedly 25 #(tu/tmp-type "kind"))]
+      (v/assert-rule kb [(list k '?x)] (list reached '?x) CxWide {:direction :forward})
+      (v/assert kb (list k Wex) CxWide))
+    (let [body (:body (GET (str "/why/" (v/handle-of kb (list reached Wex) CxWide))))]
+      (is (= 39 (count (re-seq #"class=\"g-box\"" (svg-of body))))
+          "the conclusion and 19 steps of one antecedent each, under the cap of 40")
+      (is (str/includes? body "showing 20 of 26 sentences and 19 of 25 justifications")))))
+
+(deftest a-proof-drawing-that-throws-costs-only-the-drawing
+  (with-redefs [svg/layered (fn [& _] (throw (ex-info "boom" {})))]
+    (let [r (GET (str "/why/" (v/handle-of tu/*kb* '(grandparentOf Tom Ann) 'CxNaturalWorld)))]
+      (is (= 200 (:status r)))
+      (is (nil? (svg-of (:body r))))
+      (is (re-find #"<ul class=\"why\">" (:body r))))))
+
 ;; ---- assert: the way in for knowledge the KB does not hold -------------
 
 (deftest the-assert-form-is-reachable-and-not-buried
@@ -3353,7 +3814,7 @@
       (is (= 200 (:status r)))
       (is (re-find #"not-ground" (:body r)))
       (is (re-find #"line 2" (:body r)) "the sentence's own line, under its context")
-      (is (v/in? kb h) "the save was refused, so the original is untouched"))))
+      (is (v/believed? kb h) "the save was refused, so the original is untouched"))))
 
 (tu/deftest-kb a-cross-origin-assert-is-refused
   (tu/with-terms [likesOf Alice Bob CxNew]
@@ -3379,8 +3840,8 @@
       (testing "dependency-directedness is stated, not assumed"
         (is (re-find #"dependency-directed" (:body r))))
       (testing "and the GET wrote nothing"
-        (is (v/in? kb fa))
-        (is (v/in? kb ch))))))
+        (is (v/believed? kb fa))
+        (is (v/believed? kb ch))))))
 
 (tu/deftest-kb the-retract-preview-lists-what-the-sweep-deletes-believed-or-not
   ;; `swept-by` reads no belief, because the sweep reads none: a derived sentex a
@@ -3392,7 +3853,7 @@
           ch (v/handle-of kb (list cP X) CxRetract)]
       (v/assert kb (list 'not (list cP X)) CxRetract {:strength :monotonic})
       (is (some? (v/sentex kb ch)) "the defeated conclusion stays stored")
-      (is (not (v/in? kb ch)) "and is not believed")
+      (is (not (v/believed? kb ch)) "and is not believed")
       (let [body (:body (GET "/retract" (str "handles=" fa)))
             row  (some #(when (str/includes? % (str "/sentex/" ch "\"")) %)
                        (re-seq #"(?s)<li>.*?</li>" body))]
@@ -3427,7 +3888,7 @@
           r  (POST "/retract" {"handles" (str fa)}
                {"host" "localhost:3000" "origin" "http://evil.example"})]
       (is (= 403 (:status r)))
-      (is (v/in? kb fa) "nothing was torn down"))))
+      (is (v/believed? kb fa) "nothing was torn down"))))
 
 (deftest retraction-is-not-reachable-by-a-get
   (testing "the GET route previews only — a KB-changing verb is never a navigation"
@@ -3573,7 +4034,7 @@
           (is (re-find #"Nothing retracted" body))
           (is (not (re-find #"Retracted<" body)))
           (is (nil? (row-swap body "delete" ch)))
-          (is (v/in? kb ch))))
+          (is (v/believed? kb ch))))
       (testing "the editor's lookahead counts it as staying, not as retracted"
         (let [body (:body (POST "/edit/preview"
                             {"handles" (str ch) "text" (edit-text CxRetract (list cP Y))}))]
@@ -3586,7 +4047,7 @@
               cy   (v/handle-of kb (list cP Y) CxRetract)]
           (is (re-find #"1 asserted · 0 retracted" body))
           (is (some? cy) "the new sentence is asserted")
-          (is (v/in? kb ch) "and the derived one is still believed")
+          (is (v/believed? kb ch) "and the derived one is still believed")
           (is (nil? (row-swap body "delete" ch)))
           (testing "the new sentence is listed in the panel, not swapped into the row"
             (is (str/includes? body (str "/sentex/" cy)))
@@ -3614,7 +4075,7 @@
                                         ch "&apos;\\]"))
                        body)
               "its own row is re-rendered in place, its badge now reading derived")
-          (is (v/in? kb ch))
+          (is (v/believed? kb ch))
           (is (not (v/premise? kb ch)))))
       (testing "a Save over it once asserted again keeps the row and counts nothing retracted"
         (v/assert kb (list cP X) CxRetract)
@@ -3625,7 +4086,7 @@
           (is (re-find #"0 retracted" body))
           (is (re-find #"no longer asserted" body))
           (is (nil? (row-swap body "delete" ch)))
-          (is (v/in? kb ch))
+          (is (v/believed? kb ch))
           (v/retract! kb cy))))))
 
 ;; ---- forward chaining, and what a load did ----------------------------
@@ -4197,3 +4658,59 @@
         (if old
           (System/setProperty "vaelii.browser.detach-ms" old)
           (System/clearProperty "vaelii.browser.detach-ms"))))))
+
+;; ---- each assertion about a term, shown once by index ----------------------
+
+(defn- badges
+  "How many handle badges for handle `h` the page `body` draws."
+  [body h]
+  (count (re-seq (re-pattern (str "badge-link\" href=\"/sentex/" h "\"")) body)))
+
+(defn- about-term
+  "Every stored fact sentence naming `term` as a top-level argument."
+  [kb term]
+  (into #{}
+        (comp (remove :antecedent)
+              (map :sentence)
+              (filter #(and (sequential? %) (some #{term} (rest %)))))
+        (v/find-sentexes kb term)))
+
+(defn- exactly-once-world!
+  "A predicate `relP` with a sentence for each block part and beside them a refusal mark
+  and a plain non-definitional fact."
+  [kb relP relQ kindT]
+  (doseq [s [(list 'unary_predicate kindT) (list 'genl kindT 'thing)
+             (list 'binary_predicate relP) (list 'binary_predicate relQ)
+             (list 'comment relP "A relation made up for this test.")
+             (list 'arg relP 1 kindT) (list 'arg relP 2 kindT)
+             (list 'argsGenl relP kindT) (list 'functionalInArg relP 2)
+             (list 'interArgEqual relP 2 7 1 kindT)
+             (list 'irreflexive relP) (list 'seeAlso relP relQ)
+             (list 'not_assertible relP)
+             (list 'implementationNote relP "a note no block part shows")]]
+    (v/assert kb s 'CxUniverse)))
+
+(defn- page-sections
+  "A term page `body` split at its index section's heading: the part above it, which holds
+  the Definition block, and the Sentexes by index section."
+  [body]
+  (let [i (str/index-of body "Sentexes by index")]
+    [(subs body 0 i) (subs body i)]))
+
+(tu/deftest-kb the-index-section-shows-each-assertion-about-its-term-exactly-once
+  (tu/with-terms [relP relQ kindT]
+    (exactly-once-world! kb relP relQ kindT)
+    (let [[_ index] (page-sections (:body (GET "/term" (str "q=" (name relP)))))]
+      (doseq [s (about-term kb relP)
+              :let [h (v/handle-of kb s 'CxUniverse)]]
+        (is (some? h) (pr-str s))
+        (is (= 1 (badges index h)) (str (pr-str s) " is shown once by index"))))))
+
+(tu/deftest-kb the-definition-block-restates-sentences-the-index-shows
+  (tu/with-terms [relP relQ kindT]
+    (exactly-once-world! kb relP relQ kindT)
+    (let [[block index] (page-sections (:body (GET "/term" (str "q=" (name relP)))))]
+      (doseq [s [(list 'interArgEqual relP 2 7 1 kindT) (list 'functionalInArg relP 2)]
+              :let [h (v/handle-of kb s 'CxUniverse)]]
+        (is (= [1 1] [(badges block h) (badges index h)])
+            (str (pr-str s) " is in the block and in its index group"))))))

@@ -234,8 +234,8 @@
   `meta.edn`. Handles are exported as they stand. `:records+index` also writes `index/`,
   with its fingerprint computed on the same walk as the sentex frames. `:belief? true` also
   writes `reasoning/` for a KB on the dense network with the default provers and solver; the
-  summary's `:reasoning-image` is `:written`, `:not-writable` (also when the change clock
-  moved during the export) or `:omitted`. `:provenance? false` omits the provenance stream,
+  summary's `:reasoning-image` is `:written`, `:not-writable` (also when the KB's change
+  clock moved during the export) or `:omitted`. `:provenance? false` omits the provenance stream,
   which is also omitted when no handle carries one. `dir` must not exist or must be empty
   (`:type :not-empty`). See docs/storage.md, \"Exporting and importing a dump\"."
   ([kb dir] (export! kb dir {}))
@@ -247,7 +247,10 @@
    (check-compression! compression)
    (check-variant! variant)
    (let [t0       (System/nanoTime)
-         clock    (observe/change-clock)
+         ;; the reasoning image rides the same two walks as the records: its fingerprint
+         ;; is the content fingerprint of the sentexes and justifications this dump streams
+         image?   (and belief? (reasoning-image/writable? kb))
+         clock    (when image? (observe/change-clock (:clock kb)))
          ^File d  (ensure-empty-dir! dir "export destination" "a dump")
          records  (:records kb)
          sx-set   (p/sentex-ids records)
@@ -264,9 +267,6 @@
          ;; the fingerprint rides the sentex walk rather than making a second one —
          ;; the writer already fetches every record, and on `:disk` that is a page read
          ;; apiece
-         ;; the reasoning image rides the same two walks: its fingerprint is the content
-         ;; fingerprint of the sentexes and of the justifications this dump streams
-         image?   (and belief? (reasoning-image/writable? kb))
          fprint   (when (or index? image?) (fp/accumulator))
          jprint   (when image? (fp/accumulator fp/justification-hash))
          sx-n (with-open [r (progress/start ::write-sentexes
@@ -304,7 +304,7 @@
                  (reasoning-image/write-sections!
                   kb (io/file d reasoning-image/dir-name)
                   (reasoning-image/manifest-for kb {:sentexes (fprint) :justifications (jprint)})
-                  #(= clock (observe/change-clock))))]
+                  #(= clock (observe/change-clock (:clock kb)))))]
      (on-progress {:phase :meta :done 0 :total 1})
      (write-meta! d (array-map
                      :format              format-marker

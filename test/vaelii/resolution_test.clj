@@ -46,7 +46,7 @@
     (v/assert kb (list parentOf bob ann) 'CxFam)
     (testing "grandparent is materialized by forward chaining"
       (is (= 1 (count (v/sentexes-matching kb (list grandparentOf tom ann) 'CxFam))))
-      (is (v/in? kb (v/handle-of kb (list grandparentOf tom ann) 'CxFam))))))
+      (is (v/believed? kb (v/handle-of kb (list grandparentOf tom ann) 'CxFam))))))
 
 (tu/deftest-kb recursion-is-bounded
   (let [nat (tu/tmp-type) z (tu/tmp-ind) succ (tu/tmp-pred)]
@@ -68,10 +68,10 @@
     (v/assert kb (list parentOf carol ann) 'CxFam)          ; two witnesses for (gp Tom Ann)
     (let [gp    (v/handle-of kb (list grandparentOf tom ann) 'CxFam)
           bob-h (v/handle-of kb (list parentOf tom bob) 'CxFam)]
-      (is (v/in? kb gp))
+      (is (v/believed? kb gp))
       (v/retract! kb bob-h)
       (testing "grandparent survives — re-derived via the Carol witness"
-        (is (v/in? kb gp))
+        (is (v/believed? kb gp))
         (is (seq (v/sentexes-matching kb (list grandparentOf tom ann) 'CxFam))))
       (testing "the retracted premise itself is gone"
         (is (empty? (v/sentexes-matching kb (list parentOf tom bob) 'CxFam)))))))
@@ -86,7 +86,7 @@
           bob-h  (v/handle-of kb (list parentOf tom bob) 'CxFam)
           result (v/retract! kb bob-h)]
       (testing "grandparent had no other support and is swept"
-        (is (not (v/in? kb gp)))
+        (is (not (v/believed? kb gp)))
         (is (empty? (v/sentexes-matching kb (list grandparentOf tom ann) 'CxFam))))
       (testing "only the solely-supported records are removed"
         (is (= 2 (:removed-sentexes result)))             ; parent Tom Bob + grandparent

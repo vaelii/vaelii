@@ -88,7 +88,7 @@
   (is (= :monotonic (v/defeat-class kb (v/handle-of kb '(folk_species dog) 'CxUniverse))))
   (testing "a denial of one loses to it"
     (let [d (v/assert kb '(not (folk_species dog)) 'CxUniverse)]
-      (is (not (v/in? kb d)))
+      (is (not (v/believed? kb d)))
       (is (true? (v/ask? kb '(folk_species dog) 'CxUniverse))))))
 
 (tu/deftest-kb a-rule-from-folk-species-to-orthogonal-is-a-forced-monotonic-rule

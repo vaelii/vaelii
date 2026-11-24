@@ -394,8 +394,8 @@ answers `(P x)` only where no such membership is believed. A reading known-true 
 defeats a `:default` membership by the nogood above, and beside a `:monotonic` one the pair
 is a conflict, which `ask` answers in neither direction. The forward entry
 point reads the membership as any contrary claim
-([below](#forward-chaining-on-a-claim-nobody-stored)): a `:default` membership stores the
-firing with a defeat resting on it, and a `:monotonic` one blocks it
+([below](#forward-chaining-on-a-claim-nobody-stored)): a membership of either strength
+stores the firing with a guard defeat resting on it
 (`inherit_forward_test/a-separated-membership-denies-an-inherited-antecedent-in-every-order`).
 A membership is read at its own tuple alone: `(S w)` stated of a term `w` that `(P x)` is
 reached from denies `(P w)`, and says nothing of `x`.
@@ -624,11 +624,17 @@ the one tuple it is *stated* at, and the tuples it licenses are reached by joini
 than by matching. So such a datum **re-joins in full** every forward rule carrying an
 antecedent on a preserved predicate whose licensed set it moved, and those rules leave
 the trigger set so the work is done once (`inherit/rejoin-rules`,
-`chain/rejoin-in-full`). A permuting mark — `(symmetric P)` or one of the three
+`chain/rejoin-in-full`). The re-join reads four channels (`inherit/rejoin-channels`): a
+claim in the positive polarity, a fact on the relation, the declaration and
+`(transitive R)`. A negated claim, an `asymmetric` mark and a separated membership move
+denials alone. The join reads no denial, so each of those three is re-checked and
+re-joins no rule
+(`inherit_forward_test/each-re-join-channel-fires-what-its-arrival-licenses`). A permuting mark — `(symmetric P)` or one of the three
 commutativity marks — takes the same route for a different reader: it moves what the
 *matcher* answers rather than what a prover does, and the facts it now permutes have
 already arrived (`chain/permuting-rejoin-rules`). The
-sentences that move a preserved predicate are the declaration itself, a
+sentences that move a preserved predicate's verdicts, which the re-check reads
+(`inherit/moved-predicates`), are the declaration itself, a
 claim on the predicate, a fact on the relation — a `genl` or `genlCx` edge included
 — `(transitive R)`, `(asymmetric P)`, and a permuting mark: `(symmetric P)`,
 `(commutative P)`, `(commutativeInArgs P …)` or `(commutativeInArgAndRest P n)`, since
@@ -662,7 +668,7 @@ the region.
 removed or relabelled moves its target's belief at the contexts that see it, and nothing
 queues the re-join an arrival would: the settle posts the re-check of the target and of
 each handle resting on it (`settle/post-defeat-moves!`). A scoped closure read applies the
-defeats its reader sees through `res/supporter-believed?`, and a closure read with no
+defeats its reader sees through `res/supporter-unhidden?`, and a closure read with no
 context, like a firing's witness search, reads the network
 ([nmtms.md](nmtms.md#a-defeat-is-scoped-to-its-vantage)).
 
@@ -681,33 +687,75 @@ joins the justification and not the placement, which the claim and the rule deci
 ([contexts.md](contexts.md#cxuniverse-is-the-implicit-root)). A firing the ordinary matcher makes over a mirror names the mark the same
 way ([inference.md](inference.md#forward-chaining)).
 
-**A more specific contrary claim withdraws a conclusion with nothing retracted.**
+**A contrary claim withdraws a conclusion with nothing retracted.**
 `(typicallyLargerThan maine_coon chihuahua)` undercuts the inherited
 `(typicallyLargerThan chihuahua maine_coon)`, and the general claim is not defeated: it
 does not fire for that pair. Every antecedent of the firing is still stored and
-believed, so the justification cannot express the withdrawal. Which way the firing goes
-depends on the contrary claim's class. The forward join reads the
-claims with each `:default` contrary set aside (`inherit/*default-contraries-set-aside*`),
-so a firing only `:default` contraries undercut is made and stored, with a guard
-`defeat` of its conclusion at its placement resting on each contrary claim that survives
-there (`inherit/contraries`, `chain/inheritance-defeat-placements`). A reader that does
-not believe the contrary believes the conclusion, as `ask?` there answers the inherited
-claim it joins on
-(`inherit_forward_test/a-defeated-contrary-claim-gives-the-inherited-firing-back-in-every-order`).
-A `:monotonic` contrary **blocks** the firing the way an `exceptWhen`-excepted one is
-(`chain/inheritance-withdrawn?`, queued by `special/recheck-preserving-firings`), so the
-existing sweep collects the conclusion and the existing revival machinery brings it back
-when the contrary goes. A settle re-decides only the firings whose goal the moved sentence
-can bear on ([exceptions.md](exceptions.md#two-withdrawals-a-firing-carries)). The check is
-asked only of an antecedent the KB does not state at the bound tuple: a stored claim is
-withdrawn by its own handle going, and asking `verdict` about one would block an ordinary
-firing over a pair the KB happens to hold in both polarities. Both readings take the
-claims in the network and through the excepts, and no placed defeat
-(`tax/*network-belief*`), as every placement in `chain` does, so what is stored is the
-same in every arrival order. A defeat rests on the contrary claim alone, not on the
-edges that make it more specific, and on each surviving contrary separately: where a
-reader hides one contrary and believes a second that the first displaced, the second
-places no defeat.
+believed, so the justification cannot express the withdrawal. The forward join reads the
+claims for the goal alone (`inherit/*contraries-set-aside*`), so the firing is stored
+beside a contrary of either strength
+(`inherit_forward_test/a-contrary-claim-stores-the-inherited-firing-hidden-at-either-strength`).
+A guard `defeat` of its conclusion is placed at each maximal context at or below the
+firing that sees a reading of a contrary which denies the goal there
+(`inherit/contraries`, `chain/inheritance-defeat-placements`). The defeat rests on the
+contrary, the reach it denies the goal along and, for a converse, the `asymmetric`
+statement. A reader that does not believe or see one of those believes the conclusion, as
+`ask?` there answers the inherited claim it joins on
+(`inherit_forward_test/an-inherited-firing-is-believed-by-the-readers-no-contrary-reaches`).
+Where a claim for the goal displaces a contrary, a defeat is placed also at each context
+that excepts the displacing claim and where the contrary then denies the goal.
+
+**An inherited firing confers `:default`.** A firing with a preservation declaration
+among its antecedents (`inherit/declaration-record?`) records `:default`, whatever its rule
+and its other antecedents confer. A guard defeat is in force only over a `:default`
+target, and a `:monotonic` claim beside a `:monotonic` contrary is a conflict that `ask`
+answers in neither direction. `special/restrength-firings!` keeps the class while an
+`exceptWhen` on the rule arrives and leaves
+(`inherit_forward_test/an-inherited-firing-stays-default-while-an-exceptWhen-on-its-rule-comes-and-goes`).
+
+The guard covers each goal the firing joined on through a claim at another tuple
+(`chain/inherited-goals`). A goal is left out only where a handle among the firing's
+antecedents states it, so a claim stated at the goal's own tuple and defeated there leaves
+the guard in place. An `except` hides a guard justification only through its blockers
+(`exc/guard-blockers`): the contrary and the reach it denies the goal along. A reader that
+hides the claim the firing joined on can reach the goal by a second claim
+(`except/rerouted`), and there the firing stands with the guard in force over it.
+
+The reader decides a separation's exemption, since a `siblingDisjointException` stated
+below the firing can end the denial there. The guard justification records the separated
+pair under `:separated`, and the defeat is out of force at a reader whose believed
+exceptions leave no such pair separated (`exc/pair-exempted?`). The defeat is stored also
+where its own placement sees the exception, and is out of force there.
+
+A firing whose inherited antecedent has no claim for it left is **blocked** the way an
+`exceptWhen`-excepted one is (`chain/inheritance-withdrawn?`, queued by
+`special/recheck-preserving-firings`), so the existing sweep collects the conclusion and
+the existing revival machinery brings it back with the claim. A firing whose goal is
+stated at its own tuple, IN in the network at the placement, is blocked too: a stated goal
+licenses nothing by preservation (`inherit/supports-for`), so a join after the statement
+does not make the firing. A statement that an `except` hides from some context blocks
+nothing (`exc/closure-excepted-anywhere?`): a reader that hides it reads the goal through
+the claim, and believes the conclusion through the firing. A settle re-decides only the
+firings whose goal the moved sentence can bear on
+([exceptions.md](exceptions.md#two-withdrawals-a-firing-carries)). The check is asked only
+of an antecedent the KB does not state at the bound tuple: a stored claim is withdrawn by
+its own handle going, and asking `verdict` about one would block an ordinary firing over a
+pair the KB happens to hold in both polarities. Both readings take the claims in the
+network and through the excepts, and no placed defeat (`tax/*network-belief*`), as every
+placement in `chain` does, so what is stored is the same in every arrival order.
+
+`recover` re-fires each rule on a preserved predicate. It queues each stored contrary of
+one (`inherit/deniable-predicates`, `inherit/contraries-in`) as the contrary's arrival
+queues it, so the settle re-places the guard defeats of the firings whose goal it can
+deny. Past `contrary-limit` (64) contraries of one predicate, the settle re-decides the
+firings of its rules that own a guard justification or join on a goal a contrary reads
+against (`chain/guard-owed?`). An open that
+installs a reasoning image runs no `recover` and keeps the image's firings and defeats
+([storage.md](storage.md#the-reasoning-image)).
+
+A rule whose conclusion denies its own inherited antecedent has no fixed point. The
+defeat rests on the conclusion it hides, so a reader answers the antecedent and does not
+believe the conclusion.
 
 **Placement follows the reasons.** The claim, the declarations and the edges are
 antecedents, so `maximal-common-descendant-contexts` sees their contexts alongside the

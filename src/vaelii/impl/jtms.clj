@@ -3,7 +3,7 @@
 (ns vaelii.impl.jtms
   "The reference non-monotonic truth-maintenance network: nodes keyed by sentex handle
   (no sentex reference, so the resident graph holds no records), justifications, premise
-  strengths, defeat-classes, and the `superseded`, forced, and `blocked` sets.  Belief is
+  strengths, defeat-classes, and the `superseded`, forced, and `blocked` sets.  A label is
   a least fixpoint over current state, so it is order-independent, and every relabel is
   scoped to the affected region (locality).  The caller owns physical deletion after a
   sweep.  See docs/nmtms.md."
@@ -26,7 +26,7 @@
                                                -relabel -set-blocked
                                                -supersede -retract -sweep
                                                -drop-justification -snapshot
-                                               -hold -release -held]]
+                                               -hold -release -held -clock]]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.strength :as strength]
             [vaelii.impl.types.tms :as tms-types])
@@ -34,18 +34,19 @@
            [java.util.concurrent.atomic AtomicReference]))
 
 (defmacro ^:private moving
-  "Run `body`, a mutation of the network, between two moves of the change clock
+  "Run `body`, a mutation of the network `tms`, between two moves of its change clock
   (`observe/note-change`), and answer what `body` answers.  Every mutating entry point wraps
   its mutation in this, so neither `Tms` representation can forget a bump.  The clock moves
   on both sides: a cache installs an entry only when the clock still reads the value it read
   before computing (`literal-cache/lookup`, `provers/cached-reach`), the first move keeps a
   read inside the mutation from an older entry, and the second retires entries a reader
   thread computed mid-mutation (`kb_concurrency_test`)."
-  [& body]
-  `(do (observe/note-change)
-       (let [r# (do ~@body)]
-         (observe/note-change)
-         r#)))
+  [tms & body]
+  `(let [c# (-clock ~tms)]
+     (observe/note-change c#)
+     (let [r# (do ~@body)]
+       (observe/note-change c#)
+       r#)))
 
 (defn- without-informant
   "`antecedents` as a vector, with a rule-handle `informant` taken out of it.  A firing
@@ -528,17 +529,18 @@
         (update :touched-in (fnil conj #{}) consequence))
       (resettle state [consequence]))))
 
-(defn- restrength-informant* [state informant strength]
+(defn- restrength-informant* [state informant strength capped]
   ;; The adjacency lists every justification a rule informs under the rule's node (`reduce-rests-on`
   ;; in `add-just*`), so `:consequences` is the candidate set and nothing scans `:justs`.  The informant
   ;; filter drops a justification that uses the rule's handle as an ordinary antecedent.
   (let [jids  (into []
                     (filter #(= informant (get-in state [:justs % :informant])))
                     (get-in state [:nodes informant :consequences] #{}))
-        stale (into [] (remove #(= strength (get-in state [:justs % :strength]))) jids)]
+        to    #(if (contains? capped %) :default strength)
+        stale (into [] (remove #(= (to %) (get-in state [:justs % :strength]))) jids)]
     (if (empty? stale)
       state
-      (-> (reduce (fn [s jid] (assoc-in s [:justs jid :strength] strength)) state stale)
+      (-> (reduce (fn [s jid] (assoc-in s [:justs jid :strength] (to jid))) state stale)
           (resettle (mapv #(get-in state [:justs % :consequence]) stale))))))
 
 ;; ---- retraction ---------------------------------------------------------
@@ -778,26 +780,26 @@
 ;; ---- the reference implementation: one atom, one persistent map ---------
 
 (defn- ref-state
-  "The state map a `RefTms` read answers from, given its `hold` and `state` fields: the map
+  "The state map a `RefTms` read answers from, given its `hold`, `state` and `clock` fields: the map
   the open hold took when it opened, for a thread other than its owner that
   `observe/reads-held-in?` says reads it, and otherwise the live map.
 
   A live read takes the registry before and after the map, and reads again when a hold
   opened or closed in between: a settle mutates the network only while its hold is open,
   so a map read with no hold open on either side is one no settle was deciding."
-  [^AtomicReference hold ^clojure.lang.Atom state]
+  [^AtomicReference hold ^clojure.lang.Atom state clock]
   (let [st (.get hold)]
     (if (and st (identical? (:owner (:hold st)) (Thread/currentThread)))
       @state
       (loop []
-        (let [m  (observe/registry)
+        (let [m  (observe/registry clock)
               st (.get hold)]
           (if (and st (observe/reads-held-in? m (:hold st)))
             (:state st)
             (let [s @state]
-              (if (identical? m (observe/registry)) s (recur)))))))))
+              (if (identical? m (observe/registry clock)) s (recur)))))))))
 
-(deftype RefTms [^clojure.lang.Atom state ^AtomicReference hold]
+(deftype RefTms [^clojure.lang.Atom state ^AtomicReference hold clock]
   ;; `@tms` yields the live state map, which the JTMS tests and RAM benches read.  `hold` is nil or
   ;; `{:hold h :state s}` while hold `h` is open: every read answers from `s`, the state map at open,
   ;; to a thread that reads `h`'s belief.
@@ -805,24 +807,24 @@
   (deref [_] @state)
   Tms
   (-believed? [_ datum]
-    (let [s (ref-state hold state)]
+    (let [s (ref-state hold state clock)]
       (and (contains? (:in s #{}) datum)
            (not (contains? (:superseded s {}) datum))
            (let [held (forced-set s :held)] (or (empty? held) (not (contains? held datum)))))))
-  (-believed [_] (let [s (ref-state hold state)] (seq (remove (unbelieved-fn s) (:in s #{})))))
-  (-any-node?   [_] (boolean (seq (:nodes (ref-state hold state)))))
-  (-any-belief? [_] (let [s (ref-state hold state)]
+  (-believed [_] (let [s (ref-state hold state clock)] (seq (remove (unbelieved-fn s) (:in s #{})))))
+  (-any-node?   [_] (boolean (seq (:nodes (ref-state hold state clock)))))
+  (-any-belief? [_] (let [s (ref-state hold state clock)]
                       (boolean (first (remove (unbelieved-fn s) (:in s #{}))))))
-  (-node? [_ datum] (contains? (:nodes (ref-state hold state)) datum))
-  (-datums [_] (keys (:nodes (ref-state hold state))))
-  (-depth [_ datum] (get-in (ref-state hold state) [:nodes datum :depth] 0))
-  (-premise? [_ datum] (boolean (get-in (ref-state hold state) [:nodes datum :premise?])))
-  (-premise-strength [_ datum] (get-in (ref-state hold state) [:nodes datum :premise-strength]))
+  (-node? [_ datum] (contains? (:nodes (ref-state hold state clock)) datum))
+  (-datums [_] (keys (:nodes (ref-state hold state clock))))
+  (-depth [_ datum] (get-in (ref-state hold state clock) [:nodes datum :depth] 0))
+  (-premise? [_ datum] (boolean (get-in (ref-state hold state clock) [:nodes datum :premise?])))
+  (-premise-strength [_ datum] (get-in (ref-state hold state clock) [:nodes datum :premise-strength]))
   (-defeat-class [_ datum]
-    (let [s (ref-state hold state)]
+    (let [s (ref-state hold state clock)]
       (when (contains? (:in s) datum) (get (:classes s) datum :default))))
-  (-blocked [_] (:blocked (ref-state hold state) #{}))
-  (-superseded [_] (:superseded (ref-state hold state) {}))
+  (-blocked [_] (:blocked (ref-state hold state clock) #{}))
+  (-superseded [_] (:superseded (ref-state hold state clock) {}))
   (-touched [_] (:touched @state #{}))
   (-touched-in [_] (:touched-in @state #{}))
   (-touched-new [_] (:touched-new @state #{}))
@@ -849,12 +851,12 @@
       (if (and mark (= g gen) (< i (count epochs)))
         (into #{} cat (subvec epochs i))
         (:touched st #{}))))
-  (-supports [_ datum] (get-in (ref-state hold state) [:nodes datum :supports] #{}))
-  (-dependents [_ datum] (get-in (ref-state hold state) [:nodes datum :consequences] #{}))
-  (-support-count [_ datum] (count (get-in (ref-state hold state) [:nodes datum :supports])))
-  (-dependent-count [_ datum] (count (get-in (ref-state hold state) [:nodes datum :consequences])))
-  (-justification [_ jid] (get-in (ref-state hold state) [:justs jid]))
-  (-justifications [_] (vals (:justs (ref-state hold state))))
+  (-supports [_ datum] (get-in (ref-state hold state clock) [:nodes datum :supports] #{}))
+  (-dependents [_ datum] (get-in (ref-state hold state clock) [:nodes datum :consequences] #{}))
+  (-support-count [_ datum] (count (get-in (ref-state hold state clock) [:nodes datum :supports])))
+  (-dependent-count [_ datum] (count (get-in (ref-state hold state clock) [:nodes datum :consequences])))
+  (-justification [_ jid] (get-in (ref-state hold state clock) [:justs jid]))
+  (-justifications [_] (vals (:justs (ref-state hold state clock))))
   (-ensure-node [_ datum depth]
     ;; skip the swap when it would write back a value-identical map (a node already present at a depth
     ;; no higher than `depth`); most calls are that no-op.  Sound under the single-writer contract.
@@ -865,10 +867,10 @@
   (-add-premise [_ datum strength] (swap! state premise* datum strength) nil)
   (-suspend-premise [_ datum] (swap! state suspend-premise* datum) nil)
   (-add-justification [_ just] (swap! state add-just* just) nil)
-  (-restrength-informant [_ informant strength]
-    (swap! state restrength-informant* informant strength) nil)
-  (-forced? [_ kind x] (contains? (forced-set (ref-state hold state) kind) x))
-  (-forced-members [_ kind] (forced-set (ref-state hold state) kind))
+  (-restrength-informant [_ informant strength capped]
+    (swap! state restrength-informant* informant strength capped) nil)
+  (-forced? [_ kind x] (contains? (forced-set (ref-state hold state clock) kind) x))
+  (-forced-members [_ kind] (forced-set (ref-state hold state clock) kind))
   (-set-forced [_ kind xs on?] (swap! state set-forced* kind xs on?) nil)
   (-relabel [_] (swap! state relabel-all*) nil)
   (-set-blocked [_ jids] (swap! state set-blocked* jids) nil)
@@ -885,25 +887,28 @@
     (let [st (.get hold)]
       (when (identical? h (:hold st)) (.compareAndSet hold st nil)))
     nil)
-  (-held [_] (:hold (.get hold))))
+  (-held [_] (:hold (.get hold)))
+  (-clock [_] clock))
 
 (defn create-tms
   "A fresh, empty truth-maintenance network, the reference implementation.  `:in` is the
-  believed set and the authority on belief, maintained region-locally; nodes carry no label of
+  set of IN datums and the authority on support, maintained region-locally; nodes carry no label of
   their own.  `:blocked` is the set of justification ids blocked by their rule's exception; it
-  starts empty.  Rules live in the stores as sentexes, not here."
-  []
-  (let [state (atom {:nodes {} :justs {} :blocked #{} :superseded {}
-                     :forced {:mono #{} :out #{} :void #{} :held #{}}
-                     :classes {} :in #{}
-                     :touched #{} :touched-in #{} :touched-new #{} :touched-out #{}
-                     :touched-down #{} :touched-up #{}})
-        tms   (->RefTms state (AtomicReference. nil))]
-    ;; the state map a swap replaces is the open write record's value for this network,
-    ;; the first time a swap since the record opened replaces one (`before-network`)
-    (add-watch state ::write-record
-               (fn [_ _ old _] (when observe/*write-record* (observe/record-of tms (constantly old)))))
-    tms))
+  starts empty.  Rules live in the stores as sentexes, not here.  Its mutations move
+  `clock`, the KB's change clock, or a clock of its own."
+  ([] (create-tms (observe/new-clock)))
+  ([clock]
+   (let [state (atom {:nodes {} :justs {} :blocked #{} :superseded {}
+                      :forced {:mono #{} :out #{} :void #{} :held #{}}
+                      :classes {} :in #{}
+                      :touched #{} :touched-in #{} :touched-new #{} :touched-out #{}
+                      :touched-down #{} :touched-up #{}})
+         tms   (->RefTms state (AtomicReference. nil) clock)]
+     ;; the state map a swap replaces is the open write record's value for this network,
+     ;; the first time a swap since the record opened replaces one (`before-network`)
+     (add-watch state ::write-record
+                (fn [_ _ old _] (when observe/*write-record* (observe/record-of tms (constantly old)))))
+     tms)))
 
 (defn before-network
   "A reference network `tms` as it stood when the open write record first recorded it,
@@ -911,7 +916,7 @@
   is not a reference network."
   [tms]
   (if-let [s (and (instance? RefTms tms) (observe/recorded tms))]
-    (->RefTms (atom s) (AtomicReference. nil))
+    (->RefTms (atom s) (AtomicReference. nil) (-clock tms))
     tms))
 
 ;; ---- public API ---------------------------------------------------------
@@ -920,15 +925,15 @@
 ;; representation a KB was opened with is invisible above this line.
 
 (defn in?
-  "Is `datum` believed?  Structural support minus supersession and the `:held` forced
-  set: a datum the equality layer has displaced, or a rule a correspondence holds
-  (docs/nat.md), keeps its place in the fixpoint (a twin or a respelled row is justified
-  by it) but is not believed, so it stops matching and stops answering queries."
+  "Is `datum` IN, neither superseded nor in the `:held` forced set?  A support label,
+  the same for every context: a defeated datum answers true, and belief at a context asks
+  `vaelii.impl.except`.  A datum the equality layer displaced, or a rule a correspondence
+  holds (docs/nat.md), keeps its place in the fixpoint and answers false."
   [tms datum] (-believed? tms datum))
 
 (defn raw-in?
-  "Is `datum` believed, or kept from belief with its label IN: superseded, or a member of
-  the `:held` forced set?  The label a boundary datum of a region read takes, since the
+  "Is `datum`'s label IN: `in?`, or IN and superseded, or IN and a member of the `:held`
+  forced set?  The label a boundary datum of a region read takes, since the
   fixpoint keeps both kinds IN."
   [tms datum]
   (or (-believed? tms datum)
@@ -1062,7 +1067,7 @@
   "**Replace** the superseded map with `m` (`{datum reason}`), as `set-blocked` replaces:
   the caller reconciles the whole answer (`special/refresh-supersessions`).  No relabel:
   supersession only subtracts from what `in?` reports."
-  [tms m] (moving (-supersede tms m)) tms)
+  [tms m] (moving tms (-supersede tms m)) tms)
 
 (defn supports
   "Justification ids that conclude `datum` (its supporting justifications)."
@@ -1406,7 +1411,7 @@
   [tms datum depth]
   (when-not (and observe/*chain-fast-paths* (integer? datum) (-node? tms datum)
                  (<= (long (-depth tms datum)) (long depth)))
-    (moving (-ensure-node tms datum depth)))
+    (moving tms (-ensure-node tms datum depth)))
   datum)
 
 (defn- note-route-gain
@@ -1426,7 +1431,7 @@
    (note-grown! tms datum)
    (let [strength (or strength-kw :default)
          old (when (support-observer tms) (-premise-strength tms datum))]
-     (moving (-add-premise tms datum strength))
+     (moving tms (-add-premise tms datum strength))
      (note-moved! tms [datum] false (when (not= old strength) [datum])))
    datum))
 
@@ -1438,7 +1443,7 @@
   [tms datum]
   (note-grown! tms datum)
   (let [old (when (support-observer tms) (-premise-strength tms datum))]
-    (moving (-suspend-premise tms datum))
+    (moving tms (-suspend-premise tms datum))
     (note-moved! tms [datum] false (when old [datum])))
   datum)
 
@@ -1449,7 +1454,7 @@
   ([tms just k]
    (note-route-gain tms (:consequence just))
    (let [old (when (support-observer tms) (-justification tms (:id just)))]
-     (moving (-add-justification tms just))
+     (moving tms (-add-justification tms just))
      (note-moved! tms [(:consequence just)] false
                   (when (not= old (graph-just just)) [(:consequence just)]) just))
    (when-let [^java.util.Set s observe/*fired-sink*]
@@ -1466,15 +1471,17 @@
 
 (defn restrength-informant
   "Set `strength` as the rule-contribution slot of every justification whose informant is
-  `informant`, and relabel the region their consequences span.  The slot caches
+  `informant`, `:default` for one whose id is in the set `capped` (a firing on an inherited
+  claim), and relabel the region their consequences span.  The slot caches
   `provers/firing-strength`, which moves when a re-asserted rule's defeasibility resolves or an
   `exceptWhen` arrives or leaves (`special/restrength-firings!`); without the move belief would
   keep the arrival order.  The antecedent half of `conferred-class` is read live, so this is the
   only stored copy.  The relabel spans the full affected region, since a class that rises can
   flip defeat decisions anywhere in the consumer ancestor set."
-  [tms informant strength]
-  (moving (-restrength-informant tms informant strength))
-  tms)
+  ([tms informant strength] (restrength-informant tms informant strength nil))
+  ([tms informant strength capped]
+   (moving tms (-restrength-informant tms informant strength capped))
+   tms))
 
 (defn forced?
   "Is `x` a member of forced set `kind`?"
@@ -1496,7 +1503,7 @@
     (let [changed (when (support-observer tms)
                     (filterv #(not= (boolean on?) (boolean (-forced? tms kind %))) xs))
           datums (fn [xs] (if (= :void kind) (keep #(:consequence (-justification tms %)) xs) xs))]
-      (moving (-set-forced tms kind xs on?))
+      (moving tms (-set-forced tms kind xs on?))
       (note-moved! tms (datums xs) false (datums changed))))
   tms)
 
@@ -1513,7 +1520,7 @@
   relabels.  Nothing on the live paths calls it; it is the differential oracle's operation
   (`strength_test`, `jtms_dense_oracle_test`, `jtms_blocked_test`), so both representations
   implement it."
-  [tms] (moving (-relabel tms)) tms)
+  [tms] (moving tms (-relabel tms)) tms)
 
 (defn blocked
   "The justification ids currently blocked by their rule's exception."
@@ -1527,7 +1534,7 @@
   justifications whose blocked status changed; a call that changes nothing does no work."
   [tms jids]
   (let [old (when (or observe/*write-record* (support-observer tms)) (-blocked tms))]
-    (moving (-set-blocked tms jids))
+    (moving tms (-set-blocked tms jids))
     (when old
       (let [new (set jids)]
         (note-moved! tms (keep #(:consequence (-justification tms %))
@@ -1713,7 +1720,7 @@
   ;; the one path besides `sweep!` that removes justifications — the run memos bound
   ;; over this TMS are cleared wholesale rather than edited (`clear-run-memos!`)
   (let [old (when (support-observer tms) (-premise-strength tms datum))
-        result (note-removed! tms (moving (clear-run-memos! tms)
+        result (note-removed! tms (moving tms (clear-run-memos! tms)
                                           (-retract tms datum)))]
     ;; A premise can leave while another support keeps the datum IN and no sweep
     ;; removes anything. Its independent-demand authority still changed.
@@ -1728,7 +1735,7 @@
   current (`set-blocked` relabels the same region)."
   [tms seeds]
   ;; removes justifications, so the run memos bound over this TMS are cleared
-  (note-removed! tms (moving (clear-run-memos! tms)
+  (note-removed! tms (moving tms (clear-run-memos! tms)
                              (-sweep tms seeds))))
 
 (defn drop-justification!
@@ -1739,7 +1746,7 @@
   stopped folding into its row (`chain/reconcile-spellings!`)."
   [tms jid]
   ;; removes a justification, so the run memos bound over this TMS are cleared
-  (note-removed! tms (moving (clear-run-memos! tms)
+  (note-removed! tms (moving tms (clear-run-memos! tms)
                              (-drop-justification tms jid))))
 
 (defn snapshot

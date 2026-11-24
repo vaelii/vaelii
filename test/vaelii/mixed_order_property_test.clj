@@ -309,7 +309,7 @@
   [kb]
   (into []
         (keep (fn [h]
-                (when (v/in? kb h)
+                (when (v/believed? kb h)
                   (when-let [sx (v/sentex kb h)]
                     {:handle   (long h)
                      :sentence (name-by-content kb (v/sentence-of sx))

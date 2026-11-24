@@ -77,24 +77,57 @@
                   " read as EDN — " kind)
              {:type :unreadable :file (str source) :line line})))
 
+(defn- directive-span
+  "`{:directive name :arg a}` for a top-level `#name a` whose name is in `directives`, and
+  `{:form f}` for a form holding no tag.  A tag `directives` does not hold is refused as
+  `:bad-directive` with `:mismatch :unknown-key`, and a tag inside a form or inside a
+  directive's argument with `:mismatch :misplaced`, each carrying `:file` and `:line`."
+  [source line directives form]
+  (let [tag-in (fn [x] (first (filter tagged-literal? (tree-seq coll? seq x))))
+        where  (fn [tag why] (str source ", line " line ": #" tag " " why))
+        tag    (:tag form)]
+    (cond
+      (not (tagged-literal? form))
+      (if-let [t (tag-in form)]
+        (throw (ex-info (where (:tag t) "is a directive, so it is a whole form and never part of one")
+                        {:type :bad-directive :mismatch :misplaced :directive (:tag t)
+                         :file (str source) :line line}))
+        {:form form})
+      (not (contains? directives tag))
+      (throw (ex-info (where tag (str "is no directive; the directives are "
+                                      (str/join ", " (map #(str "#" %) (sort directives)))))
+                      {:type :bad-directive :mismatch :unknown-key :directive tag
+                       :file (str source) :line line}))
+      (tag-in (:form form))
+      (throw (ex-info (where tag "takes a form holding no directive as its argument")
+                      {:type :bad-directive :mismatch :misplaced :directive tag
+                       :file (str source) :line line}))
+      :else {:directive tag :arg (:form form)})))
+
 (defn form-spans
   "Every form in the text KB file `source` (anything `io/reader` takes), in file order, as
-  `{:form f :start line :end line}`: the 1-based lines the form opens and closes on.
-  `clojure.edn`, so comments and blank lines added no work and no code can run.  A form
-  that does not read is refused as `:unreadable`, carrying `:file` and the `:line` it
-  opens on and never the file's text."
-  [source]
-  (with-open [r (LineNumberingPushbackReader. (io/reader source))]
-    (let [eof (Object.)]
-      (loop [acc []]
-        (skip-to-form! r)
-        (let [line (.getLineNumber r)
-              form (try (edn/read {:eof eof} r)
-                        (catch Exception e (throw (unreadable source line e)))
-                        (catch StackOverflowError e (throw (unreadable source line e))))]
-          (if (identical? form eof)
-            acc
-            (recur (conj acc {:form form :start line :end (.getLineNumber r)}))))))))
+  `{:form f :start line :end line}`: the 1-based lines the form opens and closes on, read
+  by `clojure.edn`, so no code can run.  A form that does not read is refused as
+  `:unreadable`, carrying `:file` and the `:line` it opens on and never the file's text.
+  `{:directives names}` reads a top-level `#name arg` as `{:directive name :arg arg}`
+  instead of refusing the tag (`directive-span`); a run file is read this way."
+  ([source] (form-spans source nil))
+  ([source {:keys [directives]}]
+   (with-open [r (LineNumberingPushbackReader. (io/reader source))]
+     (let [eof  (Object.)
+           opts (cond-> {:eof eof} directives (assoc :default tagged-literal))]
+       (loop [acc []]
+         (skip-to-form! r)
+         (let [line (.getLineNumber r)
+               form (try (edn/read opts r)
+                         (catch Exception e (throw (unreadable source line e)))
+                         (catch StackOverflowError e (throw (unreadable source line e))))]
+           (if (identical? form eof)
+             acc
+             (recur (conj acc (assoc (if directives
+                                       (directive-span source line directives form)
+                                       {:form form})
+                                     :start line :end (.getLineNumber r)))))))))))
 
 (defn read-forms
   "Every form in the text KB file `source`, in file order (`form-spans`)."

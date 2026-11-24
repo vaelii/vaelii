@@ -1,0 +1,19 @@
+; colouring.vae with the colour symmetry broken. Renaming the three colours maps one
+; proper colouring to six, so two hard constraints fix the colours of the adjacent
+; vertices P0 and P1, and one colouring of each class of six remains: 20 of the 120.
+; Twin: colouring-symmetry.lp.
+#base core
+#context CxColouringSymmetry
+#include "petersen.vae"
+(colour_name Red)
+(colour_name Green)
+(colour_name Blue)
+(set/assumptionRule (implies (and (graph_node ?n) (colour_name ?k)) (colourOf ?n ?k)))
+(asp/atLeast 1 ?k (colourOf ?n ?k))
+(asp/atMost 1 ?k (colourOf ?n ?k))
+(set/hardConstraint (implies (and (graphEdge ?a ?b) (colourOf ?a ?k) (colourOf ?b ?k))
+                             (monochromeEdge ?a ?b ?k)))
+(set/hardConstraint (implies (and (graph_node P0) (not (colourOf P0 Red))) (symmetryFixed P0 Red)))
+(set/hardConstraint (implies (and (graph_node P1) (not (colourOf P1 Green))) (symmetryFixed P1 Green)))
+#models (colourOf ?n ?k)
+#cautious (colourOf ?n ?k)

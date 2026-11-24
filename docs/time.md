@@ -326,7 +326,8 @@ narrowed comparison rests on the fact. So `(before A B)` and `(instantBefore (St
 base relation and sound for any denotation. An Allen fact moves both networks
 (`qkb/calculi-triggered-by` names both calculi), so it re-joins the rules on either. Allen
 facts that contradict each other leave the point network over their endpoints unsatisfiable
-too, and the violations ledger holds an entry for each network.
+too. When the two networks' regions rest on the same facts, one `(contradicts …)` is stored
+and one entry filed ([qcn.md](qcn.md#support-what-an-entailed-relation-rests-on)).
 
 What it does not do:
 
@@ -370,7 +371,22 @@ by membership in the walks back and on from that end. Otherwise, a walk from bot
 frontier first (`graph/reaches?`) rules out a pair no path and no calendar moment can join,
 in as many steps as the smaller side holds. The slice ordering asks `holds?` of each of a
 pair's comparisons before it reads a path, so a pair that fails costs no walk along the
-chain. When `holds?` answers true, `path` walks breadth-first from `p` over later nodes and
+chain.
+
+A mint compares the minted time's points with every sibling's, and binds those points as
+`*focus*`. A comparison naming a focus point holds when the walk from that point reaches
+the other node, or when the calendar places a moment the one side reaches at or before a
+moment reaching the other. The other node's side is read off a summary of its region
+(`summarize!`): the calendar extremes of everything a walk from it reaches, and whether a
+link on the way is **one-sided**. A one-sided link is one that its far end does not read
+back: a meet's link, or a point term's own link to a moment it names. Without one, a node
+both walks reach lies on a path the focus walk follows alone, so membership answers as the
+two walks do. With one, `graph/reaches?` decides the comparison. The summaries are taken one
+strongly connected component at a time (`graph/scc`) and shared across the pass, so a mint
+costs one walk from each of its points and one summary per node, however many siblings it
+has.
+
+When `holds?` answers true, `path` walks breadth-first from `p` over later nodes and
 from `q` over earlier ones, each node's links read in content order.
 The answer holds when the two walks meet at a node, or when a calendar moment the first walk
 reaches lies at or before, by its fields, a calendar moment the second reaches. The earliest
@@ -382,13 +398,15 @@ depend on arrival order.
 
 The slice ordering's walk reads every context's believed facts, because its output is a
 `genlCx` edge, and the `genlCx` closure is global ([taxonomy.md](taxonomy.md)). A walk run
-under a bound `*context*` reads only the facts that context sees. A walk runs per question,
-and the walks are shared across one reconcile or one prover call (`with-memo`).
+under a bound `*context*` reads only the facts that context sees. A walk runs per question.
+The walks, each node's links and the region summaries are shared across one reconcile or
+one prover call (`with-memo`) and dropped at its end.
 
 What it does not do:
 
 - **No resident closure.** A question costs two walks over the links connected to its
-  points.
+  points. A mint and a `tightestStartBoundOf` question cost one summary per node their
+  pass reaches, and nothing outlives the pass.
 - **A meet's links are read from the application.** A meet's start links back to each
   argument's start and its end on to each argument's end, under the believed
   `meetFunctionOf` declaration. A walk reaches those links from the meet's points only, so
@@ -415,6 +433,11 @@ predicate `not_assertible`, and the prover answers a goal whose first argument i
 - **The answer** is each known lower bound every other one lies at or before (`path`), in
   content order. Two bounds that no path and no calendar comparison orders give no answer,
   and two bounds stated equal are both answers.
+- **One summary per bound decides each pair.** The summary of the walk back from a bound
+  holds the bounds it reaches, as a bit set, and its latest calendar moments; the summary of
+  the walk on from a bound holds its earliest. A bound lies at or before another when the
+  other's walk back reaches it or the calendar places them, as `path` answers when neither
+  region has a one-sided link. A pair whose region has one reads `path`.
 - **The walk reads the facts the asking context sees**, and every context's facts under a
   variable context.
 

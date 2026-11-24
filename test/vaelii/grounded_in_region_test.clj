@@ -271,7 +271,7 @@
           cost (classify-cost kb)
           cls  (label/classify-local kb)]
       (testing "f is believed — the conjunction fired from all 16 diamonds"
-        (is (true? (v/in? kb f-h))))
+        (is (true? (v/believed? kb f-h))))
       (testing "past the cap f is :supportable, neither enumerated :true nor :false"
         (is (contains? (:supportable cls) f-h))
         (is (not (contains? (:true cls) f-h)))

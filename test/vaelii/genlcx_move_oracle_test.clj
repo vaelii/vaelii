@@ -35,11 +35,6 @@
 (defn- depth [writes i]
   (if-let [t (:except (nth writes i))] (inc (depth writes t)) 0))
 
-(defn- shuffle-by [^Random rng xs]
-  (let [al (java.util.ArrayList. ^java.util.Collection (vec xs))]
-    (java.util.Collections/shuffle al rng)
-    (vec al)))
-
 (defn gen-world
   "A world for `seed`: `{:writes [{:id i :sentence S :context C} | {:id i :except j
   :context C}] :ops [[:assert i] [:retract i] …] :contexts [C …] :types :individuals}`.
@@ -61,7 +56,7 @@
                                [(list (tu/pick rng tys) (tu/pick rng inds)) (tu/pick rng cxs)])))
         rules (vec (concat
                     (for [_ (range (inc (.nextInt rng 2)))
-                          :let [[a b c] (shuffle-by rng tys)]]
+                          :let [[a b c] (tu/shuffled rng tys)]]
                       [(if (chance rng 0.5)
                          (list 'implies (list a '?x) (list b '?x))
                          (let [[a b] (sort-by str [a b])]
@@ -69,7 +64,7 @@
                        (tu/pick rng cxs)])
                     ;; the edges point to earlier contexts, so y after x keeps the DAG
                     (when (chance rng 0.4)
-                      (let [[x y] (sort-by #(.indexOf ^java.util.List cxs %) (take 2 (shuffle-by rng cxs)))]
+                      (let [[x y] (sort-by #(.indexOf ^java.util.List cxs %) (take 2 (tu/shuffled rng cxs)))]
                         [[(list 'implies (list 'genlCx x '?b) (list 'genlCx y '?b)) 'CxUniverse]]))))
         plain (into [] (distinct) (concat (map (fn [[s b]] [(list 'genlCx s b) 'CxUniverse]) edges) facts rules))
         base  (vec (map-indexed (fn [i [s c]] {:id i :sentence s :context c}) plain))
@@ -84,7 +79,7 @@
         writes (into base (remove nil?) [ex1 ex2 ex3])
         named (into #{} (keep :except) writes)
         ;; an except is moved to just after its target until none precedes it
-        order (loop [o (shuffle-by rng (mapv :id writes))]
+        order (loop [o (tu/shuffled rng (mapv :id writes))]
                 (let [pos  #(.indexOf ^java.util.List o %)
                       late (first (filter #(when-let [t (:except (nth writes %))] (< (pos %) (pos t))) o))]
                   (if-not late

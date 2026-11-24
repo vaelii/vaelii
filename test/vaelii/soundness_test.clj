@@ -116,7 +116,7 @@
     (testing "the loser is stored and disbelieved, so it has a reason"
       (let [h (v/handle-of kb (list fish Rex) 'CxUniverse)]
         (is (integer? h) "arbitrated, not dropped — there is a record to ask about")
-        (is (not (v/in? kb h)))
+        (is (not (v/believed? kb h)))
         (is (= :defeated (:reason (v/why-not kb h))))))
     (testing "a decided clash is not also a dilemma"
       (is (empty? (v/contradictions kb))))))
@@ -148,7 +148,7 @@
     (v/assert-rule kb [(list smoker '?x)] (list unhealthy '?x) 'CxUniverse {:direction :forward})  ; bare rule: confers :monotonic
     (v/assert kb (list smoker Bob) 'CxUniverse)                              ; :default premise
     (let [derived (v/handle-of kb (list unhealthy Bob) 'CxUniverse)]
-      (is (v/in? kb derived) "the rule fired at all")
+      (is (v/believed? kb derived) "the rule fired at all")
       (testing "a :default premise cannot yield a conclusion that outranks a default"
         (is (= :default (v/defeat-class kb derived))))
       (testing "so a directly-asserted default negation is a genuine tie, not a loss"

@@ -548,7 +548,8 @@
    :nat-exprs     (atom {})
    ;; each predicate's arity, one `v/relation-arity` read per distinct predicate on the
    ;; page, for `term-class`
-   :arities       (atom {})})
+   :arities       (atom {})
+   :lengths       (atom {})})
 
 (defn- env-of
   "The render env of the request `req` over the KB `target` currently names."
@@ -575,12 +576,12 @@
 
 (defn- believed?
   "Is this handle believed?  From the per-request cache when `prime-belief!` fetched it
-  — the listing case, one read for the page — else a single `v/in?`, cached, so no
+  — the listing case, one read for the page — else a single `v/believed?`, cached, so no
   handle is ever asked about twice in one render."
   [{:keys [kb belief]} h]
   (if-let [e (find @belief h)]
     (val e)
-    (let [b (boolean (v/in? kb h))]
+    (let [b (boolean (v/believed? kb h))]
       (swap! belief assoc h b)
       b)))
 
@@ -830,22 +831,49 @@
   [env t]
   (if (some-> (arity-of env t) (>= 3)) "t-pred t-pred-n" "t-pred"))
 
+(defn- read-lengths!
+  "The render env's `lengths` cache, after one `v/stored-lengths` read of the terms of `ts`
+  in the type set it does not hold yet."
+  [{:keys [kb types lengths]} ts]
+  (let [miss (into [] (comp (filter @types) (remove #(contains? @lengths %)) (distinct)) ts)]
+    (when (seq miss) (swap! lengths merge (v/stored-lengths kb miss)))
+    @lengths))
+
+(defn- with-lengths
+  "`env` with a `lengths` cache of its own, filled by one read of `ts`.  A picture reads
+  its nodes' lengths apart from the page's rows, so it adds one read to a page whatever
+  terms the two share."
+  [env ts]
+  (doto (assoc env :lengths (atom {})) (read-lengths! ts)))
+
+(defn- row-terms
+  "Every symbol in the sentences of `rows`, for `read-lengths!`."
+  [rows]
+  (into [] (comp (mapcat #(tree-seq coll? seq (:sentence %))) (filter symbol?)) rows))
+
+(defn- relation-node?
+  "Whether `t`, a node of the `genl` hierarchy, is a relation by stored content:
+  `v/relation?` answers for it, or a positive fact of two or more arguments is stored
+  under it (`read-lengths!`)."
+  [{:keys [kb] :as env} t]
+  (or (v/relation? kb t) (boolean (some #(>= % 2) (get (read-lengths! env [t]) t)))))
+
 (defn- term-class
   "The role class of a term, used to color it: type / individual / predicate (with
   `pred-class`'s mark on a ternary or wider one) / connective / context / number /
   variable.  A connective is a stored `logical_connective` member.  `v/term-role` supplies
   the naming role; the render env's `types` set overlays it so a node of the taxonomy
-  colors by stored content, as `describe`'s role does: a predicate when `v/relation?`
-  answers for it, else a type.  The overlay comes **before** the non-symbol fallback,
-  because a type node may be a function term."
-  [{:keys [kb types connectives] :as env} t]
+  colors by stored content: a predicate when `relation-node?` answers for it, else a type.
+  The overlay comes **before** the non-symbol fallback, because a type node may be a
+  function term."
+  [{:keys [types connectives] :as env} t]
   (let [role (v/term-role t)]
     (cond
       (= role :variable)  "t-var"
       (= role :number)    "t-num"
       (= role :context)   "t-context"
       (contains? @connectives t) "t-conn"
-      (contains? @types t) (if (v/relation? kb t) (pred-class env t) "t-type")
+      (contains? @types t) (if (relation-node? env t) (pred-class env t) "t-type")
       (not (symbol? t))   "t-num"
       (= role :individual) "t-ind"
       (= role :predicate) (pred-class env t)
@@ -1263,11 +1291,11 @@
      [:span.muted "#" h " (gone)"])))
 
 (defn- state-tag
-  "The belief-state pill for a sentex: IN when the JTMS believes it, else the `why-not`
+  "The belief-state pill for a sentex: IN when `v/believed?` believes it, else the `why-not`
   reason (superseded / defeated / excepted / inert / unsupported / not-stored), followed for a placed
   defeat by the declarations its nogood convicts through, and for an inert tuple by the
   grounds of the length it breaks.  The sentex page shows it always; a list row shows only the reason and only when the row is OUT — a believed
-  row's dimmed badge already reads as believed.  The one authority `in?` folds every
+  row's dimmed badge already reads as believed.  The one authority `believed?` folds every
   not-believed reason into, and the page reads it back."
   [{:keys [kb] :as env} h]
   (if (believed? env h)
@@ -1839,12 +1867,14 @@
 
 (defn- group-rows
   "One group's `page` (`group-page`) as rows, plus the sentinel that fetches the next one.
-  Belief for the page is read once (`prime-belief!`).  `total` is the group's stored
+  Belief and the stored lengths of its terms are each read once for the page
+  (`prime-belief!`, `read-lengths!`).  `total` is the group's stored
   count.  With derived rows hidden the sentinel carries no number, since how many of the
   records behind it are premises is unknown.  `page` is **nil** for a group whose first
   page is deferred (`extent-defer-cap`): it renders as the sentinel alone, at offset 0."
   [env term g {:keys [rows next-offset] :as page} total]
   (prime-belief! env (map :id rows))
+  (read-lengths! env (row-terms rows))
   ;; data-h is what a save's out-of-band swap addresses; the handle badge dims an
   ;; OUT sentex and `sentex-row` names the reason it is out
   (list (map #(sentex-row env %) rows)
@@ -2124,20 +2154,47 @@
   the hundreds; this is the guard, not the working path."
   5000)
 
+(defn- named-ctx
+  "`ctx` when it names a context to scope a read by, else nil: absent, `?ctx` and a query
+  context each read every context."
+  [ctx]
+  (when (and (symbol? ctx) (not= :variable (v/term-role ctx)) (not (v/query-contexts ctx)))
+    ctx))
+
+(defn- at-context
+  "`env` read at the context `ctx` names (`named-ctx`): `:ctx` holds it, and `:sees` the
+  set of contexts it sees (`v/context-up`), read once on first use."
+  [{:keys [kb] :as env} ctx]
+  (let [c (named-ctx ctx)]
+    (assoc env :ctx c :sees (delay (when c (set (v/context-up kb c)))))))
+
+(defn- visible?
+  "Whether a sentex stored in context `c` is visible at `env`'s context: always, when the
+  page names none."
+  [{:keys [sees]} c]
+  (let [s (some-> sees deref)]
+    (or (nil? s) (contains? s c))))
+
+(defn- read-at
+  "`(f kb t ctx)` where `ctx` names a context, else the KB-wide `(f kb t)`."
+  [f kb t ctx]
+  (if ctx (f kb t ctx) (f kb t)))
+
 (defn- child-terms
   "The direct sub-nodes of `node` under transitivity relation `pred`, deduped (one edge
   asserted in two contexts is one child).  For `genl` the answer is the closure's one-step
   adjacency (`direct-specs`), so a child a `covering`, `separating` or `partition`
   declaration installs is a child.  For any other relation it is one `query` the
   predicate-scoped argument root answers (`[pred 2 node]`, docs/indexing.md).  The cost is
-  this node's own fan-out."
-  [kb pred node]
-  (if (= 'genl pred)
-    (v/direct-specs kb node)
-    (->> (v/sentexes-matching kb (list pred '?sub node) '?ctx)
-         (keep (fn [s] (let [[_ sub super] (:sentence s)]
-                         (when (and sub (= super node)) sub))))
-         (distinct))))
+  this node's own fan-out.  With `ctx`, a `genl` read counts only the edges visible from it."
+  ([kb pred node] (child-terms kb pred node nil))
+  ([kb pred node ctx]
+   (if (= 'genl pred)
+     (read-at v/direct-specs kb node ctx)
+     (->> (v/sentexes-matching kb (list pred '?sub node) '?ctx)
+          (keep (fn [s] (let [[_ sub super] (:sentence s)]
+                          (when (and sub (= super node)) sub))))
+          (distinct)))))
 
 (defn- parent-terms
   "The direct super-nodes of `node` under transitivity relation `pred` — `child-terms`'
@@ -2146,14 +2203,16 @@
   pattern binds `node` in argument position **1**, which `query` answers from the
   predicate-scoped argument root (the node `[pred 1 node]`), so the cost is this
   node's own fan-*in* rather than the number of edges in the KB.  Deduped for the same
-  reason — one edge asserted in two contexts is two sentexes and one parent."
-  [kb pred node]
-  (if (= 'genl pred)
-    (v/direct-genls kb node)
-    (->> (v/sentexes-matching kb (list pred node '?super) '?ctx)
-         (keep (fn [s] (let [[_ sub super] (:sentence s)]
-                         (when (and super (= sub node)) super))))
-         (distinct))))
+  reason — one edge asserted in two contexts is two sentexes and one parent.  `ctx` is
+  read as `child-terms` reads it."
+  ([kb pred node] (parent-terms kb pred node nil))
+  ([kb pred node ctx]
+   (if (= 'genl pred)
+     (read-at v/direct-genls kb node ctx)
+     (->> (v/sentexes-matching kb (list pred node '?super) '?ctx)
+          (keep (fn [s] (let [[_ sub super] (:sentence s)]
+                          (when (and super (= sub node)) super))))
+          (distinct)))))
 
 (defn- expandable?
   "Whether a tree node gets a disclosure control.  For `genl`, whether the closure's
@@ -2640,7 +2699,7 @@
              ["every listed sibling decided"
               (count* #(not-any? (comp #{:missing} :separation) (:rows (:siblings %))))]
              ["kind" (count* #(has? % :kind))]
-             ["arity class" (count* #(has? % :arity-class))]]}))
+             ["see also" (count* #(has? % :links))]]}))
 
 (defn- block-tally-job
   "Run `block-tally` over `kb`'s types as a read job and return its id.  The tally rides
@@ -2769,12 +2828,20 @@
 ;; boxes so a frame's edge is not read as the next box's
 (def ^:private graph-group-gap 32)
 (def ^:private graph-flank-gap 12)
-(def ^:private graph-flank-offset 96)
+;; a flank edge crosses a lane as wide as its side's widest label and `graph-lane-pad` past
+;; it each way, then `graph-flank-reach` of open space to the centre
+(def ^:private graph-lane-pad 8)
+(def ^:private graph-flank-reach 36)
 (def ^:private graph-ring-r 150)
 ;; the clear space between the inner ring's boxes and an outer arc's, so the arc's radius
 ;; is derived from the two widths rather than being a number that holds until a label
 ;; gets longer
 (def ^:private graph-arc-gap 28)
+
+(defn- ctx-query
+  "The `&ctx=` a link from a page read at a context carries, or nil."
+  [{:keys [ctx]}]
+  (when ctx (str "&ctx=" (url-enc (pr-str ctx)))))
 
 (defn- graph-node
   "A node of the picture: the term, the **same role class its links use** (so the graph
@@ -2790,47 +2857,127 @@
                           ;; the layout dedups on and what its page is
                           :display text
                           :class   (term-class env term)
-                          :href    (str "/term?q=" (url-enc (pr-str term)))
+                          :href    (str "/term?q=" (url-enc (pr-str term)) (ctx-query env))
                           :title   text}
                          extra)))))
 
 (defn- graph-step
   "One expansion: the nearest neighbours of `node` under `pred` going `:up` or `:down`, at
-  most `cap` of them, and how many there are.
+  most `cap` of them, how many there are, and `:near`, all of them as a set.
 
   **A `genl` step draws the node's minimal supertypes going up and its maximal subtypes
-  going down** (`min-genls` / `max-specs`) over every believed edge, so a stated
-  `(genl dog animal)` beside `dog ⊂ mammal ⊂ animal` draws `animal` above `mammal`.  It
-  does not read `hide-derived?`.  **A `genlCx` step draws the context's minimal parents and
-  maximal children** (`min-context-parents` / `max-context-children`).  **A step under any
-  other relation draws its one-step neighbours unreduced.**
+  going down** (`min-genls` / `max-specs`) over the edges `ctx` believes, or every IN edge
+  with no `ctx`.  A stated `(genl dog animal)` beside `dog ⊂ mammal ⊂ animal` draws `animal`
+  above `mammal`.  The step does not read `hide-derived?`.  **A `genlCx` step draws the
+  context's minimal parents and maximal children** (`min-context-parents` / `max-context-children`).
 
   **The neighbours drawn are the first `cap` in print order.**  The read realizes at most
   `graph-row-limit` + 1 one-step neighbours.  A node with more than `graph-row-limit`
-  contributes **no** neighbours, since the index order is not the print order and a partial
-  read would differ between KBs holding the same edges.  `:more?` marks that case,
-  `:total` is then the limit it exceeded, and the caption says the node has too many to
-  draw."
-  [kb pred dir node cap]
+  contributes **no** neighbours and no `:near`, since the index order is not the print
+  order.  `:more?` marks that case, `:total` is then the limit it exceeded, and the caption
+  says the node has too many to draw."
+  [kb pred dir node cap ctx]
   (let [up? (= :up dir)
         got (into [] (take (inc graph-row-limit))
-                  ((if up? parent-terms child-terms) kb pred node))]
+                  ((if up? parent-terms child-terms) kb pred node ctx))]
     (if (> (count got) graph-row-limit)
       {:terms [] :total graph-row-limit :exact? false :more? true}
       (let [near (if (> (count got) 1)
                    (case pred
-                     genl   ((if up? v/min-genls v/max-specs) kb node)
+                     genl   (read-at (if up? v/min-genls v/max-specs) kb node ctx)
                      genlCx ((if up? v/min-context-parents v/max-context-children) kb node)
                      got)
                    got)]
         {:terms (into [] (take cap) (by-print-key near)) :total (count near)
-         :exact? true :more? false}))))
+         :near (set near) :exact? true :more? false}))))
+
+(def ^:private graph-edge-budget
+  "How many expansions a side spends, past `graph-side-budget`, reading the edges among the
+  nodes its rows found (`read-edges-between`).  Going down, one read of a node's minimal
+  supertypes settles every edge up from it, so a deepest row of `graph-row-cap` nodes found
+  from different parents is settled at one read a node.  Going up, a read of its maximal
+  subtypes settles every edge down into it."
+  graph-row-cap)
+
+(defn- read-edges
+  "The edges `[sub super]` between two of `nodes` that the reads name: `up` maps a term to
+  its minimal supertypes, `down` a term to its maximal subtypes."
+  [nodes up down]
+  (into #{} (concat (for [[a bs] up :when (nodes a), b bs :when (nodes b)] [a b])
+                    (for [[b as] down :when (nodes b), a as :when (nodes a)] [a b]))))
+
+(defn- reach-from
+  "Every node reachable from `start` over `succ` (a node → successors map), `start` too."
+  [succ start]
+  (loop [stack [start] seen #{start}]
+    (if-let [n (peek stack)]
+      (let [fresh (remove seen (succ n))]
+        (recur (into (pop stack) fresh) (into seen fresh)))
+      seen)))
+
+(defn- unread-pairs
+  "The pairs `[a b]` of `nodes` where an edge a ⊂ b in the closure's reduction may exist
+  that the reads in `up` and `down` (`read-edges`) do not settle.  A read of `a`'s
+  supertypes or of `b`'s subtypes settles the pair, and so do read edges ordering the two.
+  A read's members are pairwise unordered (a node's minimal supertypes, or its maximal
+  subtypes).  So a read naming `a` and a node at or above `b` settles the pair, and so does
+  a read naming `b` and a node at or below `a`: either edge would order two members."
+  [nodes up down]
+  (let [edges (read-edges nodes up down)
+        succ  (reduce (fn [m [a b]] (update m a (fnil conj #{}) b)) {} edges)
+        pred  (reduce (fn [m [a b]] (update m b (fnil conj #{}) a)) {} edges)
+        above (memoize #(reach-from succ %))
+        below (memoize #(reach-from pred %))
+        sets  (concat (vals up) (vals down))
+        apart (fn [x ys] (some (fn [s] (and (s x) (some #(and (not= x %) (s %)) ys))) sets))]
+    (for [a nodes, b nodes
+          :when (and (not= a b) (not (contains? up a)) (not (contains? down b))
+                     (not ((above a) b)) (not ((above b) a))
+                     (not (apart a (above b))) (not (apart b (below a))))]
+      [a b])))
+
+(defn- read-edges-between
+  "`up` and `down` with more reads of `nodes`, spent from `left` and made against `dir`: a
+  side grown `:down` reads its nodes' minimal supertypes, one grown `:up` their maximal
+  subtypes.  Each read is the one that settles the most `unread-pairs`, ties broken by the
+  term's print order, until none is left or the budget is spent.  Answers `[up down spent]`."
+  [kb rel dir nodes up down left ctx]
+  (let [rd (if (= :up dir) :down :up)]
+    (loop [up up, down down, left left, spent 0, tried #{}]
+      (let [open  (unread-pairs nodes up down)
+            score (fn [t] (count (filter (fn [[a b]] (= t (if (= :up rd) a b))) open)))
+            best  (->> nodes
+                       (remove #(or (tried %) (contains? (if (= :up rd) up down) %)))
+                       (sort-by-once (fn [t] [(- (score t)) (print-key t)]))
+                       first)]
+        (if (or (empty? open) (< left 1) (nil? best) (zero? (score best)))
+          [up down spent]
+          (let [near (:near (graph-step kb rel rd best 0 ctx))
+                put  (fn [m] (if near (assoc m best near) m))]
+            (recur (if (= :up rd) (put up) up) (if (= :down rd) (put down) down)
+                   (dec left) (inc spent) (conj tried best))))))))
+
+(defn- drop-unread
+  "`nodes` less every node an unread pair still names, the deepest first by `depth`, and
+  less every node no longer reached from `centre` over the edges read going `dir`.  What
+  is left has every edge of the closure's reduction between two of its nodes read."
+  [nodes centre dir depth up down]
+  (loop [nodes nodes]
+    (let [open (unread-pairs nodes up down)]
+      (if (empty? open)
+        nodes
+        (let [n     (frequencies (remove #{centre} (mapcat identity open)))
+              worst (first (sort-by-once (fn [t] [(- (depth t 0)) (- (n t)) (print-key t)]) (keys n)))
+              left  (disj nodes worst)
+              succ  (reduce (fn [m [a b]] (if (= :up dir) (update m a (fnil conj #{}) b)
+                                              (update m b (fnil conj #{}) a)))
+                            {} (read-edges left up down))]
+          (recur (into #{} (filter (reach-from succ centre)) left)))))))
 
 (defn- fresh-neighbours
-  "The neighbours a row is built from: what the expansions found, minus anything already
-  drawn and minus repeats, in the order they were found.  Deduping is not cosmetic — a
-  diamond in the taxonomy reaches one term by two paths, and drawing it twice would put
-  two nodes where the KB has one."
+  "The entries a row is built from: what the expansions `found`, less any term in `seen` and
+  less repeats, in the order found.  A diamond reaches one term by two paths, and the term
+  is one node; `read-edges` draws both edges into it."
   [found seen]
   (first (reduce (fn [[out got] e]
                    (if (or (seen (:term e)) (got (:term e)))
@@ -2840,47 +2987,47 @@
 
 (defn- grow
   "One side of the taxonomy graph: up to `hops` rows of nearest neighbours of `centre` under
-  `rel`, going `dir`.  Each row entry is `{:term :rel :from}`, one drawn subsumption edge
-  between `:term` and the node `:from` it was found from.  Each row is capped, each node
-  past the first row contributes at most `graph-spread`, and every expansion is spent from
-  `budget`, so the reads are bounded before the first.  Running out **shortens the
-  picture**: `:truncated?` says a row was not read.  `:direct` is the centre's own row
-  before the row cap."
-  [kb rel dir hops centre budget]
-  (loop [frontier [centre], depth 1, seen #{centre}
-         rows [], spent 0, direct nil, deeper? false]
-    (let [left (- budget spent)]
-      (cond
-        (or (> depth hops) (empty? frontier))
-        {:rows rows :spent spent :direct direct :deeper? deeper? :truncated? false}
-
-        (< left 1)
-        {:rows rows :spent spent :direct direct :deeper? deeper? :truncated? true}
-
-        :else
-        (let [cap    (if (= 1 depth) graph-row-cap graph-spread)
-              probed (into [] (take left) frontier)
-              steps  (mapv (fn [n] [n (graph-step kb rel dir n cap)]) probed)
-              spent' (+ spent (count probed))
-              found  (for [[from {:keys [terms]}] steps, t terms]
-                       {:term t :rel rel :from from})
-              fresh  (fresh-neighbours found seen)
-              row    (into [] (take graph-row-cap) fresh)
-              short? (or (< (count probed) (count frontier))
-                         (> (count fresh) (count row))
-                         (boolean (some (fn [[_ s]] (> (:total s) (count (:terms s)))) steps)))
-              ;; recorded before the empty-row exit: a centre with too many neighbours to
-              ;; draw has an empty row, and that is the row the caption must explain
-              direct (or direct
-                         (when (= 1 depth)
-                           (let [s (second (first steps))]
-                             {:shown (count row) :total (:total s)
-                              :exact? (:exact? s) :more? (:more? s)})))]
-          (if (empty? row)
-            {:rows rows :spent spent' :direct direct :deeper? deeper? :truncated? false}
-            (recur (mapv :term row) (inc depth) (into seen (map :term) row)
-                   (conj rows row) spent' direct
-                   (or deeper? (and (> depth 1) short?)))))))))
+  `rel`, going `dir`, and every edge of the closure's reduction between two drawn nodes.
+  Each row entry is `{:term :rel :from}`, `:from` the node it was found from.  Each row is
+  capped, and each node past the first row contributes at most `graph-spread`.  The rows are
+  read from `budget`, then the edges between the nodes found from `graph-edge-budget`
+  (`read-edges-between`).  A node an unread edge could join is not drawn (`drop-unread`).
+  Answers `{:rows :edges :spent :direct :dropped}`;
+  `:edges` holds `[sub super]` pairs and `:direct` is the centre's own row before the cap."
+  [kb rel dir hops centre budget ctx]
+  (let [up? (= :up dir)
+        {:keys [rows reads spent direct depth]}
+        (loop [frontier [centre], d 1, seen #{centre}, rows [], spent 0, direct nil
+               reads {}, depth {centre 0}]
+          (let [left (- budget spent)
+                done {:rows rows :spent spent :direct direct :reads reads :depth depth}]
+            (if (or (> d hops) (empty? frontier) (< left 1))
+              done
+              (let [cap    (if (= 1 d) graph-row-cap graph-spread)
+                    probed (into [] (take left) frontier)
+                    steps  (mapv (fn [n] [n (graph-step kb rel dir n cap ctx)]) probed)
+                    found  (for [[from {:keys [terms]}] steps, t terms] {:term t :rel rel :from from})
+                    row    (into [] (take graph-row-cap) (fresh-neighbours found seen))
+                    reads  (into reads (keep (fn [[n s]] (when-let [nr (:near s)] [n nr]))) steps)
+                    direct (or direct
+                               (when (= 1 d)
+                                 (let [s (second (first steps))]
+                                   {:shown (count row) :total (:total s)
+                                    :exact? (:exact? s) :more? (:more? s)})))
+                    spent  (+ spent (count probed))]
+                (if (empty? row)
+                  (assoc done :spent spent :direct direct :reads reads)
+                  (recur (mapv :term row) (inc d) (into seen (map :term) row) (conj rows row)
+                         spent direct reads (into depth (map (fn [e] [(:term e) d])) row)))))))
+        nodes (into #{centre} (map :term) (apply concat rows))
+        [up down more] (read-edges-between kb rel dir nodes (if up? reads {}) (if up? {} reads)
+                                           graph-edge-budget ctx)
+        kept  (drop-unread nodes centre dir depth up down)]
+    {:rows    (into [] (comp (map #(filterv (comp kept :term) %)) (remove empty?)) rows)
+     :edges   (read-edges kept up down)
+     :spent   (+ spent more)
+     :direct  direct
+     :dropped (by-print-key (remove kept nodes))}))
 
 (defn- subsumption-plan
   "Which subsumption relation to walk, and in which directions, decided from what
@@ -2930,7 +3077,8 @@
   (for [{:keys [pos sentexes] n :count} groups
         :when (and pos (<= pos 2))
         s     (flank-scan sentexes n)
-        :when (and (nil? (:antecedent s)) (not (v/negative? s)) (believed? env (:id s)))
+        :when (and (nil? (:antecedent s)) (not (v/negative? s)) (visible? env (:context s))
+                   (believed? env (:id s)))
         :let  [sent (:sentence s)]
         :when (and (sequential? sent) (= 3 (count sent)))
         :let  [[p a b] sent
@@ -2992,10 +3140,11 @@
   `query` unifies.  **Ordered by handle before the cap cuts**, for `flank-scan`'s reason,
   over `ego-scan` matches rather than the whole match: realizing a hub's extent to place
   eight nodes took 1.5 s of a term page."
-  [kb t cap]
+  [{:keys [kb] :as env} t cap]
   (let [pull (fn [pattern out?]
                (into []
-                     (comp (map :sentence)
+                     (comp (filter #(visible? env (:context %)))
+                           (map :sentence)
                            (keep (fn [[p a b]]
                                    (let [other (if out? b a)]
                                      (when (and (symbol? p) (not (subsumption-relations p))
@@ -3020,34 +3169,28 @@
                    :kind (if disjoint? "g-rel g-rel-disjoint" "g-rel")
                    :tone (when disjoint? :disjoint)))))
 
-(defn- place-flanks
-  "The relation flank: things that point **at** the term on the left, things it points at
-  on the right, so the two directions are told apart by where they are and not only by an
-  arrowhead.  Returns the placed nodes and their edges to the centre together, which is
-  what makes every drawn arrow end on a drawn node by construction rather than by a check."
-  [env centre neighbours]
-  (let [half (/ (:w centre) 2.0)
-        ;; a neighbour reached both ways is an outgoing claim as much as an incoming one,
-        ;; so it goes on the right and its edge carries the second head
-        side (fn [out?]
-               (let [es (into [] (comp (filter #(= out? (boolean (:out? %))))
-                                       (take graph-flank-cap))
-                              neighbours)
-                     ns (map #(graph-node env (:term %)) es)
-                     x  (if out? (+ half graph-flank-offset) (- (- half) graph-flank-offset))]
-                 (map vector (svg/column ns x 0 graph-flank-gap (if out? 1 -1)) es)))
-        placed (concat (side false) (side true))]
-    {:nodes (map first placed)
-     :edges (keep (fn [[n e]] (rel-edge centre n e)) placed)
-     :shown (count placed)}))
+(defn- flank-items
+  "The relation flank, as `svg/flank` items: things that point **at** the term on the left,
+  things it points at on the right, so the two directions are told apart by where they are
+  and not only by an arrowhead.  At most `graph-flank-cap` a side.  A neighbour reached both
+  ways goes on the right, and its edge carries the second head.  A neighbour the rows in
+  `drawn` already hold is not drawn twice: it is in `:also`, for the caption."
+  [env neighbours drawn]
+  (let [free (remove #(drawn (:term %)) neighbours)
+        side (fn [out?] (into [] (comp (filter #(= out? (boolean (:out? %)))) (take graph-flank-cap))
+                              free))]
+    {:items (for [e (concat (side false) (side true))]
+              {:node (graph-node env (:term e)) :label (edge-label (:preds e))
+               :side (if (:out? e) 1 -1) :edge e})
+     :also  (filter #(drawn (:term %)) neighbours)}))
 
-(defn- drawn-subsumptions
-  "The subsumption edges one side of the taxonomy graph draws, as a set of `[sub super]`
-  pairs: plain data, for a caller that asks whether the picture drew a given edge."
-  [{:keys [rows]} dir]
-  (into #{}
-        (map (fn [{:keys [term from]}] (if (= :up dir) [from term] [term from])))
-        (apply concat rows)))
+(defn- flank-edge
+  "The edge of a placed flank item (`svg/flank`), pointing as `rel-edge`'s does."
+  [{:keys [points label label-at] {:keys [preds out? in?]} :edge}]
+  (let [disjoint? (boolean (some #{'disjoint} preds))]
+    {:points (if out? (vec (rseq points)) points) :label label :label-at label-at
+     :back? (and out? in?) :kind (if disjoint? "g-rel g-rel-disjoint" "g-rel")
+     :tone (when disjoint? :disjoint)}))
 
 (def ^:private cover-claims
   "The three cover kinds, in the order the taxonomy graph draws their groups, each with
@@ -3055,10 +3198,26 @@
   parts, a `covering` covers it, a `separating` separates."
   [[:partition "covers, disjoint"] [:covering "covers"] [:separating "disjoint"]])
 
+(defn- visible-covers
+  "`v/covers-of` `whole`, less each cover no declaration visible at `env`'s context states.
+  With a context named, one more read per cover kind and part count."
+  [{:keys [kb ctx] :as env} whole]
+  (let [covers (v/covers-of kb whole)]
+    (if-not ctx
+      covers
+      (let [stated (set (for [[kind n] (distinct (map (fn [[k ps]] [k (count ps)]) covers))
+                              s (v/sentexes-matching
+                                 kb (list* (symbol (name kind)) whole (map #(symbol (str "?p" %)) (range n)))
+                                 '?ctx)
+                              :when (visible? env (:context s))]
+                          [kind (by-print-key (distinct (drop 2 (:sentence s))))]))]
+        (into #{} (filter stated) covers)))))
+
 (defn- spec-groups
   "The centre's drawn subtype row, grouped by the cover declarations over the centre
-  (`covers`, `vaelii.core/covers-of`).  Answers `{:groups [{:label :entries}] :rest
-  [entry …] :notes [s …]}`: each group holds the row entries that are its parts, `:rest`
+  (`covers`, `vaelii.core/covers-of`).  Answers `{:groups [{:lines :entries}] :rest
+  [entry …] :notes [s …]}`: each group holds its label's lines and the row entries that
+  are its parts, `:rest`
   the entries no cover names, and `:notes` the caption lines.  Groups are in content order:
   by kind in `cover-claims` order, then by the printed part list; a kind with two or more
   covers numbers them.  An entry is drawn once, in the first group naming it, and a later
@@ -3075,12 +3234,11 @@
                         drawn  (filterv by-term parts)
                         mine   (filterv (complement placed) drawn)
                         shared (filterv placed drawn)
-                        head   (str label ": " (claims kind)
-                                    (when (< (count drawn) (count parts))
-                                      (str " · " (count drawn) " of " (count parts)
-                                           " parts in this row")))]
+                        head   (cond-> [(str label ":") (claims kind)]
+                                 (< (count drawn) (count parts))
+                                 (conj (str (count drawn) " of " (count parts) " parts drawn")))]
                     {:groups (cond-> groups
-                               (seq mine) (conj {:label head :entries (mapv by-term mine)}))
+                               (seq mine) (conj {:lines head :entries (mapv by-term mine)}))
                      :placed (into placed (map (fn [t] [t label])) mine)
                      :seen   (assoc seen kind n)
                      :notes  (cond-> notes
@@ -3096,53 +3254,77 @@
      :rest   (filterv #(not (placed (:term %))) row)
      :notes  notes}))
 
+(defn- longest-path-layers
+  "Each node's row: the length of the longest path to it from `term` along `next`, read in
+  a topological order.  A node on a cycle, which a well-built taxonomy has none of, keeps
+  the row its first visit gave it."
+  [term {:keys [nodes next]}]
+  (let [indeg (reduce (fn [m n] (reduce #(update %1 %2 (fnil inc 0)) m (next n)))
+                      (zipmap nodes (repeat 0)) nodes)]
+    (loop [ready [term] indeg indeg layer {term 0}]
+      (if-let [n (first ready)]
+        (let [l (layer n)
+              [ready' indeg' layer']
+              (reduce (fn [[r d ly] m]
+                        (let [d (update d m dec)]
+                          [(if (zero? (d m)) (conj r m) r) d
+                           (update ly m (fnil max 0) (inc l))]))
+                      [(subvec ready 1) indeg layer] (by-print-key (next n)))]
+          (recur ready' indeg' layer'))
+        ;; what the order never reached sits on a cycle: one row past its deepest parent
+        (reduce (fn [ly n] (if (ly n) ly (assoc ly n (inc (reduce max 0 (vals ly))))))
+                layer nodes)))))
+
 (defn- taxonomy-scene
   "The top-down graph: the term in the middle, its supertypes in rows above and its
   subtypes in rows below, relations flanking.  Vertical position **is** the subsumption
-  relation, and every vertical arrow points at the more general term — going up that is
-  the neighbour, going down it is the node it was found from, which is why one edge
-  builder serves both."
-  [{:keys [kb] :as env} term plan neighbours]
-  (let [centre (graph-node env term {:x 0 :y 0 :class (str (term-class env term) " g-centre")})
-        ;; the cover read is one facade read, spent from the descending side's budget
+  relation: each node sits on the row of its longest path from the term over the edges
+  drawn (`longest-path-layers`), and every vertical arrow points at the more general term.
+  `svg/layered` places the rows, with the centre's row as tall as the flank beside it
+  (`svg/flank`), and frames the direct subtypes each cover names (`spec-groups`)."
+  [{:keys [kb ctx] :as env} term plan neighbours]
+  (let [;; the cover read is one facade read, spent from the descending side's budget
         grouped? (and (:down? plan) (= 'genl (:rel plan)))
-        covers   (when grouped? (v/covers-of kb term))
-        up     (when (:up? plan)   (grow kb (:rel plan) :up   graph-hops-up   term graph-side-budget))
-        down   (when (:down? plan) (grow kb (:rel plan) :down graph-hops-down term
-                                         (cond-> graph-side-budget grouped? dec)))
-        node   (fn [e] (graph-node env (:term e) (select-keys e [:from :rel])))
-        groups (when (seq covers) (spec-groups env covers (first (:rows down))))
-        lay    (fn [{:keys [rows]} sign]
-                 (map-indexed
-                  (fn [i row]
-                    (let [y (* sign graph-level (inc i))]
-                      (if (and groups (pos? sign) (zero? i))
-                        (svg/grouped-row (conj (mapv (fn [g] {:nodes (map node (:entries g))
-                                                              :label (:label g)})
-                                                     (:groups groups))
-                                               {:nodes (map node (:rest groups))})
-                                         0 y graph-row-gap graph-group-gap)
-                        {:nodes (svg/row (map node row) 0 y graph-row-gap) :frames []})))
-                  rows))
-        laid   (concat (lay up -1) (lay down 1))
-        placed (mapcat :nodes laid)
-        by-term (into {term centre} (map (juxt :term identity)) placed)
-        flank  (place-flanks env centre neighbours)
-        rel-kind (str "g-" (:rel plan))
-        tax-edges (keep (fn [{:keys [from] :as n}]
-                          (let [a (by-term from)
-                                ;; the arrow always ends at whichever of the two is higher
-                                ;; on the page, which is the more general term either way
-                                [lo hi] (if (< (:y n) (:y a)) [a n] [n a])]
-                            (some-> (svg/trim lo hi) (assoc :kind rel-kind :tone :sub))))
-                        placed)]
-    {:nodes (concat [centre] placed (:nodes flank))
-     :edges (concat tax-edges (:edges flank))
-     :frames (mapcat :frames laid)
-     :subsumptions (into (drawn-subsumptions up :up) (drawn-subsumptions down :down))
+        covers   (when grouped? (visible-covers env term))
+        up       (when (:up? plan)   (grow kb (:rel plan) :up   graph-hops-up   term graph-side-budget ctx))
+        down     (when (:down? plan) (grow kb (:rel plan) :down graph-hops-down term
+                                           (cond-> graph-side-budget grouped? dec) ctx))
+        groups   (when (seq covers) (spec-groups env covers (first (:rows down))))
+        group-of (into {} (for [[i g] (map-indexed vector (:groups groups)), e (:entries g)]
+                            [(:term e) i]))
+        layers   (fn [side sign]
+                   (let [next (reduce (fn [m [a b]] (if (neg? sign)
+                                                      (update m a (fnil conj #{}) b)
+                                                      (update m b (fnil conj #{}) a)))
+                                      {} (:edges side))]
+                     (into {} (map (fn [[t l]] [t (* sign l)]))
+                           (longest-path-layers term {:nodes (into [term] (map :term) (apply concat (:rows side)))
+                                                      :next  next}))))
+        layer    (merge (when up (layers up -1)) (when down (layers down 1)) {term 0})
+        env      (with-lengths env (concat (keys layer) (map :term neighbours)))
+        {:keys [items also]} (flank-items env neighbours (set (keys layer)))
+        node     (fn [t] (graph-node env t (cond-> {:layer (layer t) :order (print-key t)}
+                                             (= t term) (assoc :class (str (term-class env t) " g-centre"))
+                                             (group-of t) (assoc :group (group-of t)))))
+        laid     (svg/layered (map node (keys layer))
+                              (for [[a b] (concat (:edges up) (:edges down))]
+                                {:from a :to b :kind (str "g-" (:rel plan)) :tone :sub})
+                              {:level graph-level :gap graph-row-gap :group-gap graph-group-gap
+                               :bands {0 (svg/flank-height items graph-flank-gap)}
+                               :groups (into {} (map-indexed (fn [i g] [i {:rank i :lines (:lines g)}]))
+                                             (:groups groups))})
+        centre   (first (filter #(= term (:term %)) (:nodes laid)))
+        flank    (svg/flank centre items {:gap graph-flank-gap :reach graph-flank-reach
+                                          :lane-pad graph-lane-pad})]
+    {:nodes  (concat (:nodes laid) (map :node flank))
+     :edges  (concat (:edges laid) (map flank-edge flank))
+     :frames (:frames laid)
      :up up :down down
-     :group-notes (:notes groups)
-     :flank {:shown (:shown flank)}}))
+     :group-notes (concat (:notes groups)
+                          (for [{t :term preds :preds} also]
+                            (str (term-text env t) ", drawn in the rows, is also related by "
+                                 (str/join ", " preds))))
+     :flank {:shown (+ (count flank) (count also))}}))
 
 (defn- ego-scene
   "The radial graph, for a term with no subsumption structure at all: the term at the
@@ -3150,7 +3332,8 @@
   neighbours' own relations clustered on a short arc outside it.  Edges carry the
   predicate, so two hops of a relation graph read as claims rather than as connectivity."
   [{:keys [kb] :as env} term neighbours]
-  (let [centre (graph-node env term {:x 0 :y 0 :class (str (term-class env term) " g-centre")})
+  (let [env    (with-lengths env (cons term (map :term neighbours)))
+        centre (graph-node env term {:x 0 :y 0 :class (str (term-class env term) " g-centre")})
         inner  (into [] (take graph-ego-cap) neighbours)
         ring   (svg/ring (map #(graph-node env (:term %)) inner) 0 0 graph-ring-r
                          (- (/ Math/PI 2)))
@@ -3168,7 +3351,7 @@
                                                      (take graph-spread))
                                             (when-not (wide? (:term n))
                                               (merge-neighbours
-                                               (ego-neighbours kb (:term n) graph-ego-cap))))
+                                               (ego-neighbours env (:term n) graph-ego-cap))))
                                boxes  (mapv #(graph-node env (:term %)) kids)
                                placed (svg/arc boxes 0 0
                                                (+ ring-r graph-arc-gap
@@ -3208,34 +3391,48 @@
   "the related terms shown are the term's earliest mentions")
 
 (defn- graph-notes
-  "The captions under the picture: what was elided, which of it was drawn, whether the
-  read budget rather than the term's own shape is what stopped it, and which drawn
-  subtypes a later cover group also names (`spec-groups`)."
-  [{:keys [up down flank group-notes]} plan]
-  (let [word (fn [dir] (if (= 'genlCx (:rel plan))
-                         (if (= :up dir) "contexts it sees" "contexts that see it")
-                         (if (= :up dir) "direct supertypes" "direct subtypes")))
-        near (elision-note "related terms" flank)]
+  "The captions under the picture.  They say what each side left out, by direct neighbours
+  and by the whole closure (`totals`, `{:up n :down n}` from `describe`), and which related
+  terms were drawn.  The scene's own notes follow (`spec-groups`, a term the rows draw)."
+  [{:keys [up down flank group-notes]} plan totals]
+  (let [cx?   (= 'genlCx (:rel plan))
+        word  (fn [dir] (if cx?
+                          (if (= :up dir) "parent contexts" "child contexts")
+                          (if (= :up dir) "direct supertypes" "direct subtypes")))
+        all   (fn [dir] (if cx?
+                          (if (= :up dir) "contexts it sees" "contexts that see it")
+                          (if (= :up dir) "supertypes" "subtypes")))
+        whole (fn [dir side]
+                (let [{:keys [total exact?]} (totals dir)
+                      shown (count (apply concat (:rows side)))]
+                  (when (and side total (> total shown) (not= total (:total (:direct side))))
+                    (str "showing " shown " of " (when-not exact? "up to ") (commas total) " "
+                         (all dir)))))
+        near  (elision-note "related terms" flank)]
     (->> (into [(some->> (:direct up) (elision-note (word :up)))
+                (whole :up up)
                 (some->> (:direct down) (elision-note (word :down)))
+                (whole :down down)
                 near
-                (when near flank-sample-note)
-                (when (or (:deeper? up) (:deeper? down))
-                  "deeper rows are sampled, not complete")
-                (when (or (:truncated? up) (:truncated? down))
-                  "and the read budget stopped it a row short")]
+                (when near flank-sample-note)]
                group-notes)
          (remove nil?)
          seq)))
 
+(defn- read-at-note
+  "The caption note naming the context a picture was read at, or nil."
+  [{:keys [ctx]}]
+  (when ctx (str "read at " ctx " and the contexts it sees")))
+
 (defn- graph-figure
   "The picture, its caption and its legend — or **nil** when there is nothing worth
   drawing.  No empty frame and no \"no graph available\" box: a term nothing mentions gets
-  the page it gets today."
+  the page it gets today.  The `aria-label` is the scene's, else the concept graph's for
+  `text`."
   [text scene notes legend]
-  (when-let [svg (svg/scene (assoc scene :aria-label
-                                   (str "concept graph for " text
-                                        "; the same terms are listed below as text")))]
+  (when-let [svg (svg/scene (update scene :aria-label
+                                    #(or % (str "concept graph for " text
+                                                "; the same terms are listed below as text"))))]
     ;; a caller may hand one note or several; either way an absent one is not a bullet
     (let [notes (seq (remove nil? (if (string? notes) [notes] notes)))]
       ;; the picture scrolls inside its own box and the caption sits under the box rather
@@ -3254,14 +3451,22 @@
   KB-derived numbers, and a term page that fails to render because its picture could not
   be drawn would be a strictly worse page than the one without a picture.  A throw here
   costs the figure and nothing else."
-  [env term gls sps groups]
+  [env term about groups]
   (try
-    (let [near  (merge-neighbours (flank-edges env term groups))
-          reach (flank-reach groups near)]
+    (let [near   (merge-neighbours (flank-edges env term groups))
+          reach  (flank-reach groups near)
+          gls    (:terms (:genls about))
+          sps    (:terms (:specs about))
+          ;; a context's lines are reflexive, a type's are not
+          less   (fn [{:keys [total exact?]}] {:total (some-> total dec) :exact? exact?})
+          totals (if (= :context (v/term-role term))
+                   {:up (less (:up about)) :down (less (:down about))}
+                   {:up (select-keys (:genls about) [:total :exact?])
+                    :down (select-keys (:specs about) [:total :exact?])})]
       (if-let [plan (subsumption-plan term gls sps)]
         (let [scene (taxonomy-scene env term plan near)
               scene (update scene :flank merge reach)]
-          (graph-figure (term-text env term) scene (graph-notes scene plan)
+          (graph-figure (term-text env term) scene (cons (read-at-note env) (graph-notes scene plan totals))
                         (if (= 'genlCx (:rel plan))
                           "arrows point at the more general context; relations flank it · believed edges only"
                           (str "arrows point at the more general type; relations flank it"
@@ -3269,12 +3474,12 @@
                                (when (seq (:frames scene))
                                  (str " · a frame holds the subtypes one partition, covering"
                                       " or separating declaration names"))
-                               " · believed edges only"))))
+                               (if (:ctx env) " · believed edges only" " · supported edges, a defeated one included")))))
         (when (seq near)
           (let [scene (ego-scene env term near)
                 note  (elision-note "related terms" (assoc reach :shown (:inner scene)))]
             (graph-figure (term-text env term) scene
-                          [note (when note flank-sample-note)]
+                          [(read-at-note env) note (when note flank-sample-note)]
                           "relations of the term, two hops out; an arrow runs subject to object")))))
     (catch Throwable t
       (trove/log! {:level :warn :id ::graph-failed :data {:term term :error (ex-message t)}})
@@ -3292,8 +3497,21 @@
   250)
 
 (def ^:private closure-dirs
-  {"genls" {:title "All genls" :step v/min-genls :word "supertype"}
-   "specs" {:title "All specs" :step v/max-specs :word "subtype"}})
+  "Each direction of `/closure`, keyed then by whether the term is a context: the button's
+  title, the step read, the edge class, and the count's noun, singular and plural."
+  {"genls" {false {:title "All genls" :step v/min-genls :kind "g-genl"
+                   :word ["supertype" "supertypes"]}
+            true  {:title "All ancestor contexts" :step v/min-context-parents :kind "g-genlCx"
+                   :word ["ancestor context" "ancestor contexts"]}}
+   "specs" {false {:title "All specs" :step v/max-specs :kind "g-genl"
+                   :word ["subtype" "subtypes"]}
+            true  {:title "All descendant contexts" :step v/max-context-children :kind "g-genlCx"
+                   :word ["descendant context" "descendant contexts"]}}})
+
+(defn- context-term?
+  "Whether `term` is spelled as a context, which picks its `closure-dirs` entry."
+  [term]
+  (= :context (v/term-role term)))
 
 (def ^:private closure-row-cap
   "How many types one line of a closure picture holds.  A wider row is wrapped onto lines
@@ -3325,97 +3543,69 @@
       {:nodes nodes :more? more?
        :next  (into {} (map (fn [[t ns]] [t (into #{} (filter seen) ns)])) nxt)})))
 
-(defn- closure-layers
-  "Each node's row: the length of the longest path to it from `term` along `next`, read in
-  a topological order.  A node on a cycle, which a well-built taxonomy has none of, keeps
-  the row its first visit gave it."
-  [term {:keys [nodes next]}]
-  (let [indeg (reduce (fn [m n] (reduce #(update %1 %2 (fnil inc 0)) m (next n)))
-                      (zipmap nodes (repeat 0)) nodes)]
-    (loop [ready [term] indeg indeg layer {term 0}]
-      (if-let [n (first ready)]
-        (let [l (layer n)
-              [ready' indeg' layer']
-              (reduce (fn [[r d ly] m]
-                        (let [d (update d m dec)]
-                          [(if (zero? (d m)) (conj r m) r) d
-                           (update ly m (fnil max 0) (inc l))]))
-                      [(subvec ready 1) indeg layer] (by-print-key (next n)))]
-          (recur ready' indeg' layer'))
-        ;; what the order never reached sits on a cycle: one row past its deepest parent
-        (reduce (fn [ly n] (if (ly n) ly (assoc ly n (inc (reduce max 0 (vals ly))))))
-                layer nodes)))))
-
 (defn- closure-scene
   "The layered picture: `term` on row 0, at the bottom for `genls` and the top for
-  `specs`, each row ordered by where its nodes' links in the rows before it sit and
-  wrapped past `closure-row-cap`, and every arrow pointing at the more general type."
-  [env term dir {:keys [next] :as walk}]
-  (let [layer  (closure-layers term walk)
-        rows   (vals (into (sorted-map) (group-by layer (keys layer))))
-        sign   (if (= "genls" dir) -1 1)
-        line-h (+ svg/node-h closure-line-gap)
-        prev   (reduce-kv (fn [m a bs] (reduce #(update %1 %2 (fnil conj []) a) m bs)) {} next)
-        node   #(graph-node env % (when (= term %)
-                                    {:class (str (term-class env %) " g-centre")}))
-        [placed _]
-        (reduce
-         (fn [[placed y] row]
-           (let [x     (fn [n] (let [xs (keep #(:x (placed %)) (prev n))]
-                                 (if (seq xs) (/ (reduce + xs) (double (count xs))) 0.0)))
-                 lines (partition-all closure-row-cap (sort-by-once (juxt x print-key) row))
-                 ;; a row's lines run away from the term, so the last is nearest the next row
-                 nodes (mapcat (fn [i line]
-                                 (svg/row (map node line) 0 (+ y (* sign line-h i)) graph-row-gap))
-                               (range) lines)]
-             [(into placed (map (juxt :term identity)) nodes)
-              (+ y (* sign (+ graph-level (* line-h (dec (count lines))))))]))
-         [{} 0]
-         rows)
-        edges  (for [[a bs] next, b bs
-                     :let [[lo hi] (if (= "genls" dir) [a b] [b a])]
-                     e [(svg/trim (placed lo) (placed hi))] :when e]
-                 (assoc e :kind "g-genl" :tone :sub))]
-    {:nodes (vals placed) :edges edges :rows rows}))
+  `specs`, laid out by `svg/layered` with rows wrapped past `closure-row-cap`, and every
+  arrow pointing at the more general term, of edge class `kind`."
+  [env term dir kind {:keys [next] :as walk}]
+  (let [layer (longest-path-layers term walk)
+        env   (with-lengths env (keys layer))
+        deep  (reduce max 0 (vals layer))
+        row   (if (= "genls" dir) #(- deep (layer %)) layer)
+        {:keys [nodes edges]}
+        (svg/layered (for [t (keys layer)]
+                       (assoc (graph-node env t (when (= term t)
+                                                  {:class (str (term-class env t) " g-centre")}))
+                              :layer (row t) :order (print-key t)))
+                     (for [[a bs] next, b bs
+                           :let [[lo hi] (if (= "genls" dir) [a b] [b a])]]
+                       {:from lo :to hi :kind kind :tone :sub})
+                     {:level graph-level :gap graph-row-gap
+                      :cap closure-row-cap :line-gap closure-line-gap})]
+    {:nodes nodes :edges edges
+     :rows  (vals (into (sorted-map) (group-by layer (keys layer))))}))
 
 (defn- closure-actions
-  "The buttons under a type's graph that open its whole closure, one per direction it
-  has anything in."
-  [term gls sps]
+  "The buttons under a type's or a context's graph that open its whole closure, one per
+  direction it has anything in."
+  [env term gls sps]
   (when (or (seq gls) (seq sps))
     [:div.sx-actions.closure-actions
      (for [[dir has?] [["genls" gls] ["specs" sps]] :when (seq has?)]
-       [:a.button {:href (str "/closure?dir=" dir "&q=" (url-enc (pr-str term)))}
-        (:title (closure-dirs dir))])]))
+       [:a.button {:href (str "/closure?dir=" dir "&q=" (url-enc (pr-str term)) (ctx-query env))}
+        (:title (get-in closure-dirs [dir (context-term? term)]))])]))
 
 (defn- closure-page
-  "Every supertype (`dir` \"genls\") or subtype (\"specs\") of `term`, drawn, and listed
-  row by row below the picture."
-  [{:keys [kb] :as env} term dir]
-  (let [{:keys [title step word]} (closure-dirs dir)
+  "Every supertype (`dir` \"genls\") or subtype (\"specs\") of `term`, or every
+  ancestor or descendant context of a context, drawn, and listed row by row below the
+  picture.  The `genlCx` reads take no context, so a context's closure is read whole."
+  [{:keys [kb ctx] :as env} term dir]
+  (let [cx?   (context-term? term)
+        {:keys [title step word kind]} (get-in closure-dirs [dir cx?])
         text  (term-text env term)
-        walk  (closure-walk kb step term)
-        scene (closure-scene env term dir walk)
+        walk  (closure-walk kb (if cx? step #(read-at step %1 %2 ctx)) term)
+        scene (closure-scene env term dir kind walk)
         shown (dec (count (:nodes walk)))]
     (render env (str (str/lower-case title) " of " text)
             [:h2 title " of " (term-link env term)]
             ;; past the cap the whole count is not read: a spec closure near the root is
             ;; most of the KB's types
-            [:p.muted (if (:more? walk) "More than " "") (commas shown) " " word
-             (when (not= 1 shown) "s")
+            [:p.muted (if (:more? walk) "More than " "") (commas shown) " "
+             (if (= 1 shown) (first word) (second word))
              (when (:more? walk) (list "; the nearest " (commas shown) " are drawn"))
              ". Each sits on the row of its longest path from " text
-             (if (= "genls" dir)
-               ", so a well-built taxonomy narrows to thing at the top: a diamond."
-               ", so a well-built taxonomy only widens downward: a triangle.")]
+             (cond cx?              "."
+                   (= "genls" dir) ", so a well-built taxonomy narrows to thing at the top: a diamond."
+                   :else           ", so a well-built taxonomy only widens downward: a triangle.")]
             (when (pos? shown)
-              (graph-figure text (select-keys scene [:nodes :edges]) nil
-                            "arrows point at the more general type · the reduced order: no arrow two others imply"))
+              (graph-figure text (select-keys scene [:nodes :edges]) (read-at-note env)
+                            (str "arrows point at the more general " (if cx? "context" "type")
+                                 " · the reduced order: no arrow two others imply")))
             [:div.sx-actions
-             [:a.button {:href (str "/term?q=" (url-enc (pr-str term)))} "Back to " text]
+             [:a.button {:href (str "/term?q=" (url-enc (pr-str term)) (ctx-query env))} "Back to " text]
              (let [other (if (= "genls" dir) "specs" "genls")]
-               [:a.button {:href (str "/closure?dir=" other "&q=" (url-enc (pr-str term)))}
-                (:title (closure-dirs other))])]
+               [:a.button {:href (str "/closure?dir=" other "&q=" (url-enc (pr-str term)) (ctx-query env))}
+                (:title (get-in closure-dirs [other cx?]))])]
             (when (pos? shown)
               [:ol.closure-rows {:start 0}
                (for [row (:rows scene)]
@@ -3434,32 +3624,27 @@
                        "list only what the KB was told, not what it concluded")}
    (if hide-derived? "show derived" "hide derived")])
 
-(def ^:private arity-class-names
-  "The exact-arity predicate class for each length, which a predicate's arity-class seed
-  names."
-  {1 "unary_predicate" 2 "binary_predicate" 3 "ternary_predicate"
-   4 "quaternary_predicate" 5 "quinary_predicate"})
-
 (def ^:private block-parts
   "Each part of `describe`'s `:definitional-block`: its label, and the sentence the
   assert form opens on to add it, a template over the term's text `t` and the `describe`
-  answer `d`.  A predicate's arity-class seed names the class of its arity, and a blank
-  functor where the KB binds no arity."
+  answer `d`."
   {:comment           ["comment"             (fn [t _] (str "(comment " t " \"\")"))]
    :positive-examples ["positive examples"   (fn [t _] (str "(positiveExampleComment " t " \"\")"))]
    :negative-examples ["negative examples"   (fn [t _] (str "(negativeExampleComment " t " \"\")"))]
    :parents           ["parents"             (fn [t _] (str "(genl " t " )"))]
    :siblings          ["siblings"            nil]
    :kind              ["kind"                (fn [t _] (str "( " t ")"))]
-   :arity-class       ["arity class"         (fn [t d]
-                                               (str "("
-                                                    (if (= :predicate (:role d))
-                                                      (get arity-class-names (:arity d) " ")
-                                                      "unary_predicate")
-                                                    " " t ")"))]
    :arity             ["arity"               (fn [t _] (str "(arity " t " )"))]
+   :arg-constraints   ["arg constraints"     nil]
    :arg-declarations  ["arg declarations"    (fn [t _] (str "(arg " t " 1 )"))]
-   :props             ["relation properties" (fn [t _] (str "( " t ")"))]})
+   :props             ["relation properties" (fn [t _] (str "( " t ")"))]
+   :links             ["see also"            (fn [t _] (str "(seeAlso " t " )"))]
+   :other             ["other"               nil]})
+
+(def ^:private sibling-cap
+  "How many siblings a Definition block's siblings line shows before the rest are folded
+  behind a \"+ N more\" control that opens them in place."
+  12)
 
 (def ^:private overlap-witness
   "How a sibling row's `:witness` reads beside `overlaps`."
@@ -3478,55 +3663,108 @@
   (when (> total shown)
     [:span.muted " and " (commas (- total shown)) " more"]))
 
+(defn- sentence-rows
+  "A sentence part's `{:sentence :context}` rows about `term`.  A unary `(P term)` row is
+  drawn as its predicate, as a kind is, and the predicates lead; any other row is drawn as
+  its handle badge, or as the sentence where no stored sentex holds it."
+  [env term rows]
+  (let [unary? (fn [{s :sentence}] (and (= 2 (count s)) (= term (second s))))
+        preds  (distinct (map (comp first :sentence) (filter unary? rows)))
+        others (remove unary? rows)]
+    (list (interpose ", " (map #(term-link env %) preds))
+          (when (and (seq preds) (seq others)) " ")
+          (interpose " " (map (fn [{:keys [sentence context]}]
+                                (if-let [h (v/handle-of (:kb env) sentence context)]
+                                  (handle-ref env h)
+                                  (render-form env sentence)))
+                              others)))))
+
+(defn- related-terms
+  "The terms a links part's `seeAlso` and `termsRelated` rows relate `term` to, deduped,
+  in printed order, `term` itself left out."
+  [term rows]
+  (by-print-key (into #{} (comp (mapcat (comp rest :sentence)) (remove #{term})) rows)))
+
 (defn- block-value
-  "One present part of the definitional block of the term whose text is `text`, by the
+  "One present part of the definitional block of `term`, whose text is `text`, by the
   shape `describe` answers that part in."
-  [env text part v]
+  [env term text part v]
   (cond
     (= :siblings part)
     (if (empty? (:rows v))
       [:span.muted "none"]
-      (list (interpose
-             ", "
-             (for [{s :term sep :separation w :witness via :via} (:rows v)
-                   :let [pair (str text " " (term-text env s) ")")]]
-               (list (term-link env s) " "
-                     (case sep
-                       :missing  (missing-mark [["disjoint" (str "(disjoint " pair)]
-                                                ["orthogonal" (str "(orthogonal " pair)]])
-                       :overlaps [:span.muted "overlaps (" (overlap-witness w) " "
-                                  (term-link env via) ")"]
-                       [:span.muted (name sep)]))))
-            (more-note (:total v) (count (:rows v)))))
+      (let [items (for [{s :term sep :separation w :witness via :via} (:rows v)
+                        :let [pair (str text " " (term-text env s) ")")]]
+                    (list (term-link env s) " "
+                          (case sep
+                            :missing  (missing-mark [["disjoint" (str "(disjoint " pair)]
+                                                     ["orthogonal" (str "(orthogonal " pair)]])
+                            :overlaps [:span.muted "overlaps (" (overlap-witness w) " "
+                                       (term-link env via) ")"]
+                            [:span.muted (name sep)])))
+            [head tail] (split-at sibling-cap items)]
+        (list (interpose ", " head)
+              (when (seq tail)
+                (list ", " [:details.sib-more
+                            [:summary "+ " (commas (count tail)) " more"]
+                            (interpose ", " tail)]))
+              (more-note (:total v) (count (:rows v))))))
     (map? v)                   (list (interpose ", " (map #(term-link env %) (:terms v)))
                                      (more-note (:total v) (count (:terms v))))
-    (= :arg-declarations part) (interpose " " (map (fn [{:keys [sentence context]}]
-                                                     (if-let [h (v/handle-of (:kb env) sentence context)]
-                                                       (handle-ref env h)
-                                                       (render-form env sentence)))
-                                                   v))
-    (= :props part)            (interpose ", " (map name v))
-    (coll? v)                  (interpose [:br] (map #(if (string? %) [:q %] (render-form env %)) v))
+    (= :links part)            (interpose ", " (map #(term-link env %) (related-terms term v)))
+    (#{:arg-declarations :props :other} part) (sentence-rows env term v)
+    (= :comment part)          (interpose [:br] (map #(comment-text env % #{}) v))
+    (coll? v)                  (interpose ", " (map #(if (string? %) [:q %] (render-form env %)) v))
     :else                      (str v)))
 
+(defn- arg-table
+  "A predicate's argument constraint table (`describe`'s `:arg-constraints` part): a header
+  row naming each column's position, `quoted argN` for a quoted one and `argN…` for a tail,
+  over one row of cells.  A cell lists its types, an instance type as the type and a type a
+  `genlArg` declaration asks the argument to specialize as `⊆ type`."
+  [env cols]
+  [:table.arg-table
+   [:tr (for [{:keys [position quoted? rest?]} cols]
+          [:th (str (when quoted? "quoted ") "arg" position (when rest? "…"))])]
+   [:tr (for [{:keys [cell]} cols]
+          [:td (interpose ", " (for [{:keys [kind type]} cell]
+                                 (if (= :type kind)
+                                   (list "⊆ " (term-link env type))
+                                   (term-link env type))))])]])
+
+(defn- arity-text
+  "A predicate's arity line (`describe`'s block `:arity` part): the exact length, `≥m` for
+  a least length `m`, and `any` for a least length of at most one or an unbounded-arity
+  predicate no length binds."
+  [{:keys [exact min any?]}]
+  (cond exact        (str exact)
+        (or any? (and min (<= min 1))) "any"
+        min          (str "≥" min)))
+
 (defn- definitional-block
-  "The term's definitional block (`describe`'s `:definitional-block`, docs/web.md), one
-  line per part in the handbook's order.  A missing part is tagged, beside a link that
-  opens the assert form on the sentence that would supply it; so is a sibling no
-  declaration separates."
+  "The term's definitional block (`describe`'s `:definitional-block`, docs/web.md) under
+  the heading Definition, one line per part in the block's order.  A
+  missing part is tagged, beside a link that opens the assert form on the sentence that
+  would supply it; so is a sibling no declaration separates."
   [env term {:keys [definitional-block] :as about}]
   (when (seq definitional-block)
-    (let [text (term-text env term)]
+    (let [text  (term-text env term)
+          seeds (fn [part]
+                  (let [[_ seed] (block-parts part)]
+                    (when seed [["add" (seed text about)]])))]
       [:div.def-block
-       [:h3 "Definitional block "
-        [:span.muted "(the parts a term ships with, and which of them the KB holds)"]]
+       [:h3 "Definition"]
        [:dl.def-parts
         (for [{:keys [part value]} definitional-block
-              :let [[label seed] (block-parts part)]]
-          (list [:dt label]
-                [:dd (if (= :missing value)
-                       (missing-mark (when seed [["add" (seed text about)]]))
-                       (block-value env text part value))]))]])))
+              [label content] (cond
+                                (= :missing value)
+                                [[(first (block-parts part)) (missing-mark (seeds part))]]
+                                (= :arity part) [[(first (block-parts part)) (arity-text value)]]
+                                (= :arg-constraints part) [[(first (block-parts part))
+                                                            (arg-table env value)]]
+                                :else
+                                [[(first (block-parts part)) (block-value env term text part value)]])]
+          (list [:dt label] [:dd content]))]])))
 
 (defn term-page
   "A term's page: the concept graph, the three type lines, the sentexes grouped by the
@@ -3536,12 +3774,13 @@
   restating a closure in prose; `vaelii.core/describe` answers all six readings (docs/api.md).
   Each part has its own budget: the index groups in rows (`group-cap`), root extents
   deferred to a reveal (`group-sentexes`), and the graph in reads (`graph-side-budget`)."
-  [{:keys [kb] :as env} term]
-  (let [about  (v/describe kb term '?ctx)
-        ;; the page reads two things off `describe`: whether the term has anything above
-        ;; or below it, which decides the graph it draws, and the definitional block
-        gls    (:terms (:genls about))
-        sps    (:terms (:specs about))
+  [{:keys [kb ctx] :as env} term]
+  (let [about  (v/describe kb term (or ctx '?ctx))
+        ;; `describe` gives the definitional block and what the term has above and below
+        ;; it, which decides the graph drawn (a context's `:up` and `:down` hold it too)
+        [gls sps] (if (context-term? term)
+                    (map #(remove #{term} (:terms (% about))) [:up :down])
+                    [(:terms (:genls about)) (:terms (:specs about))])
         text   (term-text env term)
         {:keys [groups remainder?]} (term-index-groups kb term text)
         groups (vec groups)
@@ -3556,7 +3795,7 @@
     ;; sentexes the graph reads its ego edges out of, in the same batch
     (prime-belief! env (concat (mapcat #(map :id (:rows %)) pages)
                                (flank-handles groups)))
-    (let [graph (term-graph env term gls sps groups)]
+    (let [graph (term-graph env term about groups)]
       ;; `.term-layout` puts the picture under the heading on a portrait screen and in a
       ;; column of its own on the right of a landscape one; with no picture the prose
       ;; keeps the full width
@@ -3576,10 +3815,10 @@
                ;; the prose beside the picture is unchanged: the type lines are the
                ;; accessible equivalent and the exact answer the picture approximates
                (when graph
-                 [:div.term-fig graph (closure-actions term gls sps)])
+                 [:div.term-fig graph (closure-actions env term gls sps)])
                [:div.term-body
                 (definitional-block env term about)
-                (when-not graph (closure-actions term gls sps))
+                (when-not graph (closure-actions env term gls sps))
                 [:p [:a.action {:href (str "/assert?q=" (url-enc (pr-str term)))} "Assert a sentex"]
                  [:span.muted " — the form opens with this term already in it."]]
                 [:h3 "Sentexes by index "
@@ -4415,6 +4654,275 @@
              [:li (term-link env a) " " [:b (name (first rels))] " " (term-link env b)])]
       [:p.muted "No pair is narrowed to a single relation."])))
 
+(def ^:private network-draw-cap
+  "The most terms, and the most related pairs, the network drawing holds.  A larger network
+  is left to the matrix or the determined pairs below it."
+  40)
+
+(def ^:private network-width
+  "How wide a row of the network drawing runs before the next part of the network starts a
+  row under it.  At 720 px the drawing prints 5.5 inches wide at 73% of its size."
+  720)
+
+(def ^:private network-label-cap
+  "How many characters one line of a network edge's label holds."
+  24)
+
+(defn- network-pairs
+  "Each unordered pair of distinct nodes of `net` (`v/qualitative-network`) whose constraint
+  is not `base`, the calculus's universe, as `[a b rels]`: `a` prints before `b`, and
+  `rels` is what holds of `(a b)`, the matrix's cell in row `a`.  In print order."
+  [{:keys [constraints]} base]
+  (sort-by-once (fn [[a b]] [(print-key a) (print-key b)])
+                (for [[[a b] rels] constraints
+                      :when (and (neg? (compare (print-key a) (print-key b))) (not= rels base))]
+                  [a b rels])))
+
+(defn- network-parts
+  "The connected parts of `nodes` under `pairs` (`network-pairs`), each a vector in print
+  order, the parts ordered by their first node."
+  [nodes pairs]
+  (let [adj (reduce (fn [m [a b]] (-> m (update a (fnil conj #{}) b) (update b (fnil conj #{}) a)))
+                    {} pairs)
+        reach (fn [n] (loop [todo [n] got #{n}]
+                        (if-let [m (peek todo)]
+                          (let [new (remove got (adj m))]
+                            (recur (into (pop todo) new) (into got new)))
+                          got)))]
+    (:parts (reduce (fn [{:keys [seen] :as acc} n]
+                      (if (seen n)
+                        acc
+                        (let [part (reach n)]
+                          (-> acc (update :seen into part) (update :parts conj (by-print-key part))))))
+                    {:seen #{} :parts []}
+                    (by-print-key nodes)))))
+
+(defn- relation-label
+  "A constraint as an edge label: its base relations by name in print order, wrapped at
+  `network-label-cap` characters a line.  The empty set is `∅`."
+  [rels]
+  (if (empty? rels)
+    "∅"
+    (svg/wrap-text (str/join " " (sort (map name rels))) network-label-cap (count rels))))
+
+(defn- dashed?
+  "Whether `scene` draws a pair `g-unsat`: an edge, or the box of a term paired with itself."
+  [{:keys [nodes edges]}]
+  (boolean (or (some #(= "g-unsat" (:kind %)) edges)
+               (some #(str/includes? (str (:class %)) "g-unsat") nodes))))
+
+(defn- inconsistent-lines
+  "The label of the frame round an inconsistent network's drawing, and what a dashed pair
+  is when `dash?`."
+  [dash?]
+  (cond-> ["inconsistent: no arrangement satisfies every believed fact"]
+    dash? (conj "dashed: a pair left no relation, or named unsatisfiable")))
+
+(defn- network-scene
+  "The network `net` (`v/qualitative-network`) as a scene for `graph-figure`, or nil when a
+  part's labels find no room.  A node per term in its role colour, and an edge per
+  `network-pairs` pair from its first term to its second, labelled with `relation-label`.
+  An edge whose set equals its converse's has no head.  A pair whose set is empty, or
+  which `:unsatisfiable` names, is `g-unsat`, and so is a node it pairs with itself.  Each
+  connected part is laid out on a ring (`svg/ring-graph`), the parts are packed into rows
+  `network-width` wide, and an inconsistent network is framed (`svg/framed`)."
+  [env {:keys [calculus context nodes constraints unsatisfiable consistent?] :as net} base]
+  (let [env   (with-lengths env nodes)
+        pairs (network-pairs net base)
+        bad   (into (into #{} (mapcat (fn [[a b]] [[a b] [b a]])) unsatisfiable)
+                    (keep (fn [[ab rels]] (when (empty? rels) ab)))
+                    constraints)
+        edge  (fn [[a b rels]]
+                (cond-> {:from a :to b :label (relation-label rels)
+                         :undirected? (= rels (get constraints [b a]))}
+                  (bad [a b]) (assoc :kind "g-unsat" :tone :disjoint)))
+        parts (for [part (network-parts nodes pairs)
+                    :let [in? (set part)]]
+                (svg/ring-graph (mapv #(graph-node env % (when (bad [% %])
+                                                           {:class (str (term-class env %) " g-unsat")}))
+                                      part)
+                                (into [] (comp (filter (comp in? first)) (map edge)) pairs)
+                                network-width))]
+    (when (every? some? parts)
+      (let [scene (svg/pack parts network-width 32)]
+        (cond-> (assoc scene :aria-label (str (name calculus) " network over " context
+                                              "; the matrix below lists the same pairs"))
+          (not consistent?)
+          (svg/framed (inconsistent-lines (dashed? scene)) "g-unsat"))))))
+
+(defn- network-figure
+  "The network drawn above the matrix (`network-scene`), its legend and its caption.  A
+  network past `network-draw-cap` terms or pairs, or one whose labels find no room, gets
+  a line saying so.  Wrapped as `term-graph` is: a throw costs the figure and not the page."
+  [env {:keys [nodes consistent?] :as net} base]
+  (try
+    (let [n     (count (network-pairs net base))
+          scene (when (and (<= (count nodes) network-draw-cap) (<= n network-draw-cap))
+                  (network-scene env net base))]
+      (if-not scene
+        [:p.muted "The network relates " (commas n) " pairs of " (commas (count nodes)) " terms, "
+         (if (and (<= (count nodes) network-draw-cap) (<= n network-draw-cap))
+           (str "and their labels find no place clear of the edges within " network-width " px")
+           (str "more than the " network-draw-cap " the drawing holds"))
+         "; the matrix below lists them."]
+        (let [dash? (dashed? scene)]
+          (graph-figure
+           nil scene
+           [(when (and (not consistent?) (not dash?))
+              "no pair is dashed: the network leaves every pair a relation and names none unsatisfiable")]
+           (str/join " · "
+                     (remove nil?
+                             [(str "an edge joins two terms the network relates, labelled with the relations "
+                                   (if consistent? "still possible" "it holds") " from the term its arrow leaves")
+                              (when (some :undirected? (:edges scene))
+                                "an edge with no head has a set that is its own converse")
+                              (when dash?
+                                "a dashed amber edge or box is a pair left no relation (∅), or one the network names unsatisfiable")
+                              (if consistent?
+                                "a pair with no edge can stand in any relation"
+                                "a pair with no edge is one the network does not constrain")
+                              (when-not consistent?
+                                "the amber frame marks the network inconsistent")]))))))
+    (catch Throwable t
+      (trove/log! {:level :warn :id ::network-failed :data {:calculus (:calculus net) :error (ex-message t)}})
+      nil)))
+
+(def ^:private timeline-unit
+  "How many px a timeline gives one step of order, before a span label widens it."
+  48)
+
+(defn- determined?
+  "Whether `net` narrows every pair of the terms `part` to one base relation."
+  [{:keys [constraints]} part]
+  (every? (fn [[a b]] (= 1 (count (get constraints [a b]))))
+          (for [[i a] (map-indexed vector part), b (drop (inc i) part)] [a b])))
+
+(defn- dense-ranks
+  "Each of `points` mapped to its place in the order `before?` puts them in: how many
+  distinct places hold a point before it, so equal points share a place."
+  [points before?]
+  (let [below (into {} (for [p points] [p (count (filter #(before? % p) points))]))
+        steps (vec (sort (distinct (vals below))))]
+    (into {} (for [[p n] below] [p (.indexOf ^java.util.List steps n)]))))
+
+(defn- endpoint-of
+  "The interval `x` when `t` is `(StartFn x)` or `(EndFn x)` and `which` is `:start` or
+  `:end` respectively, else nil."
+  [t which]
+  (when (and (seq? t) (= 2 (count t))
+             (= (first t) ({:start 'StartFn :end 'EndFn} which)))
+    (second t)))
+
+(defn- timeline-lanes
+  "One determined part of `net` as lanes `{:term :from :to}` in ranks, ordered by where they
+  start, then end, then print order, with `:at`, the endpoints each rank holds.  An Allen
+  part orders each interval's two endpoints by `endpoints`, the base relations' endpoint
+  orders `v/calculi` gives.  A point part puts `(StartFn x)` and `(EndFn x)` on one lane `x`
+  when it holds both, and every other instant on a lane of its own."
+  [{:keys [calculus constraints]} part endpoints]
+  (let [rel     (fn [a b] (first (get constraints [a b])))
+        [pts before? lane-of]
+        (if (= calculus :allen)
+          [(for [x part, w [:start :end]] [x w])
+           (fn [[x ex] [y ey]]
+             (if (= x y)
+               (and (= ex :start) (= ey :end))
+               (= :before (get-in endpoints [(rel x y) [ex ey]]))))
+           (fn [[x w]] [x w])]
+          (let [part-set (set part)
+                bar      (fn [t] (some (fn [w] (when-let [x (endpoint-of t w)]
+                                                 (when (part-set (list (if (= w :start) 'EndFn 'StartFn) x))
+                                                   [x w])))
+                                       [:start :end]))]
+            [part #(= :before (rel %1 %2)) (fn [t] (or (bar t) [t :start]))]))
+        rank    (dense-ranks pts before?)
+        lanes   (vals (reduce (fn [m p]
+                                (let [[x w] (lane-of p)]
+                                  (update m x (fn [l] (cond-> (or l {:term x :from (rank p) :to (rank p)})
+                                                        (= w :start) (assoc :from (rank p))
+                                                        (= w :end)   (assoc :to (rank p)))))))
+                              {} pts))]
+    {:lanes (sort-by-once (juxt :from :to (comp print-key :term)) lanes)
+     :at    (group-by rank pts)}))
+
+(defn- instants-at
+  "The named instants `v/ask` finds for the endpoints `pts` (`[x :start]`, `[x :end]` or an
+  instant), through `startOf` and `endOf` for an interval's, in print order."
+  [kb ctx pts]
+  (by-print-key
+   (distinct
+    (for [p pts
+          t (if (vector? p)
+              (let [[x w] p] (map '?i (v/ask kb (list (if (= w :start) 'startOf 'endOf) x '?i) ctx)))
+              (if-let [[x w] (some #(when-let [x (endpoint-of p %)] [x %]) [:start :end])]
+                (map '?i (v/ask kb (list (if (= w :start) 'startOf 'endOf) x '?i) ctx))
+                [p]))]
+      t))))
+
+(defn- quantity-label
+  "A `temporalDistance` answer as a span label: `(QuantityFn n unit)` as `n unit`."
+  [q]
+  (if (and (seq? q) (= 'QuantityFn (first q)) (= 3 (count q)))
+    (str (second q) " " (nth q 2))
+    (pr-str q)))
+
+(defn- timeline-spans
+  "The metric distance between each two neighbouring ranks of a lane set's `at`, where
+  `v/ask` answers `temporalDistance` between an instant named at the first and one named
+  at the second: `{:from r :to r+1 :label}`, the first answer in print order."
+  [kb ctx at]
+  (let [named (into {} (for [[r pts] at] [r (instants-at kb ctx pts)]))]
+    (keep (fn [r]
+            (first (for [a (named r), b (named (inc r))
+                         :let [ds (by-print-key (distinct (map '?d (v/ask kb (list 'temporalDistance a b '?d) ctx))))]
+                         :when (seq ds)]
+                     {:from r :to (inc r) :label (quantity-label (first ds))})))
+          (range (dec (count at))))))
+
+(defn- timeline-figure
+  "The timeline drawn under the network for the interval and point calculi (`svg/timeline`).
+  It has a band per part of `net` whose every pair is one base relation and a lane per term,
+  an interval as a bar and an instant as a tick.  The caption names the terms of every part
+  left out because an order in it is open.  Nil for another calculus and for an
+  inconsistent network.  A throw costs the figure and not the page."
+  [{:keys [kb] :as env} {:keys [calculus context nodes consistent?] :as net} base endpoints]
+  (when (and consistent? (#{:allen :point} calculus))
+    (try
+      (let [parts (filter #(< 1 (count %)) (network-parts nodes (network-pairs net base)))
+            fixed (filter #(determined? net %) parts)
+            open  (remove #(determined? net %) parts)
+            env   (with-lengths env nodes)
+            bands (for [part fixed
+                        :let [{:keys [lanes at]} (timeline-lanes net part endpoints)]]
+                    {:lanes (for [{:keys [term from to]} lanes
+                                  :let [nd (graph-node env term)]]
+                              {:node nd :from from :to to
+                               :mark (-> (select-keys nd [:term :href :title])
+                                         (assoc :class (str (:class nd) " g-mark")))})
+                     :spans (timeline-spans kb context at)})
+            scene (when (seq bands)
+                    (assoc (svg/timeline bands {:unit timeline-unit :name-gap 16 :band-gap 28 :lane-gap 6})
+                           :aria-label (str (name calculus) " timeline over " context
+                                            "; the matrix below lists the same order")))
+            left  (when (seq open)
+                    (str "not drawn, the network leaving an order open among them: "
+                         (str/join "; " (for [p open] (str/join ", " (map #(term-text env %) p))))
+                         "; the graph above draws them"))]
+        (cond
+          scene      (graph-figure
+                      nil scene [left]
+                      (str/join " · "
+                                (remove nil?
+                                        [(str "a band per part of the network that fixes one base relation for every pair"
+                                              (when (< 1 (count bands)) ", on an axis of its own; two bands are not ordered against each other"))
+                                         "a bar is an interval and a tick an instant; a position gives the order of the endpoints, not a duration"
+                                         (when (some (comp seq :spans) bands)
+                                           "a line under the axis is the temporalDistance between the endpoints at its two ends")])))
+          (seq open) [:p.muted "No timeline: the network leaves an order open in every part it relates; the graph above draws them."]))
+      (catch Throwable t
+        (trove/log! {:level :warn :id ::timeline-failed :data {:calculus calculus :error (ex-message t)}})
+        nil))))
+
 (defn network-page
   "The constraint network a calculus computes over one context: which terms it relates,
   what still holds of every pair, whether the believed facts are satisfiable at all, and
@@ -4517,6 +5025,8 @@
                                 (interpose ", " (for [[a b] pairs]
                                                   [:span (term-link env a) "/" (term-link env b)]))))
                         " (" (count support) " fact" (when (not= 1 (count support)) "s") ")."])])
+                  (network-figure env net base)
+                  (timeline-figure env net base (:endpoints chosen))
                   (if (<= (count (:nodes net)) matrix-node-limit)
                     (network-matrix env net base)
                     [:div [:p.legend "Too many nodes to draw the matrix; the determined "
@@ -4612,6 +5122,13 @@
 ;; down continues as a tree of its own.  A branch ends at a premise or at a node that is
 ;; not believed (`why-not` answers it).
 
+(defn- blocked-text
+  "Why a justification whose verdict is not `:supports` confers nothing: `verdict-text`'s
+  reason, else an argument not believed at its conclusion's context."
+  [verdict]
+  (or (verdict-text verdict)
+      "an argument is not believed here, so this justification is not currently supporting"))
+
 (def ^:private why-open-depth
   "How deep the tree opens by default.  A proof's shape is the point, so the first
   levels are open; deeper branches are one click away rather than a wall of text."
@@ -4640,7 +5157,7 @@
   which kind, unless it is derived:
 
     premise         asserted, with the assumption strength it was asserted at
-    not believed    stored but OUT; `why-not` (the sentex page) gives the reason
+    not believed    stored, not believed; `why-not` (the sentex page) gives the reason
     not stored      the handle names nothing
     shown above     a derived node already expanded earlier on the page, linked
     continued below a derived node expanded in a later tree, linked
@@ -4678,10 +5195,7 @@
                          " " [:span.tag (name (or strength :monotonic))] " "
                          (if (= :supports verdict)
                            [:span.tag.tag-in {:title "every argument is believed here and nothing blocks it, so this justification currently supports the conclusion"} "supporting"]
-                           [:span.tag.tag-out
-                            {:title (or (verdict-text verdict)
-                                        "an argument is not believed here, so this justification is not currently supporting")}
-                            "blocked"])
+                           [:span.tag.tag-out {:title (blocked-text verdict)} "blocked"])
                          (when (seq because)
                            [:ul.why (doall (map #(node-li (inc depth) %) because))])])
                       support))]])
@@ -4710,12 +5224,244 @@
                 (recur (conj trees [:ul.why [:li (expand 0 (get nodes h))]])))
             (seq trees)))))))
 
+;; ---- why: the proof, drawn (docs/web.md, "The proof tree") -----------------
+
+(def ^:private proof-node-cap
+  "How many nodes, sentences and justifications together, the proof drawing holds.  The
+  walk stops at the first justification that would take it past the cap with its
+  antecedents, and the caption says how many of each kind it drew."
+  40)
+
+(def ^:private proof-row-width
+  "How wide one line of a proof drawing's row may be, in px.  A wider row wraps onto lines
+  stacked under one another.  At 720 px the drawing prints 5.5 inches wide at 73% of its
+  size; a node at `svg/sentence-cap` is 380 px, so two of them take a line each."
+  720)
+
+(defn- sentence-text
+  "`term-text` for a sentence, with each `(sentexHandle N)` in it written as the sentence
+  N holds, so a drawing shows no handle number.  A reference back onto its own path, or to
+  no record, is written `(sentexHandle …)`."
+  ([env form] (sentence-text env form #{}))
+  ([{:keys [kb] :as env} form seen]
+   (if-let [h (sentex-reference form)]
+     (if-let [s (and (not (seen h)) (v/sentex kb h))]
+       (sentence-text env (readable s) (conj seen h))
+       "(sentexHandle …)")
+     (if (sequential? form)
+       (str "(" (str/join " " (map #(sentence-text env % seen) form)) ")")
+       (term-text env form)))))
+
+(defn- step-text
+  "What a justification node of the proof drawing is labelled with: its rule written by
+  `text`, else its informant.  A rule handle whose record is gone is `(rule not stored)`."
+  [text {:keys [rule informant]}]
+  (cond rule                 (text rule)
+        (integer? informant) "(rule not stored)"
+        :else                (text informant)))
+
+(defn- out-text
+  "What holds an unbelieved sentex `h` out, from `v/why-not`: the sentences that defeat it,
+  the condition an `exceptWhen` names, or the reason's name."
+  [{:keys [kb] :as env} h]
+  (let [{:keys [reason contradicted-by exception]} (v/why-not kb h)
+        say #(sentence-text env %)]
+    (cond (and (= :defeated reason) (seq contradicted-by))
+          (str "defeated by " (str/join ", " (map #(str (say (:sentence %)) " in " (:context %))
+                                                  contradicted-by)))
+          (and (= :excepted reason) exception)
+          (str "excepted, since " (say exception) " holds and its rule's exceptWhen names it")
+          reason (name reason))))
+
+(defn- with-out-support
+  "`w` (`v/why`) with its root's stored justifications when the root is stored, derived and
+  not believed, each in `v/why`'s support form with its verdict read at the root's context,
+  and each antecedent's own `v/why` graph merged in.  `:out` holds `out-text`.  Any other
+  `w` is returned as is."
+  [{:keys [kb] :as env} w]
+  (let [h    (:root w)
+        node (get-in w [:nodes h])]
+    (if (or (:believed? node) (false? (:stored? node)) (v/premise? kb h))
+      w
+      (let [vs  (v/justification-verdicts kb h (:context node))
+            sup (vec (for [j (v/supporting-justifications kb h)
+                           :let [inf (:informant j)]]
+                       (cond-> {:justification (:id j) :informant inf
+                                :strength (:strength j :monotonic) :verdict (get vs (:id j))
+                                :because (vec (:antecedents j))}
+                         (integer? inf) (assoc :rule (some-> (v/sentex kb inf) readable)))))
+            subs (map #(:nodes (v/why kb %)) (distinct (mapcat :because sup)))]
+        (assoc w :out   (out-text env h)
+               :nodes (assoc (apply merge (concat subs [(:nodes w)]))
+                             h (assoc node :support sup)))))))
+
+(defn- proof-walk
+  "The part of `v/why`'s graph `w` the proof drawing holds, walked breadth-first from the
+  root.  A believed derived node's justifications are taken in content order, each with
+  every antecedent not yet taken, until the next would pass `cap` nodes.  `text` writes a
+  form for the page.  A sentence's node key is its handle and a justification's is
+  `[conclusion jid]`.  Answers `{:order [k …] :next {k [k …]} :key {k content-key} :step
+  {k support-entry} :cut? bool}`: `:order` in the order taken, `:next` a sentence's
+  justifications and a justification's antecedents in content order."
+  [w text cap]
+  (let [nodes (:nodes w)
+        root  (:root w)
+        skey  (memoize (fn [h] (let [{:keys [stored? sentence context]} (get nodes h)]
+                                 [(if (false? stored?) "" (text sentence)) (text context)])))
+        jkey  (fn [h j] [(skey h) (step-text text j) (str (:strength j)) (str (:verdict j))
+                         (vec (sort (map skey (:because j))))])]
+    (loop [queue (conj clojure.lang.PersistentQueue/EMPTY root)
+           acc   {:order [root] :next {} :key {root (skey root)} :step {} :n 1 :cut? false}]
+      (if-let [h (peek queue)]
+        (let [[acc fresh]
+              (reduce (fn [[acc fresh] j]
+                        (let [ants (sort-by-once skey (distinct (:because j)))
+                              new  (remove #(contains? (:key acc) %) ants)
+                              k    [h (:justification j)]]
+                          (if (> (+ (:n acc) 1 (count new)) cap)
+                            (reduced [(assoc acc :cut? true) fresh])
+                            [(-> acc
+                                 (update :n + 1 (count new))
+                                 (update :order into (cons k new))
+                                 (update :key into (cons [k (jkey h j)] (map (juxt identity skey) new)))
+                                 (assoc-in [:step k] j)
+                                 (update-in [:next h] (fnil conj []) k)
+                                 (assoc-in [:next k] ants))
+                             (into fresh new)])))
+                      [acc []]
+                      (sort-by-once #(jkey h %) (:support (get nodes h))))]
+          (if (:cut? acc)
+            acc
+            (recur (into (pop queue) fresh) acc)))
+        acc))))
+
+(defn- proof-layers
+  "Each node of `walk` (`proof-walk`) and its row: `longest-path-layers` over `:next`, less
+  each edge a depth-first walk in content order finds closing a cycle (an antecedent that
+  is also an ancestor of the justification resting on it).  The walk recurses once per
+  node taken, so at most `proof-node-cap` deep."
+  [root {:keys [order next]}]
+  (let [back (volatile! #{})
+        done (volatile! #{})]
+    (letfn [(walk [path k]
+              (vswap! done conj k)
+              (doseq [m (next k)]
+                (cond (contains? path m)  (vswap! back conj [k m])
+                      (contains? @done m) nil
+                      :else               (walk (conj path m) m))))]
+      (walk #{root} root))
+    (longest-path-layers root {:nodes order
+                               :next  (into {} (map (fn [[k ms]] [k (remove #(@back [k %]) ms)]))
+                                            next)})))
+
+(defn- proof-node
+  "Node `k` of `walk` (`proof-walk`) over `v/why`'s `nodes`, unmeasured: its text, its
+  link, a title saying what the tree says of it, and its kind as a class.  A sentence is
+  `g-stated` (a premise), `g-derived` (believed through a justification) or `g-out` (not
+  believed, or not stored); a justification is `g-rule`, and `g-rule g-blocked` when its
+  verdict is not `:supports` or its conclusion is not believed (`out`, `out-text`)."
+  [text nodes walk out k]
+  (if (vector? k)
+    (let [{:keys [justification strength verdict] :as j} (get-in walk [:step k])
+          t   (step-text text j)
+          ok? (and (= :supports verdict) (not (false? (get-in nodes [(first k) :believed?]))))]
+      {:display t
+       :class   (if ok? "g-rule" "g-rule g-blocked")
+       :href    (str "/justification/" justification)
+       :title   (str "via " t " · " (name (or strength :monotonic)) " · "
+                     (if (= :supports verdict) "supporting" (str "blocked: " (blocked-text verdict)))
+                     (when-not ok? (some->> out (str " · its conclusion is "))))})
+    (let [{:keys [stored? believed? premise? strength defeat-class support]} (get nodes k)
+          [t cx] (get-in walk [:key k])
+          [kind says] (cond
+                        (false? stored?)   ["g-out" "not stored"]
+                        (false? believed?) ["g-out" "not believed"]
+                        premise?           ["g-stated" (str "premise" (when strength
+                                                                        (str " · assumed " (name strength))))]
+                        :else              ["g-derived"
+                                            (str "IN" (when defeat-class (str " · class " (name defeat-class)))
+                                                 " · " (count support)
+                                                 (if (= 1 (count support)) " justification" " justifications"))])]
+      {:display (if (false? stored?) "(not stored)" t)
+       :class   kind
+       :href    (str "/sentex/" k)
+       :title   (if (false? stored?) says (str t " in " cx " · " says))})))
+
+(defn- proof-scene
+  "`v/why`'s graph `w` as a scene for `graph-figure`.  The nodes are `proof-walk`'s,
+  measured at `svg/sentence-cap` and placed in `proof-layers`' rows by `svg/layered`,
+  wrapped at `proof-row-width`; the root is `g-centre`.  An arrow runs from each
+  antecedent to the justification resting on it, and from each justification to its
+  conclusion, labelled `blocked` when the justification does not support it and `not
+  believed` when the conclusion is OUT.  Adds `:shown` and `:total`, each `{:sentences n
+  :justifications n}`."
+  [env w]
+  (let [text  (memoize #(sentence-text env %))
+        nodes (:nodes w)
+        root  (:root w)
+        walk  (proof-walk w text proof-node-cap)
+        layer (proof-layers root walk)
+        steps (filter vector? (:order walk))
+        {placed :nodes edges :edges}
+        (svg/layered (for [k (:order walk)]
+                       (svg/measure
+                        (cond-> (assoc (proof-node text nodes walk (:out w) k)
+                                       :term k :cap svg/sentence-cap :layer (layer k)
+                                       :order (get-in walk [:key k]))
+                          (= root k) (update :class str " g-centre"))))
+                     (for [k steps
+                           :let [ok? (= :supports (get-in walk [:step k :verdict]))
+                                 in? (not (false? (get-in nodes [(first k) :believed?])))]
+                           e (cons {:from k :to (first k)
+                                    :kind (if (and ok? in?) "g-proof" "g-proof g-blocked")
+                                    :label (cond (not ok?) "blocked" (not in?) "not believed")}
+                                   (map (fn [a] {:from a :to k :kind "g-proof"}) (get-in walk [:next k])))]
+                       e)
+                     {:level graph-level :gap graph-row-gap :width proof-row-width
+                      :line-gap closure-line-gap})]
+    {:nodes  placed
+     :edges  edges
+     :aria-label (str "proof of " (first (get-in walk [:key root]))
+                      "; the same steps are listed below as text")
+     :shown  {:sentences (- (count (:order walk)) (count steps)) :justifications (count steps)}
+     :total  {:sentences      (count nodes)
+              :justifications (reduce + 0 (map (comp count :support) (vals nodes)))}}))
+
+(defn- proof-figure
+  "The proof drawn above the why page's tree (`proof-scene`), its legend naming what the
+  drawing holds and its caption saying what it left out.  Wrapped as `term-graph` is: a
+  throw costs the figure and not the page."
+  [env w]
+  (try
+    (let [{:keys [nodes edges shown total] :as scene} (proof-scene env w)
+          has?  (fn [c] (some #(str/includes? (:class %) c) nodes))]
+      (graph-figure
+       nil scene
+       [(when-let [o (:out w)]
+          (str (sentence-text env (get-in w [:nodes (:root w) :sentence])) " is not believed: " o))
+        (when (not= shown total)
+          (str "showing " (:sentences shown) " of " (commas (:sentences total)) " sentences and "
+               (:justifications shown) " of " (commas (:justifications total))
+               " justifications, those nearest the conclusion; the tree below lists every one"))]
+       (str/join " · "
+                 (remove nil?
+                         [(when (has? "g-rule")
+                            "under a sentence, the justifications that conclude it, each labelled with its rule, and under each its antecedents")
+                          (when (seq edges) "an arrow runs from what a justification rests on to what it concludes")
+                          (when (has? "g-stated") "a stated sentence is violet")
+                          (when (has? "g-derived") "a derived sentence is green")
+                          (when (or (has? "g-out") (has? "g-blocked"))
+                            "a dashed box is not believed, or does not support its conclusion")]))))
+    (catch Throwable t
+      (trove/log! {:level :warn :id ::proof-failed :data {:root (:root w) :error (ex-message t)}})
+      nil)))
+
 (defn why-page
   "The whole proof tree for a handle — `vaelii.core/why` rendered, collapsible.  Linked
   from the sentex page, which shows only the first hop."
   [{:keys [kb] :as env} h]
   (if-let [s (v/sentex kb h)]
-    (let [w    (v/why kb h)
+    (let [w    (with-out-support env (v/why kb h))
           root (get (:nodes w) (:root w))]
       (render env (str "why #" h)
               [:h2 "Why " [:span.muted "#" h]]
@@ -4732,8 +5478,525 @@
                       "the rest are shown " [:span.tag.tag-out "blocked"] "."])))
                 [:p.muted "This sentex is not believed, so there is no proof to show — "
                  [:a {:href (str "/sentex/" h)} "the sentex page"] " reports why not."])
+              (proof-figure env w)
               (why-tree env w)))
     (render env "not found" [:p "No sentex #" h])))
+
+(def ^:private vantage-context-cap
+  "How many contexts the vantage drawing holds, the context it is read at included: the
+  contexts that one sees and that store a match first, then its descendants, nearest
+  first."
+  12)
+
+(def ^:private vantage-row-cap
+  "How many stored matches one card lists.  A card seeing more ends with a line saying how
+  many it left out."
+  8)
+
+(def ^:private vantage-scan
+  "How many stored sentexes each read of the vantage drawing takes, of the pattern and of
+  its negation, before the drawn contexts are matched against them.  The caption says so
+  when a read holds more."
+  500)
+
+(def ^:private vantage-width
+  "How wide one line of the vantage drawing runs before the next card starts a line under
+  it: two cards whose rows hold `svg/label-cap` characters.  At 720 px the drawing prints
+  5.5 inches wide at 73% of its size."
+  720)
+
+(defn- vantage-matches
+  "The stored sentexes `q` names, belief unread: every one holding the term `q`
+  (`v/find-sentexes`), or every stored match of the pattern `q` and of its negation
+  (`v/sentexes-matching` at `CxEverything`).  Each read is taken to `vantage-scan`.
+  Answers `{:matches [sx …] :more? bool}`.  A pattern the engine refuses throws its
+  refusal; a negation it refuses is not read."
+  [kb q]
+  (let [reads (if (symbol? q)
+                [(v/find-sentexes kb q)]
+                [(v/sentexes-matching kb q 'CxEverything)
+                 (try (vec (take (inc vantage-scan)
+                                 (v/sentexes-matching kb (if (= 'not (first q)) (second q) (list 'not q))
+                                                      'CxEverything)))
+                      (catch clojure.lang.ExceptionInfo _ []))])
+        taken (mapv #(into [] (take (inc vantage-scan)) %) reads)]
+    {:matches (into [] (comp (mapcat #(take vantage-scan %)) (distinct)) taken)
+     :more?   (boolean (some #(> (count %) vantage-scan) taken))}))
+
+(defn- vantage-contexts
+  "The contexts the drawing holds, `ctx` first: the contexts `ctx` sees that store one of
+  `matches`, in print order, then the contexts that see `ctx`, breadth-first down
+  `v/max-context-children` and each level in print order, `vantage-context-cap` in all.
+  Answers `{:drawn [c …] :up [drawn stored seen] :down [drawn total]}`."
+  [kb ctx matches]
+  (let [seen   (disj (set (v/context-up kb ctx)) ctx)
+        stores (by-print-key (into #{} (comp (map :context) (filter seen)) matches))
+        up     (vec (take (dec vantage-context-cap) stores))
+        room   (- vantage-context-cap 1 (count up))
+        down   (loop [queue (conj clojure.lang.PersistentQueue/EMPTY ctx) got #{ctx} out []]
+                 (if-let [c (and (< (count out) room) (peek queue))]
+                   (let [kids (take (- room (count out))
+                                    (remove got (by-print-key (v/max-context-children kb c))))]
+                     (recur (into (pop queue) kids) (into got kids) (into out kids)))
+                   out))]
+    {:drawn (into [ctx] (concat up down))
+     :up    [(count up) (count stores) (count seen)]
+     :down  [(count down) (dec (count (v/context-down kb ctx)))]}))
+
+(defn- vantage-edges
+  "The arrows among the drawn contexts `cs`, one from `a` to `b` where `a` sees `b` and
+  sees no other of `cs` that sees `b`; `sees?` is reflexive.  An arrow that is not one of
+  `a`'s `v/min-context-parents` is labelled with how many contexts it passes, the contexts
+  in `a`'s `up` set and `b`'s `down` set but `a` and `b`."
+  [kb sees? up down cs]
+  (for [a cs, b cs
+        :when (and (not= a b) (sees? a b)
+                   (not-any? #(and (not= a %) (not= % b) (sees? a %) (sees? % b)) cs))
+        :let [n (when-not (contains? (set (v/min-context-parents kb a)) b)
+                  (- (count (filter (down b) (up a))) 2))]]
+    (cond-> {:from a :to b :kind "g-genlCx" :tone :sub}
+      (and n (pos? n)) (assoc :label (str "via " n (if (= 1 n) " context" " contexts"))))))
+
+(defn- copy-origin
+  "How the stored sentex `m` came to be, for its note, or nil for a record that is neither
+  a premise nor concluded.  A premise is `stated`.  A conclusion is `copied from <context>
+  by <informant>` when a justification names an informant and rests on the same sentence
+  stored elsewhere, and `derived` otherwise."
+  [{:keys [kb] :as env} m]
+  (let [h (:id m)]
+    (if (v/premise? kb h)
+      "stated"
+      (let [js   (v/supporting-justifications kb h)
+            from (first (for [j js :when (symbol? (:informant j))
+                              a (:antecedents j)
+                              :let [s (v/sentex kb a)]
+                              :when (and s (= (readable s) (readable m)))]
+                          (str "copied from " (term-text env (:context s)) " by " (:informant j))))]
+        (cond from     from
+              (seq js) "derived")))))
+
+(defn- copy-status
+  "How context `c` reads the stored sentex `m`, from `v/belief-status` at `c`, as
+  `[believed? words]`.  The words name the context of each `except` hiding `m` there, or of
+  each `defeat` `c` sees and believes that withdraws it, or give `v/why-not`'s reason."
+  [{:keys [kb] :as env} sees? m c]
+  (let [h  (:id m)
+        bs (v/belief-status kb h c)
+        at (fn [hs] (->> hs (keep #(some->> (v/sentex kb %) :context (term-text env)))
+                         distinct by-print-key (str/join ", ")))]
+    (cond
+      (:believed? bs) [true "believed"]
+      (:excepted? bs) [false (str "hidden by the except in "
+                                  (at (map :handle (filter :in-force? (:exceptions bs)))))]
+      (:withdrawn? bs)
+      (let [ds (filter #(and (seq? (:sentence %)) (= 'defeat (first (:sentence %)))
+                             (sees? c (:context %)) (v/believed? kb (:id %) c))
+                       (v/sentexes-naming kb h))]
+        [false (if (seq ds)
+                 (str "defeated by the defeat in " (at (map :id ds)))
+                 "withdrawn: no support holds here")])
+      (not (:in? bs))
+      [false (if-let [r (:reason (v/why-not kb h))] (str "not believed: " (name r)) "not believed")]
+      :else [false "not believed here"])))
+
+(defn- vantage-rows
+  "The rows of `c`'s card and how many matches it sees, `[rows n]`.  The rows are the first
+  `vantage-row-cap` of the `n` of `matches` stored in a context `c` sees, by text and then
+  where stored.  A row says where its sentex is stored, how it came to be (`origin`) and
+  how `c` reads it (`copy-status`).  It is `g-out` where `c` does not believe it, else
+  `g-stated` for a premise and `g-derived` for a conclusion."
+  [env sees? c matches origin]
+  (let [seen (sort-by-once
+              (juxt :text :where)
+              (for [m matches :when (sees? c (:context m))
+                    :let [form (readable m)]]
+                {:m m :form form :text (sentence-text env form)
+                 :where (if (= c (:context m)) "stored here" (str "from " (term-text env (:context m))))}))]
+    [(vec (for [{:keys [m text where] :as r} (take vantage-row-cap seen)
+                :let [[in? words] (copy-status env sees? m c)
+                      o    (origin m)
+                      note (str/join " · " (remove nil? [where o words]))]]
+            (assoc (dissoc r :m)
+                   :note note :notes [note] :href (str "/sentex/" (:id m)) :title (str text " · " note)
+                   :class (cond (not in?) "g-out" (= "stated" o) "g-stated" :else "g-derived"))))
+     (count seen)]))
+
+(defn- vantage-model
+  "What the vantage drawing and the list under it show of `q` at `ctx`: the drawn contexts
+  (`vantage-contexts`), each with its rows (`vantage-rows`) and its layer, and the arrows
+  among them (`vantage-edges`).  A context on a layer below `ctx` sees `ctx`."
+  [{:keys [kb] :as env} ctx q]
+  (let [{:keys [matches more?]} (vantage-matches kb q)
+        {:keys [drawn up down]} (vantage-contexts kb ctx matches)
+        up-of  (memoize #(set (v/context-up kb %)))
+        sees?  (fn [a b] (contains? (up-of a) b))
+        edges  (vec (vantage-edges kb sees? up-of (memoize #(set (v/context-down kb %))) drawn))
+        above  (set (take (first up) (rest drawn)))
+        layers (fn [nodes next] (longest-path-layers ctx {:nodes nodes :next next}))
+        up-l   (layers (cons ctx above)
+                       (fn [n] (for [{:keys [from to]} edges :when (and (= n from) (above to))] to)))
+        down-l (layers (remove above drawn)
+                       (fn [n] (for [{:keys [from to]} edges :when (and (= n to) (not (above from)))] from)))
+        origin (memoize #(copy-origin env %))
+        shown  (into #{} (mapcat up-of) drawn)]
+    {:edges edges :up up :down down :more? more?
+     :outside (count (remove #(shown (:context %)) matches))
+     :cards (vec (for [c drawn
+                       :let [[rows n] (vantage-rows env sees? c matches origin)]]
+                   {:context c :rows rows :count n
+                    :layer (if (above c) (- (up-l c)) (down-l c))}))}))
+
+(defn- vantage-scene
+  "`model` (`vantage-model`) as a scene for `graph-figure`: a card per context
+  (`svg/measure-card`) on its layer, the first `vantage-row-cap` of its rows in it, laid out
+  by `svg/layered` in lines `vantage-width` wide, with `ctx`'s card `g-centre`."
+  [env ctx q {:keys [cards edges]}]
+  (let [card (fn [{:keys [context rows layer] n :count}]
+               (svg/measure-card
+                {:term context :display (term-text env context) :layer layer
+                 :order (print-key context)
+                 :class (cond-> (term-class env context) (= ctx context) (str " g-centre"))
+                 :href (str "/term?q=" (url-enc (pr-str context)))
+                 :title (str (term-text env context) " · " n
+                             (if (= 1 n) " stored match" " stored matches") " it sees")
+                 :rows rows
+                 :more (cond (zero? n)               "no stored match it sees"
+                             (> n (count rows)) (str (- n (count rows)) " more not drawn"))}))]
+    (assoc (svg/layered (map card cards) edges
+                        {:level graph-level :gap graph-row-gap :width vantage-width
+                         :line-gap closure-line-gap})
+           :aria-label (str "vantage of " (sentence-text env q) " at " (term-text env ctx)
+                            "; the same sentences are listed below as text"))))
+
+(defn- vantage-figure
+  "The vantage drawing (`vantage-scene`), its legend, and a caption saying what it left out.
+  Wrapped as `term-graph` is: a throw costs the figure and not the page."
+  [env ctx q {:keys [up down more? outside] :as model}]
+  (try
+    (let [scene (vantage-scene env ctx q model)
+          [shown stored seen] up
+          [below total] down
+          k     (term-text env ctx)]
+      (graph-figure
+       nil scene
+       [(when (< stored seen)
+          (str "a context " k " sees is drawn where it stores a match: " (commas stored)
+               " of " (commas seen) (when (< shown stored) (str ", showing " shown))))
+        (when (< below total)
+          (str "showing " below " of " (commas total) " contexts that see " k ", nearest first"))
+        (when (pos? outside)
+          (str (commas outside) " stored matches are in contexts no drawn context sees"))
+        (when more? (str "each read took its first " vantage-scan " stored matches"))]
+       (str "an arrow runs from a context to one it sees; a label counts the contexts the arrow passes"
+            " · a card lists the stored matches its context sees: where each is stored, how it came to be,"
+            " and how this context reads it"
+            " · a stated sentence is violet and a derived one green where the context believes it,"
+            " and a dashed row is one it does not")))
+    (catch Throwable t
+      (trove/log! {:level :warn :id ::vantage-failed :data {:ctx ctx :q q :error (ex-message t)}})
+      nil)))
+
+(defn vantage-page
+  "What `q`, a sentence pattern or a term, reads as from context `ctx` and from the
+  contexts around it: drawn (`vantage-figure`), then listed per context.  With no `ctx` or
+  no `q`, the form alone.  A pattern the engine refuses throws its refusal, which the
+  route answers as a 400."
+  [env ctx q]
+  (let [form [:form.q {:method "get" :action "/vantage"}
+              [:input {:type "text" :name "ctx" :size 24 :placeholder "a context"
+                       :value (when ctx (pr-str ctx))}]
+              [:input {:type "text" :name "q" :size 40 :placeholder "a sentence pattern, or a term"
+                       :value (when q (pr-str q))}]
+              [:button {:type "submit"} "read"]]
+        head (list [:h2 "A sentence across contexts"]
+                   [:p.muted "Each context reads the stored sentences of the contexts it sees, "
+                    "less what an except hides there and what a defeat in force there withdraws. "
+                    "Name a context and a sentence pattern or a term to see the matches as that "
+                    "context, the contexts it sees that store one, and the contexts that see it "
+                    "each read them."]
+                   form)
+        model (when (and ctx q) (vantage-model env ctx q))]
+    (render env (if model (str "vantage of " (pr-str q) " at " ctx) "vantage")
+            head
+            (when model
+              (list
+               (vantage-figure env ctx q model)
+               [:div.vantage-rows
+                (for [{:keys [context rows] n :count} (:cards model)]
+                  [:div [:h4 (term-link env context)]
+                   (if (seq rows)
+                     [:ul (for [{:keys [form note]} rows]
+                            [:li (render-form env form) " " [:span.muted note]])
+                      (when (> n (count rows))
+                        [:li.muted (- n (count rows)) " more not listed"])]
+                     [:p.muted "No stored match it sees."])])])))))
+
+(def ^:private signs-context-legal
+  "What a legal `ctx` on `/signs` looks like, in the words its refusal uses."
+  (str "a context name, e.g. CxWell, or a ground context application, e.g. "
+       "(CxTimeFn CxWell Morning1) — or leave it out for the sign vocabulary and each "
+       "predicate's stored fact count"))
+
+(def ^:private sign-vocabulary
+  "The predicates the sign reading reads (docs/sign.md), each with its arity."
+  '[[signOf 2] [trendOf 2] [derivativeOf 2] [qualitativeSum 3] [qualitativeDifference 3]
+    [qualitativeProduct 3] [greaterInMagnitudeThan 2]])
+
+(def ^:private sign-operators
+  "The label of the node each arithmetic relation is drawn as."
+  '{qualitativeSum "+" qualitativeDifference "a − b" qualitativeProduct "×"})
+
+(def ^:private sign-glyphs
+  "Each sign term and how the sign drawing writes it, in the order a set lists them."
+  '[[SignNegative "−"] [SignZero "0"] [SignPositive "+"]])
+
+(defn- sign-facts
+  "The believed facts of the sign vocabulary `ctx` sees (`v/lookup` at level 4, the
+  reading's own read), each `{:pred :args :sentence :handle}` and its print key, one per
+  sentence in print order.  A fact with an argument that is not a symbol is left out, as the reading leaves
+  it out."
+  [kb ctx]
+  (->> (for [[p n] sign-vocabulary
+             r   (v/lookup kb 4 (apply list p (take n '[?a ?b ?c])) ctx)
+             :let [s (:sentence r)]
+             :when (every? symbol? (rest s))]
+         {:pred p :args (vec (rest s)) :sentence s :handle (:handle r) :key (print-key s)
+          :at (print-key (:context r))})
+       (sort-by-once (juxt :key :at))
+       (partition-by :key)
+       (mapv first)))
+
+(defn- sign-roles
+  "Each quantity of `facts` mapped to the attributes the reading keeps for it: `:trend` for
+  the subject of a `trendOf` and the second argument of a `derivativeOf`, `:sign` for every
+  other position a quantity holds."
+  [facts]
+  (let [add (fn [m q a] (update m q (fnil conj #{}) a))]
+    (reduce (fn [m {:keys [pred args]}]
+              (case pred
+                signOf       (add m (first args) :sign)
+                trendOf      (add m (first args) :trend)
+                derivativeOf (-> m (add (first args) :sign) (add (second args) :trend))
+                (reduce #(add %1 %2 :sign) m args)))
+            {} facts)))
+
+(defn- sign-stated
+  "Each `[attribute quantity]` a `signOf` or `trendOf` of `facts` states, mapped to the sign
+  terms stated of it."
+  [facts]
+  (reduce (fn [m {:keys [pred args]}]
+            (if-let [a ('{signOf :sign trendOf :trend} pred)]
+              (update m [a (first args)] (fnil conj #{}) (second args))
+              m))
+          {} facts))
+
+(defn- signs-text
+  "A set of sign terms as the sign drawing writes it: its glyphs in the order − 0 +, `∅`
+  for the empty set, and `unread` for nil, a quantity the reading never narrowed."
+  [s]
+  (cond (nil? s)   "unread"
+        (empty? s) "∅"
+        :else      (str/join " " (keep (fn [[t g]] (when (s t) g)) sign-glyphs))))
+
+(defn- sign-value-text
+  "What the reading leaves an attribute, `signs-text` of `possible`, and the sign terms a
+  fact states of it: `(stated)` when they are the set, `(stated +)` when they are not."
+  [possible stated]
+  (str (signs-text possible)
+       (cond (empty? stated)       ""
+             (= stated possible)   " (stated)"
+             :else                 (str " (stated " (signs-text stated) ")"))))
+
+(defn- sign-sets
+  "The sets `reading` (`v/sign-reading`) leaves quantity `q`, by attribute."
+  [reading q]
+  {:sign (get-in reading [:signs q]) :trend (get-in reading [:trends q])})
+
+(defn- sign-node
+  "Quantity `q` as a node of the sign drawing, unplaced: its name, then a line per attribute
+  in `roles` with `sign-value-text`.  `g-stated` when a fact states its sign or trend,
+  else `g-derived` when the reading narrowed one, else `g-out`; `g-unsat` besides when the
+  reading emptied a set of it."
+  [env reading roles stated q]
+  (let [attrs (filter (roles q) [:sign :trend])
+        sets  (sign-sets reading q)
+        lines (for [a attrs] (str (name a) " " (sign-value-text (sets a) (stated [a q]))))
+        text  (term-text env q)]
+    (graph-node env q {:display (into [text] lines)
+                       :class   (cond-> (cond (some #(stated [% q]) attrs)    "g-stated"
+                                              (some #(some? (sets %)) attrs) "g-derived"
+                                              :else                          "g-out")
+                                  (some #(= #{} (sets %)) attrs) (str " g-unsat"))
+                       :title   (str/join " · " (cons text lines))})))
+
+(defn- sign-edges
+  "The edges of the sign drawing over `facts`.  An arithmetic relation has an edge from each
+  operand to its node, labelled `a` and `b` for a difference, and one from the node to the
+  result.  A `derivativeOf` runs from the rate to its quantity, and a
+  `greaterInMagnitudeThan` from the larger to the smaller, `:comparison?`.  Two facts
+  relating one pair are one edge with both labels, a head at each end when they run
+  opposite ways, and `:comparison?` only when both are comparisons.  A fact relating a
+  quantity to itself has no edge."
+  [facts]
+  (let [es (for [{:keys [pred args sentence]} facts
+                 e (case pred
+                     derivativeOf           [{:from (first args) :to (second args) :label "derivativeOf"}]
+                     greaterInMagnitudeThan [{:from (first args) :to (second args)
+                                              :label "greaterInMagnitudeThan" :comparison? true}]
+                     (signOf trendOf)       []
+                     (let [[a b q] args, diff? (= 'qualitativeDifference pred)]
+                       [{:from a :to sentence :label (when diff? "a")}
+                        {:from b :to sentence :label (when diff? "b")}
+                        {:from sentence :to q}]))
+                 :when (not= (:from e) (:to e))]
+             e)]
+    (for [[_ group] (sort-by-once key (group-by #(print-key (by-print-key [(:from %) (:to %)])) es))
+          :let [{:keys [from] :as e} (first group)
+                ls (distinct (keep :label group))]]
+      (cond-> (assoc e :label (case (count ls) 0 nil 1 (first ls) (vec ls)))
+        (some #(not= from (:from %)) group) (assoc :back? true)
+        (not-every? :comparison? group)     (dissoc :comparison?)))))
+
+(defn- sign-layers
+  "Each of `terms`' row in the sign drawing, by `longest-path-layers` under a root above
+  every term.  The paths run over every edge of `edges` but a comparison, and over each
+  comparison, in print order, that closes no cycle with the edges taken before it."
+  [terms edges]
+  (let [add    (fn [g {:keys [from to]}] (update g from (fnil conj #{}) to))
+        reach? (fn [g a b] (loop [todo [a] seen #{a}]
+                             (when-let [n (peek todo)]
+                               (or (= n b)
+                                   (let [new (remove seen (g n))]
+                                     (recur (into (pop todo) new) (into seen new)))))))
+        flow   (reduce add {} (remove :comparison? edges))
+        next   (reduce (fn [g {:keys [from to] :as e}] (if (reach? g to from) g (add g e)))
+                       flow (filter :comparison? edges))]
+    (longest-path-layers ::top {:nodes (cons ::top terms) :next (assoc next ::top (set terms))})))
+
+(defn- sign-scene
+  "The reading of `ctx` as a scene for `graph-figure`: a node per quantity (`sign-node`)
+  and per arithmetic relation, and `sign-edges`.  Each connected part is laid out by
+  `svg/layered` in `sign-layers`' rows, its labels then moved clear (`svg/clear-labels`),
+  and the parts are packed into rows `network-width` wide.  An inconsistent reading is
+  framed (`svg/framed`), as an inconsistent network is."
+  [env ctx facts reading]
+  (let [roles   (sign-roles facts)
+        stated  (sign-stated facts)
+        qs      (by-print-key (keys roles))
+        ops     (filter (comp sign-operators :pred) facts)
+        env     (with-lengths env qs)
+        node    (merge (into {} (for [q qs] [q (sign-node env reading roles stated q)]))
+                       (into {} (for [{:keys [pred sentence handle]} ops]
+                                  [sentence (svg/measure {:term sentence :display (sign-operators pred)
+                                                          :class "g-rule" :href (str "/sentex/" handle)
+                                                          :title (sentence-text env sentence)})])))
+        edges   (sign-edges facts)
+        terms   (by-print-key (keys node))
+        layer   (sign-layers terms edges)
+        parts   (for [part (network-parts terms (map (juxt :from :to) edges))
+                      :let [in? (set part)]]
+                  (-> (svg/layered (for [t part]
+                                     (assoc (node t) :layer (layer t) :order (print-key t)))
+                                   (filter (comp in? :from) edges)
+                                   {:level graph-level :gap graph-row-gap :width network-width
+                                    :line-gap closure-line-gap})
+                      (select-keys [:nodes :edges])
+                      svg/clear-labels))
+        scene   (assoc (svg/pack parts network-width 32)
+                       :aria-label (str "sign network over " (term-text env ctx)
+                                        "; the table below lists the same quantities"))]
+    (cond-> scene
+      (not (:consistent? reading))
+      (svg/framed (cond-> ["inconsistent: no sign goal is answered in this context"]
+                    (dashed? scene) (conj "dashed: a quantity whose possible signs the reading emptied"))
+                  "g-unsat"))))
+
+(defn- sign-figure
+  "The sign network drawn above the table (`sign-scene`), its legend and its caption.  A
+  network of more than `network-draw-cap` nodes gets a line saying so.  Wrapped as
+  `term-graph` is: a throw costs the figure and not the page."
+  [env ctx facts reading]
+  (try
+    (let [n (+ (count (sign-roles facts)) (count (filter (comp sign-operators :pred) facts)))]
+      (if (> n network-draw-cap)
+        [:p.muted "The network holds " (commas n) " quantities and relations, more than the "
+         network-draw-cap " the drawing holds; the table below lists them."]
+        (let [{:keys [nodes edges] :as scene} (sign-scene env ctx facts reading)
+              has? (fn [c] (some #(str/includes? (:class %) c) nodes))
+              lbl? (fn [l] (some #(let [x (:label %)] (or (= l x) (and (vector? x) (some #{l} x)))) edges))]
+          (graph-figure
+           nil scene
+           [(when-not (:consistent? reading)
+              (str "the reading is inconsistent, so no sign goal is answered in " (term-text env ctx)))]
+           (str/join " · "
+                     (remove nil?
+                             ["a box is a quantity, with the signs the reading leaves possible for it and for its trend"
+                              (when (has? "g-rule") "a small box is an arithmetic relation, with an arrow from each operand into it and one out to the result")
+                              (when (lbl? "derivativeOf") "derivativeOf runs from a rate to the quantity whose trend is the rate's sign")
+                              (when (lbl? "greaterInMagnitudeThan") "greaterInMagnitudeThan runs from the larger quantity to the smaller")
+                              (when (has? "g-stated") "a violet box is a quantity whose sign or trend a fact states")
+                              (when (has? "g-derived") "a green one is a quantity whose sign or trend the reading narrowed")
+                              (when (has? "g-out") "a dashed grey one is a quantity the reading narrowed nothing for")
+                              (when (has? "g-unsat") "a dashed amber box is a quantity whose possible signs the reading emptied")]))))))
+    (catch Throwable t
+      (trove/log! {:level :warn :id ::signs-failed :data {:context ctx :error (ex-message t)}})
+      nil)))
+
+(defn- sign-table
+  "Each quantity of `facts` with what the reading leaves its sign and its trend
+  (`sign-value-text`), in print order.  An attribute no fact gives the quantity is an empty
+  cell, since a dash would read as the sign `−`."
+  [env facts reading]
+  (let [roles  (sign-roles facts)
+        stated (sign-stated facts)
+        cell   (fn [q a] (when ((roles q) a)
+                           (sign-value-text (get (sign-sets reading q) a) (stated [a q]))))]
+    [:div.table-scroll
+     [:table.stats-table
+      [:thead [:tr [:th "quantity"] [:th "sign"] [:th "trend"]]]
+      [:tbody (for [q (by-print-key (keys roles))]
+                [:tr [:th (term-link env q)] [:td (cell q :sign)] [:td (cell q :trend)]])]]]))
+
+(defn signs-page
+  "The sign reading of one context, `reading` (`v/sign-reading`, docs/sign.md): the network
+  drawn, whether the facts are consistent, and each quantity's possible signs.  With no
+  context, the vocabulary and each predicate's stored fact count."
+  [{:keys [kb] :as env} ctx reading]
+  (render env (if ctx (str "signs " (pr-str ctx)) "signs")
+          [:h2 "Sign network"]
+          [:p.muted "The sign reading takes every believed fact of the sign vocabulary a "
+           "context sees and narrows each quantity's possible signs, and its trend's, to a "
+           "fixpoint. The page shows the reading whether or not the " [:code ":sign"]
+           " reasoner is registered, and " [:code "ask"] " answers from the reading only once "
+           "the reasoner is. Name a context to read its network."]
+          [:form.q {:method "get" :action "/signs"}
+           [:input {:type "text" :name "ctx" :size 32 :placeholder "a context"
+                    :value (when ctx (pr-str ctx))}]
+           [:button {:type "submit"} "read"]]
+          (if-not ctx
+            (let [counts (for [[p] sign-vocabulary] [p (v/count-with-functor kb p)])]
+              [:div
+               (when (every? (comp zero? second) counts)
+                 [:p "This KB states no fact in the sign vocabulary."])
+               [:div.table-scroll
+                [:table.stats-table
+                 [:thead [:tr [:th "predicate"] [:th.num "stored facts"]]]
+                 [:tbody (for [[p n] counts]
+                           [:tr [:th (term-link env p)] [:td.num (commas n)]])]]]])
+            (let [facts   (sign-facts kb ctx)
+                  emptied (by-print-key (for [m [:signs :trends], [q s] (m reading) :when (empty? s)] q))]
+              (if (empty? facts)
+                [:p.muted "No fact of the sign vocabulary is visible in " (term-text env ctx) "."]
+                [:div
+                 (if (:consistent? reading)
+                   [:p [:span.tag.tag-in "consistent"] " "
+                    [:span.muted (count (sign-roles facts)) " quantities"]]
+                   [:p [:span.tag.tag-defeated "inconsistent"]
+                    " — the facts empty the possible signs of "
+                    (interpose ", " (for [q (distinct emptied)] (term-link env q)))
+                    ", so no sign goal is answered in this context."])
+                 (sign-figure env ctx facts reading)
+                 (sign-table env facts reading)])))))
 
 ;; ---- the non-monotonicity demo ------------------------------------------
 ;; `(able Pingu flying)` is believed; the KB then learns `(penguin Pingu)` and
@@ -5262,7 +6525,8 @@
             [:p [:a.action {:href "/demo"} "Watch belief change"]
              [:span.muted " — the one below at length, in three clicks."] " · "
              [:a {:href "/levels"} "Trace a goal through the eight levels"] " · "
-             [:a {:href "/network"} "Qualitative constraint networks"]]
+             [:a {:href "/network"} "Qualitative constraint networks"] " · "
+             [:a {:href "/signs"} "Sign networks"]]
             (when (some (comp seq :premises first) rows)
               [:p.legend "The examples that need individuals write them into "
                (if live? (list [:code (str sandbox)] ", ") "a context of this browser session's own, ")
@@ -8631,8 +9895,10 @@
                                            "Cache-Control" static-cache-control}
                                  :body    (stylesheet)})}]
          ["/term"       {:get (fn [req]
-                                (let [q (get-in req [:query-params "q"])
-                                      w (env-of target req)]
+                                (let [q   (get-in req [:query-params "q"])
+                                      rc  (get-in req [:query-params "ctx"])
+                                      ctx (param-context rc)
+                                      w   (env-of target req)]
                                   ;; `?derived=hide|show` is the reading preference this
                                   ;; request chose; the response carries it forward
                                   (-> (let [t (param-form q)]
@@ -8642,20 +9908,45 @@
                                           (= unreadable t)
                                           (bad-parameter w "q" q (str "a term, e.g. dog or "
                                                                       "(FruitFn Apple)"))
+                                          (= unreadable ctx)
+                                          (bad-parameter w "ctx" rc context-legal)
                                           :else
-                                          (term-page w t)))
+                                          (term-page (at-context w ctx) t)))
                                       (remember-derived req))))}]
          ["/closure"    {:get (fn [req]
                                 (let [env (env-of target req)
                                       q   (get-in req [:params "q"])
                                       dir (get-in req [:params "dir"])
+                                      rc  (get-in req [:params "ctx"])
+                                      ctx (param-context rc)
                                       t   (param-form q)]
                                   (cond
                                     (not (closure-dirs dir))
                                     (bad-parameter env "dir" dir "genls or specs")
                                     (or (nil? t) (= unreadable t))
                                     (bad-parameter env "q" q "a term, e.g. dog")
-                                    :else (closure-page env t dir))))}]
+                                    (= unreadable ctx)
+                                    (bad-parameter env "ctx" rc context-legal)
+                                    :else (closure-page (at-context env ctx) t dir))))}]
+         ["/vantage"    {:get (fn [req]
+                                (let [env (env-of target req)
+                                      rq  (get-in req [:query-params "q"])
+                                      rc  (get-in req [:query-params "ctx"])
+                                      q   (param-form rq)
+                                      ctx (param-context rc)]
+                                  (cond
+                                    (or (= unreadable q) (not (or (nil? q) (symbol? q) (seq? q))))
+                                    (bad-parameter env "q" rq (str "a sentence pattern, e.g. (dog ?x), "
+                                                                   "or a term, e.g. Rex"))
+                                    (or (= unreadable ctx) (and ctx (= :variable (v/term-role ctx))))
+                                    (bad-parameter env "ctx" rc "a context name, e.g. CxWell")
+                                    (v/query-contexts ctx) (unsupported-context env ctx)
+                                    :else
+                                    (try (vantage-page env ctx q)
+                                         (catch clojure.lang.ExceptionInfo e
+                                           (if (:type (ex-data e))
+                                             (bad-parameter env "q" rq (ex-message e))
+                                             (throw e)))))))}]
          ;; the continuation routes: a capped list ends in a sentinel that fetches its
          ;; next page from here, so every long list is walkable without loading it whole
          ["/term/rows"  {:get (fn [req]
@@ -8733,6 +10024,26 @@
                                     :else
                                     (network-page (env-of target req) ctx
                                                   (when (seq calc) (keyword calc))))))}]
+         ["/signs"      {:get (fn [req]
+                                (let [rc  (get-in req [:query-params "ctx"])
+                                      ctx (param-form rc)
+                                      env (env-of target req)
+                                      bad #(bad-parameter env "ctx" rc (str % signs-context-legal))]
+                                  (cond
+                                    (or (= unreadable ctx) (not (or (nil? ctx) (symbol? ctx) (seq? ctx)))
+                                        (and (symbol? ctx) (= :variable (v/term-role ctx))))
+                                    (bad "")
+
+                                    (v/query-contexts ctx) (unsupported-context env ctx)
+
+                                    :else
+                                    (let [reading (when ctx
+                                                    (try (v/sign-reading (:kb env) ctx)
+                                                         (catch clojure.lang.ExceptionInfo e
+                                                           (if (= :shape (:type (ex-data e))) e (throw e)))))]
+                                      (if (instance? Throwable reading)
+                                        (bad (str (ex-message reading) ". "))
+                                        (signs-page env ctx reading))))))}]
          ;; the same refusal.  A 400, not the empty fragment: htmx swaps only a 2xx, so the reader keeps
          ;; the list.  An unreadable `ctx` is refused, since `?ctx` would continue another list
          ["/levels/rows" {:get (fn [req]

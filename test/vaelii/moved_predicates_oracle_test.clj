@@ -44,13 +44,6 @@
 
 (defn- chance? [^java.util.Random rng p] (< (.nextDouble rng) p))
 
-(defn- shuffled
-  "A permutation of `xs` from `rng`, so an order is replayable from its seed."
-  [xs ^java.util.Random rng]
-  (let [a (java.util.ArrayList. ^java.util.Collection (vec xs))]
-    (java.util.Collections/shuffle a rng)
-    (vec a)))
-
 (defn- type-chain
   "Chain `c`'s terms and edges.  A chain is four levels, `tmp_<c>0_t` at the bottom; a
   diamond chain adds `tmp_<c>1b_t` as a second route from level 0 to level 2, and names
@@ -129,7 +122,7 @@
   "`n` arrival orders of `w`'s sentences, drawn from a generator seeded by `seed` alone."
   [seed w n]
   (let [rng (java.util.Random. (bit-xor seed 0x5DEECE66D))]
-    (vec (repeatedly n #(shuffled (:sentences w) rng)))))
+    (vec (repeatedly n #(tu/shuffled rng (:sentences w))))))
 
 ;; ---- builds --------------------------------------------------------------
 

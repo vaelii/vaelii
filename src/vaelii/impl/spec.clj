@@ -26,7 +26,7 @@
   (`genls`, `context-up`, …) are specced too, since a wrong-arity call to one of
   them is exactly the kind of mistake instrumentation should surface early.
 
-  **Thirty-two publics that take an option map are outside it**, and instrumenting says
+  **Thirty-three publics that take an option map are outside it**, and instrumenting says
   nothing about their arguments: the batch writes (`assert-many`, `bulk-assert-facts!`,
   `edit!`, `replace-facts!`), the term operations (`rename-terms!`, `merge-terms!`,
   `copy-terms`, `remove-terms!` and each one-term form), the fork and the two consequence
@@ -36,7 +36,7 @@
   reads (`search-tree`, `compare-tacticians`) and the truncation report (`query-status`),
   the evaluatable-prover registration (`add-evaluatable`), the four-valued epistemic-status
   read (`argue`), the two clash reports, whose one option leaves their grounds off
-  (`conflicts`, `contradictions`), and `check`, `abduce`, `kb-quality`, `clear-caches`.
+  (`conflicts`, `contradictions`), and `answer-sets`, `check`, `abduce`, `kb-quality`, `clear-caches`.
   A test in
   `vaelii.spec-test` holds that list against `vaelii.core`'s own arglists, so the
   gap is a set somebody has to edit rather than a claim that goes stale in silence:
@@ -299,7 +299,7 @@
   :args (s/cat :kb ::kb :sentence ::sentence))
 
 (s/fdef vaelii.core/believed?
-  :args (s/cat :kb ::kb :handle ::handle-arg :context ::context)
+  :args (s/cat :kb ::kb :handle ::handle-arg :context (s/? ::context))
   :ret boolean?)
 
 (s/fdef vaelii.core/belief-status
@@ -417,7 +417,6 @@
 
 ;; ---- introspection ------------------------------------------------------
 
-(s/fdef vaelii.core/in?          :args (s/cat :kb ::kb :handle ::handle-arg) :ret boolean?)
 (s/fdef vaelii.core/sentex       :args (s/cat :kb ::kb :handle ::handle-arg) :ret (s/nilable ::sentex-map))
 (s/fdef vaelii.core/justification    :args (s/cat :kb ::kb :jid ::handle-arg))
 (s/fdef vaelii.core/premise?     :args (s/cat :kb ::kb :handle ::handle-arg))
@@ -552,7 +551,6 @@
     vaelii.core/sentexes-with-arg
     vaelii.core/count-with-arg
     vaelii.core/sentexes-naming
-    vaelii.core/in?
     vaelii.core/believed?
     vaelii.core/belief-status
     vaelii.core/sentex

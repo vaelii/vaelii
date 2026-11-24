@@ -106,8 +106,8 @@
 (defn abducible?
   "May `sentence` be hypothesized in `context`?  True when it is a ground literal whose
   predicate `abducible_predicate` grants (read scoped from `context`), that `assert`
-  would admit (`special/inadmissible`), and whose negation is not visible and believed
-  from `context`.  Cheapest test first; the reasons are docs/abduction.md, \"The abducibility check\"."
+  would admit (`special/inadmissible`), and whose negation is not believed at
+  `context`.  Cheapest test first; the reasons are docs/abduction.md, \"The abducibility check\"."
   [kb sentence context]
   (boolean
    (and (seq? sentence)

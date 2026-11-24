@@ -323,7 +323,7 @@ the guard defeat is stored in CxR resting on it.
 
 **A guard defeat removes one firing, not the sentence.** A justification `j` of F is
 covered at a reader R when a justification of a guard defeat of F that is in force at R,
-with every antecedent but F believed and seen there, names `j`'s rule and every antecedent
+with every antecedent but F believed there, names `j`'s rule and every antecedent
 of `j`, carries `j`'s bindings, and names no firing of that rule with those bindings over
 more antecedents than `j` (`exc/guard-owners`). A firing over a subset of a second firing's
 antecedents therefore owns neither the second firing's guard justification nor the right
@@ -335,6 +335,9 @@ blocks there. A guard defeat reads F at its label (the exemption a placed nogood
 A blocker a reader below does not believe or see leaves the guard defeat at the placement
 out of force there, and the reader believes the conclusion. At a reader below its
 placement where an inner `unknown` of the condition fails, a guard defeat stays in force.
+A guard defeat whose `exceptWhen` a separation answers stays in force too below a
+`siblingDisjointException` of that pair: only the guard of an inherited contrary records
+the pair it rests on ([inherit.md](inherit.md#forward-chaining-on-a-claim-nobody-stored)).
 
 ### Standalone positive `thereExists` desugars
 

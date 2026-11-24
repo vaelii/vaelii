@@ -88,19 +88,21 @@
   `lein perf-ab <base-rev>`'s: `vaelii.bench.ab`'s probes on both revisions, in absolute
   time.
 
-  Run: `lein perf [--only <name>[,<name>…]] [--tolerance <x>] [--quick] | --list`
+  Run: `lein perf [--only <name>[,<name>…]] [--tolerance <x>] [--quick] [--jobs <n>] | --list`
 
     --only       run the named checks, comma-separated (the `:name` below, without the
                  colon), in the check table's order whatever the order given.  A name
                  in `groups` runs every check of that group
     --list       print each check's group, name and claim, and measure nothing
     --tolerance  multiply every bound by this — 1.5 on a noisy box, 1.0 in anger
-    --quick      one attempt over the real pair at a 1.5x-widened bound — a coarse
-                 verdict for a pre-commit read, still a verdict
+    --quick      one attempt at a 1.5x-widened bound: a coarse verdict for a pre-commit read
+    --jobs       how many worker JVMs run the checks (`run-pooled`, `default-jobs`)
 
   Exit status is 0 when every check passes, 1 when any fails, which is what makes it
   usable from a hook or a workflow."
-  (:require [clojure.string :as str]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
             [taoensso.nippy :as nippy]
             [vaelii.core :as v]
             [vaelii.host.core-context :as core-context]
@@ -140,7 +142,10 @@
             [vaelii.impl.stp :as stp]
             [vaelii.impl.taxonomy :as tax]
             [vaelii.impl.types.reasoning :as reasoning]
-            [vaelii.impl.vantage :as vantage]))
+            [vaelii.impl.vantage :as vantage])
+  (:import [java.lang ProcessBuilder$Redirect ProcessHandle]
+           [java.lang.management ManagementFactory]
+           [java.util.concurrent ConcurrentLinkedQueue]))
 
 ;; ---- measurement --------------------------------------------------------
 
@@ -2897,13 +2902,14 @@
 
 (defn- genl-edge-beside-a-closure-antecedent-extent
   "n types `(gce_mem T)` below `gce_top` beside the rule `(gce_mem ?x) (genl ?x gce_top) ⇒
-  (gce_out ?x)`, and a `genl` edge between two fresh types asserted, timed per edge, and
-  retracted.
+  (gce_out ?x)`, and the sentence `(datum i)` over fresh types asserted, timed per
+  sentence, and retracted: a `genl` edge, or a `partition` whose `genl` pairs
+  (`tax/installed-edges`) are its parts below its whole.
 
-  The edge reaches the rule through its `genl` antecedent, but its upper end does not
-  reach `gce_top`, so it adds no pair the antecedent reads.  A re-join of the rule over
-  its extent per edge reads here as growth."
-  [n]
+  The sentence reaches the rule through its `genl` antecedent, but no pair it adds reaches
+  `gce_top`, so it adds no pair the antecedent reads.  A re-join of the rule over its
+  extent per sentence reads here as growth."
+  [datum n]
   (let [kb (fresh-kb)
         t  (fn [s i] (symbol (str s i)))]
     (v/with-deferred-settle kb
@@ -2914,7 +2920,7 @@
         (v/assert kb (list 'genl (t "gcet_" i) 'gce_top) 'CxPerf)))
     (doall (for [i (range 60)]
              (let [e  (volatile! nil)
-                   ns (nanos (vreset! e (v/assert kb (list 'genl (t "gcea_" i) (t "gceb_" i)) 'CxPerf)))]
+                   ns (nanos (vreset! e (v/assert kb (datum i) 'CxPerf)))]
                (v/retract! kb @e)
                ns)))))
 
@@ -3324,10 +3330,12 @@
 (defn- routed-walks-up-a-braid
   "The `genl` witness walks from the eight bottom types of a braid of n levels of eight
   types to the root over one router (`tax/reach-support`), after an edge change retires
-  the held closures, divided by n.  Each type is under two types of the level above and
-  a side type of its level, which is under another root.  The length walk holds a
-  no-route length for each side type and builds no type's up-closure, so a level costs
-  its edges."
+  the held closures.  The reading is per hundred levels, above `noise-floor-ns`.  Each type
+  is under two types of the level above and a side type of its level, which is under
+  another root.  The length walk holds a no-route length for each side type and builds no type's
+  up-closure, so a level costs its edges.  After the checks before it, the 16-level braid
+  stays in CPU cache from one op to the next and the 128-level one does not: the two sizes
+  alternated op by op read 1.14x to 1.35x."
   [n]
   (let [t    (tax/create-taxonomy)
         node #(symbol (str "rwb" %1 "_" %2))
@@ -3342,10 +3350,10 @@
     (doall (for [r (range 30)]
              (do (add (symbol (str "rwbnew" r)) 'rwbroot)
                  (let [router (java.util.HashMap.)]
-                   (quot (nanos (dotimes [j 8]
-                                  (tax/reach-support t :genl (node (dec n) j) 'rwbroot nil
-                                                     (constantly :monotonic) [:monotonic :default]
-                                                     router)))
+                   (quot (* 100 (nanos (dotimes [j 8]
+                                         (tax/reach-support t :genl (node (dec n) j) 'rwbroot nil
+                                                            (constantly :monotonic) [:monotonic :default]
+                                                            router))))
                          n)))))))
 
 (defn- context-edge-beside-stated-facts
@@ -5265,8 +5273,8 @@
                (dsw_on DswFlag) ∧ (dsw_src ?x) ⇒ (dsw_b ?x)
                (dsw_on DswFlag) ∧ (dsw_side ?y) ⇒ (dsw_c ?y)     for n terms y
 
-  The settle asks each stored defeat's target whether its context still believes it
-  (`settle/defeat-belief-moves`), a walk over the target's support and the defeat's, read by
+  The settle asks each stored defeat's target whether its context still withdraws it
+  (`settle/withdrawal-moves`), a walk over the target's support and the defeat's, read by
   `jtms/region-in`.  The claim is that the fixpoint costs the support: a handle it concludes
   queues the support's justifications resting on it and not every dependent, which here are the
   n firings."
@@ -5305,8 +5313,8 @@
                (dsp_side ?y) ⇒ (dsp_on DspFlag)         for n terms y
                (dsp_on DspFlag) ∧ (dsp_src ?x) ⇒ (dsp_b ?x)
 
-  The settle asks each stored defeat's target whether its context still believes it
-  (`settle/defeat-belief-moves`).  The claim is that no walk reads the premise's n
+  The settle asks each stored defeat's target whether its context still withdraws it
+  (`settle/withdrawal-moves`).  The claim is that no walk reads the premise's n
   justifications more than once a settle: the reader's own reasons (`exc/reader-invalid`) are
   kept in the read's memo, and neither `jtms/region-in` nor `exc/rerouted` reads a premise's
   own."
@@ -6218,9 +6226,8 @@
   Pure data: `stp/close-state-from` knows nothing about a KB, so this measures the algorithm and
   not the belief read in front of it, which is linear in the stated constraints.  That the engine
   reaches it is `stp_test/an-arriving-constraint-is-relaxed-into-the-answer-already-held`.  The
-  claim is not flat: a closure is a bound between every pair of instants, so an arriving
-  constraint is quadratic in the instant count however it is reached.  The warm start removes the
-  pass, and the bound is where the two shapes separate."
+  claim is linear: an instant arriving at the chain's end gains a bound to each of the n, and the
+  relaxation reads that row and column alone."
   [n]
   (let [inst  #(symbol (str "Pmt" %))
         base  (reduce (fn [net i] (stp/narrow net (inst i) (inst (inc i)) 8 12))
@@ -6237,6 +6244,73 @@
               t     (nanos (vreset! box (stp/close-state-from net' state nodes)))]
           (stp/constraint (:net @box) head q)
           (recur net' @box (inc i) (conj acc t)))))))
+
+(defn- timed-closing-writes
+  "Sixty writes of `closing` into `CxPerf`, each timed and then retracted."
+  [kb closing]
+  (doall (for [_ (range 60)]
+           (let [box (volatile! nil)
+                 t   (nanos (vreset! box (v/assert kb closing 'CxPerf {})))]
+             (v/retract! kb @box)
+             t))))
+
+(defn- metric-region-write
+  "One `temporalDistance` that closes a negative cycle over three instants, timed and then
+  retracted, in a context holding n more constraints over other instants, with the metric
+  prover alone registered.
+
+  The settle reads the component the constraint names off its instants' argument index
+  (`stp/unsatisfiable-regions`).  Measured 2026-11-19 beside 100 and 1000 constraints:
+  4.97 and 5.62 ms, where a whole read of the context measured 9.25 and 121.6 ms."
+  [n]
+  (let [kb (fresh-kb)
+        at #(list 'temporalDistance %1 %2 '(QuantityFn 1 Hour))]
+    (v/add-prover kb (stp/stp-prover))
+    (doseq [s '[(dimensionOf Hour TimeDimension) (dimensionOf Second TimeDimension)
+                (conversionFactor Hour Second 3600)]]
+      (v/assert kb s 'CxUniverse {:strength :monotonic}))
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (at (symbol (str "PmrA" i)) (symbol (str "PmrB" i))) 'CxPerf {})))
+    (v/assert kb (at 'PmrP 'PmrQ) 'CxPerf {})
+    (v/assert kb (at 'PmrQ 'PmrR) 'CxPerf {})
+    (timed-closing-writes kb (at 'PmrP 'PmrR))))
+
+(defn- metric-dated-region-write
+  "One `temporalDistance` placing an instant dated 2000-02-02 an hour before one dated
+  2000-02-01, timed and then retracted, in a context holding n more dated instants, with
+  the metric prover alone registered.  The calendar epoch joins every dated instant into
+  one strongly connected part; the settle reads the stated component the constraint names
+  with its own instants' dates (`stp/component-rows`), so the region is the three facts."
+  [n]
+  (let [kb (fresh-kb)]
+    (v/add-prover kb (stp/stp-prover))
+    (doseq [s '[(dimensionOf Hour Duration) (dimensionOf Second Duration)
+                (conversionFactor Second Second 1) (conversionFactor Hour Second 3600)]]
+      (v/assert kb s 'CxUniverse {:strength :monotonic}))
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'includesInstant (list 'DayFn 2000 1 (inc (mod i 28))) (symbol (str "PmdD" i)))
+                  'CxPerf {})))
+    (v/assert kb '(includesInstant (DayFn 2000 2 1) PmdA) 'CxPerf {})
+    (v/assert kb '(includesInstant (DayFn 2000 2 2) PmdB) 'CxPerf {})
+    (timed-closing-writes kb '(temporalDistance PmdB PmdA (QuantityFn 1 Hour)))))
+
+(defn- rcc8-region-write
+  "One `nonTangentialProperPart` that closes a three-region cycle, timed and then
+  retracted, in a context holding n more such facts over other regions, with the spatial
+  prover registered.  RCC-8 has no narrowing, so the settle reads the component the fact
+  names off its regions' argument index (`qcn-kb/unsatisfiable-regions`)."
+  [n]
+  (let [kb (fresh-kb)]
+    (v/add-prover kb (space/spatial-prover))
+    (v/with-deferred-settle kb
+      (doseq [i (range n)]
+        (v/assert kb (list 'nonTangentialProperPart (symbol (str "PrwA" i)) (symbol (str "PrwB" i)))
+                  'CxPerf {})))
+    (v/assert kb '(nonTangentialProperPart PrwP PrwQ) 'CxPerf {})
+    (v/assert kb '(nonTangentialProperPart PrwQ PrwR) 'CxPerf {})
+    (timed-closing-writes kb '(nonTangentialProperPart PrwR PrwP))))
 
 ;; ---- a context NAT, a sign chain, a brave ask, a marked clique ------------
 
@@ -6365,7 +6439,7 @@
       (doseq [i (range n)]
         (v/assert kb (list 'forced_monotonic_predicate (symbol (str "prfForced" i))) 'CxUniverse M)))
     (v/assert kb '(not (prf_note PrfItem)) 'CxPerf M)
-    (doall (for [_ (range 400)] (nanos (v/in? kb h))))))
+    (doall (for [_ (range 400)] (nanos (v/believed? kb h))))))
 
 (defn- context-nat-instant-order-append
   "n named intervals, each bounded by two named moments of one chain and holding a slice
@@ -6395,6 +6469,65 @@
                    t (nanos (vreset! h (link n)))]
                (v/retract! kb @h)
                t)))))
+
+(defn- story-chain!
+  "Assert in `cx` n events chained, each starting before the next and ending where the next
+  starts, every four of them a trick, the tricks chained.  Returns the event names."
+  [kb cx n]
+  (let [M {:strength :monotonic}
+        e #(symbol (str "PscE" %))
+        t #(symbol (str "PscT" %))
+        S #(list 'StartFn %)
+        E #(list 'EndFn %)]
+    (doseq [i (range (dec n))]
+      (v/assert kb (list 'instantBefore (S (e i)) (S (e (inc i)))) cx M)
+      (v/assert kb (list 'instantEqual (E (e i)) (S (e (inc i)))) cx M))
+    (doseq [j (range (quot n 4))]
+      (v/assert kb (list 'instantEqual (S (t j)) (S (e (* 4 j)))) cx M)
+      (v/assert kb (list 'instantEqual (E (t j)) (E (e (+ 3 (* 4 j))))) cx M)
+      (when (pos? j) (v/assert kb (list 'instantBefore (E (t (dec j))) (S (t j))) cx M)))
+    (mapv e (range n))))
+
+(def ^:private chain-mints
+  "How many slices `context-nat-mint-along-a-chain` mints one at a time: the same count at
+  both sizes, since the reading is per mint."
+  12)
+
+(defn- context-nat-mint-along-a-chain
+  "`story-chain!` over n + 12 events, each but the middle twelve holding a slice along one
+  monad, built under one deferred settle; then a slice minted at each of the middle twelve.
+  A mint compares the minted time's points with each sibling's (`context-nat/bounds-routes`)
+  by the walk from the minted point and a summary of the sibling's region, taken once per
+  mint (`point-order/*focus*`).  Healthy 4.48x; with a walk along the chain per sibling
+  comparison, 26.34x."
+  [n]
+  (let [kb  (fresh-kb)
+        M   {:strength :monotonic}
+        at  #(list 'CxPmcFn 'CxPmcMonad %)
+        mid (set (range (quot n 2) (+ (quot n 2) chain-mints)))]
+    (v/assert kb '(result CxPmcFn context) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPmcFn 1 genlMonad) 'CxUniverse M)
+    (v/assert kb '(contextArgSubrelation CxPmcFn 2 subintervalOf) 'CxUniverse M)
+    (v/assert kb '(genlCx CxPmcMonad CxPerf) 'CxUniverse M)
+    (let [es (v/with-deferred-settle kb
+               (let [es (story-chain! kb 'CxUniverse (+ n chain-mints))]
+                 (doseq [i (range (count es)) :when (not (mid i))]
+                   (v/assert kb '(pmcNote PmcItem PmcVal) (at (es i)) M))
+                 es))]
+      (doall (for [i (sort mid)]
+               (nanos (v/assert kb '(pmcNote PmcItem PmcVal) (at (es i)) M)))))))
+
+(defn- tightest-start-bound-along-a-chain
+  "`story-chain!` over n events in CxPerf, then `(tightestStartBoundOf E ?t)` asked five
+  times of the last event, whose known lower bounds are every point of the chain before it.
+  One summary per bound of what the walks from it reach decides each pair of bounds
+  (`point-order/tightest-start-bounds`).  Healthy 4.10x; with one `path` per pair of
+  bounds, 23.54x."
+  [n]
+  (let [kb (v/add-reasoner (fresh-kb) :tightest-start-bound)
+        es (v/with-deferred-settle kb (story-chain! kb 'CxPerf n))
+        q  (list 'tightestStartBoundOf (peek es) '?t)]
+    (doall (for [_ (range 5)] (nanos (doall (v/query kb q 'CxPerf)))))))
 
 (defn- calendar-link-append
   "`slices` day slices along one monad, and one named interval starting at a calendar
@@ -6652,6 +6785,43 @@
                      (vreset! spent 0)
                      (v/close! (v/fork base {:backend :disk-log :dir path}))
                      (quot @spent arrivals)))))
+      (finally
+        (disk/close-dir! path)
+        (delete-tree! dir)))))
+
+(defn- fork-remap
+  "Per fork record, a durable fork's reopen over its base rebuilt in the other load order:
+  `rebase/follow-base!` and `rebase/fire-arrivals!`, timed together.  The base holds `base-n`
+  facts `(pfr_dog PfrD<i>)`.  The fork asserts `fork-n` more and retracts a quarter as many
+  base facts, so it names that many base handles.  Each reading rebuilds the base in the
+  order the reading before did not use, so each reopen resolves the named handles by content
+  and rewrites the fork's records and index."
+  [base-n fork-n]
+  (let [dir   (doto (perf-disk-dir) (delete-tree!) (.mkdirs))
+        path  (.getAbsolutePath dir)
+        M     {:strength :monotonic}
+        fact  #(list 'pfr_dog (symbol (str "Pfr" %1 %2)))
+        base  (fn [order]
+                (let [b (fresh-kb)]
+                  (p/reserve-handles! (:records b) (mount/fork-dir-ranges [path]))
+                  (doseq [i order] (v/assert b (fact "D" i) 'CxPerf (assoc M :chain? false)))
+                  b))
+        spent (volatile! 0)
+        timed (fn [f] (fn [& args]
+                        (let [t (System/nanoTime)]
+                          (try (apply f args) (finally (vswap! spent + (- (System/nanoTime) t)))))))]
+    (try
+      (let [f (v/fork (base (range base-n)) {:backend :disk-log :dir path})]
+        (dotimes [i fork-n] (v/assert f (fact "F" i) 'CxPerf M))
+        (dotimes [i (quot fork-n 4)] (v/retract! f (v/handle-of f (fact "D" (* 4 i)) 'CxPerf)))
+        (v/close! f))
+      (with-redefs [rebase/follow-base!   (timed rebase/follow-base!)
+                    rebase/fire-arrivals! (timed rebase/fire-arrivals!)]
+        (doall (for [r (range 8)]
+                 (let [b (base (if (even? r) (reverse (range base-n)) (range base-n)))]
+                   (vreset! spent 0)
+                   (v/close! (v/fork b {:backend :disk-log :dir path}))
+                   (quot @spent fork-n)))))
       (finally
         (disk/close-dir! path)
         (delete-tree! dir)))))
@@ -7363,8 +7533,8 @@
   ```
 
   The new membership tests its type against the term's other types only when a
-  separation reaches it (`membership/add-entry`): the unreached type tests none, and the
-  reached one tests n."
+  separation reaches it, and then only against those a separation reaches too
+  (`membership/reached-types`): neither the unreached nor the reached type tests the n."
   ([n] (membership-beside-held-types n false))
   ([n separated?]
    (let [kb (fresh-kb)
@@ -7621,9 +7791,9 @@
     (v/assert kb '(mh_p MhX) 'CxMh M)
     (v/assert kb '(not (mh_p MhX)) 'CxMh {})
     (let [h (v/assert kb '(mh_q MhY) 'CxMh M)]
-      (v/in? kb h)
+      (v/believed? kb h)
       (doall (for [_ (range 100)]
-               (nanos (dotimes [_ 20] (v/in? kb h))))))))
+               (nanos (dotimes [_ 20] (v/believed? kb h))))))))
 
 (defn- backward-query-beside-candidates
   "Ten `prove`s of a goal one backward rule answers, beside n `irreflexive` self tuples
@@ -8233,17 +8403,15 @@
    ;; no preserved predicate, so the defective `a` is the assert alone and its `b` the
    ;; question of every clash, and one clash keeps the healthy `b·n` out of the denominator.
    ;;
-   ;; Healthy: 9.6x, 11.8x and 13.6x alone at load 23 to 34, 20.4x and 30.9x alone at load
-   ;; 16, 21.9x to 43.1x in a JVM that had run the shape before (n=1 at 0.23 to 0.42 ms
-   ;; against 0.45 to 1.15 cold), and 46.1x in a full run at load 9 (0.185 against 8.51
-   ;; ms).  Defective, with `discovery/*incremental-preserving*` bound false: 149x, 249x and
-   ;; 441x, 373 to 395 ms/op at n=512, the 149x a first run whose n=1 read 2.5 ms.  90 is
-   ;; about twice the worst healthy reading and under the defective ones.
+   ;; Healthy: 0.59x to 2.26x over nine full runs from 2026-11-19 to 2026-11-21, and 1.83x
+   ;; alone (0.72 ms against 1.33).  Defective, with `discovery/*incremental-preserving*`
+   ;; false: 154.86x alone (1.95 ms against 302.0).  5x is about twice the worst healthy
+   ;; reading and a thirtieth of the defective one.
    {:name      :inherited-clash-arbitration-split
     :group     :clashes
-    :claim     "512x the standing inherited clashes split across contexts costs under 90x per unrelated assert — the memo carries each clash, and `CxPW` places them again from current state"
+    :claim     "512x the standing inherited clashes split across contexts costs under 5x per unrelated assert — the memo carries each clash, and `CxPW` places them again from current state"
     :sizes     [1 512]
-    :max-ratio 90.0
+    :max-ratio 5.0
     :run       (partial inherited-clash-arbitration true)}
 
    ;; The stored claims keep entries with no nogood, so a settle publishes nothing for
@@ -8560,6 +8728,13 @@
     :sizes     [1000 16000]
     :max-ratio 2.5
     :run       #(fork-follow % 100 16)}
+
+   {:name      :fork-remap-base-size
+    :group     :index
+    :claim     "a durable fork's reopen over its base rebuilt in another load order costs, per fork record, what it costs over a base sixteen times smaller"
+    :sizes     [1000 16000]
+    :max-ratio 2.5
+    :run       #(fork-remap % 100)}
 
    {:name      :intersect-selectivity
     :group     :index
@@ -9440,7 +9615,7 @@
 
    ;; **Flat, and calibrated from both ends** as the header requires. Healthy it reads
    ;; **0.91x and 0.90x** on full runs (0.74x under `--only`): the answer set is one fact
-   ;; at both sizes and a lookup in the visibility `except` set does not care how much the
+   ;; at both sizes and a lookup in the `except` set does not care how much the
    ;; set holds. The shape
    ;; this exists to catch — the filter re-deriving the hidden set per call, a walk over
    ;; every stored `except` — reads **27.33x**, measured by running this check against a
@@ -9652,14 +9827,14 @@
 
    ;; A forced-monotonic declaration beside n stating contexts that share one descendant with n
    ;; contexts below it, while the declaring context has n contexts below it.  Linear by
-   ;; construction: the declaration reads the n stating contexts once each.  Calibrated
-   ;; from both ends under `--only`: healthy 8.51x (0.52 ms/op against 4.42), and with the
-   ;; reach walking both down-sets once per stating context, 155.53x (11.66 against 1813).
+   ;; construction: the declaration reads the n stating contexts once each.  The check reads
+   ;; 3.20x to 6.43x over nine full runs to 2026-11-21 and 3.78x alone, and 155.53x alone with
+   ;; the reach walking both down-sets once per stating context.  13x is twice the worst.
    {:name      :declaration-beside-stating-contexts-over-a-wide-descendant
     :group     :placement
-    :claim     "16x the stating contexts and the contexts below them beside a forced-monotonic declaration costs under 24x per declaration: linear, not quadratic"
+    :claim     "16x the stating contexts and the contexts below them beside a forced-monotonic declaration costs under 13x per declaration: linear, not quadratic"
     :sizes     [64 1024]
-    :max-ratio 24.0
+    :max-ratio 13.0
     :run       declaration-beside-stating-contexts-over-a-wide-descendant}
 
    ;; The seeding a `genlCx` edge owes the `genl` edges its `sub` already sees.  Flat by
@@ -9743,15 +9918,15 @@
     :max-ratio 2.0
     :run       qcn-network-residency}
 
-   ;; Super-quadratic in the regions (docs/qcn.md, "Cost at load, measured"): 4x the
-   ;; regions reads 10.56x-19.89x over thirty-two full runs to 2026-10-10, and 9.35x under
-   ;; `--only` on 2026-09-28.  A cubic pass would read 64x; 40x is twice the worst healthy
-   ;; reading and under that.
+   ;; Each arriving fact composes with every region above it.  4x the regions reads 3.15x
+   ;; to 5.84x over nine full runs to 2026-11-21 and 4.95x alone (3.80 ms against 18.82).  A
+   ;; pass quadratic per fact reads 16x and a cubic one 64x; 12x is twice the worst healthy
+   ;; reading and under both.
    {:name      :qcn-chain-load
     :group     :solvers
-    :claim     "4x the regions of a containment chain, with a forward rule over the calculus, costs under 40x per arriving fact — not a cubic pass"
+    :claim     "4x the regions of a containment chain, with a forward rule over the calculus, costs under 12x per arriving fact — not a quadratic or cubic pass"
     :sizes     [20 80]
-    :max-ratio 40.0
+    :max-ratio 12.0
     :run       qcn-chain-load}
 
    ;; What grows here is the join's own read of the chain's network, linear in its facts,
@@ -9846,19 +10021,36 @@
     :max-ratio 3.0
     :run       genl-crossing-wide}
 
-   ;; The metric twin of `qcn-network-residency`, and the bound is calibrated the way
-   ;; `inherit-reach-memo` is: from both ends, on full runs.  A closure bounds every pair
-   ;; of instants, so an arriving constraint is quadratic in the instant count whatever
-   ;; route it takes and no memo makes it flat — what this check enforces is that the route
-   ;; is a **relaxation** and not a fresh cubic pass.  At 8x the instants it reads
-   ;; 12.6x-13.4x over three full runs, and 99.5x with the same check driving
-   ;; `stp/close-state` instead, which is the form the bound exists to catch.  35x sits
-   ;; between: 1.9 ms an arrival against 101 ms.
+   {:name      :metric-region-write
+    :group     :solvers
+    :claim     "a write that closes a three-instant negative cycle, per 8x the constraints outside it in its context"
+    :sizes     [100 800]
+    :max-ratio 2.5
+    :run       metric-region-write}
+
+   {:name      :metric-dated-region-write
+    :group     :solvers
+    :claim     "a write that closes a negative cycle through two dated instants, per 8x the dated instants outside it in its context"
+    :sizes     [25 200]
+    :max-ratio 2.5
+    :run       metric-dated-region-write}
+
+   {:name      :rcc8-region-write
+    :group     :solvers
+    :claim     "a write that closes an unsatisfiable three-region RCC-8 cycle, per 8x the facts outside it in its context"
+    :sizes     [100 800]
+    :max-ratio 2.5
+    :run       rcc8-region-write}
+
+   ;; The metric twin of `qcn-network-residency`.  At 8x the instants it reads 10.46x and
+   ;; 10.83x alone on 2026-11-21 (0.10 ms against 1.06), 17.09x and 17.47x with the matrix
+   ;; laid out again and scanned whole on every arrival, and 99.5x with the same check
+   ;; driving `stp/close-state` instead.  20x is about twice the worst healthy reading.
    {:name      :metric-closure-warm-start
     :group     :solvers
-    :claim     "8x the instants costs under 35x per arriving constraint — the closure is relaxed into, not run again"
+    :claim     "8x the instants costs under 20x per arriving constraint — the closure is relaxed into, and only the moved rows and columns are read"
     :sizes     [50 400]
-    :max-ratio 35.0
+    :max-ratio 20.0
     :run       metric-closure-warm-start}
 
    ;; The four below are calibrated from both ends in one warm JVM per revision, under a
@@ -9930,6 +10122,20 @@
     :max-ratio 12.0
     :run       context-nat-instant-order-append}
 
+   {:name      :context-nat-mint-along-a-chain
+    :group     :solvers
+    :claim     "8x the slices along one chain costs under 10x per slice minted in its middle"
+    :sizes     [10 80]
+    :max-ratio 10.0
+    :run       context-nat-mint-along-a-chain}
+
+   {:name      :tightest-start-bound-along-a-chain
+    :group     :solvers
+    :claim     "4x the events along one chain costs under 8x per tightestStartBoundOf of its last event"
+    :sizes     [20 80]
+    :max-ratio 8.0
+    :run       tightest-start-bound-along-a-chain}
+
    {:name      :context-nat-calendar-link-append
     :group     :solvers
     :claim     "16x the day slices costs under 2x per link from a slice's end to the calendar"
@@ -9945,14 +10151,14 @@
     :run       context-nat-calendar-link-beside-timestamps}
 
    ;; Not flat: a rebuild reads every sign fact, so the reading grows with the chain.
-   ;; Healthy 23.94x, 37.75x, 40.74x and 49.98x for 32x the links.  A round-robin fixpoint
-   ;; with a copied support set reads 331.39x (0.25 ms against 83.12).  100x is twice the
-   ;; worst healthy reading and a third of the defective one.
+   ;; Healthy 6.59x to 30.50x for 32x the links over nine full runs to 2026-11-21, 3.97x
+   ;; alone.  A round-robin fixpoint with a copied support set reads 331.39x (0.25 ms against
+   ;; 83.12).  64x is about twice the worst healthy reading and a fifth of the defective one.
    {:name      :sign-chain-rebuild
     :group     :solvers
-    :claim     "32x the links of a sign chain costs under 100x per ask after a write — the rebuild is linear in the sign facts, not quadratic"
+    :claim     "32x the links of a sign chain costs under 64x per ask after a write — the rebuild is linear in the sign facts, not quadratic"
     :sizes     [25 800]
-    :max-ratio 100.0
+    :max-ratio 64.0
     :run       sign-chain-rebuild}
 
    ;; Healthy 0.82x warm and 1.74x cold.  Classifying every dilemma per ask reads 11.98x
@@ -10183,7 +10389,17 @@
     :claim     "a genl edge whose upper end does not reach a rule's genl antecedent, beside 16x that rule's extent, costs under 2x"
     :sizes     [64 1024]
     :max-ratio 2.0
-    :run       genl-edge-beside-a-closure-antecedent-extent}
+    :run       (partial genl-edge-beside-a-closure-antecedent-extent
+                        #(list 'genl (symbol (str "gcea_" %)) (symbol (str "gceb_" %))))}
+
+   {:name      :partition-beside-a-closure-antecedent-extent
+    :group     :chaining
+    :claim     "a partition whose whole does not reach a rule's genl antecedent, beside 16x that rule's extent, costs under 2x"
+    :sizes     [64 1024]
+    :max-ratio 2.0
+    :run       (partial genl-edge-beside-a-closure-antecedent-extent
+                        #(list 'partition (symbol (str "gcew_" %))
+                               (symbol (str "gcea_" %)) (symbol (str "gceb_" %))))}
 
    ;; Both ends measured under `--only`, 2026-10-06: 1.653 -> 1.746 ms/op (1.06x), against
    ;; 16.359 -> 178.728 (10.93x) with the swept firing unrecorded and the rule re-chained
@@ -10344,14 +10560,14 @@
     :max-ratio 2.6
     :run       recover-placement-braided-leaves}
 
-   ;; Both ends measured 2026-10-19, load average 8 to 12.  Healthy 1.05x (0.040 ms
-   ;; against 0.042).  With each entered type tested by its up-closure: 10.24x (0.241 ms
-   ;; against 2.467).
+   ;; Both ends measured 2026-11-21 after the four checks above.  Healthy 1.31x to 2.04x (1.8
+   ;; to 3.1 ms against 3.5 to 4.7), full runs up to 2.41x.  With each entered type tested by
+   ;; its up-closure: 7.52x to 7.63x (23.0 ms against 175.6).
    {:name      :routed-walks-up-a-braid
     :group     :taxonomy
-    :claim     "8x the levels of a braid the witness walks climb costs under 2x per level over one router"
+    :claim     "8x the levels of a braid the witness walks climb costs under 4x per level over one router"
     :sizes     [16 128]
-    :max-ratio 2.0
+    :max-ratio 4.0
     :run       routed-walks-up-a-braid}
 
    ;; Both ends measured 2026-10-17, warm in one JVM.  Healthy 1.20x to 2.93x (2.8 to 5.0
@@ -10595,11 +10811,13 @@
     :max-ratio 2.0
     :run       membership-beside-held-types}
 
+   ;; Healthy 0.83x to 1.13x alone on 2026-11-21.  Testing the fresh type against every type
+   ;; the term holds reads 3.00x and 3.40x alone and 6.08x to 18.17x over nine full runs.
    {:name      :separated-membership-beside-held-types
     :group     :membership
-    :claim     "16x the memberships a term holds costs under 20x per membership of a type a separation reaches: linear in the term's types at most"
+    :claim     "16x the memberships a term holds costs under 2.5x per membership of a type a separation reaches: the fresh type is tested against the term's separated types alone"
     :sizes     [64 1024]
-    :max-ratio 20.0
+    :max-ratio 2.5
     :run       separated-membership-beside-held-types}
 
    {:name      :cover-beside-kept-denials
@@ -10810,6 +11028,94 @@
                                 (and budget-unmet (<= (:ratio best) bound))             :unmet
                                 :else                                                   :fail))))))
 
+(def ^:private default-jobs
+  "One worker per 8 processors, from 1 to 4.  A worker JVM keeps 1.1-1.5 cores busy.  On 36
+  processors (12 performance cores), a 4-worker full run on 2026-11-21 took 1039 s against
+  1827-3342 s for four serial runs.  Its ratios had a geometric mean 0.967x the serial
+  median, and it failed the one check the newest serial run failed."
+  (-> (.availableProcessors (Runtime/getRuntime)) (quot 8) (max 1) (min 4)))
+
+(def ^:private result-marker
+  "The prefix on a worker's result line; a check's own output shares the worker's stdout."
+  "##perf-result##")
+
+(defn- worker-loop
+  "`--worker`: read check names from stdin, one a line, run each (`run-check`) and print
+  its result as one line of EDN after `result-marker`, until stdin closes."
+  [tolerance quick?]
+  (let [by-name (into {} (map (juxt :name identity)) checks)]
+    (doseq [line (line-seq (io/reader System/in))]
+      (println result-marker (pr-str (run-check (by-name (keyword line)) tolerance quick?)))
+      (flush))))
+
+(defn- spawn-worker
+  "Start worker JVM `i` with this JVM's options, classpath and log level, and a
+  `java.io.tmpdir` of its own, because the disk checks all write `perf-disk-dir` under it.
+  The worker's stderr is this process's stderr."
+  [i tolerance quick?]
+  (let [tmp  (doto (io/file (System/getProperty "java.io.tmpdir")
+                            (str "vaelii-perf-" (.pid (ProcessHandle/current)) "-" i))
+               (.mkdirs))
+        opts (remove #(str/starts-with? % "-Djava.io.tmpdir=")
+                     (.getInputArguments (ManagementFactory/getRuntimeMXBean)))
+        cmd  (concat [(str (io/file (System/getProperty "java.home") "bin" "java"))]
+                     opts
+                     [(str "-Djava.io.tmpdir=" tmp)
+                      "-cp" (System/getProperty "java.class.path")
+                      "clojure.main" "-m" "vaelii.bench.perf" "--worker"
+                      "--tolerance" (str tolerance)]
+                     (when quick? ["--quick"])
+                     (when-some [l (v/log-level)] ["--log-level" (name l)]))
+        proc (-> (ProcessBuilder. ^java.util.List (vec cmd))
+                 (.redirectError ProcessBuilder$Redirect/INHERIT)
+                 (.start))]
+    {:proc proc :tmp tmp
+     :in   (io/writer (.getOutputStream proc))
+     :out  (io/reader (.getInputStream proc))}))
+
+(defn- worker-result
+  "Send check `c` to worker `w` and block on its result line.  Every other line the worker
+  prints goes to stderr.  Throws when the worker exits first, as a check that throws in
+  this JVM ends the run."
+  [{:keys [in out]} c]
+  (doto ^java.io.Writer in (.write (str (name (:name c)) "\n")) (.flush))
+  (loop []
+    (let [line (.readLine ^java.io.BufferedReader out)]
+      (cond
+        (nil? line) (throw (ex-info (str "perf worker exited during " (name (:name c)))
+                                    {:check (:name c)}))
+        (str/starts-with? line result-marker)
+        (edn/read-string (subs line (count result-marker)))
+        :else (do (binding [*out* *err*] (println line)) (recur))))))
+
+(defn- stop-workers!
+  "Close each worker's stdin, wait for it to exit, and delete its tmpdir."
+  [workers]
+  (doseq [{:keys [in ^Process proc tmp]} workers]
+    (.close ^java.io.Writer in)
+    (.waitFor proc)
+    (delete-tree! tmp)))
+
+(defn- run-pooled
+  "Run `cs` and return their `[check result]` pairs in `cs`'s order, calling `done` with
+  each check as it finishes.  With no `workers` the checks run in this JVM in order;
+  otherwise each worker takes the next unstarted check whenever it finishes one.  A worker
+  is a JVM and not a thread: every check opens its KB on space 9 (`fresh-kb`), and
+  `measure`'s `System/gc` stops every thread of its JVM."
+  [workers cs tolerance quick? done]
+  (if (empty? workers)
+    (mapv (fn [c] (let [r (run-check c tolerance quick?)] (done c) [c r])) cs)
+    (let [queue (ConcurrentLinkedQueue. ^java.util.Collection (vec (map-indexed vector cs)))
+          out   (object-array (count cs))]
+      (->> workers
+           (mapv (fn [w] (future (loop []
+                                   (when-some [[i c] (.poll queue)]
+                                     (aset out i [c (worker-result w c)])
+                                     (done c)
+                                     (recur))))))
+           (run! deref))
+      (vec out))))
+
 (defn- report [{:keys [name claim unmet budget-unmet phase]} {:keys [small large ratio bound budget-ns sizes status retried]}]
   (let [[s l] sizes]
     (println (format "  %-20s %s%s" (clojure.core/name name)
@@ -10862,7 +11168,7 @@
 (defn- usage-exit [msg]
   (binding [*out* *err*]
     (println msg)
-    (println "usage: lein perf [--only <name|group>[,…]] [--tolerance <x>] [--quick] | --list"))
+    (println "usage: lein perf [--only <name|group>[,…]] [--tolerance <x>] [--quick] [--jobs <n>] | --list"))
   (System/exit 2))
 
 (defn- parse-args [args]
@@ -10870,11 +11176,17 @@
   ;; reading as a single-check run, a dropped unknown flag judges at the default
   ;; tolerance (`--tolerence 1.5` at 1.0), and a bare `--tolerance` NPEs — which
   ;; gate.sh reports exactly like a regression
-  (loop [m {:tolerance 1.0 :quick? false :only nil :list? false} [a & more] args]
+  (loop [m {:tolerance 1.0 :quick? false :only nil :list? false :jobs default-jobs} [a & more] args]
     (case a
       nil          m
       "--list"     (recur (assoc m :list? true) more)
       "--quick"    (recur (assoc m :quick? true) more)
+      "--worker"   (recur (assoc m :worker? true) more)
+      "--log-level" (recur (assoc m :log-level (keyword (first more))) (rest more))
+      "--jobs"     (let [n (some-> (first more) parse-long)]
+                     (if (and n (pos? n))
+                       (recur (assoc m :jobs n) (rest more))
+                       (usage-exit (str "--jobs needs a positive integer, not " (first more)))))
       "--only"     (let [names (into #{} (comp (map str/trim) (remove str/blank?) (map keyword))
                                      (some-> (first more) (str/split #",")))]
                      (if (seq names)
@@ -10889,7 +11201,12 @@
       (usage-exit (str "unknown flag: " a)))))
 
 (defn -main [& args]
-  (let [{:keys [tolerance quick? only list?]} (parse-args args)
+  (let [{:keys [tolerance quick? only list? jobs worker? log-level]} (parse-args args)
+        _        (when worker?
+                   (some-> log-level v/set-log-level)
+                   (worker-loop tolerance quick?)
+                   (shutdown-agents)
+                   (System/exit 0))
         selected (cond->> checks
                    only (filter #(or (contains? only (:name %)) (contains? only (:group %)))))
         unknown  (sort (remove (into (set (keys groups)) (map :name) checks) only))
@@ -10907,37 +11224,35 @@
       (println "no such check or group:" (str/join ", " unknown)
                "— groups:" (vec (keys groups)) "— checks:" (mapv :name checks))
       (System/exit 2))
-    (println (format "\nvaelii performance checks — %d check(s), tolerance %.2fx%s\n"
-                     (count selected) (double tolerance) (if quick? ", quick" "")))
     (let [total   (count selected)
+          jobs    (min jobs (max 1 total))
+          _       (println (format "\nvaelii performance checks — %d check(s), tolerance %.2fx%s%s\n"
+                                   total (double tolerance) (if quick? ", quick" "")
+                                   (if (> jobs 1) (format ", %d worker JVMs" jobs) "")))
+          workers (when (> jobs 1) (mapv #(spawn-worker % tolerance quick?) (range jobs)))
           ;; Every verdict is reported together at the end (below), so the run itself
-          ;; emits nothing per check — a `perf-progress k/total name` marker on *err*
-          ;; as each finishes gives `lein gate` something to poll into a live bar
+          ;; emits nothing per check — a `<marker> k/total name` line on *err* as each
+          ;; finishes gives `lein gate` something to poll into a live bar
           ;; (scripts/gate.sh) without touching the clean stdout verdict stream.
-          results (doall
-                   (map-indexed
-                    (fn [i c]
-                      (let [r (run-check c tolerance quick?)]
-                        (binding [*out* *err*]
-                          (println (format "perf-progress %d/%d %s"
-                                           (inc i) total (name (:name c))))
-                          (flush))
-                        [c r]))
-                    selected))
+          run-all (fn [cs marker]
+                    (let [k (atom 0)]
+                      (run-pooled workers cs tolerance quick?
+                                  (fn [c]
+                                    (locking k
+                                      (binding [*out* *err*]
+                                        (println (format "%s %d/%d %s" marker (swap! k inc)
+                                                         (count cs) (name (:name c))))
+                                        (flush)))))))
+          results (run-all selected "perf-progress")
           ;; a check over its bound is run once more after the rest, the better ratio
           ;; standing: a stall long enough to span both of `run-check`'s attempts has
           ;; passed by then, and a regression fails again
           retry   (filterv (fn [[_ r]] (= :fail (:status r))) results)
           retried (into {}
-                        (map-indexed
-                         (fn [i [c r]]
-                           (let [r' (run-check c tolerance quick?)]
-                             (binding [*out* *err*]
-                               (println (format "perf-retry %d/%d %s"
-                                                (inc i) (count retry) (name (:name c))))
-                               (flush))
-                             [(:name c) (assoc (min-key :ratio r' r) :retried true)])))
-                        retry)
+                        (map (fn [[c r] [_ r']]
+                               [(:name c) (assoc (min-key :ratio r' r) :retried true)])
+                             retry (run-all (mapv first retry) "perf-retry")))
+          _       (stop-workers! workers)
           results (mapv (fn [[c r]] [c (get retried (:name c) r)]) results)]
       (doseq [[c r] results] (report c r))
       (settle-projection results)

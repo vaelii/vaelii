@@ -37,7 +37,7 @@
 
   `structural-integrate` stays outside that framework permanently and no declaration
   can name its arms: they dispatch on a sentence's *shape* rather than on its functor
-  — a rule, an `exceptWhen` meta, a visibility `except`, and a disjoint metatype's
+  — a rule, an `exceptWhen` meta, an `except`, and a disjoint metatype's
   member, whose functor is the metatype and so is data rather than vocabulary.
 
   What this namespace still owns is everything the arms are and everything they need:
@@ -474,14 +474,14 @@
 
 (defn- recheck-preserving-firings
   "A sentence moved what a preserved predicate licenses: queues every forward rule
-  carrying an antecedent on one (`inherit/rejoin-rules`), so the firings that joined on an
-  inherited claim are put in front of `chain/inheritance-withdrawn?` at the next settle.
-  A more specific contrary claim arriving withdraws such a firing with every antecedent
-  still believed (docs/inherit.md, \"Forward chaining on a claim nobody stored\").  The
+  carrying an antecedent on one (`inherit/recheck-rules`), so the next settle re-places the
+  guard defeats of the firings that joined on an inherited claim.
+  A contrary claim arriving moves such a defeat with every antecedent still believed
+  (docs/inherit.md, \"Forward chaining on a claim nobody stored\").  The
   `{::preserving sentence}` marker narrows by the goals the sentence can move
   (`inherit/moved-goal-test`)."
   [kb sentence]
-  (when-let [rs (inherit/rejoin-rules kb sentence)]
+  (when-let [rs (inherit/recheck-rules kb sentence)]
     (mark-recheck kb rs {::preserving sentence})))
 
 (defn- rules-taking
@@ -898,10 +898,24 @@
       (argument/note-defeated! kb ts)
       (recheck-on-sentence kb (:sentence ts)))))
 
+(def ^:private contrary-limit
+  "The most contraries of one predicate `recheck-every-exception` and
+  `recheck-contraries-across` queue one `::preserving` marker each for.  Each marker costs one goal test per firing of the rules it queues, so past this
+  count the firings placed across the edge are re-placed instead."
+  64)
+
 (defn recheck-every-exception
-  "Queue `:all` every rule carrying a re-check condition.  `recover` takes it."
+  "Queue `:all` every rule carrying a re-check condition.  Of each preserved predicate
+  something stored can deny (`inherit/deniable-predicates`), queue each stored contrary as
+  its arrival queues it (`recheck-preserving-firings`), and past `contrary-limit` queue the
+  predicate's rules with the `::deniable` marker, which keeps the firings
+  `chain/guard-owed?` names.  `recover` takes it."
   [kb]
-  (mark-recheck kb (reads/watched-rules (:index kb)) :all))
+  (mark-recheck kb (reads/watched-rules (:index kb)) :all)
+  (doseq [pred (inherit/deniable-predicates kb)]
+    (if-let [cs (inherit/contraries-in kb pred p/every-context contrary-limit)]
+      (run! #(recheck-preserving-firings kb %) cs)
+      (mark-recheck kb (inherit/antecedent-rules kb #{pred}) ::deniable))))
 
 (def ^:private closure-answered-exception-functors
   "Exception functors a `genl` edge can flip across arguments, with neither endpoint
@@ -1005,33 +1019,61 @@
   (let [r (get @(reasoning/refused kb) rh)]
     (if (set? r) (boolean (some hit? r)) (= :overflow r))))
 
+(defn- recheck-contraries-across
+  "A `genlCx` edge moved `(:moved m)` in or out of what readers under `sub` see: a firing
+  placed on one side of `(:moved m)` against `(:seen m)` meets or leaves a contrary of its
+  inherited claim (`inherit/deniable-in?`) stored on the other.  Queue each such contrary
+  with `recheck-preserving-firings`, as its own arrival would, and past `contrary-limit`
+  queue the rules of `pred` with a `::placed-in` marker naming the other side."
+  [kb m preds placed-in]
+  (let [tms   (reasoning/tms kb)
+        newly (set (:moved m))
+        old   (into #{} (remove newly) @(:seen m))]
+    (when (seq newly)
+      (doseq [[stored placed] [[old newly] [newly old]]
+              pred preds
+              :when (inherit/deniable-in? kb pred stored)]
+        (if-let [cs (inherit/contraries-in kb pred stored contrary-limit)]
+          (run! #(recheck-preserving-firings kb %) cs)
+          (mark-recheck kb (filterv #(some (placed-in placed) (jtms/dependents tms %))
+                                    (inherit/antecedent-rules kb #{pred}))
+                        {::placed-in placed}))))))
+
 (defn- recheck-genlCx-edge
-  "A `genlCx` edge moved (`context-move`'s `m`): queue `:all` each watched rule an
-  arrival can release (`arrival-releasable-rule?`), one with a firing placed in a context
-  of `(:seen m)` while a context of `(:below m)` stores a sentex (a guard defeat can move),
-  and one with a refusal whose placement context is in `(:under m)`; then post the
-  preserved positions along `genlCx`.  Costs a record fetch per watched rule and a context
-  lookup per firing up to the first hit.  See docs/exceptions.md, \"Taxonomy changes are
-  keyed on what the closure moved\"."
+  "A `genlCx` edge moved (`context-move`'s `m`): queue `:all` each watched or preserving
+  rule (`inherit/declared-in` over `(:seen m)`) an arrival can release
+  (`arrival-releasable-rule?`), or with a refusal whose placement context is in `(:under
+  m)`, and a watched rule with a firing placed in a context of `(:seen m)` while a context
+  of `(:below m)` stores a sentex.  Then post the preserved positions along `genlCx`, and
+  queue the contraries the move shows or hides (`recheck-contraries-across`).  Costs a
+  record fetch per rule and a context lookup per firing up to the first hit.  See
+  docs/exceptions.md, \"Taxonomy changes are keyed on what the closure moved\"."
   [kb m]
-  (let [idx (:index kb) tms (reasoning/tms kb)
-        excepted (reads/watched-rules idx)]
+  (let [idx       (:index kb)
+        tms       (reasoning/tms kb)
+        watched   (set (reads/watched-rules idx))
+        decl?     (and m (inherit/declarations-exist? kb))
+        placed-in (fn [ctxs]
+                    (fn [jid]
+                      (when-let [j (jtms/justification tms jid)]
+                        (when-let [csx (p/get-sentex (:records kb) (:consequence j))]
+                          (contains? ctxs (:context csx))))))
+        ;; a firing placed where a context under `sub` sees it can gain or lose a guard
+        ;; defeat there (`chain/place-guard-defeats!`), unless `:below` stores nothing
+        seen      (when (and m (seq watched))
+                    (when (some #(pos? (long (reads/stored-count-in-context idx %))) @(:below m))
+                      (set @(:seen m))))
+        preds     (when decl? (inherit/declared-in kb @(:seen m)))
+        excepted  (cond-> watched (seq preds) (into (inherit/antecedent-rules kb preds)))]
     (when (and m (seq excepted))
-      (let [affected @(:under m)
-            ;; a firing placed where a context under `sub` sees it can gain or lose a guard
-            ;; defeat there (`chain/place-guard-defeats!`), unless `:below` stores nothing
-            seen     (when (some #(pos? (long (reads/stored-count-in-context idx %))) @(:below m))
-                       @(:seen m))
-            in-ancestor-set? (fn [jid]
-                               (when-let [j (and seen (jtms/justification tms jid))]
-                                 (when-let [csx (p/get-sentex (:records kb) (:consequence j))]
-                                   (contains? seen (:context csx)))))]
+      (let [affected @(:under m)]
         (doseq [rh excepted]
           (when (or (arrival-releasable-rule? kb rh)
-                    (some in-ancestor-set? (jtms/dependents tms rh))
+                    (and seen (watched rh) (some (placed-in seen) (jtms/dependents tms rh)))
                     (refusals-reach? kb rh #(contains? affected (:pctx %))))
             (mark-recheck kb [rh] :all)))
-        (recheck-preserving-along kb 'genlCx)))))
+        (when (seq watched) (recheck-preserving-along kb 'genlCx))))
+    (when (seq preds) (recheck-contraries-across kb m preds placed-in))))
 
 (defn names-any?
   "Does the binding map `b` of a firing or a refusal bind a variable to one of `terms`,
@@ -1195,23 +1237,34 @@
 
 (defn restrength-firings!
   "Set the strength of every justification rule `rh` informs to the rule's current
-  `provers/firing-strength`, in both copies: the record store's justification records
-  (what `supporting-justifications` shows and what `recover` rebuilds the network from)
-  and the network's (`jtms/restrength-informant`, which relabels the region).  A rule's
-  firing strength moves when its defeasibility resolves or an `exceptWhen` arrives or
-  leaves; `dropping-id` is the exception meta-sentex leaving, if any."
+  `provers/firing-strength`, or `:default` for a firing on an inherited claim
+  (`inherit/declaration-record?` names an antecedent), in both copies: the record store's
+  justification records (what `supporting-justifications` shows and what `recover`
+  rebuilds the network from) and the network's (`jtms/restrength-informant`, which
+  relabels the region).  A rule's firing strength moves when its defeasibility resolves or
+  an `exceptWhen` arrives or leaves; `dropping-id` is the exception meta-sentex leaving, if
+  any."
   ([kb rh] (restrength-firings! kb rh nil))
   ([kb rh dropping-id]
    (when-let [rsx (p/get-sentex (:records kb) rh)]
      (when (rules/rule? rsx)
-       (let [strength (provers/firing-strength kb rh rsx (reads/watched-rule? (:index kb) rh)
+       (let [recs     (:records kb)
+             strength (provers/firing-strength kb rh rsx (reads/watched-rule? (:index kb) rh)
                                                dropping-id)
-             tms      (reasoning/tms kb)]
-         (doseq [jid (jtms/dependents tms rh)
-                 :let [j (p/get-justification (:records kb) jid)]
-                 :when (and j (= rh (:informant j)) (not= strength (:strength j)))]
-           (p/put-justification (:records kb) (assoc j :strength strength)))
-         (jtms/restrength-informant tms rh strength))))))
+             tms      (reasoning/tms kb)
+             js       (into [] (keep #(let [j (p/get-justification recs %)]
+                                        (when (and j (= rh (:informant j))) j)))
+                            (jtms/dependents tms rh))
+             capped   (into #{} (keep #(when (some (fn [a] (inherit/declaration-record?
+                                                            (p/get-sentex recs a)))
+                                                   (:antecedents %))
+                                         (:id %)))
+                            js)]
+         (doseq [j js
+                 :let [to (if (capped (:id j)) :default strength)]
+                 :when (not= to (:strength j))]
+           (p/put-justification recs (assoc j :strength to)))
+         (jtms/restrength-informant tms rh strength capped))))))
 
 (defn- force-rule!
   "Rewrite the forced memberships of the stored rule at `rh` and of its firings
@@ -1294,7 +1347,7 @@
       (restrength-firings! kb rh (:id meta-sentex))
       (force-rule! kb rh))))
 
-;; ---- except: visibility removal blocks derivations too -------------------
+;; ---- except: belief removal blocks derivations too -----------------------
 ;; The trigger below queues the rules of every firing resting on H
 ;; (`chain/justification-excepted?`; docs/exceptions.md).
 
@@ -1377,7 +1430,7 @@
          (note-excepted-correspondence! kb target (if edge (first edge) (:context except-sentex))))
        (note-except-move! kb h (:context except-sentex) edge)
        (recheck-defeats-reached kb h closure)
-       ;; the except moves H's visibility with no relabel, so this sentence posts what H's removal posts
+       ;; the except moves belief in H with no relabel, so this sentence posts what H's removal posts
        (when-let [fact (loop [s target, seen #{}]
                          (let [t (some-> s :sentence kb/except-target)]
                            (if (and t (not (seen t)))
@@ -1482,7 +1535,7 @@
                   (recur (cond-> todo inner (conj inner)) (conj done eh)))))))))))
 
 (defn- belief-change-region
-  "`moved` plus the targets of any visibility-excepts it names.  Runs only when an `except`
+  "`moved` plus the targets of any `except`s it names.  Runs only when an `except`
   is stored (`reads/stores-any?`); otherwise returns `moved` unread."
   [kb moved]
   (if-not (reads/stores-any? (:index kb) sx/except-functor)
@@ -1554,7 +1607,7 @@
   "Reconcile every belief-derived taxonomy cache after `moved` may have changed truth.
   Stores nothing; re-running it recomputes from current belief.  `moved` may name
   declaration handles or except handles (expanded to their targets by
-  `belief-change-region`).  The scoped read filters through `res/supporter-believed?` and
+  `belief-change-region`).  The scoped read filters through `res/supporter-unhidden?` and
   is keyed on the change clock, which every write moves."
   ([kb] (reconcile-belief-change kb nil))
   ([kb moved]
@@ -1886,14 +1939,34 @@
   [sentence class?]
   (if (or class? (= 'genl (nm/functor sentence))) (last sentence) (nm/functor sentence)))
 
+(defn- justified-mint?
+  "Does the mint at `h` hold the justification `entail-arg-type` would give it for `ent`
+  over the fact at `src`: a support under the kind's rule (`kv/mint-rules`), or under the
+  kind, over the same antecedents?"
+  [kb ent src h]
+  (let [tms   (reasoning/tms kb)
+        antes (into [src] (:because ent))
+        rh    (when-not (:class ent) (get (kb/mint-rule-table kb) (:kind ent)))]
+    (boolean (or (and rh (jtms/has-justification? tms rh antes h))
+                 (jtms/has-justification? tms (:kind ent) antes h)))))
+
+(defn- held-mint?
+  "Is the mint at `h` believed in `context` (IN and not withdrawn there) and already
+  justified as `ent` over the fact at `src` would justify it?  `entail-arg-type` asks no
+  admission check of one."
+  [kb ent src h context]
+  (and (jtms/in? (reasoning/tms kb) h)
+       (justified-mint? kb ent src h)
+       (not (exc/excepted? kb h context))))
+
 (defn- entail-arg-type
   "Materialize one entailment: store `(:assert ent)` in `context` and justify it by
   `[src-handle, the declaration, the genl edges it descended through]`.  Returns
   `{:new [handle] :violations [v]}`: the handle when the sentex was newly created, the
   violation when it could not be admitted, a cycle through negation excepted
-  (`record-fact-refusal!`).  Depth is one past the deepest supporter and the strength is
-  `conferred-class`'s.  The informant is the inert rule of the declaring kind (`kv/mint-rules`,
-  `mint-rule-handle!`); an arity-class membership (`:class`) keeps its `declaredType`
+  (`record-fact-refusal!`), and none for a `held-mint?`.  Depth is one past the deepest
+  supporter and the strength is `conferred-class`'s.  The informant is the kind's inert
+  rule (`mint-rule-handle!`); an arity-class membership (`:class`) keeps its `declaredType`
   informant.  A justification minting in a type `arity/mintable-type?` refuses is held void.
   A created sentex or a fresh justification on an OUT node draws its own entailments."
   [kb ent src-handle context pre-checked?]
@@ -1930,9 +2003,10 @@
                      (when-let [hidden? (exc/except-hidden-fn kb context)]
                        (or (hidden? src-handle) (some hidden? because))))))
         empty-entailment-result
-        (if-let [v (if memo
-                     (caches/get-or! memo k ask)
-                     (ask))]
+        (if-let [v (cond
+                     (and stored (within-fact :unchanged #(held-mint? kb ent src-handle stored context))) nil
+                     memo  (caches/get-or! memo k ask)
+                     :else (ask))]
           (if (= :not-stratified (:violation v))
             (do (record-fact-refusal! kb [:mint src-handle] sentence context v (cons src-handle because))
                 empty-entailment-result)
@@ -1955,9 +2029,7 @@
                       ;; a mint names its kind's inert rule; an arity-class membership
                       ;; names `declaredType`
                       inf    (if class? (:kind ent) (outside-fact #(mint-rule-handle! kb (:kind ent))))
-                      fresh? (not (or (jtms/has-justification? (reasoning/tms kb) inf antes h2)
-                                      (and (not class?)
-                                           (jtms/has-justification? (reasoning/tms kb) (:kind ent) antes h2))))
+                      fresh? (not (justified-mint? kb ent src-handle h2))
                       ;; `was-in?` records whether `h2` is already believed by another support,
                       ;; read before this justification is added.  It is an O(1) fixpoint read
                       ;; (`jtms/in?`), not an index read, and the cascade below reads it.
@@ -3031,16 +3103,12 @@
   in `context`, whatever its checks found?  So when the mint is stored there with a
   support under the same kind's rule (`kv/mint-rules`) over the same antecedents, and when it
   is not stored and a believed record still subsumes it (`checks/subsumed-mint`), withheld
-  again — an arity-class membership (`:class`) excepted, which nothing withholds.  The
-  two questions `entail-arg-type` asks after its checks, asked first."
+  again — an arity-class membership (`:class`) excepted, which nothing withholds.  Belief
+  is not read, where `held-mint?` reads it."
   [kb ent src context]
   (boolean
    (if-let [h (kb/find-sentex-handle kb (:assert ent) context)]
-     (let [tms   (reasoning/tms kb)
-           antes (into [src] (:because ent))
-           rh    (when-not (:class ent) (get (kb/mint-rule-table kb) (:kind ent)))]
-       (or (jtms/has-justification? tms (:kind ent) antes h)
-           (boolean (and rh (jtms/has-justification? tms rh antes h)))))
+     (justified-mint? kb ent src h)
      (and (not (:class ent))
           (checks/subsumed-mint kb (:assert ent) context)))))
 
@@ -4639,8 +4707,8 @@
           ;; equality on one path from it to its representative, and each schematic rule
           ;; that normalizes a subterm, so dropping any one withdraws the twin and a
           ;; surviving path draws it again (`rederive-descended`).  One witness per choice
-          ;; of supporter along the paths (`tax/path-alternatives`); all of them are
-          ;; believed and visible from the reader whose restatement this is
+          ;; of supporter along the paths (`tax/path-alternatives`); the reader whose
+          ;; restatement this is believes all of them
           (let [displaced (kb/displaced-terms* kb sentence vis)
                 ws        (reduce (fn [acc path] (for [a acc, alt (tax/path-alternatives path)] (into a alt)))
                                   [(into (sorted-set) (filter vis) rule-hs)]
@@ -5220,8 +5288,9 @@
     (derive-merge kb (list 'equals lo hi) context informant antes)))
 
 (defn- monotonic-pair?
-  "Are both members `h` and `o` of a collision `:monotonic`?  Only such a pair of two
-  symbols merges; any other is a nogood the settle places (docs/reference.md, decision 6)."
+  "Are both members `h` and `o` of an `anti_symmetric` converse pair `:monotonic`?  Only
+  such a pair of two symbols merges; any other is a nogood the settle places
+  (docs/reference.md, decision 7)."
   [kb h o]
   (let [tms (reasoning/tms kb)]
     (and (tuple/monotonic-member? tms h) (tuple/monotonic-member? tms o))))
@@ -5248,9 +5317,8 @@
 (defn- derive-functional-equalities-in
   "The functional merges `sentence`, stored as `handle`, forms in exactly `context`
   (docs/equality.md, \"`functional` infers equality instead of throwing\").  Each clash
-  whose filler is a mergeable symbol, whose two members are `:monotonic`, and whose pair
-  `context` does not already hold in one class (`res/same-class-in?`) derives
-  `(equals V1 V2)`.  Returns `{:new :superseded :violations}`, or nil when nothing clashes.
+  that merges at `context` (`checks/functional-merges?`) and whose pair `context` does
+  not already hold in one class (`res/same-class-in?`) derives `(equals V1 V2)`.  Returns `{:new :superseded :violations}`, or nil when nothing clashes.
   The equality takes one justification per declaration of the convicting mark `via`
   (`checks/functional-declaration-supporters`, docs/defenses.md, \"A functional merge
   rests on every declaration of the convicting mark\"), each naming both facts and the
@@ -5259,23 +5327,23 @@
   (let [tax     (reasoning/taxonomy kb)
         recs    (:records kb)
         pred    (nm/functor sentence)
-        ;; ordered by the whole clash's content, never the handle: two handles can fill
-        ;; a slot with one value, and `oh` goes into the antecedents.  A `:default`
-        ;; arrival reads no clash.
-        clashes (when (tuple/monotonic-member? (reasoning/tms kb) handle)
+        args    (nm/args sentence)
+        merges? (fn [[oh v via n :as clash]]
+                  (checks/functional-merges? kb v (checks/functional-filler sentence clash)
+                                             handle oh context via n args))
+        ;; by content, never the handle, which goes into the antecedents.  A `:default`
+        ;; arrival no other filler shares a slot with reads no clash.
+        clashes (when (or (tuple/monotonic-member? (reasoning/tms kb) handle)
+                          (tuple/determinant-member? kb handle))
                   (nm/sort-by-content-key
                    (fn [[oh v via n]] (let [s (p/get-sentex recs oh)]
                                         [v (:sentence s) (:context s) via n]))
-                   (filter (fn [[oh v :as clash]]
-                             (and (tuple/mergeable-values? v (checks/functional-filler sentence clash))
-                                  (monotonic-pair? kb handle oh)))
-                           (checks/functional-clashes kb sentence context))))]
+                   (filter merges? (checks/functional-clashes kb sentence context))))]
     (when (seq clashes)
       (reduce (fn [acc [oh v via n :as clash]]
                 (let [b (checks/functional-filler sentence clash)]
                   ;; skip a pair only when a merge `context` can see already holds it
-                  (if-not (and (tuple/mergeable-values? v b)
-                               (monotonic-pair? kb handle oh)
+                  (if-not (and (merges? clash)
                                (not (res/same-class-in? kb v b context)))
                     acc
                     ;; every declaration constraining `via` at this position — the
@@ -5559,15 +5627,87 @@
                      (some terms (nm/args s))))
              (:antecedents j))))
 
+(defn- functional-collision-slot
+  "`[via n args]` of the functional collision justification `j` over the members `ms`:
+  the mark's predicate and position, read off the `functional` or `functionalInArg`
+  declaration among its antecedents, and the arguments of a member.  nil when no
+  antecedent declares the mark."
+  [recs j ms]
+  (when-let [[via n] (some #(let [s (:sentence (p/get-sentex recs %))]
+                              (case (when (seq? s) (nm/functor s))
+                                functional      (when (= 1 (nm/arity s)) [(second s) 2])
+                                functionalInArg (when (= 2 (nm/arity s)) (vec (rest s)))
+                                nil))
+                           (:antecedents j))]
+    (when-let [args (some-> (p/get-sentex recs (first ms)) :sentence nm/args vec)]
+      (when (<= 1 n (count args)) [via n args]))))
+
+(defn- collision-holds?
+  "Does the collision justification `j` over the members `ms`, all IN, still license its
+  merge?  An `anti_symmetric` one does when every member is `:monotonic`.  A `functional`
+  one does when its fillers merge at the merge's context (`checks/functional-merges?`),
+  so a rival's arrival withdraws a proxy filler's merge."
+  [kb recs j ms]
+  (let [tms (reasoning/tms kb)]
+    (if (and (= 'functional (:informant j)) (= 2 (count ms)))
+      (let [{[_ a b] :sentence c :context} (p/get-sentex recs (:consequence j))
+            [h o] ms]
+        (boolean (when-let [[via n args] (functional-collision-slot recs j ms)]
+                   (checks/functional-merges? kb a b h o c via n args))))
+      (every? #(tuple/monotonic-member? tms %) ms))))
+
+(defn- moved-slots
+  "The slots whose functional merges a settle re-asks, as `tuple/determinant-slots`
+  answers them.  The slots are those a relabelled fact of `region` fills,
+  asked once per settle (`asked`, under `:slot`), and those `tuple/take-slot-moves!`
+  queued.  They are also those an `except` or a `genlCx` edge moved a filler of
+  (`:except-moves`' pending handles), and those a term fills whose determinateness a
+  membership moved."
+  [kb region asked]
+  (let [[left terms] (tuple/take-slot-moves! kb)
+        idx  (:index kb)
+        mine (into [] (remove #(contains? @asked [% :slot])) region)
+        _    (vswap! asked into (map #(vector % :slot)) mine)
+        hid  (keys (:pending @(reasoning/except-moves kb)))]
+    (tuple/determinant-slots kb (concat mine left hid
+                                        (mapcat #(reads/as-stored-with-term idx %) terms)))))
+
+(defn- guarded-rows
+  "The members of the slots of `slots`, and of the slots the stored facts `hs` fill
+  (`tuple/determinant-slots`), whose fillers include one `provers/determinateness` reads
+  as other than `:determinate` in any context.  Only such a slot merges on `:default`
+  evidence (`checks/functional-merges?`)."
+  [kb slots hs]
+  (into #{}
+        (comp (filter (fn [g] (some #(not= :determinate (provers/determinateness kb % '?ctx))
+                                    (into #{} (map first) (vals g)))))
+              (mapcat keys))
+        (vals (merge (tuple/determinant-slots kb hs) slots))))
+
+(defn slot-moves-pending?
+  "Has a `genlCx` move, a departed determinant member or a determinacy membership queued
+  slots whose functional merges `class-moved-merges` re-asks (`tuple/slot-moves?`)?"
+  [kb]
+  (tuple/slot-moves? kb))
+
+(defn note-defeat-moved-slots!
+  "Queue the handles `hs`, the targets a placed `defeat` hid or gave back this pass, for
+  `class-moved-merges` to re-ask their slots (`tuple/note-slots-moved!`).  A filler a
+  defeat hides is no candidate where the defeat is in force.  Returns whether any slot is
+  queued (`slot-moves-pending?`)."
+  [kb hs]
+  (tuple/note-slots-moved! kb hs)
+  (slot-moves-pending? kb))
+
 (defn class-moved-merges
   "Re-ask the collision merges of the handles in `region` (a delay over `jtms/touched`)
-  whose class can have moved: drop each collision justification whose members are all IN
-  and one at `:default` (off when `drop?` is false), and re-derive from each member IN at
-  `:monotonic` but a premise this settle created at that class.  `asked` is the settle's
-  volatile set of `[handle class]` asked already.  `{:new :superseded :violations :removed
-  :members}`, `:removed` the merged removals for the caller's stores and `:members` the
-  dropped justifications' members; nil, with `region` unforced, when no merge mark is
-  declared.  See docs/equality.md, \"`functional` infers equality instead of throwing\"."
+  whose class can have moved, and of the slots `moved-slots` names.  Drop each collision
+  justification whose members are all IN and whose merge no longer holds
+  (`collision-holds?`; off when `drop?` is false), and re-derive, or after a drop queue
+  the slots for the next call.  `asked` is the settle's set of `[handle class]` asked.
+  `{:new :superseded :violations :removed :members}`, `:removed` the merged removals for
+  the caller's stores and `:members` the dropped justifications' members; nil, with
+  `region` unforced, when no merge mark is declared.  See docs/equality.md."
   [kb region asked drop?]
   (let [tax (reasoning/taxonomy kb)]
     (when (or (tax/functional-family-declared? tax) (seq (tax/props tax :anti-symmetric)))
@@ -5578,11 +5718,11 @@
                                                    (not (contains? @asked [% cls]))))
                                   @region))
             down  (fresh :default)
-            up    (into [] (remove #(and (contains? born %)
-                                         (= :monotonic (jtms/premise-strength tms %))))
-                        (fresh :monotonic))
+            up    (fresh :monotonic)
             _     (vswap! asked into (concat (map #(vector % :default) down)
                                              (map #(vector % :monotonic) up)))
+            slots (when (tax/functional-family-declared? tax) (moved-slots kb @region asked))
+            rows  (into #{} (mapcat keys) (vals slots))
             stale (when drop?
                     (into (sorted-set)
                           (comp (mapcat #(jtms/dependents tms %))
@@ -5591,18 +5731,25 @@
                                 (keep (fn [j]
                                         (let [ms (collision-members recs j)]
                                           (when (and (every? #(jtms/defeat-class tms %) ms)
-                                                     (not-every? #(tuple/monotonic-member? tms %) ms))
+                                                     (not (collision-holds? kb recs j ms)))
                                             [(:id j) ms])))))
-                          down))
+                          (concat down (filter #(jtms/defeat-class tms %) rows))))
             removed (reduce (fn [acc [jid]]
                               (let [r (jtms/drop-justification! tms jid)]
                                 (p/delete-justification! recs jid)
                                 (merge-with into acc r)))
                             nil stale)
+            ;; a premise this settle created at its class derived its merges arriving
+            fresh? #(not (and (contains? born %)
+                              (= (jtms/defeat-class tms %) (jtms/premise-strength tms %))))
+            _     (when (seq stale) (tuple/note-slots-moved! kb (into rows (mapcat second) stale)))
+            again (cond-> (into #{} (filter fresh?) up)
+                    (empty? stale) (into (filter (guarded-rows kb slots (filter fresh? down)))
+                                         (concat (filter fresh? down) rows)))
             sxs   (nm/sort-by-content-key (juxt :sentence :context)
                                           (into [] (comp (keep #(p/get-sentex recs %))
                                                          (filter #(nil? (:antecedent %))))
-                                                up))
+                                                again))
             mig   (reduce (fn [acc {:keys [sentence context id]}]
                             (merge-with into acc
                                         (derive-functional-equalities kb sentence context id)
@@ -5758,7 +5905,7 @@
   lost belief rather than its record.  `edges-only?` keeps a dependent only where its
   handle is a route edge (`route-functors`), an entailment antecedent past the pair
   (`past-the-pair?`), or an equality a restatement rests on.  Only a justification whose
-  conclusion is OUT, or withdrawn at its own context (`exc/believed-own?`), qualifies.
+  conclusion is OUT, or withdrawn at its own context (`exc/unwithdrawn-own?`), qualifies.
   The network filter runs before the record fetch."
   [kb handles edges-only?]
   (let [tms  (reasoning/tms kb)
@@ -5768,7 +5915,7 @@
                      (comp (keep #(jtms/justification tms %))
                            (filter #(edge-descended-kind kb (:informant %)))
                            ;; OUT, or withdrawn where it is stored
-                           (remove #(exc/believed-own? kb (:consequence %))))
+                           (remove #(exc/unwithdrawn-own? kb (:consequence %))))
                      (jtms/dependents tms h)))]
     (into []
           (comp (map (juxt identity lost))
@@ -7022,6 +7169,8 @@
     :run (fn [kb m] (when *seed-moves?* {:seeds (move-seeds kb m true)}))}
    {:family :merges-and-mints :on #{:shown :excepted} :stratum :effective
     :run (fn [kb m] {:mig (reconcile-move kb m)})}
+   {:family :functional-slots :on #{:shown :hidden :excepted} :stratum :effective
+    :run (fn [kb m] (tuple/note-contexts-moved! kb (:moved m)) nil)}
    {:family :covered-merges :on #{:shown :excepted} :stratum :effective
     :run (fn [kb m] {:covered (move-covered-merges kb m)})}
    {:family :slice-lifts :on #{:shown :excepted} :stratum :effective
@@ -7892,7 +8041,7 @@
 
 (defn- structural-integrate
   "The structural integrate arms, which no functor can key and so dispatch on the
-  sentence's shape: a rule, an exceptWhen meta-sentex, a visibility `except`, and a
+  sentence's shape: a rule, an exceptWhen meta-sentex, an `except`, and a
   disjoint metatype's member.  Shared by `integrate-sentex`, `integrate-twin` and
   `derived-sentex-added`.  `derived?` drops the rule arm only, since `chain/mint-rule`
   posts a generated rule by name through `index-rule-sentex`; running the arm again would
@@ -7905,8 +8054,8 @@
        ;; an exceptWhen meta-sentex names a rule it qualifies — register it in the
        ;; re-check index under that rule
        (sx/exceptWhen-meta? sentence)  (index-exceptWhen-meta kb sentex)
-       ;; a visibility `(except (sentexHandle H))` fact: queue the firings that use H
-       ;; so settle sweeps any conclusion now resting on an invisible antecedent
+       ;; an `(except (sentexHandle H))` fact: queue the firings that use H
+       ;; so settle sweeps any conclusion now resting on an excepted antecedent
        (= sx/except-functor f)         (do (recheck-except kb sentex)
                                            (reconcile-belief-change kb #{handle}))
        ;; a rule reaching the general path (e.g. rebuilt by recover, or a migrated
@@ -7973,7 +8122,7 @@
           (note-permuting-moves! kb before)))
       (sx/exceptWhen-meta? sentence)
       (unindex-exceptWhen-meta kb sentex)
-      ;; a visibility `except` leaving: queue the firings that use its target so settle
+      ;; an `except` leaving: queue the firings that use its target so settle
       ;; revives the conclusions it was hiding — the mirror of the integrate arm
       (= sx/except-functor f)
       (recheck-except kb sentex)

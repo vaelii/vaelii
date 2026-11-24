@@ -5,7 +5,8 @@
   what the writes move.  Each event's vars (`caches/events`) are wrapped; every row is read
   at each wrapped call's entry and exit, and a row that moved between two reads is charged
   to the innermost event open at the time.  The test fails on a row that moved under an
-  event its `:retired-by` does not name."
+  event its `:retired-by` does not name.  A write to one KB couples no other KB
+  (docs/caches.md, \"Scope\")."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.java.shell :as shell]
@@ -16,14 +17,19 @@
             [vaelii.core :as v]
             [vaelii.host.starter :as starter]
             [vaelii.impl.caches :as caches]
+            [vaelii.impl.profile :as profile]
             [vaelii.impl.reasoning-image :as ri]
             [vaelii.impl.recovery :as recovery]
             [vaelii.impl.sentex :as sx]
+            [vaelii.impl.settle-phases :as phases]
             [vaelii.impl.stp]
             [vaelii.test-util :as tu])
   (:import [java.io File]
+           [java.lang.reflect Field Modifier]
            [java.nio.file Files]
            [java.nio.file.attribute FileAttribute]
+           [java.util.concurrent FutureTask TimeUnit]
+           [java.util.concurrent.atomic AtomicBoolean AtomicInteger AtomicLong AtomicReference]
            [vaelii.impl.observe HeldAtom]))
 
 (use-fixtures :each (tu/neutral-fresh tu/empty-kb))
@@ -175,6 +181,8 @@
    [:taxonomy :supporter-visible?]       "a callback `tax/install-supporter-visibility!` sets"
    [:taxonomy :network-filter-active?]   "a callback `tax/install-supporter-visibility!` sets"
    [:taxonomy :network-visible?]         "a callback `tax/install-supporter-visibility!` sets"
+   [:taxonomy :edge-visible?]            "a callback `tax/install-supporter-visibility!` sets"
+   [:taxonomy :network-edge-visible?]    "a callback `tax/install-supporter-visibility!` sets"
    [:taxonomy :supporter-reaches?]       "a callback `tax/install-supporter-visibility!` sets"
    [:taxonomy :supporter-sentence]       "a callback `tax/install-supporter-visibility!` sets"
    [:taxonomy :index]                    "the index store the supporter families live in, which `tax/install-index!` sets"
@@ -248,6 +256,214 @@
           (is (contains? (:fired st) :image-install)))
         (finally
           (doseq [f (reverse (file-seq (io/file dir)))] (.delete ^File f)))))))
+
+;; ---- one KB's write and another KB's state --------------------------------
+;; See docs/caches.md, "Scope".
+
+(def ^:private shared-state
+  "`{var reason}`: the process-wide vars a write may move by design."
+  {"decide.argument/declares-memo"    "X4: another KB's read costs one scan of the declaration kinds"
+   "disk.durability/writes-in-flight" "the shutdown hook waits on every KB's writes"
+   "rete/registry"                    "R9: one alpha memory per KB, keyed weakly by it"
+   "observe/store-registry"           "X3, X5: every value open over one store shares its counts"
+   "profile/tally"                    "the profiler sums every KB in the process"
+   "settle-phases/clock"              "the phase clock keeps a stack per thread and sums them at a read"})
+
+(defn- engine-object? [x]
+  (and (str/starts-with? (.getName (class x)) "vaelii.") (not (fn? x)) (not (record? x))))
+
+(defn- fingerprint
+  "A hash of what `root` holds, through refs, containers and the engine's objects, over at
+  most 2,000 objects.  An object of any other class is read by identity."
+  [root]
+  (let [budget (volatile! 2000)]
+    (letfn [(fp [x ^long depth]
+              (let [d (dec depth)]
+                (cond
+                  (or (neg? d) (neg? (long (vswap! budget dec)))) 0
+                  (nil? x) 0
+                  (instance? AtomicLong x) (.get ^AtomicLong x)
+                  (instance? AtomicInteger x) (.get ^AtomicInteger x)
+                  (instance? AtomicBoolean x) (hash (.get ^AtomicBoolean x))
+                  (instance? AtomicReference x) (let [v (.get ^AtomicReference x)]
+                                                  (hash [(System/identityHashCode v) (fp v d)]))
+                  (or (number? x) (string? x) (ident? x) (boolean? x)) (hash x)
+                  (or (instance? clojure.lang.IAtom x) (instance? clojure.lang.Volatile x)
+                      (instance? HeldAtom x)) (fp @x d)
+                  (instance? java.util.Map x)
+                  (hash [(.size ^java.util.Map x)
+                         (mapv #(vector (fp (key %) d) (fp (val %) d)) (take 100 x))])
+                  (instance? java.util.Collection x)
+                  (hash [(when (counted? x) (count x)) (mapv #(fp % d) (take 100 x))])
+                  (engine-object? x)
+                  (hash (vec (for [^Field f (.getDeclaredFields (class x))
+                                   :when (not (Modifier/isStatic (.getModifiers f)))]
+                               (do (.setAccessible f true) (fp (.get f x) d)))))
+                  :else (System/identityHashCode x))))]
+      (try (fp root 10) (catch java.util.ConcurrentModificationException _ nil)))))
+
+(defn- mutable? [x]
+  (and (some? x)
+       (or (instance? clojure.lang.IAtom x) (instance? clojure.lang.IRef x)
+           (instance? clojure.lang.Volatile x)
+           (str/starts-with? (.getName (class x)) "java.util.concurrent.atomic.")
+           (and (or (instance? java.util.Map x) (instance? java.util.Collection x))
+                (not (instance? clojure.lang.IPersistentCollection x)))
+           (engine-object? x))))
+
+(defn- holds-mutable?
+  "Can what ref `r` holds change with no write to `r`: a mutable value, or a vector of them?"
+  [r]
+  (let [x @r] (boolean (or (mutable? x) (and (vector? x) (some mutable? x))))))
+
+(defn- static-state
+  "`{var-name value}`: every loaded engine var whose root value can be written in place."
+  []
+  (into {} (for [n (all-ns) :when (str/starts-with? (str n) "vaelii.impl.")
+                 [s ^clojure.lang.Var v] (ns-interns n)
+                 :when (and (not (.isDynamic v)) (.hasRoot v) (mutable? (.getRawRoot v)))]
+             [(str (subs (str n) (count "vaelii.impl.")) "/" s) (.getRawRoot v)])))
+
+(defn- moved-statics
+  "The names in `statics` that move while `(write!)` runs.  A ref counts a change made on
+  this thread.  Any other value, and a ref that `holds-mutable?`, is read at each event's exit.
+  `(inside!)` runs at each event var's first exit."
+  [statics write! inside!]
+  (let [writer  (Thread/currentThread)
+        moved   (atom #{})
+        refs    (filter #(instance? clojure.lang.IRef (val %)) statics)
+        polled  (remove #(let [x (val %)]
+                           (and (instance? clojure.lang.IRef x) (not (holds-mutable? x))))
+                        statics)
+        seen    (atom (into {} (map (fn [[n x]] [n (fingerprint x)])) polled))
+        sample  #(doseq [[n x] polled :let [now (fingerprint x)]]
+                   (when (not= now (@seen n))
+                     (swap! moved conj n)
+                     (swap! seen assoc n now)))
+        wrapped (into {} (for [v (distinct (keep resolve (mapcat :at (vals caches/events))))
+                               :let [f @v first-exit (atom true)]]
+                           [v (fn [& args]
+                                (let [out (apply f args)]
+                                  (sample)
+                                  (when (compare-and-set! first-exit true false) (inside!))
+                                  out))]))]
+    (doseq [[n r] refs]
+      (add-watch r ::moved (fn [_ _ before after]
+                             (when (and (identical? writer (Thread/currentThread))
+                                        (not (identical? before after)))
+                               (swap! moved conj n)))))
+    (try (with-redefs-fn wrapped write!)
+         (sample)
+         @moved
+         (finally (doseq [[_ r] refs] (remove-watch r ::moved))))))
+
+(defn- warm!
+  "Fill `kb`'s read caches."
+  [kb]
+  (doseq [goal '[(idle_animal ?x) (genl idle_dog ?x) (idle_pet ?x)]]
+    (dorun (v/query kb goal U))
+    (dorun (v/prove kb goal U)))
+  (dorun (v/conflicts kb)))
+
+(defn- kb-readings
+  "`{id reading}` of each per-KB row in `kb`: its value's fingerprint and its live count."
+  [kb]
+  (let [raw @@#'caches/derived]
+    (into {} (for [{:keys [id scope]} (:rows (caches/derived-state)) :when (= :kb scope)]
+               [id [(fingerprint (caches/derived-value kb id))
+                    (when-let [live (:live (raw id))] (live kb))]]))))
+
+(defn- on-another-thread
+  "`(f)`'s value on a thread holding none of this thread's bindings or belief holds."
+  [f]
+  (let [task (FutureTask. ^Callable f)]
+    (.start (Thread. task))
+    (.get task 10 TimeUnit/SECONDS)))
+
+(defn- measured
+  "What two runs of `(write!)`, which writes other KBs, move: `:moved`, the vars in `statics`
+  that move in both runs, and `:idle`, the rows of a warm idle KB that another thread sees
+  move during or after either."
+  [statics write!]
+  (let [kb (v/open-kb {:backend :memory :space [::idle] :recover? false})]
+    (try
+      (doseq [s '[(genl idle_dog idle_animal) (idle_dog IdleRex)
+                  (set/forwardRule (implies (idle_dog ?x) (idle_pet ?x)))]]
+        (v/assert kb s U))
+      (let [run (fn []
+                  (warm! kb)
+                  (let [readings #(on-another-thread (fn [] (kb-readings kb)))
+                        before   (readings)
+                        idle     (atom #{})
+                        look     #(let [now (readings)]
+                                    (swap! idle into (for [[id r] before :when (not= r (now id))] id)))
+                        moved    (moved-statics statics write! look)]
+                    (look)
+                    {:moved moved :idle @idle}))
+            a   (run)
+            b   (run)]
+        {:moved (set/intersection (:moved a) (:moved b))
+         :idle  (set/union (:idle a) (:idle b))})
+      (finally (v/clear! kb) (v/close! kb)))))
+
+(defn- rows-held-by
+  "`{var-name #{row-id}}`: the process rows each static var holds."
+  [rows]
+  (reduce (fn [m {:keys [id scope] held :var}]
+            (if (= :process scope)
+              (reduce #(update %1 %2 (fnil conj #{}) id) m
+                      (map second (re-seq #"#'vaelii\.impl\.([^\s\]]+)" held)))
+              m))
+          {} rows))
+
+(defn- coupled
+  "`{structure causes}`: the state a write couples across KBs, a row by its id and a var no
+  row registers by its name.  A cause is a var that moved, or `:idle-kb-moved`."
+  [rows {:keys [moved idle]} shared]
+  (let [held     (rows-held-by rows)
+        counter? (set (for [{:keys [id kind]} rows :when (= :counter kind)] id))
+        content? (set (for [{:keys [id kind keyed-by retired-by]} rows
+                            :when (and (= :cache kind) (= :value keyed-by) (empty? retired-by))]
+                        id))
+        hot      (for [n moved s (held n [n])] [n s])]
+    (reduce (fn [out [structure cause]] (update out structure (fnil conj #{}) cause))
+            {}
+            (concat
+             (for [[n s] hot :when (not (or (contains? shared n) (content? s)))] [s n])
+             ;; a row is retired through the counters keying it, not through the rows it is computed from
+             (for [{:keys [id scope reads retired-by]} rows
+                   :when (= :kb scope)
+                   [n s] hot
+                   :when (and (counter? s)
+                              (or (some #{s} reads)
+                                  (and (= :X3 s) (some #{:G*} (vals retired-by)))))]
+               [id n])
+             (for [id idle] [id :idle-kb-moved])))))
+
+(deftest a-write-to-one-kb-couples-no-other-kb
+  (let [statics (static-state)
+        _       (phases/start)
+        _       (profile/start)
+        seen    (try (measured statics #(scenario! (scenario-kb)))
+                     (finally (phases/stop) (profile/stop)))]
+    (is (= {} (coupled (:rows (caches/derived-state)) seen shared-state))
+        "each coupled structure, with its causes")
+    (is (= #{} (set/difference (set (keys shared-state)) (set (keys statics))))
+        "each exception names a static var")))
+
+(deftest process-wide-state-a-write-moves-is-reported
+  (let [counter (AtomicLong.)
+        statics {"example/write-count" counter}
+        seen    (measured statics #(do (scenario! (scenario-kb)) (.incrementAndGet counter)))]
+    (is (= {"example/write-count" #{"example/write-count"}} (coupled [] seen {})))))
+
+(deftest an-exception-covers-the-shared-state-and-none-of-its-per-kb-readers
+  (let [rows [{:id :Z1 :scope :process :kind :counter :var "#'vaelii.impl.example/clock"}
+              {:id :Z2 :scope :kb :kind :cache :reads [:Z1]}
+              {:id :Z3 :scope :kb :kind :cache :reads [:Z2]}]]
+    (is (= {:Z2 #{"example/clock"}}
+           (coupled rows {:moved #{"example/clock"} :idle #{}} {"example/clock" "shared"}))
+        "the counter's reader with the var behind it, and not the row computed from that reader")))
 
 ;; ---- the counters ----------------------------------------------------------
 
@@ -369,12 +585,12 @@
     (str/join
      "\n"
      (concat
-      ["| id | structure | owner | keyed by | reads | retired by | computed | kind | image | cache | content |"
-       "|---|---|---|---|---|---|---|---|---|---|---|"]
-      (for [{:keys [id label owner keyed-by reads retired-by computed kind imaged? cache
+      ["| id | structure | owner | scope | keyed by | reads | retired by | computed | kind | image | cache | content |"
+       "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+      (for [{:keys [id label owner scope keyed-by reads retired-by computed kind imaged? cache
                     holds-content?]} rows]
         (str "| " (name id) " | " (cell label) " | `" (str/replace owner "vaelii.impl." "")
-             "` | " (name keyed-by) " | " (str/join " " (map name reads)) " | "
+             "` | " (name scope) " | " (name keyed-by) " | " (str/join " " (map name reads)) " | "
              (retired-cell kind retired-by) " | " (name computed) " | " (name kind) " | "
              (if imaged? (name imaged?) "no") " | " (if cache (str "`" cache "`") "") " | "
              (if holds-content? "yes" "") " |"))
@@ -410,7 +626,7 @@
 ;; ---- the export the dependency graph is drawn from ------------------------
 
 (def ^:private export-row-keys
-  #{:id :label :owner :kind :holds-content? :keyed-by :reads :retired-by :computed :imaged?
+  #{:id :label :owner :kind :scope :holds-content? :keyed-by :reads :retired-by :computed :imaged?
     :cache :bound :note :var})
 
 (def ^:private export-event-keys #{:event :n :names})

@@ -497,6 +497,16 @@ per-fact cost.
 * strength `:monotonic` conferred — the entailment adds no defeasibility of its own, so
   `conferred-class` caps it at the weaker of the fact and the declaration.
 
+**A believed mint is not checked again for a source that justifies it.** A declaration or
+fact stated again, or derived again by a rule firing, draws its mints again.
+`special/entail-arg-type` asks no admission check of a mint that is believed in its
+context (IN and not withdrawn there) and already holds that source's justification over
+the same antecedents (`special/held-mint?`), since the draw has no justification to add.
+Such a draw reports no violation, so a violation that content stored after the mint makes
+is not reported by a repeat draw. A mint not stored, not believed, or drawn from another
+source takes the checks
+(`argtype_entail_test/a-believed-mint-its-source-justifies-asks-no-admission-check`).
+
 The informant is the handle of a stored `set/inertRule`, one per declaring kind
 (`kv/mint-rules`; `core.txt` states the eleven of them in CxUniverse). Each rule
 states its kind's entailment over a variable-arity fact pattern, for `arg`:
@@ -761,7 +771,7 @@ trigger membership (`special/descent-surplus-placements`), and under an `except`
 A derivation is not drawn in a context from which an `except` hides one of its
 ingredients: the fact, the declaration, a trigger membership or an edge on the route
 (`entail-arg-type` asks `exc/except-hidden-fn`), as a rule firing is not placed there
-([contexts.md](contexts.md#except-removing-visibility-down-a-context-subtree)). The
+([contexts.md](contexts.md#except-removing-belief-down-a-context-subtree)). The
 `except` moving reaches the derivations in either direction through the settle
 (`special/except-move-sweeps`). An `except` arriving drops each derivation resting on its
 target that the derivation's context no longer sees, or whose context is no longer a

@@ -212,17 +212,27 @@
          :optima         (into [] (keep optima) clusters)
          :unenumerated   unenumerated}))))
 
+(defn- believed-classes
+  "`local-analysis`' classification with each handle `hidden?` answers true for removed from
+  the three classes."
+  [analysis hidden?]
+  (when-let [cls (:classification analysis)]
+    (reduce (fn [m k] (update m k #(into #{} (remove hidden?) %)))
+            cls [:true :supportable :false])))
+
 (defn classify-local
   "The skeptical/credulous classification of the KB's current dilemmas, or with `context`
   of the dilemmas a reader there reads (`clashes/contradictions-at`), from the JTMS
   dependency graph with no backend.  Returns `{:true #{} :supportable #{} :false #{}
-  :refinable #{}}`, or nil when there is no dilemma: a believed datum is `:true` when every
-  optimal resolution keeps it, `:supportable` when some do, `:false` when none do.
-  `:refinable` holds the members of the unenumerated clusters whose members move none of
-  each other, where a `Program` is exact.  A datum past a cap is `:supportable`.  See
-  docs/labeling.md, \"The solve-free bracket\"."
-  ([kb] (:classification (local-analysis kb (clashes/contradictions-of kb))))
-  ([kb context] (:classification (local-analysis kb (clashes/contradictions-at kb context)))))
+  :refinable #{}}`, or nil when there is no dilemma: a datum `context` believes, or with
+  none its own context, is `:true` when every optimal resolution keeps it, `:supportable`
+  when some do, `:false` when none do.  `:refinable` holds the members of the unenumerated
+  clusters whose members move none of each other, where a `Program` is exact.  A datum
+  past a cap is `:supportable`.  See docs/labeling.md, \"The solve-free bracket\"."
+  ([kb] (believed-classes (local-analysis kb (clashes/contradictions-of kb))
+                          #(not (exc/believed-own? kb %))))
+  ([kb context] (believed-classes (local-analysis kb (clashes/contradictions-at kb context))
+                                  (or (exc/belief-hidden-fn kb context) (constantly false)))))
 
 (defn- member-components
   "The dilemmas `ds` grouped into member components: two dilemmas share one when they share
@@ -265,7 +275,7 @@
   with a backend a `component-classifier` for the members it leaves `:refinable`."
   [kb context]
   (let [backend? (solver/available?)]
-    (observe/cached (reasoning/qcn kb) [::classification context backend?]
+    (observe/cached (:clock kb) (reasoning/qcn kb) [::classification context backend?]
                     (fn [_]
                       {:local   (classify-local kb context)
                        :backend (when backend?
@@ -360,17 +370,18 @@
 (defn label-dilemmas
   "`do/labeling`: classify the dilemmas `kb` holds and commit one optimal labeling of them
   inside `ctx`, both read off `local-labeling`.  Records the program, carrying the
-  classification, in `kb`'s `:program` slot; writes `(genlCx ctx base)` and a `:monotonic`
-  copy in `ctx` of each kept assumption, in content order.  Throws
-  `:labeling-inconsistent` when the two disagree.  Returns `{:context ctx :handles [h ...]
-  :classification {...} :program p}`, the handles empty and nothing written when the KB
-  holds no dilemma.  See docs/labeling.md, \"`(do/labeling Ctx)`\"."
+  classification and the kept assumptions (`:keep`), in `kb`'s `:program` slot; writes
+  `(genlCx ctx base)` and a `:monotonic` copy in `ctx` of each kept assumption, in content
+  order.  Throws `:labeling-inconsistent` when the two disagree.  Returns `{:context ctx
+  :handles [h ...] :classification {...} :program p}`, the handles empty and nothing
+  written when the KB holds no dilemma.  See docs/labeling.md, \"`(do/labeling Ctx)`\"."
   [kb ctx base]
   (if-let [ds (seq (clashes/ranked (clashes/contradictions-of kb)))]
     (let [program (dilemmas-program ds)
           {keep-set :keep classification :classification} (local-labeling kb ds program)]
       (check-agrees program keep-set classification)
-      (reset! (reasoning/program kb) (assoc program :classification classification))
+      (reset! (reasoning/program kb)
+              (assoc program :classification classification :keep keep-set))
       (wiring/assert-sentence kb (list 'genlCx ctx base) base {:strength :monotonic})
       {:context ctx
        :program program
@@ -385,19 +396,20 @@
      :classification {:true #{} :supportable #{} :false #{}}}))
 
 (defn label-context
-  "Write `(genlCx ctx base)` and, in `ctx`, a copy of each assumption of the recorded
-  `Program` the TMS believes, in content order.  Returns `{:context ctx :handles [h ...]}`,
-  the handles empty with no recorded program; the edge is written either way.  See
-  docs/asp.md, \"Labeling contexts\"."
+  "Write `(genlCx ctx base)` and, in `ctx`, a `:monotonic` copy of each assumption
+  `label-dilemmas` kept in the recorded `Program` (`:keep`) that its own context believes,
+  in content order.
+  Returns `{:context ctx :handles [h ...]}`, the handles empty with no recorded program;
+  the edge is written either way.  See docs/asp.md, \"Labeling contexts\"."
   [kb ctx base]
-  (let [tms (reasoning/tms kb)
-        program @(reasoning/program kb)
+  (let [program @(reasoning/program kb)
         ;; content order, never the handle set's hash order
         believed (nm/sort-by-content-key #(solve/content-key program %) compare
-                                         (filter #(jtms/in? tms %) (:assumptions program)))]
+                                         (filter #(exc/believed-own? kb %) (:keep program)))]
     (wiring/assert-sentence kb (list 'genlCx ctx base) base {:strength :monotonic})
     {:context ctx
      :handles (into [] (keep (fn [h]
                                (when-let [s (p/get-sentex (:records kb) h)]
-                                 (wiring/assert-sentence kb (:sentence s) ctx nil))))
+                                 (wiring/assert-sentence kb (:sentence s) ctx
+                                                         {:strength :monotonic}))))
                     believed)}))

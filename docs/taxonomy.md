@@ -45,7 +45,10 @@ on the `genlCx` side, `context-up-global` and `genlCx?-global` (the twin of `see
 walks **every** active edge rather than the edges a context sees. The two are spelled apart rather than distinguished by
 arity because on a KB where no edge is context-restricted they return the *same object*:
 a caller that meant to scope and did not is right until the KB it is wrong on. Who reads
-globally, and why: [below](#the-global-readers-and-who-may-use-one).
+globally, and why: [below](#the-global-readers-and-who-may-use-one). The context
+`tax/own-reading` reads each supporter at the context it is stated in, and
+`vaelii.core`'s short arities pass it: an edge a `defeat` or an `except` hides at its own
+context is not walked ([A read with no reader](nmtms.md#a-read-with-no-reader)).
 
 ### Three uses of genl
 
@@ -149,8 +152,8 @@ index's supporter families hold them, keyed by the edge and by the handle (below
 relation holds what belief makes of them:
 
 ```clojure
-{:edges   #{[dog animal]}           ; the ACTIVE edges — those with a believed supporter
- :edge-ctxs {[dog animal] #{CxA}}   ; per active edge, its believed supporters' contexts
+{:edges   #{[dog animal]}           ; the ACTIVE edges — those with an IN supporter
+ :edge-ctxs {[dog animal] #{CxA}}   ; per active edge, its IN supporters' contexts
  :fwd {dog #{animal}}               ; direct up-adjacency (a genl b)
  :rev {animal #{dog}}               ; direct down-adjacency
  :nodes #{dog animal}               ; every node in an active edge
@@ -436,7 +439,7 @@ byte-identical to the one-shorter arity; a supporter with no recorded context (a
 probe) constrains everywhere.
 
 **Believed** here is belief as that reader reads it, not the network's label. The
-supporter predicate the KB installs (`res/supporter-believed?`) applies both: a believed
+supporter predicate the KB installs (`res/supporter-unhidden?`) applies both: a believed
 `except` visible from the reader, and a placed `defeat` in force there, together with
 everything resting only on such a handle. A reader that
 disbelieves an edge therefore stops reaching over it, and `genl?` from that context
@@ -543,8 +546,10 @@ defeating an edge, asserting its reverse and reviving the first: the check reads
 forced-monotonic and is never defeated, so a context cycle comes only from a recovered or
 foreign store, which replays a stored cycle past the check.)
 
-The **`genlCx` closure itself is the stated exception and stays global**:
-visibility scoped by visibility would be circular, every `genlCx` edge is forced
+The **`genlCx` closure itself is the stated exception and is not scoped by assertion
+context**; only an except on one of its edges removes the edge at a reader
+([contexts.md](contexts.md#except-removing-belief-down-a-context-subtree)). Visibility
+scoped by visibility would be circular, every `genlCx` edge is forced
 universal, and the interning above rests on it. So do the identity, storage, trigger,
 and stratification reads. The scoped-or-not split per check, and the deciding of clashes
 only a descendant can see whole, are docs/contexts.md's story.
@@ -577,7 +582,6 @@ E17 too. What is on it:
 
 | Caller class | Why it must not be scoped |
 |---|---|
-| `vaelii.core`'s own short arity of `genls` / `specs` / `genl?` / `disjoint?` / `has-prop?` / `inverse-of` | the public API offers both readings, and this arity **is** the KB-wide one |
 | a stored key, storage context or store census (`res/kb-sentex`, `checks/stored-spelling`, `nat-read/reifiable-function?`, `special/deduce-lifts`, `decide/forced-monotonic?`) | the argument-order fold, a reified spelling and a lift's context are stored once for every reader; the read walk hides the spelling a reader's belief rules out ([canonicalization.md](canonicalization.md)) |
 | assert-time refusals (`wff/genlCx-problems`, `checks`) | a `genlCx` cycle changes what every reader sees, so its refusal reads every edge; `wff/genl-problems` reads the asserting context's edges |
 | the forward join and the trigger keys (`rules/trigger-keys`, `chain`, `inherit/moved-predicates`, `vantage`) | a firing is placed in a context the join decides, so the candidate fan cannot be scoped by one — the narrowing happens at placement |
@@ -588,9 +592,9 @@ E17 too. What is on it:
 | `integrity/taxonomy-reach` | a report on the whole taxonomy has no vantage to read from: `kb-quality`'s census reads it with a nil context, and a `kb-integrity` sweep passes its audit context and reads scoped |
 | `integrity/clash-partners` | a rule pair is decided from a common descendant of the two rules' contexts, a vantage belonging to neither, so the candidate fan cannot be scoped by either |
 
-A visibility `except` (docs/contexts.md) can hide a *supporter* from a reader, and then
+An `except` (docs/contexts.md) can hide a *supporter* from a reader, and then
 the context-only filter is not enough: the scoped walk asks the KB, per supporter, whether
-that handle is believed and unhidden from the concrete reader (`supporter-visible?`,
+the concrete reader believes that handle (`supporter-visible?`,
 installed by the KB). The read walk reads each supporter's justifications, any defeat's
 force and any except, and any write can move one of those. So **a scoped read that reads
 supporter belief is held for one stretch of the change clock under its reading**: the memo
@@ -600,8 +604,9 @@ write evicts one: any write retires every such entry, and the next read pays its
 A reader under a settle's hold reads a negative clock, so it shares no entry with the
 writer. That path is conditional **per relation** (`relation-filter-active?`): it runs only while
 some target of a stored `except` or `defeat` is a supporter of the relation being read, or of `genlCx`, whose holes move
-every reader's ancestor set. A supporter no except targets is visible iff it is believed, which
-the active edge set already records, so an except on an ordinary fact leaves every
+every reader's ancestor set. A supporter whose support holds no target of a stored `except` or `defeat` is believed at
+a reader iff it is IN and stored in a context the reader sees. The active edges and their
+`:edge-ctxs` record exactly that, so an except on an ordinary fact leaves every
 taxonomy read on the context-only path. `context-down` is the read with no single
 reader — each candidate descendant brings its own ancestor set — so under an except that
 reaches `genlCx` it filters the raw candidates by each one's own forward walk and
@@ -694,8 +699,9 @@ Three consequences follow:
   `placement-rep` reads and a component found only at the batch's settle is a firing
   placed on whichever member it happened to see.
 
-`recover` installs every believed edge, so it is a bulk load and is deferred like one,
-repairing once before anything reads the relation back (~2.8× on a 16k-edge chain).
+`recover` installs every edge the network holds IN, so it is a bulk load and is deferred
+like one, repairing once before anything reads the relation back (~2.8× on a 16k-edge
+chain).
 
 Depth *numbers* differ between an incremental build and a from-scratch repair — the
 first only ever grows a depth, the second computes each node's exact height above the
@@ -975,9 +981,9 @@ end. A route search whose source has one step, and that step ends at the target,
 that step as the only route (`every-uncovered-route`).
 
 A caller asking many witnesses under one supporter-class reading hands `tax/reach-support`
-a router, a HashMap the walks share: the edge ranks, the edge witnesses, and per target and
-threshold the fewest admitted edges from each type entered to the target. The
-breadth-first walk expands neighbours in name order, so the path it names is the first
+a router, a HashMap the walks share: each type's neighbours in name order, the edge ranks,
+the edge witnesses, and per target and threshold the fewest admitted edges from each type
+entered to the target. The breadth-first walk expands neighbours in name order, so the path it names is the first
 shortest path in that order, and the path read off the lengths takes, from each type, the
 first neighbour one edge nearer the target: the same path
 (`taxonomy_test/a-witness-read-off-held-route-lengths-names-the-path-the-walk-names`). A
@@ -1136,7 +1142,7 @@ Three mechanisms declare that types share no instance; all are closed under `gen
   **The exemption is the exception's alone.** A stated `orthogonal` exempts nothing, and
   the predicate `genl` edge carries no exemption from the exception up to it.
 
-**A separation answers a denial.** With `(S x)` believed and visible from the reader,
+**A separation answers a denial.** With `(S x)` believed at the reader,
 and `S` separated from `T` there, `query` answers `(not (T x))` and `argue` of `(T x)`
 answers `:false` (`provers/DisjointnessNegationProver`, [inference.md](inference.md)).
 The denial is read at the query and never stored, so it leaves when the membership or the
@@ -1166,8 +1172,7 @@ sides of the separation to one rule:
   membership and capping the denial at `:default` is the other reading, and the larger
   one; the engine takes the monotonic rule on both sides.
 - **A declaration** (`disjoint`, `partition`, `sibling_disjoint`, `disjoint_metatype`,
-  `separating`) separates here at either strength while it is believed and visible at the
-  reader. A `:default` `(disjoint S T)` denies `(T x)` from `(S x)`, which applies the
+  `separating`) separates here at either strength while the reader believes it. A `:default` `(disjoint S T)` denies `(T x)` from `(S x)`, which applies the
   default forward and contraposes nothing. A disjoint metatype's membership `(M T)` is
   an ordinary fact, so it separates here only at `:monotonic`. The part edges a
   `covering` installs carry the cover's class (`res/holding-class`), so a `:default`
@@ -1428,7 +1433,10 @@ full in [equality.md](equality.md).
 
 The **standing** question needs no index: a term is a candidate iff it holds two believed
 memberships, so walking the memberships finds every candidate exactly, which is what
-`core/exposed-clashes` does. It names every jointly-visible pair, decided or not.
+`core/exposed-clashes` does. It names every jointly-visible pair, decided or not, at each
+context that believes and sees both memberships with the pair's own decision set aside
+(`clashes/sees-both?`). A pair an `except`, or a `defeat` of another nogood, hides a
+member of at a context is not named there.
 
 ## Covering: a whole and the parts named against it
 
@@ -1492,6 +1500,15 @@ not**: a believed `(not (Part X))`, never a `(Part X)` that merely cannot be pro
 Negation as failure is a separate operator, spelled `unknown`, and it stays a query
 operator that nothing stores ([naf.md](naf.md)).
 
+A denial can rest on a membership the cover proves. With the extents of parts `B` and `C`
+closed ([naf.md](naf.md#a-closed-extent-not-p-a-without-a-stored-negative)), `(not (B
+X))` holds exactly while `(B X)` finds nothing. The cover answers `(B X)` by asking
+`(not (C X))`, which asks `(C X)` in turn. `CoveringProver` declines a goal it is already
+solving in the same context, so the inner read of that goal answers from the other
+provers alone. With a third part open and not denied, the cover proves neither closed
+part, each closed extent denies its own, and the two denials prove the third
+(`covering_inference_test/two-closed-parts-of-a-cover-deny-a-member-stated-in-neither`).
+
 Ruling out *every* part falsifies the cover. `(W X)` with `(not (A X))`, `(not (B X))`
 and `(not (C X))` is a contradiction of kind `:cover`, and the entry point treats it as
 it treats a disjointness clash: the sentence that completes it is stored, and the
@@ -1522,7 +1539,9 @@ So a write is refused over a cover only when the first cover it refutes names no
 opposing sentex: every part denied, and none by a stored negation, a separation or the
 write's own membership. Those handles are stored reads, so the refusal paths read them
 before proving anything, and prove a cover's parts only when it could refuse, or when it
-comes before one that has been refuted (`checks/cover-problem`).
+comes before one that has been refuted (`checks/cover-problem`). A read of a part's stored
+denials fans over the part's supertypes cut to the predicates holding a stored fact about
+the term (`res/*cut-every-fan?*`).
 
 ### `partition` and `separating` add no separation mechanism of their own
 
@@ -1621,7 +1640,7 @@ Beyond types, the taxonomy caches predicate properties, declared as sentexes and
 maintained by `integrate-sentex`. The relation marks `irreflexive`, `anti_symmetric`,
 `asymmetric`, `functional`, `functionalInArg` and `anti_transitive`, the relation pair
 `negates`, the function classes
-`injection`, `surjection` and `bijection`, and the arity bindings ([Arity](#arity)), are forced-monotonic: each is never the loser of a nogood whatever strength it was
+`injective_predicate`, `surjective_predicate` and `bijective_predicate`, and the arity bindings ([Arity](#arity)), are forced-monotonic: each is never the loser of a nogood whatever strength it was
 written at, and a denial of one loses to it at either strength
 ([nmtms.md](nmtms.md#the-forced-monotonic-set)). A `transitiveInArg` declaration is not
 forced-monotonic and is weighed as a member of an inherited nogood. The separations
@@ -1935,8 +1954,8 @@ the membership nogood, as a type `genl` edge is.
   the *query* but would not set the `:symmetric` property the enforcement reads, since a
   genl-inherited membership is not a stored `symmetric` sentex the mark ingestion sees — so
   the rules, which materialize that sentex, are the minimal correct expression.
-- `(injection P)`, `(surjection P)`, `(bijection P)` — the composite **function marks**,
-  no engine code either: eight shipped `core.txt` rules derive what the engine already
+- `(injective_predicate P)`, `(surjective_predicate P)`, `(bijective_predicate P)` — the composite **function marks**,
+  no engine code either: nine shipped `core.txt` rules derive what the engine already
   enforces and audits. Each mark splits into two halves, and the split is what the family
   is for. The **enforced** half is `(functional P)` and `(functionalInArg P 1)`, merged or
   decided as a nogood exactly as a directly written mark is. The **audited**
@@ -1947,9 +1966,9 @@ the membership nogood, as a type `genl` edge is.
 
   | mark | single-valued | one-to-one | total on `D` | onto `R` |
   |---|---|---|---|---|
-  | `injection`  | yes | yes | yes | no  |
-  | `surjection` | yes | no  | yes | yes |
-  | `bijection`  | yes | yes | yes | yes |
+  | `injective_predicate` | yes | yes | yes | no  |
+  | `surjective_predicate` | yes | no  | yes | yes |
+  | `bijective_predicate` | yes | yes | yes | yes |
 
   **`D` and `R` are not arguments of the mark.** Totality and ontoness are claims about a
   domain and a range rather than about `P` alone, and `(arg P 1 D)` and `(arg P 2 R)`
@@ -1964,9 +1983,12 @@ the membership nogood, as a type `genl` edge is.
   **The two halves divide on what an open world can refuse.** A second filler contradicts
   a stored one, so the engine refuses it at the write. A domain member with no filler
   contradicts nothing — the filler may arrive next — so totality is a sweep to run at a
-  checkpoint. `(bijection P)` derives `(injection P)` and `(surjection P)` rather than the
+  checkpoint. `(bijective_predicate P)` derives `(injective_predicate P)` and `(surjective_predicate P)` rather than the
   base marks directly, so the whole family reaches the engine through two entries.
-  `(genl bijection injection)` and `(genl bijection surjection)` state the subsumption
+  Conversely, a predicate that is both an `injective_predicate` and a `surjective_predicate` is concluded a
+  `bijective_predicate` by a forward-only rule, so no goal runs it backward, and retracting either
+  mark withdraws the `bijective_predicate`.
+  `(genl bijective_predicate injective_predicate)` and `(genl bijective_predicate surjective_predicate)` state the subsumption
   outright; those edges set none of the properties the enforcement reads, for the reason
   `equivalence_relation`'s entry above gives, so the rules are the minimal correct
   expression.
@@ -2562,7 +2584,7 @@ fact whose argument holds a separated type holds that stored fact inert at the n
 settle, as the fact arriving after the constraint is
 ([argtypes.md](argtypes.md#an-argument-that-fails-its-declared-type-is-held-inert)).
 Under the entailing reading `assert` stores a symbol, and the derivation reaches back in
-every order. `try-assert` of the constraint reads the distinct arguments the stored tuples
+every order. `try-assert` of the constraint reads the distinct arguments the believed tuples
 hold at its position (`checks/declaration-conflict`) and refuses the declaration when one
 of them holds a type separated from the declared one ([api.md](api.md#refusing-a-clash)).
 

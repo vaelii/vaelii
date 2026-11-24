@@ -27,7 +27,7 @@
     than a rebuttal, and a caller usually wants to see it alongside.
 
   **Detection matches the engine, not the intuition.**  A coexisting dilemma keeps BOTH
-  sides `in?`, so `why-not` reports `:believed? true` on either — it never reads
+  sides believed, so `why-not` reports `:believed? true` on either — it never reads
   `:defeated` there (that reason is reserved for the strength-defeat, i.e. the resolved
   case).  So the named-sentence read is `argue`, whose `:contradiction` verdict is exactly
   'both provable, neither strength-wins' and whose context scoping is exactly 'the asker

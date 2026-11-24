@@ -22,6 +22,7 @@
             [vaelii.impl.io.text :as text]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.predicates :as pr]
+            [vaelii.impl.protocols :as p]
             [vaelii.test-util :as tu]
             [vaelii.world :as world]))
 
@@ -318,6 +319,49 @@
     (is (empty? (filter #(= :inert-argument (:violation %)) (v/violations kb)))
         "and none is held inert")))
 
+(tu/deftest-kb every-premise-the-starter-ships-is-consistent-with-the-declarations-it-ships
+  (testing "every premise, rules included, under the constraint-only reading (tu/premise-wff-problems)"
+    (let [before (count (p/premise-ids (:records kb)))
+          guilty (tu/premise-wff-problems kb)]
+      (is (empty? guilty)
+          (str "shipped premises their own declarations convict: "
+               (vec (for [{:keys [context form problems]} guilty]
+                      [form context (mapv :message problems)]))))
+      (is (= before (count (p/premise-ids (:records kb)))) "and the sweep stores nothing"))))
+
+(tu/deftest-kb a-member-a-closed-extent-refutes-is-admitted-as-a-theory-revision
+  (testing (str "well-formedness tries to prove the denial of what is asserted and ignores a"
+                " closed-world proof, so a theory is revised without lifting the grant")
+    (tu/with-terms [gizmo Gear Lever Pulley CxProbe]
+      (v/assert kb (list 'genl gizmo 'thing) CxProbe)
+      (v/assert kb (list 'closed_extent_predicate gizmo) CxProbe)
+      (v/assert kb (list gizmo Gear) CxProbe)
+      (v/assert kb (list gizmo Lever) CxProbe)
+      (is (v/ask? kb (list 'not (list gizmo Pulley)) CxProbe) "the closed extent refutes the third")
+      (is (empty? (v/check kb (list gizmo Pulley) CxProbe)) "check admits it")
+      (v/assert kb (list gizmo Pulley) CxProbe)
+      (is (v/ask? kb (list gizmo Pulley) CxProbe))
+      (is (empty? (filter #(= CxProbe (:context %)) (tu/premise-wff-problems kb)))
+          "and the sweep reports nothing"))))
+
+(tu/deftest-kb ^:red a-premise-against-a-stated-denial-of-its-argument-type-is-reported
+  (testing (str "https://github.com/vaelii/vaelii/issues/306: well-formedness tries to prove"
+                " the denial of what is asserted, and a stated (not (T x)) is such a proof;"
+                " the constraint-only reading reads only a separation from T, so it misses it")
+    (tu/with-terms [gadget relatesTo GadgetFn Ann Bob CxProbe]
+      (doseq [s [(list 'genl gadget 'thing)
+                 (list 'binary_predicate relatesTo)
+                 (list 'unary_function GadgetFn)
+                 (list 'reifiable_function GadgetFn)
+                 (list 'arg GadgetFn 1 gadget)]]
+        (v/assert kb s CxProbe))
+      (v/assert kb (list 'not (list gadget relatesTo)) CxProbe {:strength :monotonic})
+      (v/assert kb (list (list GadgetFn relatesTo) Ann Bob) CxProbe)
+      (is (v/ask? kb (list 'not (list gadget relatesTo)) CxProbe) "the denial is believed")
+      (is (= [(list (list GadgetFn relatesTo) Ann Bob)]
+             (map :form (filter #(= CxProbe (:context %)) (tu/premise-wff-problems kb))))
+          "the sweep reports the premise its argument's denial contradicts"))))
+
 (def ^:private undeclared-positions
   "The argument positions of arity **2 and up** that the shipped text contexts declare with
   no `arg`-family form, each with the reason.  A position that holds a term of any kind
@@ -501,12 +545,13 @@
         "every name with a genl edge reaches the root")))
 
 (def ^:private placed-unary-predicates
-  "Twenty shipped `unary_predicate` terms each placed under `thing` by a stated `genl`
+  "Twenty-one shipped `unary_predicate` terms each placed under `thing` by a stated `genl`
   edge, so the `:not-under-thing` sweep (docs/integrity.md) reports none of them.  The
   seven biology properties among them are placed under the kind each is said of, as
   `the-biology-properties-are-placed-under-their-kind` holds.  The four classifiers and
-  `except` sit under `type`, `unary_predicate` or `non_atomic_term`."
-  '#{initially functional_at_instant
+  `except` sit under `type`, `unary_predicate` or `non_atomic_term`.  `reify` sits
+  directly under `thing`, since a term of the KB can denote a thing of any type."
+  '#{initially functional_at_instant reify
      abducible_predicate closed_extent_predicate decontextualized_predicate
      target_following_predicate forced_decontextualized_predicate
      sibling_disjoint
@@ -688,7 +733,7 @@
         (is (v/assert kb (list 'friendOf CmdrData Geordi) N))
         (is (v/ask? kb (list 'friendOf CmdrData Geordi) N)))
       (testing "while a biological predicate derives organism of the person it is told of"
-        (is (v/assert kb (list (list 'BloodKinFn 'parentOf) CmdrData Geordi) N))
+        (is (v/assert kb (list (list 'GeneticKinFn 'parentOf) CmdrData Geordi) N))
         (is (v/isa? kb CmdrData 'organism N)))
       (testing "and human, the biological half, reaches mammal, animal and person alike"
         (is (v/genl? kb 'human 'mammal))
@@ -1582,15 +1627,15 @@
       (tu/with-terms [MarkedFn]
         (let [h (v/assert kb (list mark MarkedFn) 'CxUniverse)
               d (v/assert kb (list 'not (list mark MarkedFn)) 'CxUniverse {:strength :monotonic})]
-          (is (true? (v/in? kb h)) "the mark stays believed")
-          (is (false? (v/in? kb d)) "a denial of the mark is held OUT")
+          (is (true? (v/believed? kb h)) "the mark stays believed")
+          (is (false? (v/believed? kb d)) "a denial of the mark is held OUT")
           (is (true? (v/ask? kb (list mark MarkedFn) 'CxUniverse)))))))
   (testing "both marks stated of one function are a conflict rather than a defeat"
     (tu/with-terms [TwiceMarkedFn]
       (let [hr (v/assert kb (list 'reifiable_function TwiceMarkedFn) 'CxUniverse)
             hu (v/assert kb (list 'unreifiable_function TwiceMarkedFn) 'CxUniverse)]
-        (is (true? (v/in? kb hr)))
-        (is (true? (v/in? kb hu)))
+        (is (true? (v/believed? kb hr)))
+        (is (true? (v/believed? kb hu)))
         (is (some #(= #{hr hu} (set (:nogood %))) (v/conflicts kb))
             "conflicts names the pair")))))
 

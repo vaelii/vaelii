@@ -201,6 +201,14 @@ jobs:
       #
       # `$nss` is unquoted because the shard script prints a namespace per line
       # and `lein test` wants them as separate arguments.
+      #
+      # `annotate_failed_selectors` (scripts/lib/failed-selectors.sh) writes a
+      # GitHub annotation for each failing test as its `lein test :only` line
+      # arrives, at most 10, with the shard, the log and its artifact. It writes
+      # them to stderr, so the log `tee` keeps is the run's output alone. It
+      # forwards every line, reads to the end and returns 0, so the step's status
+      # is the one `pipefail` gave before it: the suite's, or `tee`'s when
+      # `tee` fails.
       - name: Run the suite (memory, shard ${{ matrix.shard }} of ${{ strategy.job-total }})
         id: suite
         env:
@@ -217,10 +225,14 @@ jobs:
           # selector out alongside namespace args makes lein ignore the namespace
           # filter and run the whole suite (verified the hard way).
           . scripts/lib/ns-timings.sh
+          . scripts/lib/failed-selectors.sh
           t="target/ci/timings-memory/${{ matrix.shard }}-of-${{ strategy.job-total }}.tsv"
           log="target/ci/test-memory-shard-${{ matrix.shard }}.log"
           # shellcheck disable=SC2086
-          lein test $nss 2>&1 | ns_timings "$t" | tee "$log"
+          lein test $nss 2>&1 | ns_timings "$t" \
+            | annotate_failed_selectors memory "${{ matrix.shard }}/${{ strategy.job-total }}" "$log" \
+                "test-memory-shard-${{ matrix.shard }}-logs" \
+            | tee "$log"
           # The namespaces slower than this runner's speed accounts for run three
           # more times each in one JVM, and the smallest of a namespace's times is
           # the one the `weights` job reads (scripts/lib/ns-timings.sh, `ns_timings_rerun`).
@@ -357,10 +369,14 @@ jobs:
           nss=$(scripts/ci-shard.sh "${{ matrix.shard }}" "${{ strategy.job-total }}" --leg disk "${w[@]}")
           [ -n "$nss" ]
           . scripts/lib/ns-timings.sh
+          . scripts/lib/failed-selectors.sh
           t="target/ci/timings-disk/${{ matrix.shard }}-of-${{ strategy.job-total }}.tsv"
           log="target/ci/test-disk-shard-${{ matrix.shard }}.log"
           # shellcheck disable=SC2086
-          lein test $nss 2>&1 | ns_timings "$t" | tee "$log"
+          lein test $nss 2>&1 | ns_timings "$t" \
+            | annotate_failed_selectors disk "${{ matrix.shard }}/${{ strategy.job-total }}" "$log" \
+                "test-disk-shard-${{ matrix.shard }}-logs" \
+            | tee "$log"
           base=target/ci-baseline/disk.tsv
           [ -f "$base" ] || base=scripts/ci-test-weights-disk.tsv
           slow=$(scripts/ci-weights.sh --from target/ci/timings-disk --leg disk --list "$base") \
@@ -424,7 +440,9 @@ jobs:
   # A change accepts a slower time by setting the namespace's row in
   # scripts/ci-test-weights-<leg>.tsv (scripts/ci-weights.sh, --accept).  The rows it
   # sets are those that differ from the file at the change's base revision: the merge
-  # commit's first parent on a pull request, the tip before the push on a push.  Each
+  # commit's first parent on a pull request, the tip before the push on a push, and that
+  # tip's merge base with HEAD on a push that replaced the branch's history (the release's
+  # reset of develop, which keeps the old tip on develop-pre-v<V>).  Each
   # raises its namespace's figure in the check and in the weights this run saves, so
   # the push to develop saves the accepted figure as the next baseline.  The shards'
   # rerun reads no accepted row.
@@ -457,8 +475,11 @@ jobs:
             push) base=$BEFORE ;;
             *) base= ;;
           esac
+          if [ -n "$base" ] && ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
+            base=$(git merge-base "$base" HEAD 2>/dev/null) || base=
+          fi
           mkdir -p target/ci-base
-          if [ -n "$base" ] && git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
+          if [ -n "$base" ]; then
             for leg in memory disk; do
               git show "$base:scripts/ci-test-weights-$leg.tsv" > "target/ci-base/$leg.tsv" 2>/dev/null \
                 || rm -f "target/ci-base/$leg.tsv"

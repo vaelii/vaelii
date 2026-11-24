@@ -148,7 +148,7 @@
       (let [{:keys [handles]} (v/assert kb (list 'do/labeling ctx) 'CxUniverse)]
         (testing "the base still believes both sides and reports the one dilemma"
           (is (= {:positive true :negative true :reported 1} (belief-snapshot kb d)))
-          (is (and (v/in? kb (:positive d)) (v/in? kb (:negative d)))))
+          (is (and (v/believed? kb (:positive d)) (v/believed? kb (:negative d)))))
         (testing "inside the labeling context exactly one side survives"
           (let [[pos neg] (sides-in kb d ctx)]
             (is (not= pos neg))))

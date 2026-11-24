@@ -9,7 +9,10 @@
             [vaelii.impl.naming :as nm]
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
+            [vaelii.impl.provers :as provers]
             [vaelii.impl.reads :as reads]
+            [vaelii.impl.taxonomy :as tax]
+            [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu]))
 
 (use-fixtures :once (tu/loaded tu/load-core!))
@@ -102,7 +105,7 @@
             hi (v/assert-inert kb (list 'likes Rex (list FruitFn AppleTree)) 'CxUniverse)]
         (is (= (list 'likes Rex k) (:sentence (v/sentex kb hi)))
             "the compound was resolved to the constant, not stored raw")
-        (is (not (v/in? kb hi)) "inert means never a premise")
+        (is (not (v/believed? kb hi)) "inert means never a premise")
         (testing "handle-of of the compound spelling finds that one handle"
           (is (= hi (v/handle-of kb (list 'likes Rex (list FruitFn AppleTree)) 'CxUniverse))))
         (testing "a later assert of the same compound resolves to it — one record, then believed"
@@ -419,7 +422,7 @@
     (let [d (v/assert kb (list 'result FruitFn fruit) 'CxUniverse)
           k (k-of kb (v/assert kb (list 'color (list FruitFn AppleTree) 'Red) 'CxUniverse))
           t (v/handle-of kb (list fruit k) 'CxUniverse)]
-      (is (and t (v/in? kb t) (not (v/premise? kb t))) "the mint derives the type")
+      (is (and t (v/believed? kb t) (not (v/premise? kb t))) "the mint derives the type")
       (v/retract! kb d)
       (is (nil? (v/handle-of kb (list fruit k) 'CxUniverse)) "and the type leaves with its declaration"))))
 
@@ -477,8 +480,8 @@
             hd (v/assert kb (list 'disjoint fruit_t stone_t) 'CxUniverse
                          {:strength :monotonic})]
         (testing "the claim is stored and OUT, outranked by the declared result type"
-          (is (false? (v/in? kb hs)))
-          (is (true? (v/in? kb (v/handle-of kb (list fruit_t k) 'CxUniverse)))))
+          (is (false? (v/believed? kb hs)))
+          (is (true? (v/believed? kb (v/handle-of kb (list fruit_t k) 'CxUniverse)))))
         (v/retract! kb h)
         (testing "so the sweep that the last *believed* use leaving triggers keeps it"
           (is (false? (nat/orphan? kb k)))
@@ -486,7 +489,7 @@
           (is (= hs (v/handle-of kb (list stone_t k) 'CxUniverse))))
         (v/retract! kb hd)
         (testing "and the defeat lifting revives a use naming a constant still mapped"
-          (is (true? (v/in? kb hs)))
+          (is (true? (v/believed? kb hs)))
           (is (= (list FruitFn AppleTree) (nat/nat-expression kb k))))
         (v/retract! kb hs)
         (testing "removing it is what makes the constant an orphan, and it is collected"
@@ -503,8 +506,8 @@
     (let [k  (k-of kb (v/assert kb (list color (list FruitFn AppleTree) 'Red) 'CxUniverse))
           hs (v/assert kb (list stone_t k) 'CxUniverse)]
       (v/assert kb (list 'disjoint fruit_t stone_t) 'CxUniverse {:strength :monotonic})
-      (is (true? (v/in? kb hs)))
-      (is (true? (v/in? kb (v/handle-of kb (list fruit_t k) 'CxUniverse))))
+      (is (true? (v/believed? kb hs)))
+      (is (true? (v/believed? kb (v/handle-of kb (list fruit_t k) 'CxUniverse))))
       (is (= 1 (count (v/contradictions kb)))))))
 
 (tu/deftest-kb an-inert-use-keeps-the-constant-though-it-has-no-node-at-all
@@ -515,7 +518,7 @@
           k (k-of kb h)
           i (v/assert-inert kb (list noted Author k) 'CxUniverse)]
       (is (nat-read/reified-nat-symbol? k))
-      (is (false? (v/in? kb i)) "inert: stored, and never believed")
+      (is (false? (v/believed? kb i)) "inert: stored, and never believed")
       (v/retract! kb h)
       (testing "the believed use went and the inert one holds the constant"
         (is (false? (nat/orphan? kb k)))
@@ -558,6 +561,24 @@
           "the constant holds the type a mint after the declaration writes")
       (v/retract! kb h)
       (is (empty? (kb/find-sentexes kb k)) "and the type is bookkeeping, collected with it"))))
+
+(tu/deftest-kb a-stated-map-holds-the-result-type-justification-in-either-order
+  ;; a text KB's reload states each constant's map, and a map stated after the
+  ;; declaration types its constant as a declaration stated after the map does
+  (tu/with-terms [FruitFn PitFn AppleTree fruit]
+    (let [supports (fn [f map-first?]
+                     (v/assert kb (list 'reifiable_function f) 'CxUniverse)
+                     (let [E      (list f AppleTree)
+                           k      (nat/constant-for nat-read/nat-namespace E)
+                           state! #(v/assert kb (list 'natFormula k E) 'CxUniverse {:strength :monotonic})
+                           declare! #(v/assert kb (list 'result f fruit) 'CxUniverse)
+                           [mh dh] (if map-first?
+                                     (let [mh (state!)] [mh (declare!)])
+                                     (let [dh (declare!)] [(state!) dh]))]
+                       (set (for [j (v/supporting-justifications kb (v/handle-of kb (list fruit k) 'CxUniverse))]
+                              [(:informant j) (= #{mh dh} (set (:antecedents j)))]))))]
+      (is (= #{['result true]} (supports FruitFn true)) "the late declaration reaches the stated map")
+      (is (= #{['result true]} (supports PitFn false)) "and the late map reaches the declaration"))))
 
 (tu/deftest-kb a-retracted-result-declaration-takes-its-type-and-leaves-the-constant-to-its-uses
   (tu/with-terms [FruitFn AppleTree fruit color]
@@ -610,8 +631,8 @@
               gh (v/assert kb g 'CxUniverse)
               dh (v/assert kb (list 'not g) 'CxUniverse)]
           (when-not result-first? (relation-fn! kb KindFn 'binary_predicate))
-          (is (v/in? kb gh))
-          (is (not (v/in? kb dh)) (str "the denial loses, result first: " result-first?))))))
+          (is (v/believed? kb gh))
+          (is (not (v/believed? kb dh)) (str "the denial loses, result first: " result-first?))))))
   (testing "a length stated and retracted after the genl, on both constants or the upper one"
     (tu/with-terms [KindFn ArgA ArgB]
       (relation-fn! kb KindFn nil)
@@ -619,13 +640,13 @@
             gh (v/assert kb g 'CxUniverse)
             dh (v/assert kb (list 'not g) 'CxUniverse)
             ks (rest (:sentence (v/sentex kb gh)))]
-        (is (v/in? kb dh) "two constants of no length are no predicates")
+        (is (v/believed? kb dh) "two constants of no length are no predicates")
         (doseq [bound [ks [(second ks)]]]
           (let [bs (mapv #(v/assert kb (list 'binary_predicate %) 'CxUniverse {:strength :monotonic})
                          bound)]
-            (is (not (v/in? kb dh)) (str (count bound) " bound"))
+            (is (not (v/believed? kb dh)) (str (count bound) " bound"))
             (run! #(v/retract! kb %) bs)
-            (is (v/in? kb dh) (str (count bound) " retracted"))))))))
+            (is (v/believed? kb dh) (str (count bound) " retracted"))))))))
 
 (tu/deftest-kb the-bookkeeping-set-is-an-answer-rather-than-a-plan
   ;; a lazy answer fails only in some term-index orders, so the property is asserted
@@ -712,7 +733,7 @@
 ;; ---- 7. no-op cost -------------------------------------------------------
 
 (deftest with-no-reifiable-function-the-reify-pass-is-a-no-op
-  ;; life.txt declares FatherFn reifiable, so the KB here is an empty one of its own.
+  ;; kinship.txt declares GeneticKinFn reifiable, so the KB here is an empty one of its own.
   (tu/with-cleared-kb [kb tu/isolated-fresh]
     (tu/with-terms [FruitFn AppleTree]
       (testing "the presence check answers false and a plain compound is stored verbatim"
@@ -838,7 +859,7 @@
 (defn- believed-naming
   "The believed sentences naming any of `terms`."
   [kb terms]
-  (into #{} (comp (mapcat #(kb/find-sentexes kb %)) (filter #(v/in? kb (:id %))) (map :sentence))
+  (into #{} (comp (mapcat #(kb/find-sentexes kb %)) (filter #(v/believed? kb (:id %))) (map :sentence))
         terms))
 
 (tu/deftest-kb a-membership-entailed-off-a-materialized-genl-edge-is-bookkeeping
@@ -1061,8 +1082,13 @@
       (is (nat-read/reified-nat-symbol? k))
       (is (not= Mary k))
       (testing "and each declaration projects the placeholder onto its own predicate"
+        (is (some? (v/handle-of kb (list parentOf Muffet k) 'CxUniverse)))
+        (is (some? (v/handle-of kb (list motherOf Muffet k) 'CxUniverse))))
+      (testing "and the :default value of motherOf is no collision with the placeholder"
+        (is (false? (v/same-class? kb k Mary 'CxUniverse)))
         (is (= [{'?m k}] (v/ask kb (list parentOf Muffet '?m) 'CxUniverse)))
-        (is (= #{{'?m Mary} {'?m k}} (set (v/ask kb (list motherOf Muffet '?m) 'CxUniverse))))))))
+        (is (= #{{'?m Mary} {'?m k}} (set (v/ask kb (list motherOf Muffet '?m) 'CxUniverse))))
+        (is (empty? (v/contradictions kb)))))))
 
 (tu/deftest-kb retracting-the-declaration-stops-the-application-resolving
   (tu/with-terms [MotherFn motherOf Muffet Mary Bob caresFor sees]
@@ -1116,6 +1142,29 @@
       (is (some? (map-handle)))
       (is (= (list likes Rex k) (:sentence (v/sentex kb use))))
       (is (v/ask? kb (list likes Rex (list SkillFn Rex)) 'CxUniverse)))))
+
+(tu/deftest-kb a-mark-its-eager-mints-derive-again-leaves-with-them-in-either-order
+  ;; (unqualified_kinship_predicate p) mints (GeneticKinFn p) and (ChosenKinFn p) eagerly,
+  ;; and each map's correspondence projection derives the mark again (#303)
+  (doseq [mark-first? [true false]]
+    (tu/with-terms [cousinOf]
+      (let [before (stored-sentences kb)
+            m      {:strength :monotonic}
+            decl   (v/assert kb (list 'binary_predicate cousinOf) 'CxUniverse m)
+            mark   (v/assert kb (list 'unqualified_kinship_predicate cousinOf) 'CxUniverse m)
+            mapped #(seq (v/ask kb (list 'natFormula '?k (list % cousinOf)) 'CxUniverse))]
+        (is (mapped 'GeneticKinFn) (str mark-first?))
+        (is (mapped 'ChosenKinFn) (str mark-first?))
+        (if mark-first?
+          (do (v/retract! kb mark)
+              (is (not (v/ask? kb (list 'unqualified_kinship_predicate cousinOf) 'CxUniverse)))
+              (is (nil? (mapped 'GeneticKinFn)))
+              (is (nil? (mapped 'ChosenKinFn)))
+              (v/retract! kb decl))
+          (do (v/retract! kb decl)
+              (is (mapped 'GeneticKinFn) "the stated mark keeps its mints")
+              (v/retract! kb mark)))
+        (is (= before (stored-sentences kb)) (str mark-first?))))))
 
 (tu/deftest-kb an-inner-constant-whose-map-left-is-minted-again-and-expanded-with-the-marks
   ;; the inner constant's only row besides its map is the outer constant's map, a mention
@@ -2152,6 +2201,474 @@
       (v/assert kb (list momOf Muffet Mary) CxStory)
       (is (= start (believed-content kb))))))
 
+;; ---- the determinateness levels -------------------------------------------
+;; placeholder_term and indeterminate_term partition proxy_term (core.txt): a `nat/` and a
+;; `cx/` handle are built-in placeholders the unique-name assumption holds for, and a
+;; skolem and a declared indeterminate_term member are indeterminate terms it is suspended
+;; for.  The functional merge reads either part as no determinate filler.
+
+(tu/deftest-kb the-proxy-terms-partition-into-placeholder-and-indeterminate-terms
+  (tu/with-terms [FriendFn bestFriendOf pal Ann Sketch Someone Mary CxM]
+    (is (v/ask? kb '(genl placeholder_term proxy_term) 'CxUniverse))
+    (is (v/ask? kb '(genl indeterminate_term proxy_term) 'CxUniverse))
+    (is (not (v/ask? kb '(genl placeholder_term indeterminate_term) 'CxUniverse)))
+    (is (v/ask? kb '(disjoint placeholder_term indeterminate_term) 'CxUniverse))
+    (v/assert kb (list 'placeholder_term Sketch) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})
+    (is (v/ask? kb (list 'proxy_term Sketch) 'CxUniverse))
+    (is (v/ask? kb (list 'proxy_term Someone) 'CxUniverse))
+    (is (not (v/ask? kb (list 'indeterminate_term Sketch) 'CxUniverse))
+        "a declared placeholder is no indeterminate term")
+    (v/assert kb (list 'reifiable_function FriendFn) 'CxUniverse {:strength :monotonic})
+    (v/assert-rule kb [(list pal '?x)] (list 'exists '?y (list bestFriendOf '?x '?y)) 'CxUniverse
+                   {:direction :forward})
+    (v/assert kb (list pal Ann) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'genlCx CxM 'CxUniverse) 'CxUniverse {:strength :monotonic})
+    (let [sk  (some #(get % '?y) (v/ask kb (list bestFriendOf Ann '?y) 'CxUniverse))
+          nat (nth (v/sentence-of (v/sentex kb (v/assert kb (list bestFriendOf Mary (list FriendFn Mary))
+                                                         'CxUniverse)))
+                   2)
+          cx  (:context (v/sentex kb (v/assert kb (list pal Mary) (list 'CxTimeFn CxM '(YearFn 2000)))))
+          lvl #(provers/determinateness kb % 'CxUniverse)
+          una #(provers/indeterminate-term? kb % 'CxUniverse)]
+      (is (= 'SkolemFn (first (nat/nat-expression kb sk))))
+      (is (nat-read/reified-context-symbol? cx))
+      (is (= {:skolem :indeterminate :nat :placeholder :cx :placeholder :declared :placeholder
+              :someone :indeterminate :mary :determinate}
+             {:skolem (lvl sk) :nat (lvl nat) :cx (lvl cx) :declared (lvl Sketch)
+              :someone (lvl Someone) :mary (lvl Mary)}))
+      (testing "only an indeterminate term suspends the unique-name assumption"
+        (is (= {:skolem true :nat false :declared false :someone true :mary false}
+               {:skolem (una sk) :nat (una nat) :declared (una Sketch) :someone (una Someone)
+                :mary (una Mary)}))))))
+
+(tu/deftest-kb a-skolem-merges-onto-the-one-constant-of-its-slot-and-never-onto-two
+  ;; the skolem witness of (exists ?y (bestFriendOf Ann ?y)) is a proxy term: with Mary
+  ;; alone in the slot it merges with her, and with Jane beside her it merges with neither,
+  ;; so no merge chains Mary to Jane
+  (tu/with-terms [bestFriendOf pal Ann Mary Jane]
+    (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+    (v/assert-rule kb [(list pal '?x)] (list 'exists '?y (list bestFriendOf '?x '?y)) 'CxUniverse
+                   {:direction :forward})
+    (v/assert kb (list pal Ann) 'CxUniverse)
+    (let [sk   (some #(get % '?y) (v/ask kb (list bestFriendOf Ann '?y) 'CxUniverse))
+          same #(true? (v/same-class? kb %1 %2 'CxUniverse))]
+      (v/assert kb (list bestFriendOf Ann Mary) 'CxUniverse)
+      (is (same sk Mary) "Mary alone: the skolem merges with her")
+      (let [jane (v/assert kb (list bestFriendOf Ann Jane) 'CxUniverse)]
+        (is (= [false false false] [(same sk Mary) (same sk Jane) (same Mary Jane)])
+            "Mary and Jane: the skolem merges with neither")
+        (v/retract! kb jane)
+        (is (same sk Mary) "retracting Jane gives the merge back")))))
+
+;; ---- a :default value is no collision with the placeholder ------------------
+;; The placeholder (<MomFn Muffet>) and a :default (momOf Muffet Mary) fill the slot its
+;; correspondence makes functional.  The copies carry Mary, so the pair is no collision:
+;; no equals merges the two, and no nogood holds them (docs/equality.md).
+
+(defn- on-core-kb
+  "`(f kb)` on an isolated KB holding the upper ontology, cleared after: core.txt's rule
+  makes a corresponding predicate functional at the value position."
+  [f]
+  (let [kb (doto (tu/isolated-fresh) (tu/load-core!))]
+    (try (f kb) (finally (tu/clear-kb! kb)))))
+
+(tu/deftest-kb a-default-value-merges-nothing-with-the-placeholder-and-places-no-nogood
+  (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
+    (let [terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
+          _     (default-value-kb! kb terms [:decl :fact :use :rules])
+          k     (nat-read/dedup-constant kb (list MomFn Muffet))]
+      (is (v/ask? kb (list 'functionalInArg momOf 2) 'CxUniverse))
+      (is (nat-read/reified-object-symbol? k))
+      (is (false? (v/same-class? kb k Mary CxStory)) "no equals merges the two")
+      (is (v/ask? kb (list likes Tom Mary) CxStory) "the copy carries Mary")
+      (is (v/ask? kb (list momOf Muffet Mary) CxStory))
+      (is (empty? (v/contradictions kb)))
+      (is (empty? (v/conflicts kb))))))
+
+(tu/deftest-kb a-default-value-beside-a-monotonic-projection-merges-nothing
+  ;; a :monotonic declaration projects (momOf Muffet (<MomFn Muffet>)) at :monotonic, and
+  ;; the :default value is still copied onto and not merged with
+  (tu/with-terms [MomFn momOf Muffet Mary Tom likes CxStory]
+    (v/assert kb (list 'reifiable_function MomFn) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'genlCx CxStory 'CxUniverse) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'functionCorrespondingPredicate MomFn momOf 2) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list likes Tom (list MomFn Muffet)) 'CxUniverse)
+    (v/assert kb (list momOf Muffet Mary) CxStory)
+    (let [k (nat-read/dedup-constant kb (list MomFn Muffet))]
+      (is (false? (v/same-class? kb k Mary CxStory)))
+      (is (v/ask? kb (list likes Tom Mary) CxStory))
+      (is (v/ask? kb (list momOf Muffet Mary) CxStory) "the :default value is not defeated")
+      (is (empty? (v/contradictions kb)))
+      (is (empty? (v/conflicts kb))))))
+
+;; ---- a placeholder merges onto the one constant of its slot ----------------
+;; A placeholder that is no corresponding value's own, (<FriendFn Ann>) in Ann's
+;; functional bestFriendOf slot, merges with a :default constant there while that
+;; constant is the one constant filling the slot (docs/equality.md).
+
+(defn- friend-kb
+  "`(genlCx CxStory CxUniverse)`, then `steps`: `:decl` the `functional` mark on
+  bestFriendOf, `:use` the placeholder `(<FriendFn Ann>)` filling Ann's slot and a use of
+  it in CxUniverse, `:mary` and `:jane` two `:default` fillers in CxStory.  Returns the
+  handles the steps wrote, by step."
+  [kb [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory] steps]
+  (v/assert kb (list 'reifiable_function FriendFn) 'CxUniverse {:strength :monotonic})
+  (v/assert kb (list 'genlCx CxStory 'CxUniverse) 'CxUniverse {:strength :monotonic})
+  (reduce (fn [hs step]
+            (assoc hs step
+                   (case step
+                     :decl (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+                     :use  (do (v/assert kb (list likes Tom (list FriendFn Ann)) 'CxUniverse)
+                               (v/assert kb (list bestFriendOf Ann (list FriendFn Ann)) 'CxUniverse))
+                     :mary (v/assert kb (list bestFriendOf Ann Mary) CxStory)
+                     :jane (v/assert kb (list bestFriendOf Ann Jane) CxStory))))
+          {} steps))
+
+(defn- placeholder-merges
+  "`[placeholder=Mary placeholder=Jane Mary=Jane]` in CxStory, the placeholder being
+  `(<FriendFn Ann>)`, the constant of `(FriendFn Ann)`."
+  [kb [FriendFn _ Ann Mary Jane _ _ CxStory]]
+  (let [k (nat-read/dedup-constant kb (list FriendFn Ann))]
+    (mapv true? [(v/same-class? kb k Mary CxStory) (v/same-class? kb k Jane CxStory)
+                 (v/same-class? kb Mary Jane CxStory)])))
+
+(tu/deftest-kb a-default-constant-merges-with-the-placeholder-and-places-no-nogood
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+          _     (friend-kb kb terms [:decl :use :mary])
+          k     (nat-read/dedup-constant kb (list FriendFn Ann))]
+      (is (= [true false false] (placeholder-merges kb terms)))
+      (is (false? (v/same-class? kb k Mary 'CxUniverse)) "the merge is read in CxStory")
+      (is (v/ask? kb (list likes Tom Mary) CxStory))
+      (is (empty? (v/contradictions kb)))
+      (is (empty? (v/conflicts kb))))))
+
+(tu/deftest-kb two-rival-default-values-merge-neither-with-the-placeholder
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]]
+      (friend-kb kb terms [:decl :mary :jane :use])
+      (is (= [false false false] (placeholder-merges kb terms))))))
+
+(tu/deftest-kb a-rival-value-arriving-after-the-merge-withdraws-it-and-its-retraction-restores-it
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+          _     (friend-kb kb terms [:decl :use :mary])
+          _     (is (= [true false false] (placeholder-merges kb terms)) "Mary alone merges")
+          _     (is (v/ask? kb (list likes Tom Mary) CxStory))
+          jane  (v/assert kb (list bestFriendOf Ann Jane) CxStory)]
+      (is (= [false false false] (placeholder-merges kb terms)) "Jane withdraws the merge")
+      (is (not (v/ask? kb (list likes Tom Mary) CxStory))
+          "and what the merge restated goes with it")
+      (v/retract! kb jane)
+      (is (= [true false false] (placeholder-merges kb terms)) "retracting Jane restores it")
+      (is (v/ask? kb (list likes Tom Mary) CxStory)))))
+
+(deftest a-rival-value-and-its-retraction-reach-one-state-in-every-order
+  ;; Mary settles before Jane arrives, Jane before Mary, or both before the mark
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+          read  (fn [kb] [(placeholder-merges kb terms) (unnamed-content kb)])
+          runs  (for [order [[:decl :use :mary :jane] [:decl :use :jane :mary]
+                             [:mary :jane :decl :use] [:jane :decl :mary :use]]]
+                  (on-core-kb (fn [kb]
+                                (let [hs   (friend-kb kb terms order)
+                                      with (read kb)]
+                                  (v/retract! kb (:jane hs))
+                                  {:with with :after (read kb)}))))
+          alone (for [order (tu/orders [:decl :use :mary])]
+                  (on-core-kb (fn [kb] (friend-kb kb terms (vec order)) (read kb))))]
+      (is (= 1 (count (set alone))) "Mary alone merges alike in every order")
+      (is (= 1 (count (set runs))) "one believed set with the rival and one after it")
+      (is (= [false false false] (first (:with (first runs)))) "with both values, nothing merges")
+      (is (= [true false false] (first (:after (first runs)))) "with Jane gone, Mary merges")
+      (is (= (first alone) (:after (first runs))) "retracting the rival ends where never asserting it does"))))
+
+(tu/deftest-kb two-monotonic-values-still-merge-with-each-other-and-with-the-placeholder
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+          m     {:strength :monotonic}]
+      (friend-kb kb terms [:decl :use])
+      (v/assert kb (list bestFriendOf Ann Mary) CxStory m)
+      (v/assert kb (list bestFriendOf Ann Jane) CxStory m)
+      (is (= [true true true] (placeholder-merges kb terms))))))
+
+(tu/deftest-kb a-placeholder-merges-with-no-other-reified-constant-on-default-evidence
+  ;; (<GuardianFn Ann>) is a placeholder term too, and the merge is onto constants only
+  (tu/with-terms [FriendFn GuardianFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]]
+      (v/assert kb (list 'reifiable_function GuardianFn) 'CxUniverse {:strength :monotonic})
+      (friend-kb kb terms [:decl :use])
+      (v/assert kb (list bestFriendOf Ann (list GuardianFn Ann)) CxStory)
+      (let [k (nat-read/dedup-constant kb (list FriendFn Ann))
+            g (nat-read/dedup-constant kb (list GuardianFn Ann))]
+        (is (nat-read/reified-object-symbol? g))
+        (is (false? (v/same-class? kb k g CxStory)))))))
+
+(tu/deftest-kb a-rival-a-context-edge-brings-into-view-withdraws-the-merge
+  ;; CxJane holds Jane's fact; the edge puts CxStory, where the placeholder merged with
+  ;; Mary, under CxJane, so a reader sees both constants
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory CxJane]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane Tom likes CxStory]
+          _     (friend-kb kb terms [:decl :use :mary])
+          _     (v/assert kb (list 'genlCx CxJane 'CxUniverse) 'CxUniverse {:strength :monotonic})
+          _     (v/assert kb (list bestFriendOf Ann Jane) CxJane)
+          _     (is (= [true false false] (placeholder-merges kb terms)))
+          edge  (v/assert kb (list 'genlCx CxStory CxJane) 'CxUniverse {:strength :monotonic})
+          k     (nat-read/dedup-constant kb (list FriendFn Ann))]
+      (is (= [false false false] (placeholder-merges kb terms)) "CxStory sees both constants")
+      (is (false? (v/same-class? kb k Jane CxJane)) "and no merge in CxJane reaches it")
+      (v/retract! kb edge)
+      (is (= [true false false] (placeholder-merges kb terms)))
+      (is (true? (v/same-class? kb k Jane CxJane))))))
+
+;; ---- a rival's reach over time slices ---------------------------------------
+;; Two slices of one monad, CxA at time A holding Mary and CxB at time B holding Jane.
+;; Every interval holds its start and not its end, so two that only meet share no moment.
+;; A rival in CxB reaches the merge in CxA when some context sees both slices.
+
+(defn- slice-kb
+  "Write `steps` over a `functional` bestFriendOf in the monad CxM: `:use` the placeholder
+  `(<FriendFn Ann>)` filling Ann's slot in CxUniverse, `:mary` a `:default` filler in the
+  slice of CxM at `a`, `:jane` one in the slice at `b`.  Returns whether the placeholder
+  and Mary are one class in the slice at `a`, with the believed set."
+  [kb [FriendFn bestFriendOf Ann Mary Jane CxM] a b steps]
+  (v/assert kb (list 'reifiable_function FriendFn) 'CxUniverse {:strength :monotonic})
+  (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+  (v/assert kb (list 'genlCx CxM 'CxUniverse) 'CxUniverse {:strength :monotonic})
+  (let [hs (into {} (for [step steps]
+                      [step (case step
+                              :use  (v/assert kb (list bestFriendOf Ann (list FriendFn Ann)) 'CxUniverse)
+                              :mary (v/assert kb (list bestFriendOf Ann Mary) (list 'CxTimeFn CxM a))
+                              :jane (v/assert kb (list bestFriendOf Ann Jane) (list 'CxTimeFn CxM b)))]))
+        ca (:context (v/sentex kb (:mary hs)))
+        k  (nat-read/dedup-constant kb (list FriendFn Ann))]
+    [(true? (v/same-class? kb k Mary ca)) (unnamed-content kb)]))
+
+(defn- slice-runs
+  "`slice-kb` at the times `a` and `b` on a KB of its own for each order of the three
+  writes, Jane arriving before the merge, after it, and before the placeholder."
+  [a b]
+  (tu/with-terms [FriendFn bestFriendOf Ann Mary Jane CxM]
+    (let [terms [FriendFn bestFriendOf Ann Mary Jane CxM]]
+      (doall (for [order [[:use :mary :jane] [:jane :use :mary] [:mary :jane :use]]]
+               (on-core-kb #(slice-kb % terms a b order)))))))
+
+(defn- slice-merges
+  "`[merges one-believed-set?]` over `slice-runs`.  `merges` is the set of whether the
+  placeholder and Mary are one class in the slice at `a`: `#{false}` when the rival in
+  the slice at `b` blocks the merge in every order.  The second says whether every order
+  ends in one believed set."
+  [a b]
+  (let [runs (slice-runs a b)]
+    [(set (map first runs)) (= 1 (count (set (map second runs))))]))
+
+(deftest ^:red a-rival-in-an-overlapping-slice-blocks-the-merge
+  ;; CxA [1999, 2001) and CxB [2000, 2002) share the year 2000, but no context the engine
+  ;; holds sees both: it mints no slice at the intersection until a write names one
+  (is (= [#{false} true] (slice-merges '(DatetimeRangeFn "1999" "2000") '(DatetimeRangeFn "2000" "2001")))))
+
+(deftest a-rival-in-a-disjoint-slice-does-not-block-the-merge
+  ;; CxA [1998, 1999) and CxB [2000, 2002) share no moment
+  (is (= [#{true} true] (slice-merges '(YearFn 1998) '(DatetimeRangeFn "2000" "2001")))))
+
+(deftest a-rival-in-a-slice-that-only-meets-does-not-block-the-merge
+  ;; CxA [1998, 2000) ends where CxB [2000, 2002) starts: the two meet and share no moment
+  (is (= [#{true} true] (slice-merges '(DatetimeRangeFn "1998" "1999") '(DatetimeRangeFn "2000" "2001")))))
+
+(deftest a-rival-at-an-instant-inside-the-slice-blocks-the-merge
+  ;; CxB is the instant 2000-06-01 inside CxA [1999, 2001): the slice at the instant is
+  ;; ordered below the slice at the interval, so CxB sees both constants
+  (is (= [#{false} true] (slice-merges '(DatetimeRangeFn "1999" "2000") '(InstantFn 2000 6 1 0 0 0)))))
+
+(defn- version-kb
+  "`steps` over a `functional` latestOf: `:mark` the mark, `:use` the placeholder
+  `(<VerFn basePred>)` filling basePred's slot and a use of it, `:value` the `:default`
+  constant namedPred there.  The names are lower case, so the placeholder's `nat/` name
+  sorts before the constant's."
+  [kb [VerFn latestOf basePred namedPred notes Tom] steps]
+  (v/assert kb (list 'reifiable_function VerFn) 'CxUniverse {:strength :monotonic})
+  (doseq [step steps]
+    (case step
+      :mark  (v/assert kb (list 'functional latestOf) 'CxUniverse {:strength :monotonic})
+      :use   (do (v/assert kb (list notes Tom (list VerFn basePred)) 'CxUniverse)
+                 (v/assert kb (list latestOf basePred (list VerFn basePred)) 'CxUniverse))
+      :value (v/assert kb (list latestOf basePred namedPred) 'CxUniverse))))
+
+(tu/deftest-kb a-placeholder-merge-elects-the-constant-and-a-rival-withdraws-it
+  ;; the merge elects namedPred over the placeholder, though the placeholder's name sorts
+  ;; first, and spells the placeholder's uses with it
+  (tu/with-terms [VerFn latestOf basePred namedPred otherPred notes Tom]
+    (version-kb kb [VerFn latestOf basePred namedPred notes Tom] [:mark :use :value])
+    (let [k (nat-read/dedup-constant kb (list VerFn basePred))]
+      (is (= namedPred k (v/representative kb namedPred 'CxUniverse)))
+      (is (v/ask? kb (list notes Tom namedPred) 'CxUniverse))
+      (let [h (v/assert kb (list latestOf basePred otherPred) 'CxUniverse)
+            k (nat-read/dedup-constant kb (list VerFn basePred))]
+        (is (nat-read/reified-object-symbol? k))
+        (is (false? (v/same-class? kb k namedPred 'CxUniverse)) "a rival withdraws it")
+        (v/retract! kb h)
+        (is (true? (v/same-class? kb k namedPred 'CxUniverse)))
+        (is (= namedPred (v/representative kb k 'CxUniverse)))))))
+
+(deftest a-constant-is-the-representative-over-a-placeholder-in-every-order
+  (tu/with-terms [VerFn latestOf basePred namedPred notes Tom]
+    (let [terms [VerFn latestOf basePred namedPred notes Tom]
+          runs  (for [order (tu/orders [:mark :use :value])]
+                  (on-core-kb (fn [kb]
+                                (version-kb kb terms order)
+                                [(v/representative kb namedPred 'CxUniverse)
+                                 (v/representative kb (nat-read/dedup-constant kb (list VerFn basePred))
+                                                   'CxUniverse)
+                                 (unnamed-content kb)])))]
+      (is (= #{[namedPred namedPred]} (set (map #(subvec % 0 2) runs))))
+      (is (= 1 (count (set runs))) "one believed set in every order"))))
+
+(tu/deftest-kb a-monotonic-equals-between-a-placeholder-and-a-constant-elects-the-constant
+  (tu/with-terms [VerFn basePred namedPred notes Tom]
+    (v/assert kb (list 'reifiable_function VerFn) 'CxUniverse {:strength :monotonic})
+    (let [k (nth (v/sentence-of (v/sentex kb (v/assert kb (list notes Tom (list VerFn basePred)) 'CxUniverse))) 2)]
+      (v/assert kb (list 'equals k namedPred) 'CxUniverse {:strength :monotonic})
+      (is (= namedPred (v/representative kb k 'CxUniverse)))
+      (is (v/ask? kb (list notes Tom namedPred) 'CxUniverse)))))
+
+(tu/deftest-kb a-quoted-spelling-elects-a-constant-head-over-a-reified-constant-head
+  ;; two rewriteOf heads over basePred, the placeholder (<VerFn notes>) and namedPred:
+  ;; the spelling a quoted position reads is the constant, as the class's representative
+  ;; is, though the placeholder's nat/ name sorts first
+  (tu/with-terms [VerFn basePred namedPred notes Tom]
+    (v/assert kb (list 'reifiable_function VerFn) 'CxUniverse {:strength :monotonic})
+    (let [k (nth (v/sentence-of (v/sentex kb (v/assert kb (list notes Tom (list VerFn notes)) 'CxUniverse))) 2)]
+      (is (nat-read/reified-nat-symbol? k))
+      (is (neg? (compare (str k) (str namedPred))) "the placeholder's name sorts first")
+      (v/assert kb (list 'rewriteOf k basePred) 'CxUniverse {:strength :monotonic})
+      (v/assert kb (list 'rewriteOf namedPred basePred) 'CxUniverse {:strength :monotonic})
+      (is (= namedPred
+             (v/representative kb basePred 'CxUniverse)
+             (tax/spelling-representative (reasoning/taxonomy kb) basePred))))))
+
+(tu/deftest-kb an-indeterminate-filler-merges-on-default-evidence-once-declared
+  ;; an indeterminate_term merges onto the one constant of its slot, and a membership
+  ;; stated after the collision reaches it
+  (tu/with-terms [bestFriendOf Ann Mary Someone]
+    (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list bestFriendOf Ann Mary) 'CxUniverse)
+    (v/assert kb (list bestFriendOf Ann Someone) 'CxUniverse)
+    (is (false? (v/same-class? kb Mary Someone 'CxUniverse))
+        "two determinate names on default evidence do not merge")
+    (let [h (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})]
+      (is (true? (v/same-class? kb Mary Someone 'CxUniverse))
+          "the late membership makes Someone indeterminate, and the pair merges")
+      (v/retract! kb h)
+      (is (false? (v/same-class? kb Mary Someone 'CxUniverse))
+          "retracting the membership takes the merge back"))))
+
+(defn- someone-kb
+  "`steps` over a `functional` bestFriendOf: `:someone`, `:mary` and `:jane` each a
+  `:default` filler of Ann's slot, `:decl` the membership making Someone indeterminate.
+  Returns `[Someone=Mary Someone=Jane Mary=Jane]`."
+  [kb [bestFriendOf Ann Mary Jane Someone] steps]
+  (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+  (doseq [step steps]
+    (case step
+      :someone (v/assert kb (list bestFriendOf Ann Someone) 'CxUniverse)
+      :mary    (v/assert kb (list bestFriendOf Ann Mary) 'CxUniverse)
+      :jane    (v/assert kb (list bestFriendOf Ann Jane) 'CxUniverse)
+      :decl    (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})))
+  (mapv true? [(v/same-class? kb Someone Mary 'CxUniverse) (v/same-class? kb Someone Jane 'CxUniverse)
+               (v/same-class? kb Mary Jane 'CxUniverse)]))
+
+(deftest an-indeterminate-filler-merges-with-neither-of-two-rival-constants-in-sampled-orders
+  ;; one guard for every indeterminate filler: with Mary and Jane in the slot, Someone
+  ;; merges with neither, so no merge chains Mary to Jane
+  (tu/with-terms [bestFriendOf Ann Mary Jane Someone]
+    (let [terms [bestFriendOf Ann Mary Jane Someone]
+          runs  (for [order [[:someone :mary :jane :decl] [:decl :jane :mary :someone]
+                             [:mary :decl :someone :jane] [:jane :someone :decl :mary]
+                             [:mary :jane :someone :decl] [:decl :someone :mary :jane]]]
+                  (on-core-kb (fn [kb] [(someone-kb kb terms order) (unnamed-content kb)])))]
+      (is (= #{[false false false]} (set (map first runs))))
+      (is (= 1 (count (set runs))) "one believed set in every order"))))
+
+(tu/deftest-kb two-indeterminate-fillers-do-not-merge-on-default-evidence
+  ;; an indeterminate filler merges onto a determinate constant only: Someone and the
+  ;; placeholder (<FriendFn Ann>) fill one slot and stay two
+  (tu/with-terms [FriendFn bestFriendOf Ann Someone]
+    (v/assert kb (list 'reifiable_function FriendFn) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})
+    (let [k (nth (v/sentence-of (v/sentex kb (v/assert kb (list bestFriendOf Ann (list FriendFn Ann))
+                                                       'CxUniverse)))
+                 2)]
+      (v/assert kb (list bestFriendOf Ann Someone) 'CxUniverse)
+      (is (nat-read/reified-object-symbol? k))
+      (is (false? (v/same-class? kb k Someone 'CxUniverse))))))
+
+(defn- clashing-fillers
+  "The filler pairs of the functional nogoods `kb` holds over `pred`, each as a set,
+  read off the contradictions and the conflicts alike."
+  [kb pred]
+  (into #{} (comp (filter #(= :functional (:kind %)))
+                  (map (fn [c] (into #{} (keep #(let [s (:sentence %)]
+                                                  (when (= pred (first s)) (last s))))
+                                     (:sides c)))))
+        (concat (v/contradictions kb) (v/conflicts kb))))
+
+(defn- skolem-rivals-kb
+  "`steps` over a `functional` bestFriendOf: `:rule` the `:monotonic` existential whose
+  skolem fills Ann's slot, `:mary` and `:jane` two `:default` fillers.  Returns
+  `[skolem=Mary skolem=Jane Mary=Jane]` with the clashing filler pairs, Mary and Jane
+  spelled by name and the skolem as `:sk`."
+  [kb [bestFriendOf pal Ann Mary Jane] steps]
+  (v/assert kb (list 'functional bestFriendOf) 'CxUniverse {:strength :monotonic})
+  (doseq [step steps]
+    (case step
+      :rule (do (v/assert-rule kb [(list pal '?x)] (list 'exists '?y (list bestFriendOf '?x '?y))
+                               'CxUniverse {:direction :forward :strength :monotonic})
+                (v/assert kb (list pal Ann) 'CxUniverse {:strength :monotonic}))
+      :mary (v/assert kb (list bestFriendOf Ann Mary) 'CxUniverse)
+      :jane (v/assert kb (list bestFriendOf Ann Jane) 'CxUniverse)))
+  (let [sk   (some #(let [y (get % '?y)] (when (nat-read/reified-nat-symbol? y) y))
+                   (v/ask kb (list bestFriendOf Ann '?y) 'CxUniverse))
+        same #(true? (v/same-class? kb %1 %2 'CxUniverse))]
+    [[(boolean (and sk (same sk Mary))) (boolean (and sk (same sk Jane))) (same Mary Jane)]
+     (into #{} (map (fn [pair] (into #{} (map #(if (= sk %) :sk %)) pair)))
+           (clashing-fillers kb bestFriendOf))]))
+
+(deftest an-indeterminate-filler-collides-with-no-constant-in-every-order
+  ;; a :monotonic skolem beside two :default constants merges with neither.  The
+  ;; unique-name assumption is suspended for it, so it forms no nogood with either: neither
+  ;; constant loses to it, and the two clash with each other alone
+  (tu/with-terms [bestFriendOf pal Ann Mary Jane]
+    (let [terms [bestFriendOf pal Ann Mary Jane]
+          runs  (for [order (tu/orders [:rule :mary :jane])]
+                  (on-core-kb (fn [kb] [(skolem-rivals-kb kb terms order) (unnamed-content kb)])))]
+      (is (= #{[[false false false] #{#{Mary Jane}}]} (set (map first runs))))
+      (is (= 1 (count (set (map second runs)))) "one believed set in every order")
+      (is (every? #(contains? (second %) [(list bestFriendOf Ann Mary) 'CxUniverse]) runs)
+          "Mary's fact stays believed"))))
+
+(tu/deftest-kb a-late-indeterminate-membership-takes-its-term-s-nogoods-away
+  (tu/with-terms [bestFriendOf Ann Mary Jane Someone]
+    (let [terms [bestFriendOf Ann Mary Jane Someone]]
+      (someone-kb kb terms [:someone :mary :jane])
+      (is (= #{#{Someone Mary} #{Someone Jane} #{Mary Jane}} (clashing-fillers kb bestFriendOf))
+          "three determinate names on default evidence clash pairwise")
+      (let [h (v/assert kb (list 'indeterminate_term Someone) 'CxUniverse {:strength :monotonic})]
+        (is (= #{#{Mary Jane}} (clashing-fillers kb bestFriendOf)) "Someone clashes with neither")
+        (v/retract! kb h)
+        (is (= #{#{Someone Mary} #{Someone Jane} #{Mary Jane}} (clashing-fillers kb bestFriendOf)))))))
+
+(tu/deftest-kb an-indeterminate-membership-in-one-context-keeps-the-nogood-where-it-is-unseen
+  ;; Someone is indeterminate in CxStory alone, so CxUniverse, which holds both facts,
+  ;; reads two determinate names on default evidence and keeps their nogood
+  (tu/with-terms [bestFriendOf Ann Mary Jane Someone CxStory]
+    (v/assert kb (list 'genlCx CxStory 'CxUniverse) 'CxUniverse {:strength :monotonic})
+    (someone-kb kb [bestFriendOf Ann Mary Jane Someone] [:someone :mary])
+    (v/assert kb (list 'indeterminate_term Someone) CxStory {:strength :monotonic})
+    (is (= :determinate (provers/determinateness kb Someone 'CxUniverse)))
+    (is (= #{#{Someone Mary}} (clashing-fillers kb bestFriendOf)))))
+
 (deftest retracting-a-default-value-or-its-declaration-is-net-neutral
   (tu/with-terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]
     (let [terms [MomFn momOf Muffet Mary Tom Ann likes fond warm CxStory]]
@@ -2403,13 +2920,13 @@
 ;; ---- a correspondence stated in one context ---------------------------------
 
 (tu/deftest-kb a-correspondence-stated-in-one-context-does-not-merge-its-predicates-values-in-another
-  ;; A correspondence can hold only under a simplifying theory.  In an atlas where every
-  ;; country has one capital, `capitalOf` is functional and `CapitalFn` names its value;
-  ;; the world gives one country two.  An application written in the world before its
-  ;; values must not be retired onto each value in turn, which equates the two values
-  ;; through the placeholder.  The values are `:monotonic`, the strength that merges a
-  ;; value into the application's constant, so a merge the world's scoping let through
-  ;; would equate LaPaz and Sucre.
+  ;; A correspondence makes `capitalOf` functional in every context, and its reading of
+  ;; an application holds only where the correspondence is visible.  The atlas states the
+  ;; correspondence and names LaPaz, and the world, which does not see the atlas, names
+  ;; Sucre.  The application written in the world mints the one constant the atlas
+  ;; retires onto LaPaz, so a reading the world's scoping let through would retire that
+  ;; constant onto Sucre as well.  The values are `:monotonic`, the strength that merges
+  ;; a value into the application's constant.
   (tu/with-terms [CapitalFn capitalOf country city locatedIn Bolivia LaPaz Sucre Embassy
                   CxAtlas CxWorld]
     (doseq [s [(list 'genlCx CxAtlas 'CxUniverse) (list 'genlCx CxWorld 'CxUniverse)
@@ -2426,13 +2943,12 @@
       (v/assert kb (list locatedIn Embassy (list CapitalFn Bolivia)) CxAtlas)
       (is (v/ask? kb (list locatedIn Embassy LaPaz) CxAtlas))
       (is (v/same-class? kb (nat-read/dedup-constant kb (list CapitalFn Bolivia)) LaPaz CxAtlas)))
-    (v/assert kb (list capitalOf Bolivia LaPaz) CxWorld {:strength :monotonic})
     (v/assert kb (list capitalOf Bolivia Sucre) CxWorld {:strength :monotonic})
-    (testing "the world does not: its two values stay two, and nothing clashes"
+    (testing "the world does not: its value stays apart from the application, and nothing clashes"
       (is (not (v/same-class? kb LaPaz Sucre CxWorld)))
       (is (not-any? #(v/same-class? kb (nat-read/dedup-constant kb (list CapitalFn Bolivia)) % CxWorld)
                     [LaPaz Sucre]))
-      (is (= #{LaPaz Sucre} (set (map '?c (v/ask kb (list capitalOf Bolivia '?c) CxWorld)))))
+      (is (= #{Sucre} (set (map '?c (v/ask kb (list capitalOf Bolivia '?c) CxWorld)))))
       (is (empty? (v/conflicts kb)))
       (is (empty? (v/contradictions kb))))))
 
@@ -2447,8 +2963,8 @@
   (list f p))
 
 (tu/deftest-kb an-application-in-the-head-reifies-to-the-constant-its-argument-spelling-names
-  (tu/with-terms [BloodKinFn siblingOf Ann Bob]
-    (let [head (kin-fn kb BloodKinFn siblingOf)
+  (tu/with-terms [GeneticKinFn siblingOf Ann Bob]
+    (let [head (kin-fn kb GeneticKinFn siblingOf)
           h    (v/assert kb (list head Ann Bob) 'CxUniverse)
           k    (first (:sentence (v/sentex kb h)))]
       (is (nat-read/reified-object-symbol? k))
@@ -2461,8 +2977,8 @@
 
 (tu/deftest-kb a-rule-reads-and-concludes-an-application-in-the-head
   (doseq [direction [:forward :backward]]
-    (tu/with-terms [BloodKinFn siblingOf kinOf relatedTo Ann Bob]
-      (let [head (kin-fn kb BloodKinFn siblingOf)
+    (tu/with-terms [GeneticKinFn siblingOf kinOf relatedTo Ann Bob]
+      (let [head (kin-fn kb GeneticKinFn siblingOf)
             ask  #(v/query kb (list % Ann '?x) 'CxUniverse {:max-depth 3})]
         (v/assert-rule kb [(list kinOf '?x '?y)] (list head '?x '?y) 'CxUniverse {:direction direction})
         (v/assert-rule kb [(list head '?x '?y)] (list relatedTo '?x '?y) 'CxUniverse {:direction direction})
@@ -2470,16 +2986,16 @@
         (is (= [[{'?x Bob}] [{'?x Bob}]] [(ask head) (ask relatedTo)]) (name direction))))))
 
 (tu/deftest-kb a-genl-edge-on-an-application-derives-the-base-predicate
-  (tu/with-terms [BloodKinFn siblingOf Ann Bob]
-    (let [head (kin-fn kb BloodKinFn siblingOf)]
+  (tu/with-terms [GeneticKinFn siblingOf Ann Bob]
+    (let [head (kin-fn kb GeneticKinFn siblingOf)]
       (v/assert kb (list 'genl head siblingOf) 'CxUniverse)
       (v/assert kb (list head Ann Bob) 'CxUniverse)
       (is (= [{'?x Bob}] (v/ask kb (list siblingOf Ann '?x) 'CxUniverse))))))
 
 (tu/deftest-kb an-applications-argument-types-are-read-as-a-named-predicates-are
   (doseq [inherited? [false true]]
-    (tu/with-terms [BloodKinFn siblingOf organism Bob]
-      (let [head (kin-fn kb BloodKinFn siblingOf)
+    (tu/with-terms [GeneticKinFn siblingOf organism Bob]
+      (let [head (kin-fn kb GeneticKinFn siblingOf)
             on   (if inherited? siblingOf head)]
         (v/assert kb (list 'genl organism 'thing) 'CxUniverse {:strength :monotonic})
         (v/assert kb (list 'genl head siblingOf) 'CxUniverse)
@@ -2491,44 +3007,44 @@
 
 (tu/deftest-kb a-rewrite-of-an-application-in-the-head-reads-in-either-arrival-order
   (doseq [rewrite-first? [false true]]
-    (tu/with-terms [BloodKinFn siblingOf bloodSiblingOf Ann Bob Cal Dee]
-      (let [head    (kin-fn kb BloodKinFn siblingOf)
-            rewrite #(v/assert kb (list 'rewriteOf bloodSiblingOf head) 'CxUniverse {:strength :monotonic})
+    (tu/with-terms [GeneticKinFn siblingOf geneticSiblingOf Ann Bob Cal Dee]
+      (let [head    (kin-fn kb GeneticKinFn siblingOf)
+            rewrite #(v/assert kb (list 'rewriteOf geneticSiblingOf head) 'CxUniverse {:strength :monotonic})
             order   (if rewrite-first? "rewrite first: " "rewrite last: ")]
-        (v/assert kb (list 'binary_predicate bloodSiblingOf) 'CxUniverse)
+        (v/assert kb (list 'binary_predicate geneticSiblingOf) 'CxUniverse)
         (when rewrite-first? (rewrite))
         (v/assert kb (list head Ann Bob) 'CxUniverse)
-        (v/assert kb (list bloodSiblingOf Cal Dee) 'CxUniverse)
+        (v/assert kb (list geneticSiblingOf Cal Dee) 'CxUniverse)
         (when-not rewrite-first? (rewrite))
-        (is (= [{'?x Bob}] (v/ask kb (list bloodSiblingOf Ann '?x) 'CxUniverse))
+        (is (= [{'?x Bob}] (v/ask kb (list geneticSiblingOf Ann '?x) 'CxUniverse))
             (str order "the application's fact answers the named predicate"))
         (is (= [{'?x Dee}] (v/ask kb (list head Cal '?x) 'CxUniverse))
             (str order "the named predicate's fact answers the application"))))))
 
 (tu/deftest-kb a-compound-head-that-does-not-reify-is-refused-by-naming
-  (tu/with-terms [BloodKinFn OtherFn siblingOf Ann Bob]
-    (kin-fn kb BloodKinFn siblingOf)
-    (doseq [head [(list OtherFn siblingOf) (list BloodKinFn '?p)]]
+  (tu/with-terms [GeneticKinFn OtherFn siblingOf Ann Bob]
+    (kin-fn kb GeneticKinFn siblingOf)
+    (doseq [head [(list OtherFn siblingOf) (list GeneticKinFn '?p)]]
       (is (= :naming (tu/refusal-type #(v/assert kb (list head Ann Bob) 'CxUniverse)))
           (pr-str head)))))
 
 (tu/deftest-kb check-reads-an-application-in-the-head-as-assert-does
-  (tu/with-terms [BloodKinFn OtherFn siblingOf Ann Bob]
-    (let [head (kin-fn kb BloodKinFn siblingOf)]
+  (tu/with-terms [GeneticKinFn OtherFn siblingOf Ann Bob]
+    (let [head (kin-fn kb GeneticKinFn siblingOf)]
       (is (empty? (v/check kb (list head Ann Bob) 'CxUniverse)) "a fact, before the mint")
       (is (empty? (v/check kb (list 'implies (list siblingOf '?x '?y) (list head '?x '?y)) 'CxUniverse))
           "a rule, before the mint")
       (is (= [:naming] (mapv :type (v/check kb (list (list OtherFn siblingOf) Ann Bob) 'CxUniverse)))))))
 
 (tu/deftest-kb an-application-in-the-head-has-its-inputs-checked-as-an-arguments-are
-  (tu/with-terms [BloodKinFn siblingOf kin_relation Ann Bob]
-    (kin-fn kb BloodKinFn siblingOf)
+  (tu/with-terms [GeneticKinFn siblingOf kin_relation Ann Bob]
+    (kin-fn kb GeneticKinFn siblingOf)
     (v/assert kb (list 'genl kin_relation 'thing) 'CxUniverse {:strength :monotonic})
-    (v/assert kb (list 'arg BloodKinFn 1 kin_relation) 'CxUniverse {:strength :monotonic})
+    (v/assert kb (list 'arg GeneticKinFn 1 kin_relation) 'CxUniverse {:strength :monotonic})
     (is (= [:arg-type :arg-type :arg-type]
-           [(tu/write-type kb #(v/assert kb (list 'genl (list BloodKinFn 42) siblingOf) 'CxUniverse))
-            (tu/write-type kb #(v/assert kb (list (list BloodKinFn 43) Ann Bob) 'CxUniverse))
-            (first (map :type (v/check kb (list (list BloodKinFn 44) Ann Bob) 'CxUniverse)))]))))
+           [(tu/write-type kb #(v/assert kb (list 'genl (list GeneticKinFn 42) siblingOf) 'CxUniverse))
+            (tu/write-type kb #(v/assert kb (list (list GeneticKinFn 43) Ann Bob) 'CxUniverse))
+            (first (map :type (v/check kb (list (list GeneticKinFn 44) Ann Bob) 'CxUniverse)))]))))
 
 ;; ---- the stated position and the binary correspondence ----------------------
 ;; `functionCorrespondingPredicate` always states the value position.
@@ -2543,8 +3059,8 @@
       (is (= :not-well-formed (:type (ex-data e)))))))
 
 (tu/deftest-kb the-shipped-correspondences-state-their-position
-  (is (true? (v/ask? kb '(functionCorrespondingBinaryPredicate MotherFn (BloodKinFn motherOf)) 'CxUniverse)))
-  (is (true? (v/ask? kb '(functionCorrespondingPredicate MotherFn (BloodKinFn motherOf) 2) 'CxUniverse)))
+  (is (true? (v/ask? kb '(functionCorrespondingBinaryPredicate StartFn startOf) 'CxUniverse)))
+  (is (true? (v/ask? kb '(functionCorrespondingPredicate StartFn startOf 2) 'CxUniverse)))
   (is (true? (v/ask? kb '(functionCorrespondingPredicate QuantityFn measureInUnit 3) 'CxUniverse)))
   (is (true? (v/ask? kb '(functionCorrespondingPredicate InstantFn calendarInstant 7) 'CxUniverse)))
   (is (empty? (filter #(and (= 'functionCorrespondingPredicate (first (:sentence %)))

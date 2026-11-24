@@ -147,6 +147,23 @@
       (v/retract! kb (v/handle-of kb (list 'disjoint left_t right_t) CxDecl))
       (is (empty? (v/exposed-clashes kb))))))
 
+(tu/deftest-kb a-clash-is-exposed-where-no-except-or-other-defeat-hides-a-membership
+  (doseq [[mode want] [[:tie true] [:outranked true] [:denied false] [:excepted false]]]
+    (tu/with-terms [CxA CxB CxC cat_t dog_t Rex]
+      (siblings! kb {:a CxA :b CxB :t1 cat_t :t2 dog_t :x Rex})
+      (v/assert kb (list 'genlCx CxC CxA) 'CxUniverse)
+      (v/assert kb (list 'genlCx CxC CxB) 'CxUniverse)
+      (let [m   {:strength :monotonic}
+            h   (v/handle-of kb (list dog_t Rex) CxB)
+            hs  (cond-> [(v/assert kb (list 'disjoint cat_t dog_t) 'CxUniverse m)]
+                  (= mode :outranked) (conj (v/assert kb (list cat_t Rex) CxA m))
+                  (= mode :denied)    (conj (v/assert kb (list 'not (list dog_t Rex)) CxB m))
+                  (= mode :excepted)  (conj (v/assert kb (list 'except (list 'sentexHandle h)) CxB m)))]
+        (is (= (when want [[[[cat_t CxA] [dog_t CxB]] #{CxC}]])
+               (not-empty (mapv (comp (juxt :held :visible-from) :detail) (v/exposed-clashes kb))))
+            (str mode))
+        (run! #(v/retract! kb %) (rseq hs))))))
+
 (tu/deftest-kb a-declaration-arriving-last-decides-a-clash-only-a-descendant-sees
   ;; the separation route: two memberships in sibling contexts, jointly visible only from
   ;; a context below both, and the disjointness arriving is what makes them a clash.

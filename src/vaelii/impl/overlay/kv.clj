@@ -76,6 +76,7 @@
   beside the writer then sees a batch whole or not at all, as it does on every other
   backend."
   (:require [clojure.set :as set]
+            [vaelii.impl.kv :as kv]
             [vaelii.impl.protocols :as p]))
 
 ;; ---- reserved bookkeeping keys --------------------------------------------
@@ -245,9 +246,26 @@
              (p/kv-member? base k m))
     (p/kv-add-to-set overlay (removed-key k) m)))
 
+(defn- note-handles!
+  "Hand `note` each handle a set write at `k` names: member `m` of a handle set
+  (`kv/handle-key?`), and the handle a `[:tax-installs h]` key is spelled with.  An
+  `overlay` cleared by `reindex` holds a copy of every base posting, and names none."
+  [overlay note k m]
+  (when-let [f @note]
+    (when-let [h (cond (and (integer? m) (kv/handle-key? k)) m
+                       (and (vector? k) (= :tax-installs (nth k 0 nil)) (integer? (nth k 1 nil))) (nth k 1))]
+      (when-not (cleared? overlay) (f h)))))
+
+(defn set-note!
+  "Have the fork index half `okv` call `f` with each handle its set writes name, so the
+  record half records the content of every base handle the index half refers to
+  (`vaelii.impl.overlay.store`)."
+  [okv f]
+  (reset! (:note okv) f))
+
 ;; ---- the decorator --------------------------------------------------------
 
-(defrecord OverlayKv [overlay base lock]
+(defrecord OverlayKv [overlay base lock note]
   p/KvBackend
   (kv-get  [_ k]   (locking lock (merged-get overlay base k)))
   (kv-put  [_ k v] (locking lock (put* overlay base k v)) nil)
@@ -258,8 +276,9 @@
   (kv-decrement [_ k]
     (locking lock (seed-counter! overlay base k) (p/kv-decrement overlay k)))
 
-  (kv-add-to-set      [_ k m] (locking lock (add-to-set* overlay k m)) nil)
-  (kv-remove-from-set [_ k m] (locking lock (remove-from-set* overlay base k m)) nil)
+  (kv-add-to-set      [_ k m] (locking lock (note-handles! overlay note k m) (add-to-set* overlay k m)) nil)
+  (kv-remove-from-set [_ k m]
+    (locking lock (note-handles! overlay note k m) (remove-from-set* overlay base k m)) nil)
   (kv-members [_ k]   (locking lock (merged-members overlay base k)))
   (kv-member? [_ k m] (locking lock (merged-member? overlay base k m)))
   (kv-count   [_ k]   (locking lock (merged-count overlay base k)))
@@ -352,7 +371,7 @@
 (defn overlay-kv
   "Compose a writable `overlay` `KvBackend` over a read-only `base` one."
   [overlay base]
-  (->OverlayKv overlay base (Object.)))
+  (->OverlayKv overlay base (Object.) (atom nil)))
 
 (defn overlay-kv?
   "Is `backend` one of these — i.e. is it already a fork's index half?  Asked by
@@ -399,3 +418,33 @@
                                  (and in-target? (not in-source?)) [:remove-from-set k m])))
                        ms))))))
         (layer-candidates layers)))
+
+(defn own-handles
+  "Every handle the raw own layer `overlay` of a fork's index half names: each member of a
+  handle set (`kv/handle-key?`) it holds or records a removal from, and the handle of each
+  `[:tax-installs h]` key."
+  [overlay]
+  (into #{}
+        (mapcat (fn [[k v]]
+                  (let [k (if (and (vector? k) (= ::removed (first k))) (second k) k)]
+                    (concat (when (and (set? v) (kv/handle-key? k)) (filter integer? v))
+                            (when (and (vector? k) (= :tax-installs (first k)) (integer? (second k)))
+                              [(second k)])))))
+        (p/kv-entries overlay)))
+
+(defn own-deltas
+  "`{k {:added :removed :tombstoned?}}` for each key of family `tag` the raw own layer
+  `overlay` of a fork's index half wrote: the members it holds, the base members it records
+  as removed, and whether it shadows the base's value."
+  [overlay tag]
+  (let [of-tag? #(and (vector? %) (= tag (first %)))
+        tomb    (set (filter of-tag? (p/kv-members overlay deleted-keys-key)))
+        ks      (into tomb (keep (fn [[k _]]
+                                   (cond (of-tag? k) k
+                                         (and (vector? k) (= ::removed (first k)) (of-tag? (second k)))
+                                         (second k))))
+                      (p/kv-entries overlay))]
+    (into {} (map (fn [k] [k {:added       (set (p/kv-members overlay k))
+                              :removed     (set (p/kv-members overlay (removed-key k)))
+                              :tombstoned? (contains? tomb k)}]))
+          ks)))

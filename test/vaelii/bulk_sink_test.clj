@@ -137,7 +137,7 @@
      :sentences (set (for [h hs] [(:sentence (v/sentex kb h))
                                   (:context (v/sentex kb h))
                                   (:strength (v/sentex kb h))]))
-     :believed  (set (for [h hs :when (v/in? kb h)]
+     :believed  (set (for [h hs :when (v/believed? kb h)]
                        [(:sentence (v/sentex kb h)) (:context (v/sentex kb h))]))
      :milk      (set (v/ask kb '(likes ?x Milk) 'CxBulk))
      :cats      (set (v/ask kb '(isa ?x Cat) 'CxBulk))

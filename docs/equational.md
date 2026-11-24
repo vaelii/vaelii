@@ -167,8 +167,9 @@ its arguments as written, so a negated equation goal meets the stored denial as 
 
 ## An except of an equation
 
-`(except (sentexHandle E))` of a schematic equation `E` leaves `E` believed and takes it
-out of rewriting at the contexts that read the except ([contexts.md](contexts.md)).
+`(except (sentexHandle E))` of a schematic equation `E` leaves `E` IN in the network, and
+the contexts that read the except neither believe `E` nor rewrite under it
+([contexts.md](contexts.md)).
 `kb/rewrite-term` filters the rules by the reader's `visible?`, so a goal asked there is
 not normalized under `E`, and every twin `E` raised rests on `E`, so `exc/hidden-fn`
 hides the twins there. What a reader there answers follows from where the fact lives:

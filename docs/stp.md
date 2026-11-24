@@ -60,9 +60,11 @@ reads the result back as bounds. It answers `:inconsistent` in two cases:
   of `qcn/unsatisfiable-as-given?`, and both are checked before the pass, so the verdict on
   one self-contradicting fact does not depend on how many *other* instants are present.
 
-As with `qcn`, passing every node the network mentions is the **caller's** obligation, and
-passing extra ones is always safe: an isolated node has a finite edge in neither direction,
-so it can tighten no pair and lie on no cycle.
+As with `qcn`, passing every node the network mentions is the **caller's** obligation. An
+extra node changes no bound: an isolated node has a finite edge in neither direction, so it
+can tighten no pair and lie on no cycle. `closure` passes none, because a warm-started state
+keeps every node it was given, and a node a read names would stay in the resident matrix
+(`stp_test/a-closed-state-holds-only-the-instants-its-network-names`).
 
 ### Warm-starting: an arriving constraint is relaxed in
 
@@ -78,13 +80,17 @@ D'[i][j] = min(D[i][j], D[i][p] + w + D[q][j])
 ```
 
 That update covers every pair at once in O(n²) rather than O(n³), and reaches the same
-closure. One round is enough: a path using the new edge twice decomposes into two that use
+closure. In a closed matrix a pair `[i j]` moves only when the edge shortens both `i ⇝ q`
+and `p ⇝ j`, so the update reads those rows and columns alone. An instant arriving at the
+end of a chain moves one row and one column. One round is enough: a path using the new edge twice decomposes into two that use
 it once, so a shorter one exists only if one of those rounds is *negative*, and the verdict
 catches that case — `D'[p][p]` becomes `min(0, w + D[q][p])`, the weight of the cycle the
 new edge closes. Tightening both sides of a `[lo hi]` bound is two such updates.
 
-`close-state` is the pass answering `{:net :node-vec :d}` — the closure beside the matrix it
-was read off — and `close-state-from` relaxes a network into an earlier state. The matrix is
+`close-state` is the pass answering `{:net :node-vec :idx :d}` — the closure beside the matrix
+it was read off — and `close-state-from` relaxes a network into an earlier state. An instant
+new to the state is placed after the earlier state's instants, so the earlier matrix is the
+new one's top-left block, copied a row at a time. The matrix is
 kept rather than rebuilt from the closed network, because rebuilding it costs a map lookup
 per instant pair, which at four hundred instants is more than the update it precedes. It is
 written once and every reader copies it before an update, so a state is a value; `close` is
@@ -100,8 +106,8 @@ side, since retraction is rare where loading is not.
 
 Two further limits bound the work. Only the bounds a relaxation moved are read back, so a
 constraint that determines one new instant rewrites that instant's row and leaves the rest of the
-closed network the same object. And relaxing `k` edges costs `k·n²` against the closure's
-`n³`, so at `n` or more moved edges it runs the pass; the branch cannot change the answer.
+closed network the same object. And relaxing `k` edges costs at most `k·n²` against the
+closure's `n³`, so at `n` or more moved edges it runs the pass; the branch cannot change the answer.
 
 **The answer is the same in every order.** `stp_incremental_test` folds three permutations
 of each generated network in one constraint at a time and in batches, every step
@@ -256,32 +262,50 @@ and the named set is enough to produce the bound on its own.
 conversion factor arriving *after* a rule has fired re-joins it
 ([inference.md](inference.md), "What a computed answer rests on").
 
-## An unsatisfiable network is reported
+## An unsatisfiable network is a stored contradiction
 
-A negative cycle goes to the `(violations kb)` ledger as `:metric-temporal-inconsistency`,
-naming the context, the unit, the instants in the network, any pair unsatisfiable as
-written, and the instants on the cycle. The first read of the closure after the write files
-the entry: a metric goal, or the settle's Allen narrowing when `:allen` is registered.
-`try-assert` stores a constraint that closes a negative cycle, because its
-`:unsatisfiable-network` refusal reads the registered calculi and the metric prover is not
-one. It is deliberately **not** a `wff` check, for the
-metric reading of the three reasons [qcn.md](qcn.md) gives:
+A negative cycle is stored as one `(contradicts …)` per region (`stp/unsatisfiable-regions`).
+The distance graph has an edge `p → q` for every finite upper bound on `t(q) − t(p)`. A
+region is the constraints inside one strongly connected part of a stated component that
+holds a negative cycle, or one instant whose own constraint excludes zero. The settle of
+the write that closes the cycle places the sentence. It files
+one `:metric-temporal-inconsistency` entry naming the context, the unit, the instants of
+the region, any pair unsatisfiable as written, the instants on the cycle and the sentence.
+`try-assert` refuses the write that closes it. The placement, its justification, the entry
+and the refusal are the calculi's: [qcn.md](qcn.md#support-what-an-entailed-relation-rests-on).
+
+A **stated component** is the instants the `temporalDistance` facts link, with each
+instant's constraints to a calendar moment and its `includesInstant` dates: the edges
+between an instant and its frame's epoch node (`stp/component-rows`). The epoch node joins
+no two instants. A calendar date bounds an instant against the epoch from both sides, so
+every dated instant of a context lies in one strongly connected part with the epoch. A
+simple cycle passes the epoch once, and every other edge on it is a stated constraint, so
+each negative cycle lies inside one stated component with its own dates. The region of a
+clash between two dated instants is the clash and the dates it rests on, however many
+other instants the context dates.
+
+The settle reads each component off its instants' argument index, so its cost is the
+component's constraints, and judges it in its own dimension. A constraint between two
+calendar moments is a component of its own (`stp/moment-rows`). The components dated in
+both frames are read together over `problem` (`stp/two-frame-regions`), because a cycle
+through the local and the absolute epoch can cross two of them. That read costs the
+context's constraints, and answers nothing when they span two dimensions. The
+`metric-region-write`, `metric-dated-region-write` and `rcc8-region-write` perf checks hold
+one closing write's cost flat in the facts outside its component. The placement is deliberately
+**not** a `wff` check, for the metric reading of the three reasons [qcn.md](qcn.md) gives:
 
 * `wff` **throws**, and the constraint it would throw on is whichever arrived last. No
   single member of a negative cycle is the wrong one, so blaming a member would make the
   stored KB depend on assertion order.
-* the check costs an all-pairs closure, and `wff` runs per assert. Every temporal fact would
-  pay an O(n³) pass to be stored.
+* `wff` runs before the store, over the network the write joins. The settle closes the
+  touched components alone, after the write has relabelled.
 * the prover is opt-in. A KB that never registered it would be held to an arithmetic it
   never asked to reason with.
 
 The closure is memoized on the network *value*, with `provers/*quantity-tolerance*` in the
 key beside it, and is therefore shared: two contexts seeing the same constraints, or two KBs
-holding them, close it once between them. A report on that memoized pass would reach only
-whichever caller asked first, so the report is keyed through `observe/newly-seen?` on this
-KB, this context and this network. A query loop reports once, and a change of belief reports
-again. While the network is unsatisfiable **no** metric goal is answered, not even one
-stated outright.
+holding them, close it once between them. A read files nothing. While the network is
+unsatisfiable **no** metric goal is answered, not even one stated outright.
 
 ## The bridge: startOf and endOf
 
@@ -423,18 +447,18 @@ twenty arrivals.
 
 | instants | one closure | constraint arriving, closing | …, relaxed in | instant arriving, closing | …, relaxed in |
 |---|---|---|---|---|---|
-| 25  | 0.26 ms | 0.31 ms | 0.23 ms | 0.41 ms | 0.32 ms |
-| 100 | 3.2 ms  | 3.5 ms  | 0.47 ms | 4.0 ms  | 0.54 ms |
-| 400 | 78 ms   | 94 ms   | 12 ms   | 86 ms   | 1.9 ms  |
+| 25  | 0.15 ms | 0.22 ms | 0.10 ms | 0.40 ms | 0.11 ms |
+| 100 | 2.0 ms  | 2.2 ms  | 0.46 ms | 2.4 ms  | 0.13 ms |
+| 400 | 66 ms   | 71 ms   | 14 ms   | 77 ms   | 0.81 ms |
 
 **Through the engine**, where the belief-filtered read and the magnitude normalization sit
 in front of the pass:
 
 | instants | belief read | assert, then ask | repeat ask |
 |---|---|---|---|
-| 25  | 0.76 ms | 1.4 ms | 2.2 µs |
-| 100 | 1.4 ms  | 2.5 ms | 1.4 µs |
-| 400 | 3.6 ms  | 19 ms  | 1.7 µs |
+| 25  | 0.67 ms | 0.85 ms | 2.7 µs |
+| 100 | 1.7 ms  | 1.9 ms  | 1.8 µs |
+| 400 | 4.2 ms  | 19 ms   | 0.5 µs |
 
 **A repeat ask is the resident lookup**: a couple of microseconds at four hundred instants
 and at twenty-five alike, because the network is the same object read after read and the
@@ -443,13 +467,14 @@ of magnitude larger.
 
 **A warm start saves the pass but not the read-back of the bounds that moved.** A constraint
 spanning half the chain and far tighter than the chain implies moves most of the n² bounds,
-and relaxing it in reads 12 ms against 94. A constraint naming an **instant the network has
-never held** — a timeline being loaded — moves that instant's own row only, and reads
-1.9 ms against 86: forty-five times.
+and relaxing it in reads 14 ms against 71. A constraint naming an **instant the network has
+never held** — a timeline being loaded — moves that instant's own row and column only, and
+reads 0.81 ms against 77: ninety-five times.
 
 **The belief read is linear where the closure is cubic.** At four hundred instants the read
-is 3.6 ms against a 78 ms pass; at twenty-five it is most of what an ask costs.
+is 4.2 ms against a 66 ms pass; at twenty-five it is most of what an ask costs.
 
 `lein perf`'s `metric-closure-warm-start` is the perf check over the arriving-instant column: 8×
-the instants under 35× per arrival. It reads 12.6× to 13.4× across full runs, and 99.5×
-with the same check driving `close-state` on the whole network instead.
+the instants under 20× per arrival. It reads 10.5× and 10.8× alone, 17.1× and 17.5× with the
+matrix laid out again on every arrival, and 99.5× with the same check driving `close-state`
+on the whole network instead.

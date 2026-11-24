@@ -158,7 +158,7 @@
           blind (assoc reopened :reasoning
                        (reify clojure.lang.IDeref
                          (deref [_] (throw (ex-info "record-only edit read belief" {})))))]
-      (is (true? (v/in? kb shadow)))
+      (is (true? (v/believed? kb shadow)))
       (is (false? (shadow-support?)))
       (let [edit (v/edit-records! blind {:direction {rule :forward}})]
         (is (= 1 (:redirected edit)))
@@ -290,6 +290,23 @@
       (v/retract! kb local)
       (is (false? (nat-read/named-values-reachable? kb)))
       (is (= [false false true] (named-answers kb 'CxStory))))))
+
+(deftest a-preview-re-chaining-a-rule-guarded-on-rewriteOf-hands-back-the-named-facts-at-their-handles
+  (tu/with-neutral-kb [kb tu/isolated-fresh]
+    (declare-function! kb)
+    (tu/with-terms [pp rr]
+      (v/assert kb (list 'implies (list 'and (list pp '?x) '(unknown (thereExists ?y (rewriteOf ?x ?y))))
+                         (list rr '?x))
+                'CxUniverse {:direction :forward})
+      (v/assert kb (list pp 'namedRoot) 'CxStory)
+      (let [global (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxUniverse)
+            local  (v/assert kb '(rewriteOf namedRoot (QualifierFn base)) 'CxStory)]
+        (v/assert kb '(related namedRoot Other) 'CxUniverse)
+        (v/retract! kb global)
+        (let [before (tu/baseline kb)]
+          (v/preview kb {:remove [local]})
+          (is (= before (tu/baseline kb))))
+        (is (= [true true true] (named-answers kb 'CxStory)))))))
 
 (deftest a-retired-map-does-not-keep-an-ambiguous-rewrite
   (tu/with-neutral-kb [kb tu/isolated-fresh]
@@ -560,3 +577,37 @@
           (v/retract! kb independent)
           (is (false? (v/ask? kb '(qualified_relation namedRoot) 'CxUniverse))))
         (is (empty? (opaque-function-maps kb 'OuterFn)))))))
+
+(deftest a-conclusion-stored-before-its-applications-rewrite-reads-in-after-a-correspondence-moves
+  ;; The rule concludes (genl (ToyKinFn toyParentOf) (ToyKinFn toyKinOf)) from the facts
+  ;; written over the application, and concludes the rewritten twin once the rewrite moves
+  ;; those facts.  The reifiable mark and a correspondence declaration arriving in the same
+  ;; settle re-spell every use of ToyKinFn, which folds the twin into the row stored first.  The row that ends at
+  ;; the rewritten spelling is believed, and no row is superseded by a spelling no row holds.
+  (doseq [order [[:rule :rewrite] [:rewrite :rule]]]
+    (tu/with-neutral-kb [kb tu/isolated-fresh]
+      (doseq [s '[(unary_function ToyKinFn)
+                  (binary_predicate toyParentOf) (binary_predicate toyKinOf)
+                  (binary_predicate toyRelOf) (binary_predicate toyVersionOf)
+                  (forced_monotonic_predicate toyVersionOf)
+                  (genl toyParentOf toyKinOf)]]
+        (v/assert kb s 'CxUniverse))
+      (let [step {:rule    #(do (v/assert-rule kb '[(toyVersionOf ?p ?v) (toyVersionOf ?g ?gv) (genl ?p ?g)]
+                                               '(genl ?v ?gv) 'CxUniverse {:direction :forward})
+                                (v/assert kb '(toyVersionOf toyParentOf (ToyKinFn toyParentOf)) 'CxUniverse)
+                                (v/assert kb '(toyVersionOf toyKinOf (ToyKinFn toyKinOf)) 'CxUniverse))
+                  :rewrite #(v/assert kb '(rewriteOf toyRelOf (ToyKinFn toyKinOf)) 'CxUniverse)}]
+        (v/with-deferred-settle kb
+          (v/assert kb '(reifiable_function ToyKinFn) 'CxUniverse)
+          (doseq [o order] ((step o)))
+          (v/assert kb '(functionCorrespondingBinaryPredicate ToyKinFn toyVersionOf) 'CxUniverse)))
+      (let [h (v/handle-of kb '(genl (ToyKinFn toyParentOf) toyRelOf) 'CxUniverse)]
+        (is (some? h) (str order ": the rewritten row is stored"))
+        (is (true? (and h (v/believed? kb h))) (str order ": the rewritten row is believed " (pr-str (some->> h (v/why-not kb))))))
+      (doseq [h (sort (p/sentex-ids (:records kb)))
+              :let [w (v/why-not kb h)]
+              :when (= :superseded (:reason w))]
+        (let [rep (get-in w [:superseded-by :handle])]
+          (is (and (some? rep) (not= h rep) (v/believed? kb rep))
+              (str order ": " (pr-str (:sentence w)) " is superseded by a believed row, not "
+                   (pr-str (:superseded-by w)))))))))

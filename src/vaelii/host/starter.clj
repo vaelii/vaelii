@@ -238,24 +238,25 @@
       (finally (dfiles/delete-tree! tmp)))))
 
 (defn load-through-dump
-  "Answer a KB holding the starter, restored from the export dump `dump-name` names under
-  the directory `root`.  `open` answers an empty KB.  With no such dump, or one the import
-  refuses, `load-into` runs on a KB `open` answers, and that KB replaces every dump under
-  `root`.  See docs/web.md, \"The starter dump\"."
-  [open root]
-  (let [dir (File. (str root) (dump-name))]
-    (or (when (.isDirectory dir)
-          (try
-            (let [kb (doto (open) (v/import! (str dir) {:belief? true}))]
-              (trove/log! {:level :info :id ::dump-restored
-                           :msg (str "restored the starter from " dir)})
-              kb)
-            (catch Exception e
-              (trove/log! {:level :warn :id ::dump-refused :error e
-                           :msg (str "the starter dump " dir " did not import: " (ex-message e))})
-              (dfiles/delete-tree! dir)
-              nil)))
-        (doto (open) load-into (write-dump! dir)))))
+  "Answer a KB holding what `load!` (default `load-into`) asserts, restored from the export
+  dump `dump-name` names under the directory `root`.  `open` answers an empty KB.  With no
+  such dump, or one the import refuses, `load!` runs on a KB `open` answers, and that KB
+  replaces every dump under `root`.  See docs/web.md, \"The starter dump\"."
+  ([open root] (load-through-dump open root load-into))
+  ([open root load!]
+   (let [dir (File. (str root) (dump-name))]
+     (or (when (.isDirectory dir)
+           (try
+             (let [kb (doto (open) (v/import! (str dir) {:belief? true}))]
+               (trove/log! {:level :info :id ::dump-restored
+                            :msg (str "restored the KB from " dir)})
+               kb)
+             (catch Exception e
+               (trove/log! {:level :warn :id ::dump-refused :error e
+                            :msg (str "the dump " dir " did not import: " (ex-message e))})
+               (dfiles/delete-tree! dir)
+               nil)))
+         (doto (open) load! (write-dump! dir))))))
 
 (defn- records-fingerprint
   "`p/belief-fingerprint` of `kb`'s record store, or nil for a store that keeps none."

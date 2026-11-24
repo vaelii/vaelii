@@ -101,7 +101,7 @@
   (derived-definitional kb '[transitive symmetric asymmetric reflexive functional irreflexive
                              anti_symmetric anti_transitive equivalence_relation functionalInArg
                              commutativeInArgs commutativeInArgAndRest distinctInArgAndRest
-                             injection surjection bijection associative commutative idempotent
+                             injective_predicate surjective_predicate bijective_predicate associative commutative idempotent
                              transitiveInArg transitiveInArgInverse functional_at_instant]
                         "through algebraic_predicate_property"))
 

@@ -371,6 +371,15 @@
       (is (v/ask? kb (list 'partOfRegion A D) CxBoth))
       (is (v/ask? kb (list 'partOfRegion A D) '?ctx)))))
 
+(tu/deftest-kb the-variable-context-network-reads-each-fact-as-its-own-context-believes-it
+  (tu/with-terms [A B CxA]
+    (v/assert kb (list 'genlCx CxA 'CxUniverse) C)
+    (v/assert kb (list 'not (list 'partOfRegion A B)) CxA)
+    (v/assert kb (list 'partOfRegion A B) CxA {:strength :monotonic})
+    (is (= [true true] (mapv #(:consistent? (v/qualitative-network kb :rcc8 %)) [CxA '?ctx])))
+    (is (= (get-in (v/qualitative-network kb :rcc8 CxA) [:constraints [A B]])
+           (get-in (v/qualitative-network kb :rcc8 '?ctx) [:constraints [A B]])))))
+
 ;; ---- a negative fact is a constraint, on every path a positive one is ----
 ;; A negative fact owes the re-join and the re-check a positive one owes.
 
@@ -410,14 +419,6 @@
       (is (= #{C} (placements kb tmpIn A))))))
 
 ;; ---- the invariant underneath all of the above ---------------------------
-
-(defn- shuffled
-  "`coll` permuted by a seeded PRNG, so a failure reproduces."
-  [seed coll]
-  (let [r (java.util.Random. seed)
-        a (java.util.ArrayList. ^java.util.Collection (vec coll))]
-    (java.util.Collections/shuffle a r)
-    (vec a)))
 
 (defn- qualitative-case
   "A rule, four facts of mixed polarity, two contexts and the context below both, over
@@ -464,7 +465,7 @@
                         back (zipmap (vals t) (keys t))
                         {:keys [setup steps derived]} (qualitative-case t)]
                     (doseq [s setup] (v/assert kb s 'CxUniverse))
-                    (doseq [step (shuffled seed steps)] (step kb))
+                    (doseq [step (tu/shuffled seed steps)] (step kb))
                     (walk/postwalk-replace back (derived kb))))]
     (agree-on-something (vec answers) (zipmap names names))))
 
@@ -482,7 +483,7 @@
                       (doseq [s setup] (v/assert k s 'CxUniverse))
                       (doseq [step order] (step k))
                       (derived k)))]
-      (agree-on-something (mapv #(run (shuffled % steps)) (range 8)) t))))
+      (agree-on-something (mapv #(run (tu/shuffled % steps)) (range 8)) t))))
 
 (deftest a-context-edge-arriving-last-composes-what-it-lets-a-reader-see
   ;; each `genlCx` edge putting `CxQlBoth` under a fact's context arrives last in one
@@ -568,17 +569,68 @@
     (v/assert kb (list 'before A B) C)
     (is (empty? (inconsistencies kb)))
     (v/assert kb (list 'after A B) C)
-    (let [es (inconsistencies kb)
-          e  (:allen (by-calculus es))]
-      (is (= 2 (count es)) "filed by the write, before any read")
+    (let [[e :as es] (inconsistencies kb)]
+      (is (= 1 (count es)) "filed by the write, before any read")
       (is (= [:allen C] [(:calculus e) (:context e)]))
       (is (= [A B] (:nodes (:detail e))))
-      (testing "the two Allen facts' endpoint orders leave the point network unsatisfiable too"
-        (is (= (set (for [x [A B] f ['StartFn 'EndFn]] (list f x)))
-               (set (:nodes (:detail (:point (by-calculus es)))))))))
+      (is (= (set (for [s [(list 'before A B) (list 'after A B)]]
+                    (list 'sentexHandle (v/handle-of kb s C))))
+             (set (rest (:sentence e)))))
+      (is (v/ask? kb (:sentence e) C) "the entry names the contradiction the write placed")
+      (testing "the point network's region rests on the same two facts, so it is the same sentence"
+        (is (false? (:consistent? (v/qualitative-network kb :point C))))
+        (is (= 1 (count (inconsistencies kb))))))
     (testing "a read of the same network files nothing more"
       (is (not (v/ask? kb (list 'before A B) C)))
-      (is (= 2 (count (inconsistencies kb)))))))
+      (is (= 1 (count (inconsistencies kb)))))))
+
+(defn- regions-of
+  "The member sets, as sentences, of the believed contradictions naming a fact of `facts`."
+  [kb facts]
+  (into #{} (map (fn [s] (into #{} (map #(:sentence (v/sentex kb (second %)))) (rest s))))
+        (tu/contradictions-naming kb (keep #(v/handle-of kb % C) facts))))
+
+(defn- regions-in-order
+  "Assert a row's facts in `order`: the regions placed are `expected` of the whole set, and
+  each fact retracted leaves `expected` of the rest until it is asserted again."
+  [kb order [facts expected]]
+  (run! #(v/assert kb (nth facts %) C) order)
+  (is (= (expected (set facts)) (regions-of kb facts)) (str order))
+  (doseq [f facts]
+    (v/retract! kb (v/handle-of kb f C))
+    (is (= (expected (disj (set facts) f)) (regions-of kb facts)) (str order " without " f))
+    (v/assert kb f C)
+    (is (= (expected (set facts)) (regions-of kb facts)) (str order " with " f " again"))))
+
+(defn- region-rows
+  "Per network, a three-fact cycle no model satisfies and a fact joining a fourth node to
+  it, with the regions every subset of the four holds.  A point network's region is the
+  strongly connected part holding the cycle, which the fourth fact stays out of.  An RCC-8
+  network's is its unsatisfiable component, which holds the fourth fact."
+  []
+  (tu/with-terms [A B D E]
+    (let [row (fn [cycle joined in-region?]
+                (let [cyc (set cycle)]
+                  [(conj cycle joined)
+                   (fn [present]
+                     (if (every? present cyc)
+                       #{(if (and in-region? (present joined)) (conj cyc joined) cyc)}
+                       #{}))]))]
+      {:point (row [(list 'instantBefore A B) (list 'instantBefore B D) (list 'instantBefore D A)]
+                   (list 'instantBefore D E) false)
+       :rcc8  (row [(list 'nonTangentialProperPart A B) (list 'nonTangentialProperPart B D)
+                    (list 'nonTangentialProperPart D A)]
+                   (list 'externallyConnected D E) true)})))
+
+(tu/deftest-kb a-region-placed-at-the-write-follows-every-member-in-two-arrival-orders
+  (doseq [order [[0 1 2 3] [3 0 1 2]]
+          [nm row] (region-rows)]
+    (testing (name nm) (regions-in-order kb order row))))
+
+(tu/deftest-kb ^:slow a-region-placed-at-the-write-follows-every-member-in-every-arrival-order
+  (doseq [order (tu/permutations [0 1 2 3])
+          [nm row] (region-rows)]
+    (testing (name nm) (regions-in-order kb order row))))
 
 (tu/deftest-kb try-assert-refuses-a-write-that-makes-a-network-unsatisfiable
   (tu/with-terms [A B D E]
@@ -665,7 +717,7 @@
     (testing "three top-level queries with nothing between them read once"
       ;; the clock is bumped by hand so the first of the three pays a build; without it
       ;; the count is zero, the KB already holding what the asserts above left resident
-      (observe/note-change)
+      (observe/note-change (:clock kb))
       (let [[_ builds] (counting-builds #(dotimes [_ 3] (v/ask? kb (list 'partOfRegion A B) C)))]
         (is (= 1 builds) (str "expected one read, got " builds))))))
 
@@ -706,7 +758,7 @@
       (is (= #{:before} (read)))
       (is (= #{:meets} (wide)) "a rebound tolerance reaches the resident network")
       (is (= #{:before} (read)) "and the default reading stays resident beside it")
-      (observe/note-change)
+      (observe/note-change (:clock kb))
       (is (= #{:meets} (wide)) "a rebuild under the binding")
       (is (= #{:before} (read)) "leaves the default reading to the default tolerance"))))
 
@@ -737,7 +789,7 @@
         (v/assert kb (list tmpThing r) C))
       (v/assert-rule kb [(list tmpThing '?x) (list 'partOfRegion '?x Hub)]
                      (list tmpNear '?x) C {:direction :backward})
-      (observe/note-change)                            ; as above: pay the first read here
+      (observe/note-change (:clock kb))                            ; as above: pay the first read here
       ;; `vec`, in case the engine hands back a lazy seq: an unrealized one would do
       ;; its reading after the counter came off
       (let [[answers builds] (counting-builds
@@ -867,7 +919,7 @@
     (is (= #{} (:moved (qkb/join-delta kb space/rcc8 C)))
         "nothing has moved since the network was joined over")
     (let [pressure 400]
-      (dotimes [i pressure] (observe/cached (reasoning/qcn kb) [::pressure i] (fn [_] i)))
+      (dotimes [i pressure] (observe/cached (:clock kb) (reasoning/qcn kb) [::pressure i] (fn [_] i)))
       (is (< (count @(reasoning/qcn kb)) pressure)
           "the resident cache clears wholesale rather than growing past its bound"))
     (is (= #{} (:moved (qkb/join-delta kb space/rcc8 C)))

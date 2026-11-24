@@ -866,7 +866,7 @@
       (testing "a well-formed inert sentex still stores, unbelieved"
         (let [h (v/assert-inert kb (list dog Muffet) CxInert)]
           (is (nat-int? h))
-          (is (not (v/in? kb h)) "inert means never a premise")
+          (is (not (v/believed? kb h)) "inert means never a premise")
           (v/retract! kb h))))))
 
 (deftest assert-inert-refuses-an-open-sentence-and-resolves-an-ist-form
@@ -894,7 +894,7 @@
           (is (= (list dog Muffet) (:sentence (v/sentex kb h))))
           (is (= CxInert (:context (v/sentex kb h))))
           (is (= h (v/handle-of kb (list dog Muffet) CxInert)))
-          (is (not (v/in? kb h)) "inert means never a premise")
+          (is (not (v/believed? kb h)) "inert means never a premise")
           (v/retract! kb h))))))
 
 (deftest assert-inert-refuses-what-assert-refuses-on-the-sentence-alone
@@ -943,6 +943,6 @@
                 nh (v/assert-inert kb (list 'not (list bird Tweety)) CxInert)]
             (is (nat-int? h))
             (is (nat-int? nh))
-            (is (not (v/in? kb h)))
+            (is (not (v/believed? kb h)))
             (v/retract! kb h)
             (v/retract! kb nh)))))))

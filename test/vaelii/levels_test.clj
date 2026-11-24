@@ -93,7 +93,7 @@
 ;; the symmetric mirror, belief-filtered — so it shares `match-one`'s argument-root
 ;; divert (a goal binding an argument after a variable is answered from the arg root,
 ;; not a leading-variable fan-out).  It adds exactly two things level 2 does not do:
-;; the `except` visibility filter, the retired-spelling filter, and the equality
+;; the `except` filter, the retired-spelling filter, and the equality
 ;; goal-rewrite.  These assert that identity so `query` and the stack cannot drift apart.
 
 (tu/deftest-kb query-core-is-exactly-level-2
@@ -118,7 +118,7 @@
             (str "query diverged from level 2 on " (pr-str goal)
                  "\n  level2: " (pr-str (l2 goal)) "\n  query:  " (pr-str (qq goal))))))))
 
-(tu/deftest-kb query-adds-the-except-visibility-filter
+(tu/deftest-kb query-drops-an-excepted-fact-that-level-2-keeps
   ;; the first thing query adds over level 2, and the one place a result climbing the
   ;; stack *disappears* rather than losing its handle: the filter lives in
   ;; `res/matches-visible`, so it enters at level 4 — see
@@ -403,7 +403,7 @@
             (str "levels 2-7 for " (pr-str goal) " in " ctx " counted " counts))))))
 
 (tu/deftest-kb an-excepted-fact-is-the-one-answer-that-falls-out-of-the-stack
-  ;; The `except` visibility filter lives in `res/matches-visible`, which is level 4,
+  ;; The `except` filter lives in `res/matches-visible`, which is level 4,
   ;; and `res/raw-match` — levels 2 and 3 — does not read it.  So a sentex a believed
   ;; `except` hides is matched below the filter and gone above it.  Level 4 is right
   ;; and `ask` agrees; what it costs is `escalate`, which names level 2 as the

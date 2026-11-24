@@ -223,7 +223,7 @@
                 (is (some? h))
                 (is (= (list 'not (list happy Rex)) (:sentence (by-id h))))
                 (is (not (contains? (by-id h) :polarity)) "and no separate sign key")
-                (is (not (v/in? kb h)) "defeated — stored without being believed")))
+                (is (not (v/believed? kb h)) "defeated — stored without being believed")))
 
             (testing "a defeasible rule is a frame with its decomposition and its varmap"
               (let [rule (first (filter :defeasible sentexes))]

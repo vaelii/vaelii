@@ -254,11 +254,11 @@
               {:hash (hex (merkle-node (subvec leaves 0 k))) :side :left})))))
 
 (defn- leaf?
-  "Does the seat's commit hold `h`: believed (`v/in?`), and not a `contradicts` or
+  "Does the seat's commit hold `h`: believed (`v/believed?`), and not a `contradicts` or
   `defeat` the engine placed for a nogood, which names its members by this seat's
   handles and records a clash among the beliefs rather than a belief of its own."
   [kb h]
-  (and (v/in? kb h)
+  (and (v/believed? kb h)
        (not (and (contains? '#{contradicts defeat} (first (:sentence (v/sentex kb h))))
                  (not (v/premise? kb h))))))
 

@@ -123,7 +123,7 @@
          ;; the lookup-to-query stack and belief
          :levels         (into {} (for [n (range 2 8)]
                                     [n (count (v/lookup kb n '(mammal Rex) 'CxParity))]))
-         :derived-believed (v/in? kb derived)
+         :derived-believed (v/believed? kb derived)
          :derived-why-rule (-> (tu/why-root kb derived) :support first :rule)}]
     ;; retraction: the derived consequence must fall away with its premise, everywhere
     (v/retract! kb (v/handle-of kb '(dog Rex) 'CxParity))

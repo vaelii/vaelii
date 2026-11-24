@@ -221,6 +221,27 @@
     (testing "a type no cover has for its whole answers the empty set"
       (is (= #{} (v/covers-of kb dog))))))
 
+(tu/deftest-kb covers-of-answers-a-cover-by-belief-at-its-own-context
+  (tu/with-terms [animal dog cat CxA CxB]
+    (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse)
+    (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse)
+    (doseq [kind '[covering separating]
+            :let [cover (list kind animal dog cat)
+                  one   #{[(keyword kind) (vec (sort-by str [dog cat]))]}
+                  h     (v/assert kb cover CxA)]]
+      (testing kind
+        (let [d (v/assert kb (list 'not cover) CxB {:strength :monotonic})]
+          (is (= one (v/covers-of kb animal)) "a defeat below leaves the cover believed")
+          (v/retract! kb d))
+        (let [d (v/assert kb (list 'not cover) CxA {:strength :monotonic})]
+          (is (= #{} (v/covers-of kb animal)) "a defeat where the cover is stored removes it")
+          (v/retract! kb d))
+        (is (= one (v/covers-of kb animal)) "the defeat retracted, the cover is back")
+        (let [e (v/assert kb (list 'except (list 'sentexHandle h)) CxA {:strength :monotonic})]
+          (is (= #{} (v/covers-of kb animal)) "an except where the cover is stored removes it")
+          (v/retract! kb e))
+        (v/retract! kb h)))))
+
 (tu/deftest-kb a-cover-edge-counts-in-min-genls-and-max-specs
   ;; `puppy ⊂ dog` is stated, `dog ⊂ animal` is the cover declaration's, and `(genl puppy animal)` is
   ;; stated beside them
@@ -358,7 +379,7 @@
 
 (defn- believed? [kb sentence]
   (let [h (v/handle-of kb sentence 'CxUniverse)]
-    (boolean (and h (v/in? kb h)))))
+    (boolean (and h (v/believed? kb h)))))
 
 (defn- every-order [n] (tu/orders (range n)))
 

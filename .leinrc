@@ -1,0 +1,12 @@
+# The lein script sources this file from the directory lein runs in, before it starts
+# leiningen's own JVM. It caps that JVM's heap at 1g, unless LEIN_JVM_OPTS names -Xmx.
+# With no -Xmx the ceiling is a quarter of physical memory, and every lein a script
+# nests starts another launcher JVM. The lein script gives LEIN_JVM_OPTS its C1-only
+# default only when the variable is unset, so this file applies that default first.
+# The project JVM's cap is project.clj's `:jvm-opts`.
+LEIN_JVM_OPTS="${LEIN_JVM_OPTS-"-XX:+TieredCompilation -XX:TieredStopAtLevel=1"}"
+case "$LEIN_JVM_OPTS" in
+  *-Xmx*) ;;
+  *) LEIN_JVM_OPTS="$LEIN_JVM_OPTS -Xmx1g" ;;
+esac
+export LEIN_JVM_OPTS

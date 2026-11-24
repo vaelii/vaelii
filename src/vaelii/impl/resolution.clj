@@ -593,16 +593,16 @@
         (not (jtms/known-datum? tms handle))
         (jtms/in? tms handle))))
 
-(defn supporter-believed?
-  "Is stored supporter `handle` believed from `context`: IN in the network, and not hidden
-  there by a believed `except` or a placed `defeat` in force at `context`, or by resting
-  only on a hidden handle (`exc/excepted?`, the read walk)?  `defeats?` false reads the
+(defn supporter-unhidden?
+  "Is stored supporter `handle` IN in the network, and not hidden at `context` by a
+  believed `except` or a placed `defeat` in force there, or by resting only on a hidden
+  handle (`exc/excepted?`, the read walk)?  `defeats?` false reads the
   excepts alone (`exc/excepted-in-network?`).  The taxonomy's `visible?` callback
-  (`kb/attach-visibility!`): it decides whether a closure walk may cross an edge.  Its
-  ancestor-set reads go through `tax/context-up-global`, so asking it inside a scoped walk
-  never re-enters the filtered closure.  A context that disbelieves a `genl` edge stops
+  (`kb/attach-visibility!`): it decides whether a closure walk may cross an edge.  It
+  reads a `genlCx` supporter over `tax/context-up-global` (`exc/staged`), so asking it
+  inside the `genlCx` walk never re-enters that walk.  A context that disbelieves a `genl` edge stops
   reaching over it.  See docs/taxonomy.md."
-  ([kb handle context] (supporter-believed? kb handle context true))
+  ([kb handle context] (supporter-unhidden? kb handle context true))
   ([kb handle context defeats?]
    (boolean
     (and (jtms/in? (reasoning/tms kb) handle)
@@ -615,13 +615,13 @@
                     (exc/excepted-in-network? kb handle context))))))))
 
 (defn supporter-visible?
-  "Is stored supporter `handle` believed, inherited, and not excepted from `context`?
-  `defeats?` false leaves the placed defeats unread (`supporter-believed?`), as a
+  "Is stored supporter `handle` believed at `context`: `supporter-unhidden?`, and stored in a
+  context `context` sees (`tax/sees?`)?  `defeats?` false leaves the placed defeats unread (`supporter-unhidden?`), as a
   firing's placement reads them."
   ([kb handle context] (supporter-visible? kb handle context true))
   ([kb handle context defeats?]
    (boolean
-    (and (supporter-believed? kb handle context defeats?)
+    (and (supporter-unhidden? kb handle context defeats?)
          (when-let [sentex (p/get-sentex (:records kb) handle)]
            (tax/sees? (reasoning/taxonomy kb) context (:context sentex)))))))
 
@@ -653,8 +653,8 @@
        (tax/maximal-common-descendant-contexts tax contexts)))))
 
 (defn visible-supporter-fn
-  "`handle -> boolean`, memoized: is the sentex `handle` believed, inherited by
-  `context`, and not hidden there by a visibility exception?  nil when `context` is nil
+  "`handle -> boolean`, memoized: is the sentex `handle` believed at `context`
+  (`supporter-visible?`)?  nil when `context` is nil
   or a `?var`, the unscoped read, which every caller reads as *no filter*.  The predicate
   a context-scoped equality read takes: the partition records its supporters as handles."
   [kb context]
@@ -662,20 +662,34 @@
     (memoize #(supporter-visible? kb % context))))
 
 (defn declared-by
-  "The believed statements of the `kind` property of `pred` (`tax/prop-supporter-contexts`)
-  that `context` sees, as a set of handles; every believed one for a nil or `?var` context.
-  Every one, since naming one of two would decide a justification by arrival order."
+  "The statements of the `kind` property of `pred` (`tax/prop-supporter-contexts`) that
+  `context` sees and believes, as a set of handles; for a nil or `?var` context, every one
+  its own context believes (`exc/believed-own?`)."
   [kb kind pred context]
   (let [tx (reasoning/taxonomy kb)
         hs (tax/prop-supporter-contexts tx kind pred)]
     (if (empty? hs)
       #{}
-      (let [tms (reasoning/tms kb)
-            up  (when (and (symbol? context) (not (sx/variable? context)))
-                  (set (tax/context-up tx context)))]
+      (let [scoped? (and (symbol? context) (not (sx/variable? context)))
+            up      (when scoped? (set (tax/context-up tx context)))
+            hidden? (when scoped? (exc/belief-hidden-fn kb context))
+            tms     (reasoning/tms kb)
+            held?   (if scoped?
+                      #(and (jtms/in? tms %) (not (and hidden? (hidden? %))))
+                      #(exc/believed-own? kb %))]
         (into #{}
-              (keep (fn [[h c]] (when (and (or (nil? up) (nil? c) (contains? up c)) (jtms/in? tms h)) h)))
+              (keep (fn [[h c]] (when (and (or (nil? up) (nil? c) (contains? up c)) (held? h)) h)))
               hs)))))
+
+(defn declaration-supports
+  "`base` once per handle of `decls` (`declared-by`), that handle added, in the content
+  order of their contexts; `[base]` when `decls` is empty.  One support per declaration,
+  so that retracting, defeating or excepting one of two leaves the other's justification."
+  [kb decls base]
+  (if (seq decls)
+    (map #(conj base %)
+         (nm/sort-by-content-key #(:context (p/get-sentex (:records kb) %)) nm/compare-form decls))
+    [base]))
 
 (defn representative-in
   "`term`'s equality-class representative as `visible?` sees the merges.  The global
@@ -1019,7 +1033,7 @@
         read (fn [kind at?] (keep #(when-let [sx (p/get-sentex (:records kb) %)]
                                      (let [k (nth (:sentence sx) 2 nil)]
                                        (when (and (integer? k) (at? (long k))) sx)))
-                                  (reads/believed-with-args kb kind {1 f})))]
+                                  (reads/in-with-args kb kind {1 f})))]
     (when (or q? qr?)
       (concat (when q? (read 'quotedArg #(= (long n) %)))
               (when qr? (read 'quotedArgAndRest #(<= % (long n))))))))
@@ -1140,9 +1154,9 @@
   (`observe/respell-count`)."
   [kb]
   (observe/clocked
-   (reasoning/qcn kb) [::stored-correspondences]
+   (:clock kb) (reasoning/qcn kb) [::stored-correspondences]
    (fn [stale]
-     (let [n    (observe/respell-count)
+     (let [n    (observe/respell-count (:clock kb))
            held (when (= n (:respells stale)) (:records stale))
            hs   (reads/as-stored-with-args (:index kb) correspondence-predicate {})]
        (if (and held (= (count held) (count hs)) (every? #(contains? held %) hs))
@@ -1169,7 +1183,7 @@
           sees    (if scoped? #(tax/sees? tax context (:context %)) (constantly true))
           hidden? (or (when scoped? (exc/hidden-fn kb context)) (constantly false))
           records (:records (stored-correspondences kb))]
-      (->> (reads/believed-with-args kb correspondence-predicate {})
+      (->> (reads/in-with-args kb correspondence-predicate {})
            (keep records)
            (filter #(stated-position (:sentence %)))
            (filter sees)
@@ -1281,7 +1295,7 @@
              formula? #(formula-type? kb %)
              proj     (some (fn [[f k]] (when (= k n) f)) sx/arg-projections)
              decls    (fn [kind] (keep #(:sentence (p/get-sentex recs %))
-                                       (reads/believed-with-args kb kind {1 pred})))]
+                                       (reads/in-with-args kb kind {1 pred})))]
          (boolean
           (or (some (fn [[_ _ k t]] (and (= n k) (formula? t)))
                     (concat (decls 'arg) (decls 'quotedArg)))
@@ -1300,7 +1314,7 @@
     (let [recs    (:records kb)
           tax     (reasoning/taxonomy kb)
           decls   (fn [kind] (keep #(:sentence (p/get-sentex recs %))
-                                   (reads/believed-with-args kb kind {1 pred})))
+                                   (reads/in-with-args kb kind {1 pred})))
           marked  (fn [kind mark] (when (tax/has-prop? tax mark pred) (decls kind)))
           handle  (fn [[_ _ n t]] (when (= 'sentex_handle_term t) n))
           fixed   (cond-> (into #{} (keep handle) (marked 'quotedArg :declares-quoted-arg))
@@ -1834,12 +1848,12 @@
 
 (defn entries-at
   "The entries of `entries` some supporter of which `reader` believes
-  (`supporter-believed?`), as a set.  The placed defeats are read under the network reading
+  (`supporter-unhidden?`), as a set.  The placed defeats are read under the network reading
   too (`tax/*network-belief*`): the store spells a fact by the marks its readers believe
   with the defeats applied, so a reading that sets them aside reads spellings no row holds."
   [kb entries reader]
   (binding [tax/*network-belief* false]
-    (into #{} (keep (fn [[k sup]] (when (some #(supporter-believed? kb % reader) (keys sup)) k)))
+    (into #{} (keep (fn [[k sup]] (when (some #(supporter-unhidden? kb % reader) (keys sup)) k)))
           entries)))
 
 (defn- permuting-functor-in?
@@ -3158,7 +3172,7 @@
        (let [[canonical rename] (lc/canonicalize sentence)]
          (lc/rename-matches
           unify rename
-          (lc/lookup (reasoning/matches kb)
+          (lc/lookup (:clock kb) (reasoning/matches kb)
                      [canonical view-context
                       *hierarchical-retrieval* *arg-root-retrieval* *structural-index*
                       *belief-blind* exc/*unscoped-own* tax/*search* tax/*network-belief*]
@@ -3177,11 +3191,11 @@
 ;; ---- whose declarations bind a tuple ------------------------------------
 
 (defn type-memberships
-  "The membership sentexes `(T x)` of term `x` that `kb/types-of` reads its types off, as
-  records: believed, asserted in a context `context` sees, and not hidden from it by an
-  `except` (default: any context).  The same three filters `matches-visible` applies.  A
-  negative membership is excluded by the argument test: a `(not (T x))` sentex has `not`
-  as its functor."
+  "The membership sentexes `(T x)` of term `x` believed at `context`, as records, which
+  `kb/types-of` reads its types off: IN (`jtms/in?`), stored in a context `context` sees,
+  and not removed there by an except or a defeat in force (`exc/hidden-fn`).  A
+  variable `context` reads each at its own context (`exc/own-hidden-fn`).  A negative
+  membership is excluded by the argument test: `(not (T x))` has `not` as its functor."
   ([kb x] (type-memberships kb x '?ctx))
   ([kb x context]
    (let [recs     (:records kb)
@@ -3199,7 +3213,7 @@
           (keep (fn [h]
                   (when-not (hidden? h)
                     (when-let [s (p/get-sentex recs h)]
-                      (when (and (jtms/in? tms (:id s))      ; believed memberships only
+                      (when (and (jtms/in? tms (:id s))      ; IN memberships only
                                  (visible? (:context s)))
                         (let [sen (:sentence s)]
                           (when (and (= 1 (nm/arity sen)) (= x (first (nm/args sen))))
@@ -3238,7 +3252,7 @@
 
 (defn separation-denials
   "The witnesses of `(not (t x))` a reader at `context` reads off a separation, in content
-  order: one per believed, visible, unexcepted membership `(s x)` (`type-memberships`) and
+  order: one per membership `(s x)` believed at `context` (`type-memberships`) and
   per route a declaration separates `s` from `t` through (`tax/separation-routes`) that
   meets `tax/monotonic-route-witness`.  Each witness is `{:membership h :sentence (s x)
   :context c :route {:keys :pair :supports :edges}}`.  Empty when no separation reaches
@@ -3629,24 +3643,23 @@
                hs))))))
 
 (defn believed-at?
-  "Is `handle` believed as `context` reads it: IN in the network, and not hidden from
-  `context` by a placed `defeat` in force there, or by resting only on a handle one hides
-  (`exc/belief-hidden-fn`)?  The stored excepts are not applied, since an `except` is
-  visibility and this is belief.
+  "Is `handle` believed as `context` reads it: IN in the network, stored in a context
+  `context` sees, and not hidden there (`exc/belief-hidden-fn`)?  An except or a placed
+  `defeat` in force there hides it, and so does resting only on a handle one hides.
 
   The reader for a caller holding a sentex and no reader is the sentex's own context.  A
   sentex resting only on a member every reader of it hides is IN in the network and
   hidden from every context that can read it, and this answers false for it."
   [kb handle context]
   (boolean (and (jtms/in? (reasoning/tms kb) handle)
-                (not (when-let [hid (exc/belief-hidden-fn kb context)] (hid handle))))))
+                (not ((exc/belief-hidden-fn kb context) handle)))))
 
 ;; ---- dead ends -----------------------------------------------------------
 
 (def ^:dynamic *dead-end*
   "An optional observer of the DFS's dead ends, `(fn [goal depth])`, or nil (default).  A
-  dead end is a subgoal, substituted under the frame's bindings, that no visible believed
-  fact and no rule consequent unified with.  A branch cut short (loop guard, `:max-depth`,
+  dead end is a subgoal, substituted under the frame's bindings, that no fact believed at
+  the query context and no rule consequent unified with.  A branch cut short (loop guard, `:max-depth`,
   term-growth ceiling) is not reported.  The return value is ignored.  Only `prove`'s
   loop reports.  docs/abduction.md, The dead end."
   nil)

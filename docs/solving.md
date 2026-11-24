@@ -362,7 +362,7 @@ that). Bounding the problem's size removes it.
 concludes its sentence (below).
 
 This is what makes labelings coexist, and it needs no ATMS. Every belief-filtered read —
-`sentexes-matching`, `in?`, and the nogood placement (`chain/place-nogoods!`) — sees only
+`sentexes-matching`, `believed?`, and the nogood placement (`chain/place-nogoods!`) — sees only
 IN sentexes. So an inert `(not head)` sitting in a context that sees a believed `head` forms
 **no** nogood and moves **no** belief. Coexistence falls out of *not premising*.
 
@@ -382,7 +382,7 @@ index one. A rule fires because `index-rule-sentex` posted its predicates, which
 where a rule sentex is *created* — the assert entry point's new branch, and the generator mint —
 so a rule stored inert would be unreachable by either chainer, and would stay unreachable
 after somebody asserted it, that assert resolving to the stored sentex and taking the
-branch that does not index. Such a rule is one `in?` calls believed and no fact fires. A labeling labels atoms and their negations, so nothing this primitive exists
+branch that does not index. Such a rule is one `believed?` answers true for and no fact fires. A labeling labels atoms and their negations, so nothing this primitive exists
 for wants one.
 
 The **other** inertness is a rule's own: `set/inertRule` is believed, indexed and
@@ -568,6 +568,53 @@ discipline `do/label` applies to the labelings.
 ;; CxPlanClass: (supportable (color Item red)) (supportable (color Item blue))
 ;;              (classificationOf CxPlanClass CxPlan)
 ```
+
+## The ASP reading of a program
+
+`v/answer-sets kb context opts` grounds a context's program as `do/label` does, and writes
+nothing. Its encoding holds neither the keep-belief objective nor the content-keyed
+tiebreak, so a solve optimizes the program's own `minimize` and soft constraints alone. Its
+optimal answer sets are the ones clingo reports for the same program. In the two-colour
+example above, the empty choice is an optimum beside each colour; `do/label`'s keep-belief
+objective excludes it. The run file's solve reads call `answer-sets`
+([operations.md](operations.md#run-files)), and so does the daemon's `:answer-sets` op.
+
+`:reading` picks what a solve answers. Each reading is one backend solve:
+
+| `:reading` | solves | returns |
+|---|---|---|
+| `:all` (default) | `:all-optima` | `:answer-sets`, each the choice and derived atoms true in one optimal answer set, and `:answer-set-costs` |
+| `:one` | `:label` | `:answer-sets` holding one optimal answer set |
+| `:brave` | `:classify-supportable` | `:consequences`, the atoms true in some optimal answer set |
+| `:cautious` | `:classify-true` | `:consequences`, the atoms true in every optimal answer set |
+
+A brave or cautious solve enumerates no answer set. The backend's consequence mode
+converges on the set over one search ([asp.md](asp.md#the-time-limit) counts the solves).
+
+The other options set the solve. Each is a clingo flag:
+
+| option | readings | clingo flag | effect |
+|---|---|---|---|
+| `:among :optimal` | all | `--opt-mode=optN` | the optimal answer sets only (the default) |
+| `:among :all` | all | `--opt-mode=ignore` | every answer set, the objective ignored |
+| `:among [c …]` | all | `--opt-mode=enum,c,…` | every answer set whose cost vector is at most `[c …]`, compared highest level first |
+| `:limit n` | `:all` | `--models=n` | at most `n` answer sets |
+| `:project pattern` | `:all` | `--project` | one answer set per distinct set of atoms unifying `pattern`, each holding only those atoms |
+| `:opt-strategy` | all | `--opt-strategy` | `:bb` or `:usc` (`VAELII_ASP_OPT_STRATEGY` when absent) |
+| `:solve-limit n` | all | `--solve-limit` | the conflict limit (`VAELII_ASP_SOLVE_LIMIT` when absent; 0 lifts it) |
+| `:time-limit s` | all | `--time-limit` | the seconds one solve may run (`VAELII_ASP_TIME_LIMIT` when absent; 0 lifts it) |
+
+`answer-sets` refuses a key its reading does not read, and a value outside an option's
+domain (`:unknown-option`). Under an `:among` other than `:optimal` a solve claims no
+optimum: `:costs` is nil, a complete search is `:sat`, and `:answer-set-costs` holds each
+answer set's cost vector. The vector is nil under `:among :all`, since the solver computes
+no cost when it ignores the objective. Several models can share one projection, and the solver
+reports it once.
+
+`:status` is the solve's: `:optimum` under an objective, `:sat` without one, `:unsat` when
+no answer set exists, and `:interrupted`, `:best-effort` or `:unknown` when a limit stopped
+the search. A search that stops at its `:limit` has its whole answer, so its status is
+`:optimum` or `:sat`.
 
 ## Inspecting a solve
 

@@ -496,7 +496,7 @@
         (let [r2 (adj/resolve-by-majority kb id ph 'CxDeploy)]
           (is (= {:for 0 :against 3 :outcome :against} (select-keys r2 [:for :against :outcome])))
           (is (= [(:ruling r1)] (:withdrawn r2)) "the standing ruling is withdrawn first")
-          (is (not (v/in? kb (:ruling r1))))
+          (is (not (v/believed? kb (:ruling r1))))
           (is (= :false (:verdict (v/argue kb P 'CxDeploy)))
               "one ruling stands, so the verdict follows the new count")
           (is (empty? (filter #(= :conflict (:dispute-class %)) (d/disputes-in kb 'CxDeploy)))
@@ -522,7 +522,7 @@
         h1  (adj/rule kb 'AgentArbiter did P 'CxDeploy)]
     (is (= :true (:verdict (v/argue kb P 'CxDeploy))))
     (let [h2 (adj/rule kb 'AgentArbiter did not-P 'CxDeploy)]
-      (is (not (v/in? kb h1)) "the earlier ruling is retracted")
+      (is (not (v/believed? kb h1)) "the earlier ruling is retracted")
       (is (= [h2] (adj/standing-rulings kb 'AgentArbiter did)))
       (is (= :false (:verdict (v/argue kb P 'CxDeploy))))
       (is (= h2 (adj/rule kb 'AgentArbiter did not-P 'CxDeploy))
@@ -555,7 +555,7 @@
                (:dispute-ids (adj/who-ruled kb h1)))))
       (testing "so ruling the first the other way supersedes rather than doubling"
         (let [h3 (adj/rule kb 'AgentArbiter d1 not-P 'CxDeploy)]
-          (is (not (v/in? kb h1)) "the shared ruling is withdrawn, not left beside")
+          (is (not (v/believed? kb h1)) "the shared ruling is withdrawn, not left beside")
           (is (= [h3] (adj/standing-rulings kb 'AgentArbiter d1)))
           (is (= :false (:verdict (v/argue kb P 'CxDeploy)))))))))
 
@@ -629,7 +629,7 @@
         "believed, so it is the house's standing word")
     ;; something known-true says otherwise, and the default loses
     (v/assert kb not-P mctx {:creator adj/majority-arbiter :strength :monotonic})
-    (is (false? (v/in? kb soft)) "the ruling is stored and defeated")
+    (is (false? (v/believed? kb soft)) "the ruling is stored and defeated")
     (testing "a defeated ruling is not a standing one"
       (is (= [] (adj/standing-rulings kb adj/majority-arbiter did))))
     (testing "so a tie does not withdraw it as stale, and does not destroy it"
@@ -650,11 +650,11 @@
     (v/assert kb '(green ProdCluster) dctx {:creator 'AgentDora})
     (let [derived (v/handle-of kb P dctx)]
       (is (some? derived) "the rule fired, so Dora's context holds P")
-      (is (true? (v/in? kb derived)) "and believes it, for now")
+      (is (true? (v/believed? kb derived)) "and believes it, for now")
       (v/assert kb '(not (green ProdCluster)) dctx
                 {:creator 'AgentDora :strength :monotonic})
       (is (some? (v/sentex kb derived)) "P is still stored")
-      (is (false? (v/in? kb derived)) "and no longer believed — its support was beaten")
+      (is (false? (v/believed? kb derived)) "and no longer believed — its support was beaten")
       (testing "a claim the arbiter does not believe is not a side they hold"
         (is (some? (adj/rule kb 'AgentDora did not-P 'CxDeploy))
             "so the ruling is allowed")

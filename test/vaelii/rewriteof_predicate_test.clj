@@ -14,11 +14,11 @@
 
 (defn- believed? [kb sentence context]
   (let [h (v/handle-of kb sentence context)]
-    (boolean (and h (v/in? kb h)))))
+    (boolean (and h (v/believed? kb h)))))
 
 (defn- stored-not-believed? [kb sentence context]
   (let [h (v/handle-of kb sentence context)]
-    (and (some? h) (some? (v/sentex kb h)) (not (v/in? kb h)))))
+    (and (some? h) (some? (v/sentex kb h)) (not (v/believed? kb h)))))
 
 (defn- ask-values [kb goal context var]
   (set (map #(get % var) (v/ask kb goal context))))
@@ -340,13 +340,13 @@
     (let [rule (v/assert-rule kb [(list likes '?x Tom)] (list friendly '?x) CxName {:direction :forward})]
       (v/assert kb (list 'rewriteOf Tom Thomas) CxName)   ; individuals: Thomas retired
       (testing "the rule itself is left alone (migration would have superseded it)"
-        (is (v/in? kb rule) "the original rule stays believed, unmigrated")
+        (is (v/believed? kb rule) "the original rule stays believed, unmigrated")
         (is (v/premise? kb rule) "and remains a premise, not a derived twin"))
       (testing "reasoning still works via fact migration, on the original rule"
         (v/assert kb (list likes Ann Thomas) CxName)  ; migrates to (likes Ann Tom)
         (let [fh (v/handle-of kb (list friendly Ann) CxName)]
           (is (some? fh))
-          (is (v/in? kb fh))
+          (is (v/believed? kb fh))
           (let [rules-used (->> (v/supporting-justifications kb fh)
                                 (map :informant) (filter integer?) set)]
             (is (contains? rules-used rule)

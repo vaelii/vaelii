@@ -107,7 +107,7 @@
       (v/assert kb '(organism SandboxMoggy) sbx)
       (let [derived (v/handle-of kb '(mortal SandboxMoggy) sbx)]
         (is (nat-int? derived) "the shipped rule concluded into the sandbox")
-        (is (v/in? kb derived))
+        (is (v/believed? kb derived))
         (sandbox/reset! kb sbx)
         (is (nil? (v/sentex kb derived)) "the conclusion went with its premise")
         (is (= justs-before (tu/justification-ids kb))

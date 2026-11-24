@@ -25,7 +25,6 @@ vaelii.coverage/write-hits  # REACHED cloverage --custom-report symbol, scripts/
 vaelii.foreign-contract-test/marking-dump-reader  # REACHED quoted-symbol registry, foreign/register in the same test file
 vaelii.foreign-contract-test/versionless-dump-reader  # REACHED quoted-symbol registry, foreign/register in the same test file
 vaelii.impl.asp.clingo/classify-both  # REACHED requiring-resolve, impl/asp/solver.clj
-vaelii.impl.asp.label/label-dilemmas  # REACHED quoted-symbol registry, impl/imperative.clj
 vaelii.impl.asp.solve-context/classify  # REACHED quoted-symbol registry, impl/imperative.clj
 vaelii.impl.asp.solve-context/label  # REACHED quoted-symbol registry, impl/imperative.clj
 vaelii.impl.handle-set/collector  # REACHED out of tree — the vaelii-postgres and vaelii-sqlite record stores' cursor walks build their handle set with it

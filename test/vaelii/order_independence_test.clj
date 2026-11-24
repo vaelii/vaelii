@@ -58,13 +58,6 @@
 ;; site, for an exhaustive audit.
 (def ^:private ordering-sample 16)
 
-(defn- shuffle-seeded
-  "A shuffle that is the same for the same seed, so a sampled failure reproduces."
-  [seed coll]
-  (let [al (java.util.ArrayList. ^java.util.Collection coll)]
-    (java.util.Collections/shuffle al (java.util.Random. (long seed)))
-    (vec al)))
-
 (defn- sampled-orderings
   "Up to `n` of `orderings`: the first and last (the given order and its reverse, which a
   relabelling is likeliest to split on), then a fixed-seed spread of the rest.  All of
@@ -74,7 +67,7 @@
     (if (<= (count v) n)
       v
       (into [(first v) (peek v)]
-            (take (- n 2) (shuffle-seeded 42 (subvec v 1 (dec (count v)))))))))
+            (take (- n 2) (tu/shuffled 42 (subvec v 1 (dec (count v)))))))))
 
 (defn- default-rule [antes conseq]
   (list 'set/defaultRule (list 'set/forwardRule (list 'implies (cons 'and antes) conseq))))
@@ -375,6 +368,22 @@
              (:responsible result))))
     (tu/clear-kb! (tu/test-kb))))
 
+(deftest a-rule-over-a-genl-closure-a-cover-extends-is-order-independent
+  (let [ops [#(v/assert-rule % '[(oc_mem ?x) (genl ?x oc_top)] '(oc_out ?x) 'CxUniverse
+                             {:direction :forward})
+             #(v/assert % '(genl oc_mid oc_top) 'CxUniverse {:strength :monotonic})
+             #(v/assert % '(genl oc_a1 oc_a) 'CxUniverse {:strength :monotonic})
+             #(v/assert % '(oc_mem oc_a1) 'CxUniverse {:strength :monotonic})
+             #(v/assert % '(oc_mem oc_b) 'CxUniverse {:strength :monotonic})
+             #(v/assert % '(partition oc_mid oc_a oc_b) 'CxUniverse {:strength :monotonic})]
+        observe (fn [kb]
+                  {:out (set (map :sentence (v/sentexes-matching kb '(oc_out ?x) 'CxUniverse)))})
+        result  (one-outcome! "a rule over a genl closure a cover extends" ops observe
+                              ordering-sample)]
+    (testing "a member below a part concludes oc_out, the cover arriving first or last"
+      (is (= '#{(oc_out oc_a1) (oc_out oc_b)} (:out result))))
+    (tu/clear-kb! (tu/test-kb))))
+
 (deftest a-re-assert-never-downgrades-a-premises-class
   ;; A re-assert with no `:strength` states nothing about the class, so it must not
   ;; downgrade the known-true mark: asserted monotonic, re-asserted bare, then met by a
@@ -390,8 +399,8 @@
         observe (fn [kb]
                   (let [pos (v/handle-of kb '(flies Tweety) 'CxUniverse)
                         neg (v/handle-of kb '(not (flies Tweety)) 'CxUniverse)]
-                    {:flies       (v/in? kb pos)
-                     :not-flies   (v/in? kb neg)
+                    {:flies       (v/believed? kb pos)
+                     :not-flies   (v/believed? kb neg)
                      :flies-class (v/defeat-class kb pos)
                      :conflicts   (count (v/conflicts kb))}))
         result (one-outcome! "a bare re-assert of monotonic content" ops observe)]
@@ -756,6 +765,28 @@
           "and the second withdrawal takes the whole proposition"))
     (tu/clear-kb! (tu/test-kb))))
 
+(deftest a-late-commutative-mark-over-a-void-pair-believes-it-once-its-firings-are-valid
+  (let [decls '[(forced_monotonic_predicate pairTag) (forced_monotonic_predicate pairNote)]
+        build #(doto (tu/fresh)
+                 (v/assert-rule '[(pairTag ?a ?b)] '(arg (PairFn ?a ?b) 1 thing) 'CxUniverse
+                                {:direction :forward})
+                 (v/assert-rule '[(arg ?x 1 ?t)] '(pairNote ?x ?t) 'CxUniverse {:direction :forward})
+                 (v/assert-rule '[(pairNote ?x ?t)] '(arg ?x 1 ?t) 'CxUniverse {:direction :forward}))
+        declare! (fn [kb] (doseq [d decls] (v/assert kb d 'CxUniverse)))
+        chains [[declare! (fn [kb] (doseq [d decls] (v/retract! kb (v/handle-of kb d 'CxUniverse))))]
+                [#(doseq [f '[(pairTag Bob Ann) (pairTag Ann Bob)]] (v/assert % f 'CxUniverse))]
+                [#(v/assert % '(commutative PairFn) 'CxUniverse)]]
+        believed (fn [kb] (mapv #(boolean (v/ask? kb % 'CxUniverse))
+                                '[(arg (PairFn Ann Bob) 1 thing) (arg (PairFn Bob Ann) 1 thing)
+                                  (pairNote (PairFn Ann Bob) thing)]))
+        observe (fn [kb] {:void (believed kb) :valid (do (declare! kb) (believed kb))})
+        result (one-outcome-under!
+                (str "late commutative mark over two void `arg` firings, each spelling"
+                     " concluding itself through `pairNote`")
+                chains observe nil build)]
+    (is (= {:void [false false false] :valid [true true true]} result))
+    (tu/clear-kb! (tu/test-kb))))
+
 ;; ---- a reifiable_function mark moving -------------------------------------
 
 (def ^:private skill-use '(able Rex (SkillFn Rex)))
@@ -784,9 +815,9 @@
   (tu/clear-kb! (tu/test-kb)))
 
 (deftest a-late-reifiable-declaration-re-spells-an-application-in-the-head
-  (let [head   '(BloodKinFn siblingOf)
-        ops    [(assert-op '(reifiable_function BloodKinFn))
-                (assert-op '(result BloodKinFn binary_predicate))
+  (let [head   '(GeneticKinFn siblingOf)
+        ops    [(assert-op '(reifiable_function GeneticKinFn))
+                (assert-op '(result GeneticKinFn binary_predicate))
                 (assert-op (list 'genl head 'siblingOf))
                 #(v/assert (assoc % :naming :off) (list head 'Ann 'Bob) 'CxUniverse)]
         result (one-outcome! "a head application" ops
@@ -1580,7 +1611,7 @@
                  (let [sx (v/sentex kb h)]
                    {:sentence (content (v/sentence-of sx))
                     :context  (:context sx)
-                    :believed (v/in? kb h)
+                    :believed (v/believed? kb h)
                     :class    (v/defeat-class kb h)})))
           (tu/sentex-ids kb))))
 
@@ -1942,7 +1973,7 @@
         edge    #(v/assert % (list 'genlCx k 'CxLeBlocker) 'CxUniverse)
         observe (fn [kb]
                   (let [h (v/handle-of kb '(le_r LeA) k)]
-                    {:derived (boolean (and h (v/in? kb h)))}))]
+                    {:derived (boolean (and h (v/believed? kb h)))}))]
     (is (= {:derived true} (one-outcome! (str label ", no edge") base observe))
         "the blocker in a sibling context is invisible, so the rule fires")
     (is (= {:derived false} (one-outcome! label (conj base edge) observe))
@@ -2359,7 +2390,7 @@
                    :asked    [(v/ask? kb '(r_fur_p RTom) 'CxROne)
                               (v/ask? kb '(r_fur_p RThomas) 'CxROne)]
                    :believed (into #{}
-                                   (comp (filter #(v/in? kb %))
+                                   (comp (filter #(v/believed? kb %))
                                          (keep #(some-> (v/sentex kb %) :sentence))
                                          (filter #(contains? '#{r_mammal_p r_fur_p} (first %))))
                                    (tu/sentex-ids kb))})]
@@ -3653,7 +3684,7 @@
 
 (def ^:private tx-readings
   "Every reading a scoped taxonomy read is asked under, `[tax/*network-belief* tax/*search*]`."
-  [[false nil] [false :belief] [false :visibility] [true nil] [true :belief] [true :visibility]])
+  [[false nil] [false :withdrawn] [false :belief] [true nil] [true :withdrawn] [true :belief]])
 
 (def ^:private tx-rules
   "Three rules concluding a `genl` edge in `CxWoA`: one from a membership a defeat or an

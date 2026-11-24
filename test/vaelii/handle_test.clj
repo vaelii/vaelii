@@ -122,7 +122,7 @@
 (deftest nil-is-a-question-with-an-answer-not-a-bad-handle
   (tu/with-cleared-kb [kb #(tu/fresh)]
     (testing "every handle-taking read answers rather than throwing"
-      (is (false? (v/in? kb nil)))
+      (is (false? (v/believed? kb nil)))
       (is (false? (v/premise? kb nil)))
       (is (nil? (v/provenance kb nil)))
       (is (false? (:stored? (tu/why-root kb nil))))
@@ -144,7 +144,7 @@
       (is (= [] (v/check-edit kb {:remove [nil]}))))
     (testing "which is what makes this composition work"
       (tu/with-terms [dog Missing]
-        (is (false? (v/in? kb (v/handle-of kb (list dog Missing) 'CxUniverse)))
+        (is (false? (v/believed? kb (v/handle-of kb (list dog Missing) 'CxUniverse)))
             "handle-of found nothing, so nothing is believed")))))
 
 (deftest a-vector-of-handles-is-refused-rather-than-silently-ignored
@@ -157,7 +157,7 @@
         (is (= 2 (count hs)))
         (testing "each handle-taking fn names what it got"
           (doseq [[nm f] [["retract!"       #(v/retract! kb hs)]
-                          ["in?"            #(v/in? kb hs)]
+                          ["in?"            #(v/believed? kb hs)]
                           ["why"            #(v/why kb hs)]
                           ["why-not"        #(v/why-not kb hs)]
                           ["premise?"       #(v/premise? kb hs)]
@@ -182,7 +182,7 @@
         (testing "and mapping over them is what works"
           (is (= [1 1] (mapv #(:removed-sentexes (v/retract! kb %)) hs))))))
     (testing "a value that is neither is refused too"
-      (is (= :bad-handle (:type (try (v/in? kb :nonsense) nil
+      (is (= :bad-handle (:type (try (v/believed? kb :nonsense) nil
                                      (catch clojure.lang.ExceptionInfo e (ex-data e))))))
       (is (= :bad-handle (:type (first (v/check-edit kb {:remove [:nonsense]}))))
           "check-edit classes garbage the way edit does"))

@@ -1,0 +1,25 @@
+; Eight queens, generate and test. A choice per square, one queen per row and at most
+; one per column as cardinality bounds, and one hard constraint per pair of squares on a
+; shared diagonal: 280 ground constraints. queens-diagonal.vae states the diagonals
+; with two bounds instead. Twin: queens-pairwise.lp.
+#base core
+#context CxQueensPairwise
+(board_index 1)
+(board_index 2)
+(board_index 3)
+(board_index 4)
+(board_index 5)
+(board_index 6)
+(board_index 7)
+(board_index 8)
+(set/assumptionRule (implies (and (board_index ?r) (board_index ?c)) (queenAt ?r ?c)))
+(asp/atLeast 1 ?c (queenAt ?r ?c))
+(asp/atMost 1 ?c (queenAt ?r ?c))
+(asp/atMost 1 ?r (queenAt ?r ?c))
+(implies (and (board_index ?r1) (board_index ?c1) (board_index ?r2) (board_index ?c2)
+              (lessThan ?r1 ?r2)
+              (evaluate ?d (abs (- ?r1 ?r2))) (evaluate ?d (abs (- ?c1 ?c2))))
+         (onDiagonal ?r1 ?c1 ?r2 ?c2))
+(set/hardConstraint (implies (and (onDiagonal ?r1 ?c1 ?r2 ?c2) (queenAt ?r1 ?c1) (queenAt ?r2 ?c2))
+                             (diagonalAttack ?r1 ?c1 ?r2 ?c2)))
+#models (queenAt ?r ?c)

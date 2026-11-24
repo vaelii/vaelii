@@ -123,23 +123,23 @@
     (testing "storage, not belief: a defeated sentex still has a handle"
       (let [d (v/assert kb (list dog Muffet) CxStory)]
         (v/assert kb (list 'not (list dog Muffet)) CxStory {:strength :monotonic})
-        (is (false? (v/in? kb d)))
+        (is (false? (v/believed? kb d)))
         (is (empty? (v/sentexes-matching kb (list dog Muffet) CxStory)))     ; query filters belief
         (is (= d (v/handle-of kb (list dog Muffet) CxStory)))))))  ; handle-of does not
 
-(tu/deftest-kb believed-answers-in?-for-a-whole-batch-at-once
+(tu/deftest-kb believed-answers-believed?-for-a-whole-batch-at-once
   (tu/with-terms [flies dog Tweety Muffet CxBatch]
     (let [ok   (v/assert kb (list dog Muffet) CxBatch)
           out  (v/assert kb (list flies Tweety) CxBatch)]
       (v/assert kb (list 'not (list flies Tweety)) CxBatch {:strength :monotonic})
-      (is (false? (v/in? kb out)) "the default lost to the monotonic negation")
-      (testing "the batch answers exactly the handles in? answers true for"
+      (is (false? (v/believed? kb out)) "the default lost to the monotonic negation")
+      (testing "the batch answers exactly the handles believed? answers true for"
         (is (= #{ok} (v/believed kb [ok out]))))
-      (testing "a handle that is not stored is simply absent, as in? would say"
+      (testing "a handle that is not stored is absent, as believed? answers false for it"
         (is (= #{ok} (v/believed kb [ok out 999999]))))
-      (testing "and it agrees with in? handle by handle, which is the contract"
+      (testing "and it agrees with believed? handle by handle, which is the contract"
         (let [hs [ok out 999999]]
-          (is (= (set (filter #(v/in? kb %) hs)) (v/believed kb hs)))))
+          (is (= (set (filter #(v/believed? kb %) hs)) (v/believed kb hs)))))
       (is (= #{} (v/believed kb []))))))
 
 ;; ---- stored vs believed: the counts and the extents ---------------------
@@ -149,7 +149,7 @@
     (v/assert kb (list flies Tweety) CxCount)                     ; default
     (v/assert kb (list 'not (list flies Tweety)) CxCount {:strength :monotonic})
     (let [h (v/handle-of kb (list flies Tweety) CxCount)]
-      (is (false? (v/in? kb h)))
+      (is (false? (v/believed? kb h)))
       (testing "the O(1) count includes the defeated sentex — it counts storage"
         ;; the negation roots under its positive body's functor, so both sit here
         (is (= 2 (v/count-with-functor kb flies)))
@@ -184,7 +184,10 @@
     (testing "the identity is one of the base relations, on every calculus"
       (doseq [{:keys [calculus base identity]} cs]
         (is (seq identity) (str calculus " declares an identity"))
-        (is (every? base identity) (str calculus "'s identity is a base relation"))))))
+        (is (every? base identity) (str calculus "'s identity is a base relation"))))
+    (testing "the interval calculus gives each base relation's endpoint order"
+      (is (= (:base (by :allen)) (set (keys (:endpoints (by :allen))))))
+      (is (= :equal (get-in (by :allen) [:endpoints :meets [:end :start]]))))))
 
 (tu/deftest-kb the-network-and-a-scenario-are-readable-from-core
   (tu/with-terms [RegA RegB RegC CxPublicSpace]

@@ -170,6 +170,12 @@
       (note-batch! [entry])
       (swap! v #(newest (conj % entry))))))
 
+(defn newest-filed
+  "The newest entry of the ledger, or of the bound `*report-sink*`, that `pred` holds of,
+  or nil."
+  [kb pred]
+  (some->> (report-target kb) deref rseq (some #(when (pred %) %))))
+
 (defn report-once
   "`report` one entry, unless an entry equal to it (`:run` aside) already stands in the
   ledger.

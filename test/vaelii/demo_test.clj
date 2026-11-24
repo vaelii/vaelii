@@ -37,7 +37,7 @@
       (let [h1 (v/handle-of kb flies sbx)]
         (testing "step 1 — a conclusion nobody asserted"
           (is (nat-int? h1) "the shipped flight rule concluded it into the sandbox")
-          (is (v/in? kb h1))
+          (is (v/believed? kb h1))
           (is (not (v/premise? kb h1)) "derived, not something the reader wrote")
           (is (seq (:support (tu/why-root kb h1))) "and it has a proof"))
 
@@ -59,7 +59,7 @@
         (v/retract! kb (v/handle-of kb penguin sbx))
         (let [h2 (v/handle-of kb flies sbx)]
           (testing "step 3 — it comes back as the same record"
-            (is (v/in? kb h2))
+            (is (v/believed? kb h2))
             (is (= h1 h2) "the defeat's support left, and nothing was re-derived")
             (is (v/ask? kb travel sbx) "and the hierarchy answer returns — travelling answerable again"))
           (testing "the proof is identical, which is the other half of the point"
@@ -249,7 +249,7 @@
       (let [ba (step app (:cookie a) "start" (:body a))]
         (dorun (run-through app (:cookie b) (:body b) ["start" "except"]))
         (testing "one reader reaching step 2 does not move the other off step 1"
-          (is (v/in? kb (carried ba)) "the first reader's conclusion still stands")
+          (is (v/believed? kb (carried ba)) "the first reader's conclusion still stands")
           (is (nil? (v/handle-of kb penguin (:sandbox a)))
               "and nothing crossed between the sandboxes")))
       (finally

@@ -119,6 +119,67 @@
         (is (= "" (slots dir "ls \"$(matrix_state_dir)\" | grep -F .stale. || true"))
             "no renamed copy is left behind")))))
 
+(defn- sysctl-stub
+  "A shell `sysctl` that answers `hw.<k>` with v for each entry of `sysctls`."
+  [sysctls]
+  (str "sysctl() { case \"$2\" in "
+       (str/join (for [[k v] sysctls] (str "hw." k ") echo " v ";; ")))
+       "*) return 1;; esac; }; "))
+
+(defn- jvms-stub
+  "A shell `running_vaelii_jvms` that reports `running` JVMs each holding `gib` GiB."
+  [running gib]
+  (str "running_vaelii_jvms() { for ((i = 0; i < " running "; i++)); do echo "
+       (* gib 1048576) "; done; }; "))
+
+(deftest the-slot-rule-counts-every-tier-but-efficiency
+  (with-repo
+    (fn [dir]
+      (doseq [[box sysctls running expected]
+              [["8P + 2E, idle" {"nperflevels" 2 "perflevel0.logicalcpu" 8 "perflevel0.name" "Performance"
+                                 "perflevel1.logicalcpu" 2 "perflevel1.name" "Efficiency" "ncpu" 10}
+                0 "6 6"]
+               ["8P + 2E, full" {"nperflevels" 2 "perflevel0.logicalcpu" 8 "perflevel0.name" "Performance"
+                                 "perflevel1.logicalcpu" 2 "perflevel1.name" "Efficiency" "ncpu" 10}
+                9 "1 3"]
+               ["12S + 24P, idle" {"nperflevels" 2 "perflevel0.logicalcpu" 12 "perflevel0.name" "Super"
+                                   "perflevel1.logicalcpu" 24 "perflevel1.name" "Performance" "ncpu" 36}
+                0 "27 18"]
+               ["12S + 24P, a matrix up" {"nperflevels" 2 "perflevel0.logicalcpu" 12 "perflevel0.name" "Super"
+                                          "perflevel1.logicalcpu" 24 "perflevel1.name" "Performance" "ncpu" 36}
+                16 "11 11"]
+               ["12S + 24P, full" {"nperflevels" 2 "perflevel0.logicalcpu" 12 "perflevel0.name" "Super"
+                                   "perflevel1.logicalcpu" 24 "perflevel1.name" "Performance" "ncpu" 36}
+                30 "1 9"]
+               ["unnamed tiers" {"nperflevels" 2 "perflevel0.logicalcpu" 8 "perflevel1.logicalcpu" 4 "ncpu" 12}
+                0 "6 6"]
+               ["no tiers" {"ncpu" 4} 0 "2 3"]]]
+        (is (= expected
+               (slots dir {"TEST_MIN_JOBS" ""}
+                      (str (sysctl-stub sysctls) (jvms-stub running 0)
+                           "available_kib() { :; }; "
+                           "echo \"$(default_slots) $(suite_shards)\"")))
+            box)))))
+
+(deftest the-slot-rule-admits-only-the-test-jvms-memory-holds
+  (with-repo
+    (fn [dir]
+      ;; a 12S + 24P box, base 27, with 16 GiB held back and a 5g heap, so 6 GiB charged per test JVM
+      (doseq [[box available-gib running gib expected]
+              [["memory to spare" 400 0 0 "27 18"]
+               ["a model server holds most of it" 64 0 0 "8 8"]
+               ["running JVMs still growing" 100 10 1 "5 5"]
+               ["running JVMs at their charge" 100 10 6 "14 14"]
+               ["none left" 10 0 0 "1 1"]]]
+        (is (= expected
+               (slots dir {"TEST_MIN_JOBS" "" "VAELII_TEST_HEAP" "5g"}
+                      (str (sysctl-stub {"nperflevels" 2 "perflevel0.logicalcpu" 12 "perflevel0.name" "Super"
+                                         "perflevel1.logicalcpu" 24 "perflevel1.name" "Performance" "ncpu" 36})
+                           (jvms-stub running gib)
+                           "available_kib() { echo " (* available-gib 1048576) "; }; "
+                           "echo \"$(default_slots) $(suite_shards)\"")))
+            box)))))
+
 (deftest a-gate-slot-is-taken-only-while-one-is-free-or-stale
   (with-repo
     (fn [dir]

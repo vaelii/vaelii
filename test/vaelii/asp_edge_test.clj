@@ -177,8 +177,8 @@
         (testing "both sides of the dilemma survive, at :default"
           (let [pos (v/handle-of kb (list pacifist nixon)             'CxUniverse)
                 neg (v/handle-of kb (list 'not (list pacifist nixon)) 'CxUniverse)]
-            (is (true? (v/in? kb pos)))
-            (is (true? (v/in? kb neg)))
+            (is (true? (v/believed? kb pos)))
+            (is (true? (v/believed? kb neg)))
             (is (= :default (v/defeat-class kb pos)))
             (is (= :default (v/defeat-class kb neg)))))
         (testing "the backend was never handed a program"

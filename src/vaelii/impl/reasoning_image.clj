@@ -145,14 +145,15 @@
       (into #{:provers :solver :unrecovered :feed})))
 
 (def taxonomy-side-slots
-  "The taxonomy keys an image leaves as the open made them: the six callbacks and the
-  index store `kb/open-kb` installs with its `:raw?` flag, which belong to the KB, the
+  "The taxonomy keys an image leaves as the open made them: the six callbacks, the
+  index store `kb/open-kb` installs with its `:raw?` flag and the change clock, which
+  belong to the KB, the
   three side caches, each keyed by a relation's own `:gen` or the change clock,
   the supporter cache, which fills from the index on a read, and the reach memo, which
   the KB installs beside its callbacks and fills on a read (`kb/held-forward-reach`)."
   [:supporter-filter-active? :supporter-visible? :network-filter-active? :network-visible?
-   :supporter-reaches? :supporter-sentence :index :raw? :closure-memo :closure-lru :rewrite-order
-   :supporters :supporter-reach])
+   :edge-visible? :network-edge-visible? :supporter-reaches? :supporter-sentence :index :raw? :closure-memo :closure-lru :rewrite-order
+   :supporters :supporter-reach :clock])
 
 ;; ---- which KB ---------------------------------------------------------------
 
@@ -395,7 +396,7 @@
   deciding would pass the next open's check.  The write is therefore declined while a
   settle holds the network (`jtms/held`), and committed only when the change clock read
   before the sections equals the one read after them; the clock moves on every mutation
-  in the process, so a write beside another KB's writer is declined as well.
+  of the KB, and a write to another KB in the process leaves it where it was.
 
   `source` is recorded in place of the running digest (`manifest-for`)."
   ([kb] (save! kb nil))
@@ -403,10 +404,10 @@
    (when (and (applies? kb) (writable? kb) (nil? (jtms/held (reasoning/tms kb))))
      (try
        (let [t0      (System/nanoTime)
-             clock   (observe/change-clock)
+             clock   (observe/change-clock (:clock kb))
              records (p/belief-fingerprint (:records kb))
              moved?  #(or (some? (jtms/held (reasoning/tms kb)))
-                          (not= clock (observe/change-clock))
+                          (not= clock (observe/change-clock (:clock kb)))
                           (not= records (p/belief-fingerprint (:records kb))))
              m       (write-sections! kb (disk-dir kb) (manifest-for kb records source)
                                       #(not (moved?)))]

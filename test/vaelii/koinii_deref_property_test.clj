@@ -461,7 +461,7 @@
                           ;; each positive is beaten by the monotonic negative beside it
                           defeated (doall (for [[f c] pairs]
                                             (v/assert a f c {:creator 'AgentB})))]
-                      (and (every? #(and (some? (v/sentex a %)) (false? (v/in? a %))) defeated)
+                      (and (every? #(and (some? (v/sentex a %)) (false? (v/believed? a %))) defeated)
                            (= cid (d/commit-id a))                 ; the store grew, belief did not
                            (= root (d/state-root a))
                            (= (d/commit-id a) (d/commit-id b))     ; and the seats still agree
@@ -472,4 +472,4 @@
                            (every? (fn [h]
                                      (= (some? (d/inclusion-proof a (d/locator-of a h)))
                                         (boolean (:resolved? (d/dereference a (d/marker a h))))))
-                                   (concat defeated (filter #(v/in? a %) (v/handles a))))))))))
+                                   (concat defeated (filter #(v/believed? a %) (v/handles a))))))))))

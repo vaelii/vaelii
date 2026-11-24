@@ -212,10 +212,10 @@
   Inside a second-route search each step of the realization runs under
   `caches/*open-mark*`, and an answer one of whose steps read a route question still open
   is provisional and is not stored (`marked-seq`)."
-  [cache k compute]
+  [c cache k compute]
   (if (nil? cache)
     (compute)
-    (let [now (observe/change-clock)
+    (let [now (observe/change-clock c)
           hit (get @cache k)
           t   (caches/tally-of cache :R1)]
       (if (and hit (== now (long (:clock hit))))
@@ -229,7 +229,7 @@
                      (caches/spent t start)
                      (when (and hit (caches/tallying?))
                        (caches/compared t (= (:value hit) v)))
-                     (when (and @settled (== (observe/change-clock) now))
+                     (when (and @settled (== (observe/change-clock c) now))
                        (swap! cache caches/assoc-bounded
                               (caches/limit-of :literal-matches cache-limit)
                               k {:clock now :value v})))
@@ -245,7 +245,7 @@
      :limit  (caches/limit-of :literal-matches cache-limit)
      :hits   hits
      :misses misses
-     :clock  (observe/change-clock)}))
+     :clock  (observe/change-clock (:clock kb))}))
 
 (defn clear-cache
   "Drop everything `kb` has cached; answers how many entries went.  Not `!`: it destroys
@@ -278,6 +278,6 @@
   :reads [:index :M1 :T1]
   :retired-by (assoc (caches/on-every :G*) :caches-cleared :W)
   :computed :read :imaged? false :at [[:matches]]
-  :live (fn [kb] (let [now (observe/change-clock)]
+  :live (fn [kb] (let [now (observe/change-clock (:clock kb))]
                    (count (filter #(== now (long (:clock %))) (vals @(reasoning/matches kb))))))
   :note "a stale entry is ignored, not removed, and replaced at its next read"})

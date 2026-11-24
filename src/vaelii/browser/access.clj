@@ -79,7 +79,7 @@
 
 (defreads
   sentexes-matching ask argue sentex handle-of find-sentexes
-  in? believed? belief-status believed why-not
+  believed? belief-status believed why-not
   why genls types contexts premise? defeat-class justification
   ;; one `genl` step each way, whatever installed the edge — a stated `genl` or a cover
   ;; declaration — which is what the taxonomy graph draws and the tree opens
@@ -90,10 +90,10 @@
   ;; the one-step neighbours no other one-step neighbour stands between, which is what the
   ;; concept graph draws: one round trip an expansion, the reduction done by the engine
   min-genls max-specs
-  ;; the same reduction over `genlCx`, for a context's page
-  min-context-parents max-context-children
-  ;; whether a `types` node is a relation, and a predicate's arity, for the term colouring
-  relation? relation-arity
+  ;; the same reduction over `genlCx`, for a context's page, and its ancestors and descendants
+  min-context-parents max-context-children context-up context-down
+  ;; the term colouring's reads: relation by declaration or by stored use, and arity
+  relation? relation-arity stored-lengths
   supporting-justifications dependent-justifications
   ;; the verdict a context reads on each justification of a handle — what cannot be read
   ;; off belief, and so what a remote reader would otherwise have to render wrong
@@ -138,9 +138,9 @@
   ;; renders.  `:on-progress` is a fn and does not cross the wire, so a remote reading
   ;; reports no phase and cannot be cancelled
   kb-quality
-  ;; qualitative constraint reasoning: the network a context's facts constrain, and one
-  ;; arrangement out of it
-  qualitative-network qualitative-scenario
+  ;; qualitative reasoning: the network a context's facts constrain, one arrangement out
+  ;; of it, and the signs a context's quantities may take
+  qualitative-network qualitative-scenario sign-reading
   ;; the dry run of the write path: `check` writes nothing, so it is a read like any
   ;; other and the editor validates a line before it is saved
   check check-edit

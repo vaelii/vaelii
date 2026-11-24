@@ -309,6 +309,23 @@
           (is (pos? (:passes s)))))
       (finally (phases/stop) (tu/clear-kb! kb)))))
 
+(deftest two-threads-settling-at-once-each-file-only-their-own-centres
+  (try
+    (phases/start)
+    (let [a-open (promise) b-done (promise)
+          a (future (phases/begin-settle!)
+                    (phases/with-phase :belief (deliver a-open true) @b-done)
+                    (phases/end-settle!))
+          b (future @a-open
+                    (phases/begin-settle!)
+                    (phases/with-phase :discovery nil)
+                    (phases/end-settle!)
+                    (deliver b-done true))]
+      @a @b
+      (is (= #{#{:glue :belief} #{:glue :discovery}}
+             (set (map (comp set keys :nanos) (:settles (phases/stop)))))))
+    (finally (phases/stop))))
+
 ;; ---- the scans a settle runs over a standing population ---------------------
 
 (defn- calls-to
@@ -401,7 +418,7 @@
                             {:strength :monotonic})]
             (v/assert kb (list 'except (sx/sentex-handle h)) 'CxUniverse {:strength :monotonic})))
         (is (empty? (filter #(= sx/except-functor (second %))
-                            (calls-to #'reads/believed-with-functor
+                            (calls-to #'reads/in-with-functor
                                       #(v/assert kb '(srm_plain SrmAfterExcepts) 'CxUniverse {}))))))
       (finally (tu/clear-kb! kb)))))
 
@@ -719,7 +736,7 @@
   (let [tms (reasoning/tms kb)
         ct  (fn [h] (let [s (p/get-sentex (:records kb) h)] (pr-str [(:sentence s) (:context s)])))]
     (sort (for [f '[contradicts defeat] s (v/sentexes-with-functor kb f)]
-            (pr-str [(ct (:id s)) (v/in? kb (:id s))
+            (pr-str [(ct (:id s)) (v/believed? kb (:id s))
                      (sort (map (fn [j] (let [j (jtms/justification tms j)]
                                           (pr-str [(:informant j) (sort (map ct (:antecedents j)))])))
                                 (jtms/supports tms (:id s))))])))))
@@ -787,9 +804,9 @@
               term #(into #{} (map (fn [h] (let [s (:sentence (p/get-sentex (:records kb) h))]
                                              (second (if (sx/negation? s) (second s) s)))))
                           %)]
-          (with-redefs-fn {#'chain/route-placements (fn [kb ms routes within]
+          (with-redefs-fn {#'chain/route-placements (fn [kb ms routes within & more]
                                                       (swap! sets conj (term ms))
-                                                      (orig kb ms routes within))}
+                                                      (apply orig kb ms routes within more))}
             #(v/edit! kb {:add [['(genl nl_z nl_s1) 'CxUniverse]]}))
           [(frequencies @sets) (count (v/sentexes-with-functor kb 'contradicts))]))
       (finally (tu/clear-kb! kb)))))
@@ -811,7 +828,7 @@
                                   %)
                                s))]
     (sort (map (fn [h] (let [s (p/get-sentex recs h)]
-                         (pr-str [(named (:sentence s)) (:context s) (:strength s) (v/in? kb h)])))
+                         (pr-str [(named (:sentence s)) (:context s) (:strength s) (v/believed? kb h)])))
                (p/sentex-ids recs)))))
 
 (deftest a-genl-edge-narrowed-to-its-lower-end-places-what-every-nogood-placed-again-does

@@ -89,7 +89,7 @@ the fact inert, never believed, and `try-assert` refuses it
 
 ### A declaration the KB disagrees with itself about
 
-Both reads take the binding every believed, visible match **agrees** on. Restating one
+Both reads take the binding every match believed at the asking context **agrees** on. Restating one
 declaration in several contexts of the ancestor set is not a disagreement — the matches carry the
 same bindings and collapse to one. Two declarations that differ are: the unit then falls
 back to being its own dimension and its own base, exactly as an undeclared unit does, and

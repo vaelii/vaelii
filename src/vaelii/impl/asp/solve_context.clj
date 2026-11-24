@@ -4,16 +4,18 @@
   "`(do/label Base Into [mode])` and `(do/classify Into)`: ground the `assumptionRule`s,
   solve rules and constraint rules visible from a base context into a `Program`, solve it,
   and write each optimal answer set as an inert labeling context under the base; then
-  aggregate brave/cautious over those contexts.  The labeling and classification extents
-  are inert, the `(genlCx <labeling> Base)` placement edge is asserted `:monotonic`, and
-  the grounding is not stored.  See docs/solving.md."
+  aggregate brave/cautious over those contexts.  `answer-sets` reads the program as ASP
+  does.  Labeling and classification extents are inert, the placement edge is `:monotonic`,
+  and the grounding is not stored.  See docs/solving.md."
   (:require [clojure.set :as set]
             [vaelii.impl.asp.edge :as edge]
             [vaelii.impl.asp.solver :as solver]
+            [vaelii.impl.config :as config]
             [vaelii.impl.except :as exc]
             [vaelii.impl.jtms :as jtms]
             [vaelii.impl.kb :as kb]
             [vaelii.impl.naming :as nm]
+            [vaelii.impl.opts :as opts]
             [vaelii.impl.protocols :as p]
             [vaelii.impl.provers :as provers]
             [vaelii.impl.reads :as reads]
@@ -185,9 +187,9 @@
 (defn- program-rules
   "Every believed rule a solve reads (`rules/solve-sentex?`) stored in `base` or its
   `genlCx` ancestor set, in content order: off the rule extent's `:solve` node, believed by
-  `res/rule-believed?`, and not withdrawn at `base`."
+  `res/rule-believed?`, and not hidden at `base` (`exc/hidden-fn`)."
   [kb base]
-  (let [out (or (exc/belief-hidden-fn kb base) (constantly false))]
+  (let [out (or (exc/hidden-fn kb base) (constantly false))]
     (->> (reads/as-stored-rules-in (:index kb) :solve
                                    (conj (set (tax/context-up (reasoning/taxonomy kb) base)) base))
          (keep #(p/get-sentex (:records kb) %))
@@ -803,6 +805,92 @@
            (merge {:base base :into into-cx :count 0 :choices []
                    :reason :no-choices :labelings []}
                   unenumerated))))))
+
+(def answer-set-readings
+  "Each `:reading` `answer-sets` takes, with the options it reads beside `search-options`."
+  {:all #{:among :limit :project} :one #{:among} :brave #{:among} :cautious #{:among}})
+
+(def search-options
+  "The options every reading of `answer-sets` reads: the search's strategy and bounds."
+  #{:opt-strategy :solve-limit :time-limit})
+
+(def ^:private option-domains
+  "Each option `answer-sets` reads, with what its value is in words and the predicate."
+  {:reading      ["one of :all, :one, :brave, :cautious" #(contains? answer-set-readings %)]
+   :among        ["`:optimal`, `:all` or a vector of integer costs, highest level first"
+                  #(or (#{:optimal :all} %) (and (vector? %) (seq %) (every? int? %)))]
+   :limit        ["a positive integer" pos-int?]
+   :project      ["a sentence or pattern" #(and (seq? %) (seq %))]
+   :opt-strategy ["one of :bb, :usc" #(and (keyword? %) (contains? config/asp-opt-strategies (name %)))]
+   :solve-limit  ["a non-negative integer" nat-int?]
+   :time-limit   ["a non-negative integer of seconds" nat-int?]})
+
+(defn check-options!
+  "Refuse a non-map `opts`, a key outside `ks`, and a value outside its option's domain:
+  `:unknown-option`, `:mismatch` `:not-a-map`, `:unknown-key` or `:bad-value`."
+  [opts ks]
+  (opts/check! opts ks "answer-sets")
+  (doseq [[k v] opts
+          :let [[what ok?] (option-domains k)]
+          :when (not (ok? v))]
+    (throw (ex-info (str "answer-sets " k " takes " what ", given " (pr-str v))
+                    {:type :unknown-option :mismatch :bad-value :option k :value v}))))
+
+(defn answer-sets
+  "Ground the program in `base` (`build`) and solve it with no keep-belief and no tiebreak
+  objective, writing nothing.  `opts`' `:reading` is `:all` (the default), `:one`, `:brave`
+  or `:cautious`; `answer-set-readings` and `search-options` give the options each reads.
+  Returns `{:status :costs :choices :derived :ground-ms :solve-ms}` with `:answer-sets
+  [#{atom} …]` and `:answer-set-costs`, or with `:consequences #{atom}`.  `:status` is the
+  solve's, or `:no-choices` / `:no-backend`.  Refusal: `check-options!`'s.  See
+  docs/solving.md, \"The ASP reading of a program\"."
+  ([kb base] (answer-sets kb base nil))
+  ([kb base opts]
+   (let [reading (:reading opts :all)
+         _       (check-options! opts (into (conj search-options :reading)
+                                            (answer-set-readings reading)))
+         {:keys [limit project opt-strategy]} opts
+         solve-opts (cond-> (select-keys opts [:among :solve-limit :time-limit])
+                      limit        (assoc :models limit)
+                      project      (assoc :project? true)
+                      opt-strategy (assoc :opt-strategy (config/asp-opt-strategies (name opt-strategy))))
+         t0 (System/nanoTime)
+         [built unenumerated] (provers/with-unenumerated #(build kb base))
+         timing (merge unenumerated {:ground-ms (/ (- (System/nanoTime) t0) 1e6)})]
+     (cond
+       (nil? built)              (merge {:status :no-choices :choices [] :derived []} timing)
+       (not (solver/available?)) (merge {:status :no-backend} timing)
+       :else
+       (let [{:keys [program head->id derived->id]} built
+             atom->id  (merge head->id derived->id)
+             id->atom  (into {} (map (fn [[s id]] [id s])) atom->id)
+             projected (when project
+                         (into #{} (keep (fn [[s id]] (when (res/unify project s {}) id))) atom->id))
+             {:keys [table] :as t} (edge/translate program {:tiebreak? false :keep-belief? false
+                                                            :project projected})
+             atoms-of  (fn [labels]
+                         (into #{} (comp (filter #(or (nil? projected) (projected %))) (map id->atom))
+                               (edge/handles-of table labels)))
+             ta        (System/nanoTime)
+             answer    (case reading
+                         :all (let [r     (solver/solve t :all-optima solve-opts)
+                                    pairs (cond->> (nm/distinct-by first (map vector (map atoms-of (:witnesses r))
+                                                                              (:witness-costs r)))
+                                            limit (take limit))]
+                                (assoc (select-keys r [:status :costs])
+                                       :answer-sets (mapv first pairs)
+                                       :answer-set-costs (mapv second pairs)))
+                         :one (let [r (solver/solve t :label solve-opts)]
+                                (assoc (select-keys r [:status :costs])
+                                       :answer-sets (if (= :unsat (:status r)) [] [(atoms-of (:atoms r))])))
+                         (:brave :cautious)
+                         (let [r (solver/solve t (if (= :brave reading) :classify-supportable :classify-true)
+                                               solve-opts)]
+                           (assoc (select-keys r [:status :costs]) :consequences (atoms-of (:atoms r)))))]
+         (merge {:choices (vec (keys head->id)) :derived (vec (keys derived->id))}
+                answer
+                timing
+                {:solve-ms (/ (- (System/nanoTime) ta) 1e6)}))))))
 
 ;; ---- do/classify: gather brave/cautious over the labelings ---------------
 

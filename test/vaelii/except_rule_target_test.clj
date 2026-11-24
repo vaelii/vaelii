@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: SSPL-1.0
 ;; Copyright © 2026 Vaelii LLC and the Vaelii contributors.
-(ns vaelii.except-rule-visibility-test
-  "A visibility `(except (sentexHandle R))` whose target is a **rule**.
+(ns vaelii.except-rule-target-test
+  "An `(except (sentexHandle R))` whose target is a **rule**.
 
   docs/contexts.md says the removal is total — reads and derivations both.  A firing
   rests on its rule exactly as it rests on its facts (the stored justification
@@ -12,7 +12,7 @@
     because its other arms are keyed on a *fact* target — `dependents` is empty once
     the firing is swept, and the predicate fan never matches a rule sentence — so
     without the rule arm nothing re-derives what the except was hiding.
-  * **Backward chaining.**  `provers/candidate-rules` drops a rule the visibility
+  * **Backward chaining.**  `provers/candidate-rules` drops a rule the `except`
     hidden set hides from the asking context, so a goal in the ancestor set cannot rebuild
     through a hidden rule what forward chaining sweeps.
 
@@ -136,7 +136,7 @@
 ;; ---- 5. dispute resolution -----------------------------------------------
 ;; The shape the bug was found in: a genuine dilemma (two default rules concluding
 ;; opposite literals — the engine represents it rather than deciding it), then a
-;; visibility except lands on one side's *rule*.  Defeat must land on support, and
+;; an except lands on one side's *rule*.  Defeat must land on support, and
 ;; once it does, every read surface has to agree: the defeated conclusion is gone,
 ;; the survivor stands, and the contradiction is resolved — not just the argue tree,
 ;; but belief, the stored matches, and the conflict list.

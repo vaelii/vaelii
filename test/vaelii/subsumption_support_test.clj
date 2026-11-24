@@ -49,7 +49,7 @@
     (v/assert kb (list 'implies (list parentOf '?x '?y) (list ancestorOf '?x '?y)) 'CxUniverse {:direction :forward})
     (v/assert kb (list fatherOf Tom Bob) 'CxUniverse)
     (let [derived (v/handle-of kb (list ancestorOf Tom Bob) 'CxUniverse)]
-      (is (v/in? kb derived) "the rule fired by subsumption")
+      (is (v/believed? kb derived) "the rule fired by subsumption")
       (testing "the edge is an antecedent, beside the fact and the rule"
         (is (contains? (antecedent-sentences kb derived) (list 'genl fatherOf parentOf))))
       (testing "so `why` shows it, rather than a proof that skips how the fact matched"
@@ -78,7 +78,7 @@
     (v/assert kb (list dog_t Muffet) 'CxUniverse)
     (let [derived (v/handle-of kb (list breathes Muffet) 'CxUniverse)
           antes   (antecedent-sentences kb derived)]
-      (is (v/in? kb derived))
+      (is (v/believed? kb derived))
       (is (contains? antes (list 'genl dog_t mammal_t)))
       (is (contains? antes (list 'genl mammal_t animal_t))))))
 
@@ -133,11 +133,11 @@
     (let [derived (v/handle-of kb (list ancestorOf Tom Bob) 'CxUniverse)
           nope    (v/assert kb (list 'not (list 'genl fatherOf parentOf)) 'CxUniverse
                             {:strength :monotonic})]
-      (is (not (v/in? kb derived)) "the edge is not believed, so neither is what climbed it")
+      (is (not (v/believed? kb derived)) "the edge is not believed, so neither is what climbed it")
       (is (some? (v/sentex kb derived)) "stored all along — nothing was swept")
       (is (= :withdrawn (:reason (v/why-not kb derived))))
       (v/retract! kb nope)
-      (is (v/in? kb derived) "and the edge coming back brings the conclusion back")
+      (is (v/believed? kb derived) "and the edge coming back brings the conclusion back")
       (is (= derived (v/handle-of kb (list ancestorOf Tom Bob) 'CxUniverse))
           "at the same handle, not a re-derivation"))))
 
@@ -172,10 +172,10 @@
       (v/assert kb (list 'implies (list parentOf '?x '?y) (list ancestorOf '?x '?y)) 'CxWell {:direction :forward})
       (v/assert kb (list fatherOf Tom Bob) 'CxWell)
       (let [before (v/handle-of kb (list ancestorOf Tom Bob) 'CxWell)]
-        (is (v/in? kb before))
+        (is (v/believed? kb before))
         (v/retract! kb e1)
         (let [after (v/handle-of kb (list ancestorOf Tom Bob) 'CxWell)]
-          (is (v/in? kb after)
+          (is (v/believed? kb after)
               "the edge is still asserted, so the conclusion is still licensed")
           (is (not= before after)
               "as a re-derivation, not a survival: the sweep took the old record"))
@@ -233,7 +233,7 @@
                     (v/assert kb (list dog_t Muffet) 'CxUniverse))))
       (let [d (v/handle-of kb (list breathes Muffet) 'CxUniverse)]
         (is (= [order in? in?]
-               [order (boolean (v/ask? kb (list breathes Muffet) 'CxUniverse)) (boolean (some->> d (v/in? kb)))]))))))
+               [order (boolean (v/ask? kb (list breathes Muffet) 'CxUniverse)) (boolean (some->> d (v/believed? kb)))]))))))
 
 (tu/deftest-kb a-firing-stating-a-derived-edge-stands-only-where-its-second-supporter-is-believed
   ;; The rule states `(genl ?a pet_t)`, so its firing is read by its witness path.  The
@@ -282,7 +282,7 @@
           before  (antecedent-sentences kb derived)]
       (v/recover kb)
       (is (= before (antecedent-sentences kb derived)))
-      (is (v/in? kb derived) "and it is still believed")
+      (is (v/believed? kb derived) "and it is still believed")
       (v/retract! kb (v/handle-of kb (list 'genl fatherOf parentOf) 'CxUniverse))
       (is (empty? (v/sentexes-matching kb (list ancestorOf Tom Bob) 'CxUniverse))
           "so the rebuilt dependency still withdraws"))))
@@ -443,7 +443,7 @@
     (v/assert kb (list 'implies (list parentOf '?x '?y) (list ancestorOf '?x '?y)) CxB {:direction :forward})
     (v/assert kb (list fatherOf Tom Bob) CxB)
     (let [derived (v/handle-of kb (list ancestorOf Tom Bob) CxB)]
-      (is (v/in? kb derived))
+      (is (v/believed? kb derived))
       (let [edges (->> (v/supporting-justifications kb derived)
                        (mapcat :antecedents)
                        (map #(v/sentex kb %))

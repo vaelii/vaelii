@@ -1,0 +1,38 @@
+; Five talks in three slots under two objective levels. A choice per talk and slot, one
+; slot per talk, at most two talks per slot, and a hard constraint keeping clashing talks
+; apart. At level 2, a soft constraint costs 1 per talk placed in a slot its speaker
+; avoids; at level 1, asp/softAtMost costs 1 per slot holding more than one talk. Level 2
+; is minimized first. The optimum costs 1 at level 2 and 2 at level 1, and two timetables
+; reach it. Twin: timetable.lp.
+#base core
+#context CxTimetable
+(conference_talk TalkA)
+(conference_talk TalkB)
+(conference_talk TalkC)
+(conference_talk TalkD)
+(conference_talk TalkE)
+(time_slot Morning)
+(time_slot Noon)
+(time_slot Evening)
+(talkClash TalkA TalkB)
+(talkClash TalkC TalkD)
+(talkClash TalkB TalkE)
+(slotAvoided TalkA Morning)
+(slotAvoided TalkA Noon)
+(slotAvoided TalkB Morning)
+(slotAvoided TalkB Noon)
+(slotAvoided TalkC Evening)
+(slotAvoided TalkD Noon)
+(slotAvoided TalkD Evening)
+(slotAvoided TalkE Noon)
+(slotAvoided TalkE Evening)
+(set/assumptionRule (implies (and (conference_talk ?t) (time_slot ?s)) (scheduledAt ?t ?s)))
+(asp/atLeast 1 ?s (scheduledAt ?t ?s))
+(asp/atMost 1 ?s (scheduledAt ?t ?s))
+(asp/atMost 2 ?t (scheduledAt ?t ?s))
+(set/hardConstraint (implies (and (talkClash ?a ?b) (scheduledAt ?a ?s) (scheduledAt ?b ?s))
+                             (clashingSlot ?a ?b ?s)))
+(set/softConstraint 2 (implies (and (slotAvoided ?t ?s) (scheduledAt ?t ?s)) (avoidedSlotUsed ?t ?s)))
+(asp/softAtMost 1 ?t (scheduledAt ?t ?s))
+#models (scheduledAt ?t ?s)
+#cautious (scheduledAt ?t ?s)

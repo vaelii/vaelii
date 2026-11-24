@@ -12,7 +12,8 @@
             [vaelii.impl.nat :as nat]
             [vaelii.impl.nat-read :as nat-read]
             [vaelii.impl.settle :as settle]
-            [vaelii.impl.special :as special]))
+            [vaelii.impl.special :as special]
+            [vaelii.impl.wiring :as wiring]))
 
 ;; ---- computed genlCx edges: the merges they license -----------------------
 
@@ -23,8 +24,9 @@
 
 (defn- settle-computed-edges
   "Settle once when a computed `genlCx` edge was built (`built?`), seeding no chaining
-  when `opts` holds `{:chain? false}`: the producer runs after the write that entails the
-  edge has settled.  The restatements a merge the producer derived stored are re-chained
+  when the write that entails the edge does not chain: `opts`' `:chain?`, or inside a mint
+  the enclosing write's (`nat-read/*mint-chains?*`).  The producer runs after that write
+  has settled.  The restatements a merge the producer derived stored are re-chained
   first (`special/take-producer-seeds!`).  The belief moves that settle makes are
   reconciled and settled in turn (`context-nat/reconcile-moves`), for at most
   `max-producer-rounds` settles."
@@ -32,7 +34,7 @@
   (loop [built? built? n 0]
     (when built?
       (settle/rechain-seeds kb (special/take-producer-seeds!))
-      (settle/settle-write kb (:chain? opts true))
+      (settle/settle-write kb (if nat-read/*minting?* nat-read/*mint-chains?* (:chain? opts true)))
       (if (< n max-producer-rounds)
         (recur (context-nat/reconcile-moves kb (special/take-producer-moves!)) (inc n))
         (trove/log! {:level :warn :id ::producer-rounds
@@ -57,14 +59,17 @@
   `sentences` decides (`nat/formula-declared-predicates`,
   `chain/reconcile-formula-positions!`, docs/nat.md, The corresponding predicate), then
   re-chain what that made, settle, and build the structural `genlCx` edges the settle's
-  belief moves call for (`settle-computed-edges`)."
+  belief moves call for (`settle-computed-edges`).  Under `wiring/*defer-settle?*` it
+  re-chains only, and the batch's closing settle settles and builds the edges
+  (`reconcile-moves!`)."
   [kb sentences]
   (when-let [preds (seq (nat/formula-declared-predicates kb sentences))]
     (when-let [new (chain/reconcile-formula-positions! kb preds)]
       (when (seq new) (settle/rechain-seeds kb new))
-      (settle/settle kb)
-      (when (nat/any-reified-constants? kb)
-        (settle-computed-edges kb (context-nat/reconcile-moves kb (special/take-producer-moves!)) nil)))))
+      (when-not wiring/*defer-settle?*
+        (settle/settle kb)
+        (when (nat/any-reified-constants? kb)
+          (settle-computed-edges kb (context-nat/reconcile-moves kb (special/take-producer-moves!)) nil))))))
 
 (defn- derive-collision-merges
   "Derive each merge `nat/collision-merges` finds for `sentence`
@@ -128,15 +133,17 @@
   "Retract the bookkeeping of every reified constant that is an orphan, to a fixpoint
   (docs/nat.md, Rename and remove).  `sink` is the teardown's removal record
   (`integrate/*removed-sink*`): each round's candidates are the constants the sentexes
-  removed since the last round named, and this round's retractions append to it.  A nil
-  `sink` asks the whole KB each round.  `retract!` takes each handle out.  At most 64
-  rounds."
-  [kb sink retract!]
+  removed since the last round named, and this round's retractions append to it.  The
+  first round adds the constants whose map supports a believed `kept` handle
+  (`nat/support-maps`).  A nil `sink` asks the whole KB each round.  `retract!`
+  takes each handle out.  At most 64 rounds."
+  [kb sink kept retract!]
   (binding [*in-orphan-removal?* true]
     (loop [mark 0 guard 0]
       (let [removed (when sink @sink)
+            extra   (when (zero? guard) (nat/support-maps kb kept))
             orphans (if sink
-                      (nat/orphans-named-by kb (subvec removed mark))
+                      (nat/orphans-named-by kb (subvec removed mark) extra)
                       (nat/orphaned-constants kb))
             ;; realized before the first retraction: the bookkeeping test reads the
             ;; bookkeeping this loop retracts
@@ -162,12 +169,13 @@
   (docs/nat.md, Rename and remove).  `retract!` and `edit!`, and the rollback of a single
   refused `assert`, pass their removal record `sink`; `rollback-batch!` passes none, and
   the sweep asks the whole KB.  The sweep runs only when `nat/any-reified-constants?`
-  holds.  Neither runs inside the sweep's own retractions."
-  ([kb retract!] (collect-orphans! kb nil retract!))
-  ([kb sink retract!]
+  holds.  Neither runs inside the sweep's own retractions.  `kept` names the handles the
+  teardown retracted, which the sweep reads when they stay believed."
+  ([kb retract!] (collect-orphans! kb nil nil retract!))
+  ([kb sink kept retract!]
    (when-not *in-orphan-removal?*
      (when sink
        (respell-stranded! kb sink)
        (reconcile-values! kb (map :sentence @sink) false true))
      (when (nat/any-reified-constants? kb)
-       (remove-orphaned-nats! kb sink retract!)))))
+       (remove-orphaned-nats! kb sink kept retract!)))))

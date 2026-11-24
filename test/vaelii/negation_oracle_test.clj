@@ -283,7 +283,7 @@
                    (finally (tu/clear-kb! kb)))))
         base (run! content)]
     (doseq [seed (range 6)]
-      (let [shuffled (shuffle content)]
+      (let [shuffled (tu/shuffled seed content)]
         (is (= base (run! shuffled))
             (str "arrival order " seed " changed the answer\n"
                  (pr-str (diff base (run! shuffled)))))))))

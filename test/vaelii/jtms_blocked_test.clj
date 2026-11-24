@@ -253,7 +253,8 @@
   (jtms/->RefTms
    (atom (update @tms :justs
                  #(into {} (map (fn [[jid j]] [jid (->CountingJust (into {} j) jid touched)])) %)))
-   (java.util.concurrent.atomic.AtomicReference. nil)))
+   (java.util.concurrent.atomic.AtomicReference. nil)
+   (.-clock ^vaelii.impl.jtms.RefTms tms)))
 
 (defn- sweepable-fan
   "`n` independent premise ⇒ conclusion pairs as background, plus a separate two-link

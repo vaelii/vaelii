@@ -336,7 +336,7 @@
           (v/assert kb (list other_chain (ff Tom)) CxA {:strength :monotonic})
           (v/assert kb (list other_chain (ff Ann)) CxA {:strength :monotonic})
           (is (some? (v/sentex kb h)) "the denial is stored as stated")
-          (is (true? (v/in? kb h)) "and believed, with no stored instance beside it")
+          (is (true? (v/believed? kb h)) "and believed, with no stored instance beside it")
           (is (not-any? #(reflexive-denial? (:sentence %)) (v/sentexes-in-context kb CxA))
               "no stored sentex denies reflexivity")
           (is (= [true true true true]
@@ -370,13 +370,13 @@
               "the fact is answered as spelled, and the equation's normal form is not")
           (is (= [ann] (map :id (v/sentexes-matching kb (ff Ann) CxEq)))
               "the read returns the stated sentex")
-          (is (true? (v/in? kb ann)) "the original is believed, no longer superseded")
+          (is (true? (v/believed? kb ann)) "the original is believed, no longer superseded")
           (is (= [cal] (map :id (v/sentexes-matching kb (g Cal) CxEq)))
               "a premise stated in the normal form stays readable"))
         (v/retract! kb x)
         (testing "once the except goes"
           (is (= [true true 1 1] (reads Ann)))
-          (is (false? (v/in? kb ann)) "the original is superseded again"))))))
+          (is (false? (v/believed? kb ann)) "the original is superseded again"))))))
 
 (tu/deftest-kb a-fact-stored-under-an-excepted-equation-is-rewritten-when-the-except-goes
   ;; A fact asserted while an except hides the equation from its context is stored as
@@ -397,7 +397,7 @@
       (is (= [true false 1 0] (reads)) "under the except the fact reads as spelled")
       (v/retract! kb x)
       (is (= [true true 1 1] (reads)) "after the except both spellings answer the fact")
-      (is (false? (v/in? kb bob)) "the original is superseded by its twin"))))
+      (is (false? (v/believed? kb bob)) "the original is superseded by its twin"))))
 
 (tu/deftest-kb an-except-below-the-fact-reads-a-copy-of-the-stated-spelling
   ;; The fact and the equation are in `CxUp`, the except in `CxLow` below it.  `CxUp`
@@ -423,17 +423,17 @@
           (is (= [true true] (reads n CxUp)) "the fact's own context reads both spellings")
           (is (= [true false] (reads n CxLow)) "the reader below reads the stated spelling")
           (is (= 1 (count (copy n))) "from one copy stored in the reader"))
-        (is (false? (v/in? kb ann)) "the original stays superseded in its own context")
+        (is (false? (v/believed? kb ann)) "the original stays superseded in its own context")
         (is (true? (v/ask? kb (list eqSeen (list fatherOf (list fatherOf Ann))) CxLow))
             "a forward rule in the reader fires on the copy"))
       (let [c  (first (copy Ann))
             x2 (v/assert kb (list 'except (list 'sentexHandle eh)) CxUp {:strength :monotonic})]
         (testing "a second except in the fact's own context"
-          (is (true? (v/in? kb ann)) "hands the original back")
-          (is (false? (v/in? kb c)) "and retires the copy")
+          (is (true? (v/believed? kb ann)) "hands the original back")
+          (is (false? (v/believed? kb c)) "and retires the copy")
           (is (= [true false] (reads Ann CxLow))))
         (v/retract! kb x2)
-        (is (= [false true] [(v/in? kb ann) (v/in? kb c)]) "retracting it restores the copy")
+        (is (= [false true] [(v/believed? kb ann) (v/believed? kb c)]) "retracting it restores the copy")
         (v/retract! kb x)
         (testing "once the except below goes"
           (doseq [n [Ann Bob]]
@@ -453,7 +453,7 @@
             x  (v/assert kb (list 'except (list 'sentexHandle eh)) CxLow {:strength :monotonic})
             reads (fn [c] [(v/ask? kb (list gq Beta) c) (v/ask? kb (list gq Alpha) c)])]
         (is (= [true true] (reads CxUp)) eq)
-        (is (false? (v/in? kb fh)) eq)
+        (is (false? (v/believed? kb fh)) eq)
         (is (= [true false] (reads CxLow)) eq)
         (is (= 1 (count (v/sentexes-matching kb (list gq Beta) CxLow))) eq)
         (v/retract! kb x)

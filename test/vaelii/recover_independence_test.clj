@@ -22,7 +22,7 @@
   boolean asks.
 
   The scenarios are the ones where the two routes are known to have diverged: a member,
-  an edge or a visibility `except` a **rule** concluded rather than an assert (nothing
+  an edge or an `except` a **rule** concluded rather than an assert (nothing
   keys the derivation path on a functor the metatype *is*), and the two condition
   evaluations that are re-asked rather than stored, over a term whose spelling a merge
   retired."
@@ -77,8 +77,8 @@
           "the derived membership separates the pair, and says so on both sides of a restart"))))
 
 (tu/deftest-kb a-rule-derived-except-reads-the-same-after-a-restart
-  ;; A visibility `except` is dispatched on the sentence's shape rather than out of the
-  ;; special-predicate table, and the visibility `except` set it writes is kept at the store primitive —
+  ;; An `except` is dispatched on the sentence's shape rather than out of the
+  ;; special-predicate table, and the `except` set it writes is kept at the store primitive —
   ;; which `recover` replays and a derivation path can miss.  The rule fires first, so
   ;; there is a standing firing for the except to sweep: a cold KB computes rather than
   ;; recalls, and would hide the difference.
@@ -96,7 +96,7 @@
                              :conclusion (boolean (seq (v/sentexes-matching k (list p Aa) CxSub)))
                              :except     (boolean (seq (v/sentexes-matching
                                                         k (list 'except (sx/sentex-handle h)) '?c)))})
-            reading (one-reading! "a rule-derived visibility except" kb observe)]
+            reading (one-reading! "a rule-derived except" kb observe)]
         (is (= {:target false :conclusion false :except true} reading)
             "the derived except hides its target and sweeps what rested on it, either side
              of a restart")))))
@@ -300,7 +300,7 @@
           denial (v/assert kb (list 'not (list likes Ann Cal)) 'CxUniverse)
           _      (v/assert kb (list knows Ann Dan) 'CxUniverse)
           fired  (v/handle-of kb (list likes Ann Dan) 'CxUniverse)
-          observe (fn [k] (mapv (fn [h] [(v/in? k h) (v/defeat-class k h) (:strength (v/sentex k h))])
+          observe (fn [k] (mapv (fn [h] [(v/believed? k h) (v/defeat-class k h) (:strength (v/sentex k h))])
                                 [fact denial fired]))]
       (is (= [[true :default :default] [true :default :default] [false :default nil]]
              (one-reading! "a forced-monotonic fact at its written strength, a denial with no literal beside it and a void firing"
@@ -392,4 +392,4 @@
       (p/unmark-premise! (:records kb) d)
       (let [back (restarted)]
         (is (= [:default true]
-               [(:strength (v/sentex back d)) (v/in? back d)]))))))
+               [(:strength (v/sentex back d)) (v/believed? back d)]))))))

@@ -95,14 +95,19 @@
   (choose-backend (configured) (some? (clingo-backend)) nbytes (clingo-max-program-bytes)
                   @clasp-usable))
 
-(defn solve
-  "Solve translated program `{:aspif <text> :stmts <statements>}` in `mode` on the backend
-  `backend-for` picks by the ASPIF byte length, returning the shape `clasp/solve` and
-  `clingo/solve` share.  clingo reads `:stmts`, clasp the `:aspif` text."
-  [program mode]
+(defn- solve-on [program mode opts]
   (if (= :clingo (backend-for (count (:aspif program))))
-    ((:solve (clingo-backend)) program mode)
-    (clasp/solve (:aspif program) mode)))
+    ((:solve (clingo-backend)) program mode opts)
+    (clasp/solve (:aspif program) mode opts)))
+
+(defn solve
+  "Solve translated program `{:aspif <text> :stmts <statements>}` in `mode` under solve
+  options `opts` (`clasp/solve`'s) on the backend `backend-for` picks by the ASPIF byte
+  length, returning the shape `clasp/solve` and `clingo/solve` share.  clingo reads
+  `:stmts`, clasp the `:aspif` text."
+  ;; neither arity calls the other through the var, so a redef wrapping it sees one call
+  ([program mode] (solve-on program mode nil))
+  ([program mode opts] (solve-on program mode opts)))
 
 (defn classify-both
   "The cautious and the brave enumeration of `aspif-text`: `{:cautious <result> :brave

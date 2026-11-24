@@ -31,16 +31,16 @@
       (v/assert-rule kb [(list b '?x)] (list c '?x) CxThe {:direction :forward})
       (let [fa (v/assert kb (list a X) CxThe)
             ch (v/handle-of kb (list c X) CxThe)]
-        (is (v/in? kb ch) "(c X) is derived from (a X)")
+        (is (v/believed? kb ch) "(c X) is derived from (a X)")
         (let [result (v/edit! kb {:add [[(list b X) CxThe]] :remove [fa]})]
           (testing "the return reports the add and the teardown"
             (is (= 1 (count (:added result))))
             (is (pos? (:removed-sentexes (:removed result)))))
           (testing "the removed premise is gone and the added one is believed"
             (is (nil? (v/handle-of kb (list a X) CxThe)))
-            (is (v/in? kb (v/handle-of kb (list b X) CxThe))))
+            (is (v/believed? kb (v/handle-of kb (list b X) CxThe))))
           (testing "(c X) survived on the new support — same handle, still IN"
-            (is (v/in? kb ch))
+            (is (v/believed? kb ch))
             (is (contains?
                  (->> (v/supporting-justifications kb ch)
                       (mapcat :antecedents) set)
@@ -60,7 +60,7 @@
                   (do (v/assert kb (list b X) CxThe)   ; add...
                       (v/retract! kb fa))))               ; ...then remove
               (into {} (for [s [(list a X) (list b X) (list c X)]]
-                         [s (let [h (v/handle-of kb s CxThe)] (boolean (and h (v/in? kb h))))])))]
+                         [s (let [h (v/handle-of kb s CxThe)] (boolean (and h (v/believed? kb h))))])))]
       (let [via-edit (tu/with-neutral-kb [kb tu/fresh] (scenario kb true))
             via-sep  (tu/with-neutral-kb [kb tu/fresh] (scenario kb false))]
         (is (= via-edit via-sep)
@@ -74,22 +74,22 @@
         (let [r (v/edit! kb {:add [[(list p X) CxThe] [(list q X) CxThe]]})]
           (is (= 2 (count (:added r))))
           (is (= {:removed-sentexes 0 :removed-justifications 0} (:removed r)))
-          (is (v/in? kb (v/handle-of kb (list p X) CxThe)))
-          (is (v/in? kb (v/handle-of kb (list q X) CxThe)))))
+          (is (v/believed? kb (v/handle-of kb (list p X) CxThe)))
+          (is (v/believed? kb (v/handle-of kb (list q X) CxThe)))))
       (testing "only removes behaves like retract"
         (let [ph (v/handle-of kb (list p X) CxThe)
               r  (v/edit! kb {:remove [ph]})]
           (is (empty? (:added r)))
           (is (pos? (:removed-sentexes (:removed r))))
           (is (nil? (v/handle-of kb (list p X) CxThe)))
-          (is (v/in? kb (v/handle-of kb (list q X) CxThe)) "the untouched premise stays"))))))
+          (is (v/believed? kb (v/handle-of kb (list q X) CxThe)) "the untouched premise stays"))))))
 
 (defn- supports-by-content
   "`sentences`' supporting justifications in `context`, antecedents read as sentences."
   [kb sentences context]
   (into {} (for [s sentences]
              [s (when-let [h (v/handle-of kb s context)]
-                  (when (v/in? kb h)
+                  (when (v/believed? kb h)
                     (into #{} (map (fn [j] [(set (map #(:sentence (v/sentex kb %)) (:antecedents j)))
                                             (:subsumptions j) (:strength j)]))
                           (v/supporting-justifications kb h))))])))
@@ -126,7 +126,7 @@
         (with-redefs [chain/chain-all (fn [k seed opts] (swap! seeds into seed) (chain k seed opts))]
           (v/edit! kb {:add [[(list 'genl a top1) CxThe] [(list 'genl a top2) CxThe]]}))
         (is (= {fx 1 fz 1} (select-keys (frequencies @seeds) [fx fz])))
-        (is (every? #(v/in? kb (v/handle-of kb % CxThe))
+        (is (every? #(v/believed? kb (v/handle-of kb % CxThe))
                     [(list marked1 X) (list marked1 Z) (list marked2 X) (list marked2 Z)]))))))
 
 (defn- context-state
@@ -172,7 +172,7 @@
             token  (v/watch kb (list c '?x) CxSnap #(swap! events conj %))]
         (try
           (v/replace-facts! kb CxSnap [(list b X)])
-          (is (= [[] true hc] [(remove empty? (moved)) (v/in? kb hc) (v/handle-of kb (list c X) CxSnap)])
+          (is (= [[] true hc] [(remove empty? (moved)) (v/believed? kb hc) (v/handle-of kb (list c X) CxSnap)])
               "(c X) moves from (a X)'s support to (b X)'s with no event and keeps its handle")
           (v/retract! kb (v/handle-of kb (list b X) CxSnap))
           (v/assert kb (list a X) CxSnap)
@@ -369,7 +369,7 @@
                 added (:added (v/edit! kb {:add ok}))]
             (is (= 3 (count added)))
             (doseq [[sentence _] ok]
-              (is (v/in? kb (v/handle-of kb sentence CxThe))
+              (is (v/believed? kb (v/handle-of kb sentence CxThe))
                   (str (pr-str sentence) " is believed")))))))))
 
 (deftest a-batch-that-refuses-leaves-a-premise-it-named-for-removal-believed
@@ -381,18 +381,18 @@
       (v/assert-rule kb [(list dog '?x)] (list barks '?x) CxThe {:direction :forward})
       (let [h  (v/assert kb (list dog Muffet) CxThe)
             bh (v/handle-of kb (list barks Muffet) CxThe)]
-        (is (v/in? kb bh) "the conclusion the removal would sweep is derived")
+        (is (v/believed? kb bh) "the conclusion the removal would sweep is derived")
         (is (thrown? clojure.lang.ExceptionInfo
                      (v/edit! kb {:add [[(list 'genl dog cat) CxThe]
                                         [(list 'genl cat dog) CxThe]]
                                   :remove [h]})))
         (testing "the removal was never made: the premise stands at its handle"
           (is (= h (v/handle-of kb (list dog Muffet) CxThe)))
-          (is (v/in? kb h))
+          (is (v/believed? kb h))
           (is (true? (v/premise? kb h))))
         (testing "and so does what it supported, at its own handle"
           (is (= bh (v/handle-of kb (list barks Muffet) CxThe)))
-          (is (v/in? kb bh)))
+          (is (v/believed? kb bh)))
         (testing "with neither add left behind"
           (is (nil? (v/handle-of kb (list 'genl dog cat) CxThe)))
           (is (nil? (v/handle-of kb (list 'genl cat dog) CxThe))))))))
@@ -419,7 +419,7 @@
   "Every believed record of `kb` as `[sentence context]`, handles resolved."
   [kb]
   (into #{}
-        (comp (filter #(v/in? kb %))
+        (comp (filter #(v/believed? kb %))
               (map #(let [s (p/get-sentex (:records kb) %)]
                       (tu/handle-free kb [(sx/sentence-of s) (:context s)]))))
         (tu/sentex-ids kb)))
@@ -690,7 +690,7 @@
           (for [h (p/sentex-ids recs)
                 :let [s (p/get-sentex recs h)]]
             [(ct h)
-             [(:strength s) (jtms/premise-strength tms h) (v/in? kb h)
+             [(:strength s) (jtms/premise-strength tms h) (v/believed? kb h)
               (into #{} (for [j (jtms/supports tms h)
                               :let [j (jtms/justification tms j)]]
                           [(if (integer? (:informant j)) (ct (:informant j)) (:informant j))
@@ -855,7 +855,7 @@
       (testing "the settle believes them as premises"
         (let [edge (v/handle-of kb2 '(genl dog canine) 'CxWorld)]
           (v/settle-record-edits! kb2 {:seeds [derived edge]})
-          (is (every? #(and (v/premise? kb2 %) (v/in? kb2 %)) [derived edge])))))))
+          (is (every? #(and (v/premise? kb2 %) (v/believed? kb2 %)) [derived edge])))))))
 
 (deftest edit-records-additions-write-each-fact-once-and-read-no-belief
   (doseq [n [16 128]]

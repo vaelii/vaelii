@@ -10,8 +10,10 @@
   that list: `why` reads it back, retraction walks it, and placement is computed from it."
   (:require [clojure.set :as set]
             [clojure.test :refer [is testing use-fixtures]]
+            [clojure.walk :as walk]
             [vaelii.core :as v]
             [vaelii.impl.chain :as chain]
+            [vaelii.impl.inherit :as inherit]
             [vaelii.impl.settle :as settle]
             [vaelii.test-util :as tu]))
 
@@ -193,7 +195,7 @@
         (is (not (holds? kb (list outweighs chihuahua_t maine_coon_t))))
         (is (not (v/ask? kb (list outweighs chihuahua_t maine_coon_t) ctx))
             "and the two entry points still agree")
-        (is (v/in? kb (v/handle-of kb (list typicallyLargerThan dog_t cat_t) ctx))
+        (is (v/believed? kb (v/handle-of kb (list typicallyLargerThan dog_t cat_t) ctx))
             "the general claim is undercut for one pair, not defeated"))
       (testing "the pairs it says nothing about are untouched"
         (is (holds? kb (list outweighs golden_retriever_t maine_coon_t)))
@@ -770,14 +772,6 @@
                                     (:support (tu/why-root kb (v/handle-of kb s ctx))))]))
                     sentences)}))
 
-(defn- shuffled
-  "A permutation of `xs` from `rng` — `clojure.core/shuffle` reads a global source, and
-  a randomized oracle that cannot be replayed from its seed is not one."
-  [xs ^java.util.Random rng]
-  (let [a (java.util.ArrayList. ^java.util.Collection (vec xs))]
-    (java.util.Collections/shuffle a rng)
-    (vec a)))
-
 (tu/deftest-kb the-same-content-in-any-order-reaches-the-same-firings
   ;; Every failure on this path is a *missing* answer — a firing the trigger index
   ;; could not connect — and a KB that is merely less informative than it should be
@@ -801,7 +795,7 @@
                      (derived-outweighs k outweighs)
                      (finally (tu/clear-kb! k)))))
           rng  (java.util.Random. 20260804)
-          runs (mapv (fn [_] (go (shuffled content rng))) (range 8))]
+          runs (mapv (fn [_] (go (tu/shuffled rng content))) (range 8))]
       (is (= 9 (count (:derived (first runs)))) "the run is not vacuous")
       (doseq [[i r] (map-indexed vector (rest runs))]
         (is (= (first runs) r)
@@ -813,7 +807,7 @@
 (defn- read-beside-a-contrary-claim
   "`[stored, IN, held, inherited]` for `(outweighs chihuahua maine_coon)` at CxA after the
   writes `ops`, in order, beside `kinds!` and `preserving!` in CxUniverse: whether the
-  firing is stored, believed (`v/in?`), matched, and whether `ask?` answers the inherited
+  firing is stored, believed (`v/believed?`), matched, and whether `ask?` answers the inherited
   claim it joins on.
 
   ```
@@ -842,7 +836,7 @@
             :denial   (v/assert kb (list 'not specific) CxA {:strength :monotonic})))
         (let [h (v/handle-of kb target CxA)]
           [(some? h)
-           (boolean (some->> h (v/in? kb)))
+           (boolean (some->> h (v/believed? kb)))
            (boolean (seq (v/sentexes-matching kb target CxA)))
            (v/ask? kb (list typicallyLargerThan chihuahua_t maine_coon_t) CxA)])))))
 
@@ -857,14 +851,35 @@
                      :when (= 4 (count (distinct [a b c d])))]
                  [a b c d])))))
 
-(tu/deftest-kb a-default-contrary-claim-stores-the-inherited-firing-hidden-and-a-monotonic-one-refuses-it
-  (is (= {:default #{[true false false false]} :monotonic #{[false false false false]}}
+(tu/deftest-kb a-contrary-claim-stores-the-inherited-firing-hidden-at-either-strength
+  (is (= {:default #{[true false false false]} :monotonic #{[true false false false]}}
          (into {} (for [st [:default :monotonic]]
                     [st (into #{} (map #(read-beside-a-contrary-claim st %))
                               (for [a [:claim :rule :specific] b [:claim :rule :specific]
                                     c [:claim :rule :specific]
                                     :when (= 3 (count (distinct [a b c])))]
                                 [a b c]))])))))
+
+(tu/deftest-kb an-inherited-firing-stays-default-while-an-exceptWhen-on-its-rule-comes-and-goes
+  (tu/with-terms [down_kind noted blocked lower_t upper_t]
+    (let [rule    (list 'implies (list down_kind '?x) (list noted '?x))
+          classes (fn [] (into {} (for [t [lower_t upper_t]]
+                                    [t (into #{} (map :strength)
+                                             (v/supporting-justifications
+                                              kb (v/handle-of kb (list noted t) ctx)))])))
+          exc     #(list 'exceptWhen (list blocked '?x) (list 'sentexHandle (v/handle-of kb rule ctx)))]
+      (doseq [s [(list 'transitiveInArgInverse down_kind 1 'genl) (list 'genl lower_t upper_t)
+                 (list down_kind upper_t)]]
+        (v/assert kb s ctx {:strength :monotonic}))
+      (v/assert kb rule ctx {:strength :monotonic :direction :forward})
+      (let [before (classes)
+            during (do (v/assert kb (exc) ctx {:strength :monotonic}) (classes))
+            after  (do (v/retract! kb (v/handle-of kb (exc) ctx)) (classes))]
+        (is (= [{lower_t #{:default} upper_t #{:monotonic}}
+                {lower_t #{:default} upper_t #{:default}}
+                {lower_t #{:default} upper_t #{:monotonic}}
+                {lower_t #{:default} upper_t #{:monotonic}}]
+               [before during after (do (v/recover kb) (classes))]))))))
 
 (defn- read-beside-a-separated-membership
   "`[stored, IN, held, inherited]` for `(noted lower)` in CxUniverse after the writes `ops`,
@@ -894,22 +909,74 @@
       (let [target (list noted lower)
             h      (v/handle-of kb target ctx)]
         [(some? h)
-         (boolean (some->> h (v/in? kb)))
+         (boolean (some->> h (v/believed? kb)))
          (boolean (seq (v/sentexes-matching kb target ctx)))
          (v/ask? kb (list down_kind lower) ctx)]))))
 
+(tu/deftest-kb each-re-join-channel-fires-what-its-arrival-licenses
+  ;; a declaration is refused before its relation's `transitive`, hence that case's retract
+  (tu/with-terms [down_kind plain_kind upper_t lower_t noted at_noted seed_kind
+                  tangiblePartOf Car Engine Seed]
+    (let [rule   (list 'set/forwardRule (list 'implies (list down_kind '?x) (list noted '?x)))
+          along  #(list 'transitiveInArgInverse down_kind 1 %)
+          cases  {:claim       [[(along 'genl) (list 'genl lower_t upper_t) rule]
+                                (list down_kind upper_t) (list noted lower_t)]
+                  :reach       [[(list 'transitive tangiblePartOf) (along tangiblePartOf)
+                                 (list down_kind Car) rule]
+                                (list tangiblePartOf Engine Car) (list noted Engine)]
+                  :declaration [[(list 'genl lower_t upper_t) (list down_kind upper_t) rule]
+                                (along 'genl) (list noted lower_t)]
+                  :transitive  [[(list 'transitive tangiblePartOf) (along tangiblePartOf)
+                                 {:retract (list 'transitive tangiblePartOf)}
+                                 (list tangiblePartOf Engine Car) (list down_kind Car) rule]
+                                (list 'transitive tangiblePartOf) (list noted Engine)]}
+          shipped @#'inherit/rejoin-channels
+          fired? (fn [[before arrival target] channels]
+                   (let [k (tu/isolated-fresh)]
+                     (try
+                       (with-redefs [inherit/rejoin-channels channels]
+                         (doseq [s before]
+                           (if-let [gone (and (map? s) (:retract s))]
+                             (v/retract! k (v/handle-of k gone ctx))
+                             (v/assert k s ctx)))
+                         (v/assert k arrival ctx)
+                         (holds? k target))
+                       (finally (tu/clear-kb! k)))))]
+      (is (= (set (keys cases)) shipped) "a case for each channel the re-join reads")
+      (doseq [[channel c] (sort cases)]
+        (is (= [true false] [(fired? c shipped) (fired? c (disj shipped channel))])
+            (str channel)))
+      (testing "a claim moves every goal its reach meets"
+        (v/assert kb (along 'genl) ctx)
+        (v/assert kb (list 'genl lower_t upper_t) ctx)
+        (v/assert kb (list seed_kind Seed) ctx)
+        (doseq [t [lower_t upper_t]]
+          (v/assert kb (list 'set/forwardRule
+                             (list 'implies (list 'and (list down_kind t) (list seed_kind '?y))
+                                   (list at_noted t)))
+                    ctx))
+        (v/assert kb rule ctx)
+        (v/assert kb (list down_kind upper_t) ctx)
+        (is (= [true true true true]
+               (mapv #(holds? kb %) [(list noted lower_t) (list noted upper_t)
+                                     (list at_noted lower_t) (list at_noted upper_t)]))))
+      (testing "a datum that moves denials alone is re-checked and re-joins no rule"
+        (v/assert kb (list 'disjoint down_kind plain_kind) ctx {:strength :monotonic})
+        (doseq [s [(list plain_kind lower_t) (list 'not (list down_kind upper_t))]]
+          (is (= [nil true] [(inherit/rejoin-rules kb s) (boolean (seq (inherit/recheck-rules kb s)))])
+              (str s)))))))
+
 (tu/deftest-kb a-separated-membership-denies-an-inherited-antecedent-in-every-order
-  ;; `(plain lower)` denies `(down lower)`, since no term is a member of two disjoint
-  ;; types.  Beside a `:default` reading the firing is made, as for any `:default`
-  ;; contrary claim, with a defeat resting on the membership, and a
-  ;; `:monotonic` membership refuses it.  A reading known-true throughout defeats a
+  ;; `(plain lower)` denies `(down lower)`: no term is a member of two disjoint types.
+  ;; Beside a `:default` reading the firing is made, with a defeat resting on the
+  ;; membership of either strength.  A reading known-true throughout defeats a
   ;; `:default` membership instead (the inherited nogood), and the firing stands.
   (let [orders (for [a [:claim :rule :sep :member] b [:claim :rule :sep :member]
                      c [:claim :rule :sep :member] d [:claim :rule :sep :member]
                      :when (= 4 (count (distinct [a b c d])))]
                  [a b c d])]
     (is (= {:default-member   #{[true false false false]}
-            :monotonic-member #{[false false false false]}
+            :monotonic-member #{[true false false false]}
             :known-true       #{[true true true true]}}
            (into {}
                  (for [[k strengths] {:default-member   {:decl :default :claim :default
@@ -920,3 +987,142 @@
                                                          :member :default}}]
                    [k (into #{} (map #(read-beside-a-separated-membership strengths %))
                             orders)]))))))
+
+(def ^:private reader-cases
+  "`[name writes after believed]`: the `writes` in any order, then `after` in this one,
+  and the readers that believe `(noted lower_t)`.  `U` is CxUniverse, `C` and `S` are
+  siblings below it and `D` is below both.  A write is `[sentence context strength]`,
+  `[:retract sentence context]` or `[:except sentence context at]`."
+  '[[:monotonic-member [top rule sep [(plain_kind lower_t) U :monotonic]] [] #{}]
+    [:member-retracted [top rule sep [(plain_kind lower_t) U :monotonic]]
+     [[:retract (plain_kind lower_t) U]] #{U C S D}]
+    [:member-excepted [top rule sep [(plain_kind lower_t) U :monotonic]]
+     [[:except (plain_kind lower_t) U U]] #{U C S D}]
+    [:member-excepted-below [top rule sep [(plain_kind lower_t) U :monotonic]]
+     [[:except (plain_kind lower_t) U C]] #{C D}]
+    [:member-below [top rule sep [(plain_kind lower_t) C :monotonic]] [] #{U S}]
+    [:default-member-below [top rule sep [(plain_kind lower_t) C :default]] [] #{U S}]
+    [:default-member-in-a-sibling [top rule sep [(plain_kind lower_t) S :default]] [] #{U C}]
+    [:denial-excepted [top rule [(not (down_kind top_t)) U :monotonic]]
+     [[:except (not (down_kind top_t)) U U]] #{U C S D}]
+    [:denial-excepted-below [top rule [(not (down_kind top_t)) U :monotonic]]
+     [[:except (not (down_kind top_t)) U C]] #{C D}]
+    [:denial-below [top rule [(not (down_kind top_t)) C :monotonic]] [] #{U S}]
+    [:rule-below-a-denial-beside-it
+     [top [(set/forwardRule (implies (down_kind ?x) (noted ?x))) C :monotonic]
+      [(not (down_kind top_t)) S :monotonic]]
+     [] #{C}]
+    [:displacer-defeated-below
+     [top rule [(not (down_kind upper_t)) U :default] [(down_kind middle_t) U :default]]
+     [[(not (down_kind middle_t)) C :monotonic]] #{U S}]
+    [:exception-below [top rule mark [(plain_kind lower_t) U :monotonic]]
+     [[(siblingDisjointException down_kind plain_kind) C :monotonic]] #{C D}]
+    [:default-exception-below [top rule mark [(plain_kind lower_t) U :default]]
+     [[(siblingDisjointException down_kind plain_kind) C :default]] #{C D}]
+    [:exception-below-a-member-below [top rule mark [(plain_kind lower_t) C :monotonic]]
+     [[(siblingDisjointException down_kind plain_kind) D :monotonic]] #{U S D}]
+    [:exception-excepted-below
+     [top rule mark [(plain_kind lower_t) U :monotonic]
+      [(siblingDisjointException down_kind plain_kind) U :monotonic]]
+     [[:except (siblingDisjointException down_kind plain_kind) U C]] #{U S}]
+    [:exception-defeated-below
+     [top rule mark [(plain_kind lower_t) U :monotonic]
+      [(siblingDisjointException down_kind plain_kind) U :default]]
+     [[(not (siblingDisjointException down_kind plain_kind)) C :monotonic]] #{U S}]
+    [:exception-retracted
+     [top rule mark [(plain_kind lower_t) U :monotonic]
+      [(siblingDisjointException down_kind plain_kind) C :monotonic]]
+     [[:retract (siblingDisjointException down_kind plain_kind) C]] #{}]
+    [:monotonic-claim-beside-a-monotonic-denial
+     [[(down_kind top_t) U :monotonic] rule [(not (down_kind upper_t)) U :monotonic]] [] #{}]
+    [:monotonic-claim-beside-a-monotonic-denial-below
+     [[(down_kind top_t) U :monotonic] rule [(not (down_kind upper_t)) C :monotonic]] [] #{U S}]
+    [:own-tuple-stated-after-its-firing [top rule [(not (down_kind lower_t)) U :monotonic]]
+     [[(down_kind lower_t) U :default]] #{}]
+    [:own-tuple-stated-then-excepted-below [top rule [(down_kind lower_t) U :default]]
+     [[:except (down_kind lower_t) U C]] #{U C S D}]
+    [:generated-rule-beside-a-denial
+     [[(seed_kind Seed) U :default]
+      [(implies (down_kind ?x) (implies (seed_kind ?y) (noted ?x))) U :monotonic]
+      [(not (down_kind upper_t)) U :monotonic] top] [] #{}]
+    [:claim-excepted-beside-a-second-below-a-denial
+     [top [(down_kind top_t) S :default] [(not (down_kind upper_t)) S :monotonic] rule]
+     [[:except (down_kind top_t) U S]] #{U C}]
+    [:separating-edge-arriving-last
+     [top rule mark [(plain_kind lower_t) U :monotonic] [:retract (genl plain_kind kind_root) U]]
+     [[(genl plain_kind kind_root) U :monotonic]] #{}]
+    [:context-edge-showing-a-contrary-last
+     [[(down_kind top_t) C :default] [(set/forwardRule (implies (down_kind ?x) (noted ?x))) C :monotonic]
+      [(not (down_kind upper_t)) S :monotonic] [:retract (genlCx D S) U]]
+     [[(genlCx D S) U :monotonic]] #{C}]
+    [:context-edge-showing-a-firing-last
+     [[(down_kind top_t) S :default] [(set/forwardRule (implies (down_kind ?x) (noted ?x))) S :monotonic]
+      [(not (down_kind upper_t)) C :monotonic] [:retract (genlCx D S) U]]
+     [[(genlCx D S) U :monotonic]] #{S}]])
+
+(defn- readers-believing
+  "The readers that believe `(noted lower_t)` once `writes` and `after` are written over
+  the world `reader-cases` assumes, and again after a `recover` where `recover?`, with
+  `batch?` deciding whether `writes` share one settle."
+  [writes after batch? recover?]
+  (tu/with-terms [down_kind plain_kind kind_root noted lower_t middle_t upper_t top_t
+                  seed_kind Seed CxChild CxSibling CxBoth]
+    (let [names {'down_kind down_kind 'plain_kind plain_kind 'kind_root kind_root
+                 'noted noted 'lower_t lower_t 'middle_t middle_t 'upper_t upper_t 'top_t top_t
+                 'seed_kind seed_kind 'Seed Seed 'U ctx 'C CxChild 'S CxSibling 'D CxBoth}
+          named {'top  '[(down_kind top_t) U :default]
+                 'rule '[(set/forwardRule (implies (down_kind ?x) (noted ?x))) U :monotonic]
+                 'sep  '[(disjoint down_kind plain_kind) U :monotonic]
+                 'mark '[(sibling_disjoint kind_root) U :monotonic]}
+          k     (tu/isolated-fresh)
+          write (fn [op]
+                  (let [[a b c d] (walk/postwalk-replace names (get named op op))]
+                    (case a
+                      :retract (v/retract! k (v/handle-of k b c))
+                      :except  (v/assert k (list 'except (list 'sentexHandle (v/handle-of k b c)))
+                                         d {:strength :monotonic})
+                      (v/assert k a b {:strength c}))))
+          reads #(into #{}
+                       (keep (fn [r]
+                               (when (v/ask? k (list noted lower_t) (names r)) r)))
+                       '[U C S D])]
+      (try
+        (run! write '[[(transitiveInArgInverse down_kind 1 genl) U :monotonic]
+                      [(genl lower_t middle_t) U :monotonic]
+                      [(genl middle_t upper_t) U :monotonic]
+                      [(genl upper_t top_t) U :monotonic]
+                      [(genl down_kind kind_root) U :monotonic]
+                      [(genl plain_kind kind_root) U :monotonic]
+                      [(genlCx C U) U :monotonic] [(genlCx S U) U :monotonic]
+                      [(genlCx D C) U :monotonic] [(genlCx D S) U :monotonic]])
+        (if batch?
+          (v/with-deferred-settle k (run! write writes))
+          (run! write writes))
+        (run! write after)
+        (let [live (reads)]
+          (if recover?
+            (do (v/recover k) [live (reads)])
+            [live]))
+        (finally (tu/clear-kb! k))))))
+
+(defn- believing-by-case
+  "Each of `reader-cases` over `(runs writes)`, `[order batch? recover?]` rows, as its name to
+  the readings they gave."
+  [runs]
+  (into {} (for [[nm writes after] reader-cases]
+             [nm (into #{} cat (for [[order batch? recover?] (runs writes)]
+                                 (readers-believing order after batch? recover?)))])))
+
+(tu/deftest-kb an-inherited-firing-is-believed-by-the-readers-no-contrary-reaches
+  (is (= (into {} (map (fn [[nm _ _ believed]] [nm #{believed}])) reader-cases)
+         (believing-by-case (fn [ws] [[(reverse ws) false true]])))))
+
+(tu/deftest-kb a-genlCx-edge-past-the-contrary-limit-re-places-the-firings-placed-across
+  (with-redefs-fn {#'vaelii.impl.special/contrary-limit 0}
+    #(doseq [[nm writes after believed] reader-cases
+             :when (#{:context-edge-showing-a-contrary-last :context-edge-showing-a-firing-last} nm)]
+       (is (= [believed] (readers-believing writes after false false)) (name nm)))))
+
+(tu/deftest-kb ^:slow an-inherited-firing-is-believed-by-the-readers-no-contrary-reaches-in-every-order
+  (is (= (into {} (map (fn [[nm _ _ believed]] [nm #{believed}])) reader-cases)
+         (believing-by-case #(for [o (tu/permutations %) batch? [false true]] [o batch? true])))))

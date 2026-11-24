@@ -73,7 +73,7 @@
           h  (v/handle-of kb (list flies Tweety) CxBird)]
       (testing "the conclusion is stored, believed, and derived (not a premise)"
         (is (some? h))
-        (is (true? (v/in? kb h)))
+        (is (true? (v/believed? kb h)))
         (is (false? (v/premise? kb h)))
         (is (= [[[bh] rh]] (map (juxt :antecedents :informant) (v/supporting-justifications kb h)))
             "one justification: the bird fact, through the rule"))
@@ -403,8 +403,8 @@
         (is (some? pos))
         (is (some? neg)))
       (testing "and both stay believed — neither rule named the other's case"
-        (is (true? (v/in? kb pos)))
-        (is (true? (v/in? kb neg)))
+        (is (true? (v/believed? kb pos)))
+        (is (true? (v/believed? kb neg)))
         (is (seq (v/sentexes-matching kb (list pacifist Nixon)             CxPol)))
         (is (seq (v/sentexes-matching kb (list 'not (list pacifist Nixon)) CxPol))))
       (testing "both at :default — the dilemma is represented, not decided"

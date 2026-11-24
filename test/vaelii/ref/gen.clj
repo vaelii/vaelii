@@ -36,7 +36,7 @@
             [vaelii.impl.memory :as mem]
             [vaelii.impl.types.reasoning :as reasoning]
             [vaelii.test-util :as tu])
-  (:import [java.util ArrayList Collections Random]))
+  (:import [java.util Random]))
 
 ;; ---- small helpers -----------------------------------------------------
 
@@ -57,13 +57,6 @@
         r     (.nextInt rng total)]
     (loop [[[w k] & more] table acc 0]
       (if (< r (+ acc (long w))) k (recur more (+ acc (long w)))))))
-
-(defn- shuffled
-  "`coll` shuffled by a `Random` seeded with `seed`: the same seed gives the same order."
-  [seed coll]
-  (let [al (ArrayList. ^java.util.Collection (vec coll))]
-    (Collections/shuffle al (Random. (long seed)))
-    (vec al)))
 
 (defn permutations
   "Every ordering of the vector `xs`, as vectors, the given order first."
@@ -202,7 +195,7 @@
       :disjoint          (let [[a b] (type-pair rng types)]
                            (list* 'disjoint (sort [a b])))
       :covering          (let [whole-i (.nextInt ^Random rng (- (count types) 2))
-                               parts   (->> (subvec types (inc whole-i)) (shuffled (.nextLong ^Random rng))
+                               parts   (->> (subvec types (inc whole-i)) (tu/shuffled (.nextLong ^Random rng))
                                             (take 2) sort)]
                            (list* 'covering (nth types whole-i) parts))
       :irreflexive       (list 'irreflexive pred)
@@ -236,8 +229,8 @@
                              s))]
             (if (seq prior)
               (let [[_ a b] (pick rng prior)] (list p b a))
-              (let [a (arg) b (first (remove #{a} (shuffled (.nextLong ^Random rng)
-                                                            (repeatedly 6 arg))))]
+              (let [a (arg) b (first (remove #{a} (tu/shuffled (.nextLong ^Random rng)
+                                                               (repeatedly 6 arg))))]
                 (when b (list p a b))))))))))
 
 (def ^:private menu-forced-functors
@@ -402,7 +395,7 @@
     (when (and (seq plain) (<= 2 (count individuals)))
       (let [p       (:pred (pick rng plain))
             c       (pick rng contexts)
-            [a b]   (take 2 (shuffled (.nextLong ^Random rng) individuals))
+            [a b]   (take 2 (tu/shuffled (.nextLong ^Random rng) individuals))
             [s1 s2] (pick rng [[:monotonic :monotonic] [:monotonic :default]
                                [:default :monotonic] [:default :default]])
             [d t u] (pick rng [[(list 'functional p) (list p a b) (list p a a)]
@@ -494,7 +487,7 @@
           edges   (type-edges facts)
           [ta tb] (type-pair rng types)]
       (when-not (or (contains? (up-closure edges [ta]) tb) (contains? (up-closure edges [tb]) ta))
-        (let [[i & more] (shuffled (.nextLong ^Random rng) individuals)
+        (let [[i & more] (tu/shuffled (.nextLong ^Random rng) individuals)
               ;; the denial pair names an individual no drawn write names under `ta`
               j          (first (remove (fn [x] (some #(#{(list ta x) (list 'not (list ta x))}
                                                         (:sentence %))
@@ -521,7 +514,7 @@
   a `(not (tc I))`."
   [rng {:keys [contexts types individuals]} facts]
   (when (>= (count types) 3)
-    (let [[ta tb tc] (->> (shuffled (.nextLong ^Random rng) (range (count types)))
+    (let [[ta tb tc] (->> (tu/shuffled (.nextLong ^Random rng) (range (count types)))
                           (take 3) sort reverse (map #(nth types %)))
           k     (pick rng contexts)
           ind   (pick rng individuals)
@@ -601,7 +594,7 @@
     (if (<= (count ws) exhaustive-up-to)
       (permutations ws)
       (->> (concat [ws (vec (rseq ws))]
-                   (map #(shuffled (+ (* 1000 seed) %) ws) (range (* 4 sample))))
+                   (map #(tu/shuffled (+ (* 1000 seed) %) ws) (range (* 4 sample))))
            distinct
            (take sample)
            vec))))

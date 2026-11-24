@@ -233,6 +233,12 @@
   [conn context]
   (call conn :all-specified-violations [context]))
 
+(defn ^:daemon-op answer-sets
+  "The program `context` sees, grounded and solved as an ASP solver reads it: no
+  keep-belief and no tiebreak objective, and nothing written."
+  ([conn context] (call conn :answer-sets [context]))
+  ([conn context opts] (call conn :answer-sets [context opts])))
+
 (defn ^:daemon-op argue
   "Four-valued epistemic status of a ground assertion."
   ([conn asent context] (call conn :argue [asent context]))
@@ -280,24 +286,26 @@
   ([conn antecedents consequent context opts] (call conn :assert-rule [antecedents consequent context opts])))
 
 (defn ^:daemon-op belief-status
-  "Explain `handle`'s belief and visibility from `context` as a deterministic map: storage,
-  raw JTMS IN, context-visible exception force, withdrawal from `context`,
-  assertion-context inheritance, and the terminal answers `:believed?` / `:visible?`."
+  "Explain `handle`'s belief at `context` as a deterministic map: storage, raw JTMS IN,
+  context-visible exception force, withdrawal from `context`, assertion-context
+  inheritance, and the terminal answer `:believed?`."
   [conn handle context]
   (call conn :belief-status [handle context]))
 
 (defn ^:daemon-op believed
-  "The subset of `handles` `in?` answers true for, as a set — `in?` asked of many handles
-  at once."
+  "The subset of `handles` `(believed? kb h)` answers true for, as a set — `believed?`
+  asked of many handles at once."
   [conn handles]
   (call conn :believed [handles]))
 
 (defn ^:daemon-op believed?
-  "Is `handle` JTMS IN and not withdrawn from `context` — hidden by the `(except ...)`
-  cascade visible from it, the target of a placed `defeat` in force there, or resting only
-  on such a handle (docs/nmtms.md, \"A defeat is scoped to its vantage\")?"
-  [conn handle context]
-  (call conn :believed? [handle context]))
+  "Is `handle` believed at `context`, or with no `context` at the context it is stored in:
+  JTMS IN, stored in a context `context` sees through `genlCx`, and not hidden there by
+  the `(except ...)` cascade, the target of a placed `defeat` in force there, or resting
+  only on such a handle (docs/nmtms.md, \"A read with no reader\")? `belief-status`
+  explains the answer."
+  ([conn handle] (call conn :believed? [handle]))
+  ([conn handle context] (call conn :believed? [handle context])))
 
 (defn ^:daemon-op blocked-justifications
   "The ids of the justifications the network currently holds **blocked**: a block their
@@ -435,10 +443,8 @@
   (call conn :count-with-functor [pred]))
 
 (defn ^:daemon-op covers-of
-  "The believed `covering`, `separating` and `partition` sentexes whose whole is `whole`,
-  in every context, as a set of `[kind parts]`: `kind` is `:covering`, `:separating` or
-  `:partition`, and `parts` is the declared part vector, deduplicated and sorted by
-  printed name."
+  "The `covering`, `separating` and `partition` sentexes over `whole`, each believed at the
+  context it is stored in, as a set of `[kind parts]`."
   [conn whole]
   (call conn :covers-of [whole]))
 
@@ -555,8 +561,8 @@
 
 (defn ^:daemon-op exposed-clashes
   "Every disjointness clash the KB currently makes jointly visible: a term holding two
-  types some context can see as disjoint, where each membership was admissible where it
-  was written."
+  types some context can see as disjoint and believes and sees both memberships of, a
+  decision between the two aside."
   [conn]
   (call conn :exposed-clashes []))
 
@@ -624,13 +630,6 @@
   ([conn kind pred] (call conn :has-prop? [kind pred]))
   ([conn kind pred context] (call conn :has-prop? [kind pred context])))
 
-(defn ^:daemon-op in?
-  "Is the sentex handle believed as the context it is stored in reads it: JTMS IN, and not
-  hidden there by a placed `defeat` in force there or by resting only on a handle one
-  hides (docs/nmtms.md, \"A read with no reader\")? Visibility `except`s are not applied."
-  [conn handle]
-  (call conn :in? [handle]))
-
 (defn ^:daemon-op inverse-of
   "The predicate declared inverse to `pred` by an `(inverse P Q)` sentex, or nil."
   ([conn pred] (call conn :inverse-of [pred]))
@@ -638,7 +637,7 @@
 
 (defn ^:daemon-op isa?
   "Is individual `x` (transitively) of type `t`? Considers only type memberships visible
-  from `context` (default: any context)."
+  from `context`."
   ([conn x t] (call conn :isa? [x t]))
   ([conn x t context] (call conn :isa? [x t context])))
 
@@ -793,8 +792,8 @@
   (call conn :provenance [handle]))
 
 (defn ^:daemon-op qualitative-network
-  "The constraint network `calculus` computes over everything **believed and visible** in
-  `context`: every pair of terms its predicates relate, tightened by path consistency."
+  "The constraint network `calculus` computes over everything **believed at** `context`:
+  every pair of terms its predicates relate, tightened by path consistency."
   [conn calculus context]
   (call conn :qualitative-network [calculus context]))
 
@@ -947,9 +946,9 @@
   ([conn pred opts] (call conn :sentexes-with-functor [pred opts])))
 
 (defn ^:daemon-op separating-covers
-  "The believed `separating` and `partition` declarations, as a set of `[whole parts
-  kind]`: every two distinct `parts` are disjoint, and `disjoint?` reads them from this
-  table."
+  "The supported `separating` and `partition` declarations, defeated ones included, as a
+  set of `[whole parts kind]`: every two distinct `parts` are disjoint, and `disjoint?`
+  reads them from this table."
   [conn]
   (call conn :separating-covers []))
 
@@ -958,6 +957,12 @@
   :histogram {n count}}`."
   [conn]
   (call conn :settle-stats []))
+
+(defn ^:daemon-op sign-reading
+  "The signs the sign reading leaves possible for each quantity in `context`, from
+  everything **believed** there, registered prover or not (docs/sign.md)."
+  [conn context]
+  (call conn :sign-reading [context]))
 
 (defn ^:daemon-op specified-violations
   "The audit result for one binary `(predAllSpecified pred indep)` requirement in
@@ -981,6 +986,12 @@
   defeated or unsupported fact's term is in it."
   [conn pred]
   (call conn :stored-first-args [pred]))
+
+(defn ^:daemon-op stored-lengths
+  "Each functor in `preds` mapped to the set of argument counts its positive facts are
+  **stored** at: `(dislikes Ann Bob)` puts 2 in `dislikes`'s."
+  [conn preds]
+  (call conn :stored-lengths [preds]))
 
 (defn ^:daemon-op subsumption-status
   "The subsumption relationship of type `a` to type `b`, one of: `:coextensional` (each is
@@ -1039,7 +1050,7 @@
 
 (defn ^:daemon-op types
   "Every type currently in the genl hierarchy — the nodes of the closure, i.e. every type
-  named by some believed `genl` edge."
+  named by some supported `genl` edge, a defeated one included."
   ([conn] (call conn :types []))
   ([conn context] (call conn :types [context])))
 

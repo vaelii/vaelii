@@ -126,3 +126,26 @@
       (is (not (holds-ask (list 'able Merger (list 'WriteAccessFn Repo)) CxDesk))))
     (is (holds-ask (list 'able Merger (list 'MergeAccessFn Repo)) CxDesk)
         "the merge grant itself stands")))
+
+(tu/deftest-kb a-status-join-under-a-closed-watermark-answers-alike-in-either-conjunct-order
+  ;; With the repository's relation first, the join asks the ground `(draft_pr K)` in the
+  ;; slice, which recursed between ClosedExtentProver and CoveringProver (#304)
+  (tu/with-terms [CxForge Repo Draft]
+    (let [U     'CxUniverse
+          slice #(list 'CxTimeFn CxForge %)
+          at    (fn [d h] (list 'InstantFn 2026 10 d h 0 0))
+          as-of (slice (list 'InstantFn 2026 10 5 23 59 59))
+          pr    (list 'PullRequestFn Repo 14)]
+      (v/assert kb (list 'context CxForge) U)
+      (v/assert kb (list 'genlCx CxForge 'CxWell) U)
+      (v/assert kb (list 'genlCx CxForge 'CxTra) U)
+      (v/assert kb (list 'forge_repository Repo) CxForge)
+      (v/assert kb (list 'time_interval Draft) U)
+      (v/assert kb (list 'startOf Draft (at 7 0)) U)
+      (v/assert kb (list 'draft_pr pr) (slice Draft))
+      (doseq [k '[open_pr merged_pr closed_pr draft_pr ready_pr]]
+        (v/assert kb (list 'ist (slice (list 'IntervalBeforeFn (at 6 0))) (list 'closed_extent_predicate k)) U))
+      (is (= #{}
+             (set (v/query kb [(list 'draft_pr pr)] as-of))
+             (set (v/query kb [(list 'pullRequestOf Repo '?n '?pr) '(draft_pr ?pr)] as-of))
+             (set (v/query kb ['(draft_pr ?pr) (list 'pullRequestOf Repo '?n '?pr)] as-of)))))))

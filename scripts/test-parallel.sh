@@ -25,7 +25,7 @@
 # local time, and one with neither takes the mean.
 #
 # Usage:
-#   scripts/test-parallel.sh                 # :default, jobs from scripts/lib/slots.sh, at least TEST_MIN_JOBS (3)
+#   scripts/test-parallel.sh                 # :default, jobs from scripts/lib/slots.sh (suite_shards)
 #   scripts/test-parallel.sh :all            # the ^:slow tests too
 #   scripts/test-parallel.sh --jobs 4        # a fixed shard count
 #   scripts/test-parallel.sh :all --jobs 6
@@ -86,11 +86,15 @@ if [[ -z "${GATE_SLOT:-}" ]]; then
   trap gate_slot_release EXIT
 fi
 
-# P-2 minus running vaelii JVMs (scripts/lib/slots.sh), floored at TEST_MIN_JOBS: an idle
-# REPL or server counts as a running JVM, and one shard takes the suite past 50 minutes.
-if [[ -z "$jobs" ]]; then
-  jobs=$(default_slots)
-  (( jobs < ${TEST_MIN_JOBS:-3} )) && jobs=${TEST_MIN_JOBS:-3}
+# The box's free slots, within one suite's bounds (scripts/lib/slots.sh): an idle REPL or
+# server counts as a running JVM, and one shard takes the suite past 50 minutes.
+[[ -n "$jobs" ]] || jobs=$(suite_shards)
+# A count named with --jobs or GATE_JOBS is held to the memory term as well.
+admits=$(memory_slots "$(running_vaelii_jvms)")
+bound=$(memory_bound "$jobs" "$admits")
+if (( bound < jobs )); then
+  echo "test-parallel: memory admits $admits more test JVM(s) of $(( $(test_jvm_kib) / 1048576 )) GiB (scripts/lib/slots.sh); running $bound shard(s), not $jobs" >&2
+  jobs=$bound
 fi
 
 mkdir -p "$OUT" || exit 1

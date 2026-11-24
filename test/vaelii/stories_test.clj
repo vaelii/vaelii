@@ -112,7 +112,7 @@
     ;; "Garbage collection, not defeat").
     (let [h (v/handle-of kb '(believed BoyA) 'CxCriedWolf)]
       (is (some? h))
-      (is (false? (v/in? kb h)))
+      (is (false? (v/believed? kb h)))
       (is (some? (v/handle-of kb (list 'defeat (list 'sentexHandle h)) 'CxCriedWolf)))))
   (testing "yet the absence is explicable, not merely a gap"
     ;; the moral is only demonstrated if the KB can say *why* the boy is not

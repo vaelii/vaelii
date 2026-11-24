@@ -51,7 +51,7 @@
     (let [h (v/assert kb form 'CxUniverse)]
       (testing "the antecedent binds ?x an a, the consequent places it where a b belongs"
         (is (integer? h))
-        (is (not (v/in? kb h)))
+        (is (not (v/believed? kb h)))
         (let [c (:conviction (v/why-not kb h))]
           (is (= :arg-variable (:type c)))
           (is (= '?x (:variable c)))
@@ -63,7 +63,7 @@
                      (v/violations kb)))))
       (testing "a recover holds it again"
         (v/recover kb)
-        (is (not (v/in? kb h)))
+        (is (not (v/believed? kb h)))
         (is (= :arg-variable (:type (:conviction (v/why-not kb h))))))
       (v/retract! kb h))
     (testing "try-assert refuses it"
@@ -85,7 +85,7 @@
     (let [h (v/handle-of kb form 'CxUniverse)]
       (testing "the generated rule is stored and held"
         (is (integer? h))
-        (is (not (v/in? kb h))))
+        (is (not (v/believed? kb h))))
       (is (false? (named? h)))
       (testing "the same rule written by an author is reported"
         (is (= h (v/assert kb form 'CxUniverse {:direction :forward})))
@@ -107,7 +107,7 @@
                             (let [h (v/handle-of kb form 'CxUniverse)
                                   c (:conviction (v/why-not kb h))
                                   r [(every? #(v/handle-of kb (write %) 'CxUniverse) (keys write))
-                                     (v/in? kb h) (:type c) (:variable c) (set (:expected c))
+                                     (v/believed? kb h) (:type c) (:variable c) (set (:expected c))
                                      (some #(= h (v/handle-of kb (:sentence %) (:context %)))
                                            (filter #(= :inert-rule (:violation %)) (v/violations kb)))]]
                               (v/retract! kb h)
@@ -126,7 +126,7 @@
                      [(list 'genl a_ 'thing) (list 'genl b_ 'thing) (list 'genl c_ 'thing) edge
                       (list 'disjoint a_ b_) (list 'arg p 1 c_) (list 'arg q 1 b_) form])
           h    (v/handle-of kb form 'CxUniverse)
-          in?  #(v/in? kb h)
+          in?  #(v/believed? kb h)
           r    [(in?)
                 (do (v/retract! kb (v/handle-of kb edge 'CxUniverse)) (in?))
                 (do (v/assert kb edge 'CxUniverse) (in?))]]
@@ -145,10 +145,10 @@
             h    (v/handle-of kb rule 'CxUniverse)
             fact #(v/assert kb (list p Foo) 'CxUniverse)
             free #(v/retract! kb (v/handle-of kb sep 'CxUniverse))]
-        (is (not (v/in? kb h)))
+        (is (not (v/believed? kb h)))
         (if facts-first? (do (fact) (free)) (do (free) (fact)))
         (let [c (v/handle-of kb (list q Foo) 'CxUniverse)]
-          (is (= [true true true] [(v/in? kb h) (some? c) (boolean (and c (v/in? kb c)))])
+          (is (= [true true true] [(v/believed? kb h) (some? c) (boolean (and c (v/believed? kb c)))])
               (if facts-first? "the fact before the release" "the release before the fact")))))))
 
 (tu/deftest-kb try-assert-refuses-the-rule-and-the-declaration-in-either-order
@@ -168,11 +168,11 @@
       (let [form (list 'implies (list p '?x) (list q '?x))
             h    (v/assert kb form 'CxUniverse)
             d    (tu/refusal-data #(v/try-assert kb (list 'arg q 1 b_) 'CxUniverse))]
-        (is (v/in? kb h))
+        (is (v/believed? kb h))
         (is (= [:definitional-clash :arg-variable] [(:type d) (:violation d)]))
         (is (= [h] (mapv :handle (:clashes-with d))))
         (is (nil? (v/handle-of kb (list 'arg q 1 b_) 'CxUniverse)))
-        (is (v/in? kb h) "nothing was stored, so the rule stays believed")
+        (is (v/believed? kb h) "nothing was stored, so the rule stays believed")
         (v/retract! kb h)))))
 
 (tu/deftest-kb try-assert-refuses-a-covering-declaration-that-convicts-a-stored-rule
@@ -188,7 +188,7 @@
                [(:type r) (:violation r) (mapv :handle (:clashes-with r))])
             (pr-str d))
         (is (nil? (v/handle-of kb d 'CxUniverse)))
-        (is (v/in? kb h))
+        (is (v/believed? kb h))
         (v/retract! kb h)))))
 
 (tu/deftest-kb args-and-arg-at-position-1-judge-a-rule-alike
@@ -210,14 +210,14 @@
                         'CxUniverse)
           _   (v/assert kb (list p Foo) 'CxUniverse)
           qf  #(v/handle-of kb (list q Foo) 'CxUniverse)]
-      (is (and (qf) (v/in? kb (qf))) "the rule fires while nothing convicts it")
+      (is (and (qf) (v/believed? kb (qf))) "the rule fires while nothing convicts it")
       (let [d (v/assert kb (list 'arg q 1 b_) 'CxUniverse)]
-        (is (not (v/in? kb h)))
-        (is (not (and (qf) (v/in? kb (qf)))) "its conclusion has no support left")
+        (is (not (v/believed? kb h)))
+        (is (not (and (qf) (v/believed? kb (qf)))) "its conclusion has no support left")
         (testing "and retracting the declaration releases both"
           (v/retract! kb d)
-          (is (v/in? kb h))
-          (is (and (qf) (v/in? kb (qf))))))
+          (is (v/believed? kb h))
+          (is (and (qf) (v/believed? kb (qf))))))
       (v/retract! kb h))))
 
 (tu/deftest-kb a-variable-two-compatible-arg-constraints-stands
@@ -284,10 +284,10 @@
     (v/assert kb (list 'genlArg rel 1 'thing) 'CxUniverse)   ; position 1 only
     (let [form (list 'implies (list p '?x) (list rel t '?x))
           h    (v/assert kb form 'CxUniverse)]
-      (is (v/in? kb h) "nothing types position 2 yet")
+      (is (v/believed? kb h) "nothing types position 2 yet")
       (testing "the relation kind, arriving after the rule, says of position 2 what no genlArg was written for"
         (v/assert kb (list 'type_relation_predicate rel) 'CxUniverse)
-        (is (not (v/in? kb h)))
+        (is (not (v/believed? kb h)))
         (is (re-find #"type_relation_predicate" (:message (:conviction (v/why-not kb h))))))
       (v/retract! kb h))))
 
@@ -308,9 +308,9 @@
                                 inert #(some (fn [v] (and (= :inert-rule (:violation v))
                                                           (= h (v/handle-of kb (:sentence v) (:context v)))))
                                              (v/violations kb))
-                                live  [(some? h) (v/in? kb h) (boolean (inert))]]
+                                live  [(some? h) (v/believed? kb h) (boolean (inert))]]
                             (v/recover kb)
-                            (let [r [live [(v/in? kb h) (boolean (inert))]]]
+                            (let [r [live [(v/believed? kb h) (boolean (inert))]]]
                               (v/retract! kb h)
                               r)))))]
     (is (= [[[true true false] [true false]]] (distinct outcomes)))))
@@ -322,7 +322,7 @@
     (let [rule (list 'set/forwardRule (list 'implies (list 'genl '?r 'doneBy) (list doerMark '?r Tag)))
           h    (v/assert kb rule 'CxUniverse)
           c    (v/handle-of kb (list doerMark 'performedBy Tag) 'CxUniverse)]
-      (is (= [true true] [(v/in? kb h) (boolean (and c (v/in? kb c)))]))
+      (is (= [true true] [(v/believed? kb h) (boolean (and c (v/believed? kb c)))]))
       (v/retract! kb h))))
 
 ;; ---- the two forms the issue named --------------------------------------
@@ -402,9 +402,9 @@
         (doseq [s (if decls-first? (concat decls fills) (concat fills decls))]
           (v/assert kb s 'CxUniverse))
         (let [minted (fn [t] (first (mentioning kb 'CxUniverse t)))]
-          (is (v/in? kb (:id (minted fine))) "a fill whose declaration agrees generates a believed rule")
+          (is (v/believed? kb (:id (minted fine))) "a fill whose declaration agrees generates a believed rule")
           (is (some? (minted src)) "a fill whose declaration contradicts it is stored")
-          (is (not (v/in? kb (:id (minted src)))))
+          (is (not (v/believed? kb (:id (minted src)))))
           (let [c (:conviction (v/why-not kb (:id (minted src))))]
             (is (= :arg-variable (:type c)))
             (is (= #{a b} (set (:expected c))))))))))
@@ -419,7 +419,7 @@
     (v/assert kb (list 'defnSufficient coll (list cond' '?x)) 'CxUniverse)
     (let [r (first (mentioning kb 'CxUniverse cond'))]
       (is (some? r) "the companion rule is stored")
-      (is (not (v/in? kb (:id r))))
+      (is (not (v/believed? kb (:id r))))
       (is (= :arg-variable (:type (:conviction (v/why-not kb (:id r)))))))))
 
 ;; ---- quotedArg: a self-denoting kind convicts, any other kind does not ----------

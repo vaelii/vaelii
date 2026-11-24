@@ -42,9 +42,10 @@
 (defn- inherited-options
   "This JVM's own `--` options — `project.clj`'s native-access and `sun.misc.Unsafe`
   flags, and a profile's `--add-opens` — so a child runs under the permissions the parent
-  does, and its transcript carries no JDK warning the parent's run does not."
+  does, and its transcript carries no JDK warning the parent's run does not.  The
+  `-Xmx` options come along in order, so a child's heap ceiling is the parent's."
   []
-  (filterv #(str/starts-with? % "--")
+  (filterv #(or (str/starts-with? % "--") (str/starts-with? % "-Xmx"))
            (.getInputArguments (ManagementFactory/getRuntimeMXBean))))
 
 (def ^:private default-signals

@@ -1,0 +1,17 @@
+; Three-colouring the Petersen graph: a choice of colour per vertex, exactly one colour
+; per vertex as two bounds, and a hard constraint per edge whose ends share a colour.
+; The graph has 120 proper colourings, six per colouring up to renaming the colours.
+; Twin: colouring.lp.
+#base core
+#context CxColouring
+#include "petersen.vae"
+(colour_name Red)
+(colour_name Green)
+(colour_name Blue)
+(set/assumptionRule (implies (and (graph_node ?n) (colour_name ?k)) (colourOf ?n ?k)))
+(asp/atLeast 1 ?k (colourOf ?n ?k))
+(asp/atMost 1 ?k (colourOf ?n ?k))
+(set/hardConstraint (implies (and (graphEdge ?a ?b) (colourOf ?a ?k) (colourOf ?b ?k))
+                             (monochromeEdge ?a ?b ?k)))
+#models (colourOf ?n ?k)
+#brave (colourOf P0 ?k)

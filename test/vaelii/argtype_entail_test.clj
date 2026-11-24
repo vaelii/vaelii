@@ -91,7 +91,7 @@
   not tell the two apart."
   [kb sentence ctx]
   (let [h (v/handle-of kb sentence ctx)]
-    (when (and h (v/in? kb h)) h)))
+    (when (and h (v/believed? kb h)) h)))
 
 (defn- believed? [kb sentence ctx] (some? (entailed kb sentence ctx)))
 
@@ -264,7 +264,7 @@
               s (v/sentex kb h)]
           (is (some? h))
           (is (= ['CxUniverse :default] [(:context s) (:strength s)]))
-          (is (v/in? kb h))
+          (is (v/believed? kb h))
           (is (= h (v/handle-of kb (kv/mint-rules 'arg) 'CxUniverse))
               "the stored rule is `core.txt`'s sentence")
           (is (= #{h} (set (map :informant (v/supporting-justifications
@@ -290,7 +290,7 @@
           (is (= :mint-rule (:type (first (v/check-edit kb {:add [entry]})))) label)
           (is (= :mint-rule (refused write)) label)
           (is (= #{} (:engines (v/sentex kb h))) label)
-          (is (v/in? kb (v/handle-of kb (list animal Fred) CxWorld)) label))))))
+          (is (v/believed? kb (v/handle-of kb (list animal Fred) CxWorld)) label))))))
 
 (tu/deftest-kb a-rule-stored-while-the-table-fills-stays-in-the-table
   ;; The reader's index read answers what the index held before the writer stored `arg`'s
@@ -482,7 +482,7 @@
         ct   #(let [s (p/get-sentex recs %)] (pr-str [(sx/sentence-of s) (:context s)]))]
     (sort (for [h (p/sentex-ids recs)
                 :let [s (p/get-sentex recs h)]]
-            (pr-str [(sx/sentence-of s) (:context s) (:strength s) (v/in? kb h)
+            (pr-str [(sx/sentence-of s) (:context s) (:strength s) (v/believed? kb h)
                      (sort (for [j (jtms/supports tms h)
                                  :let [j (jtms/justification tms j)]]
                              (pr-str [(if (integer? (:informant j)) (ct (:informant j)) (:informant j))
@@ -1768,6 +1768,97 @@
     (is (= (asks 2 true) (asks 8 true)))
     (is (< (asks 2 false) (asks 8 false)) "unheld, each fact asks again")))
 
+(defn- admission-asks
+  "`[(f) n]`, `n` the admission checks `f` asks of a sentence of `sentences`."
+  [sentences f]
+  (let [n (atom 0) ask @#'special/inadmissible]
+    (with-redefs-fn {#'special/inadmissible (fn [kb s & more]
+                                              (when (contains? sentences s) (swap! n inc))
+                                              (apply ask kb s more))}
+      #(vector (f) @n))))
+
+(deftest a-believed-mint-its-source-justifies-asks-no-admission-check
+  (tu/with-terms [q_t q_u vkind q_w q_a q_b q_top q_x aRel bRel cRel dRel eRel seedOf X1 Y1 Z1 Z2 Z3 CxW]
+    (let [M     {:strength :monotonic}
+          decl  (list 'arg aRel 1 q_t)
+          beat  (list q_u Z1)
+          shut  (list q_u Z3)
+          void  (list vkind Z2)
+          late  (list 'arg dRel 1 q_w)
+          mints #{(list 'unary_predicate q_t) beat shut void (list q_w q_x)}
+          run   (fn []
+                  (tu/with-cleared-kb [kb tu/isolated-fresh]
+                    (with-entailing
+                      (let [write! (fn [s & [opts]] (v/assert kb s CxW (or opts {})))
+                            asked  #(second (admission-asks mints %))
+                            before (atom [])
+                            read!  #(let [h (v/handle-of kb % CxW)]
+                                      (swap! before conj [(jtms/in? (reasoning/tms kb) h) (v/believed? kb h CxW)]))]
+                        (a-context kb CxW)
+                        (doseq [t [q_t q_u vkind q_w q_a q_b q_top q_x]] (a-type kb t CxW))
+                        (doseq [s [(list 'covering q_w q_a q_b)
+                                   (list 'transitiveInArgInverse q_a 1 'genl)
+                                   (list 'transitiveInArgInverse q_b 1 'genl)
+                                   (list 'not (list q_a q_top)) (list 'not (list q_b q_top))]]
+                          (write! s M))
+                        (let [asks {:absent    (asked #(write! decl))
+                                    :again     (asked #(write! decl))
+                                    :rederived (asked #(do (write! (list 'set/forwardRule
+                                                                         (list 'implies (list seedOf '?x '?y) decl)))
+                                                           (write! (list seedOf X1 Y1))))
+                                    :other     (asked #(write! (list 'arg bRel 1 q_t)))
+                                    :defeated  (do (write! (list 'arg cRel 1 q_u))
+                                                   (write! (list cRel Z1 Y1))
+                                                   (write! (list 'not beat) M)
+                                                   (read! beat)
+                                                   (asked #(write! (list cRel Z1 Y1))))
+                                    :excepted  (do (write! (list cRel Z3 Y1))
+                                                   (write! (list 'except (list 'sentexHandle (v/handle-of kb shut CxW))) M)
+                                                   (read! shut)
+                                                   (asked #(write! (list cRel Z3 Y1))))
+                                    :out       (do (write! (list 'binary_predicate vkind) M)
+                                                   (write! (list 'arg eRel 1 vkind))
+                                                   (write! (list eRel Z2 Y1))
+                                                   (read! void)
+                                                   (asked #(write! (list eRel Z2 Y1))))
+                                    :refuted   (do (write! late)
+                                                   (write! (list dRel q_x Y1))
+                                                   (write! (list 'genl q_x q_top) M)
+                                                   (asked #(write! late)))}
+                              row  #(let [sx (v/sentex kb %)]
+                                      (tu/handle-free kb [(v/sentence-of sx) (:context sx)]))
+                              hs   (tu/sentex-ids kb)]
+                          {:asks       asks
+                           :unbelieved @before
+                           :violations (count (filter #(contains? mints (:sentence %)) (v/violations kb)))
+                           :stored     (set (map row hs))
+                           :believed   (set (map row (filter #(v/believed? kb % CxW) hs)))
+                           :depths     (set (for [h hs :when (jtms/known-datum? (reasoning/tms kb) h)]
+                                              [(row h) (jtms/depth (reasoning/tms kb) h)]))
+                           :justified  (set (for [h hs, j (v/supporting-justifications kb h)]
+                                              [(row h) (set (map row (:antecedents j)))]))})))))
+          {:keys [asks violations unbelieved] :as skipped} (run)
+          every (with-redefs-fn {#'special/held-mint? (constantly false)} run)
+          state #(select-keys % [:stored :believed :depths :justified])]
+      (testing "the store, belief, depths and justifications a run asking every mint leaves"
+        (is (pos? (:again (:asks every))))
+        (is (= 1 (:violations every)))
+        (is (= (state every) (state skipped))))
+      (testing "the source that justifies the believed mint, stated again or derived again"
+        (is (zero? (:again asks)))
+        (is (zero? (:rederived asks))))
+      (testing "a mint not stored, not believed, or drawn from another source"
+        (is (pos? (:absent asks)))
+        (is (= [[true false] [true false] [false false]] unbelieved)
+            "a defeated and an excepted one keep the IN label, a void one does not")
+        (is (pos? (:defeated asks)))
+        (is (pos? (:excepted asks)))
+        (is (pos? (:out asks)))
+        (is (pos? (:other asks))))
+      (testing "a check a later write would fail"
+        (is (zero? (:refuted asks)))
+        (is (zero? violations))))))
+
 (tu/deftest-kb a-symmetric-fact-derives-at-its-stored-positions-in-either-spelling
   ;; Both spellings of a `symmetric` fact store as one sentex in sorted order, and each
   ;; argument's type rests on the declaration of the position it is stored at, so the two
@@ -1808,7 +1899,7 @@
       (a-type kb t CxWorld)
       (let [bh     (v/assert kb (list 'binary_predicate t) CxWorld)
             dh     (v/assert kb (list 'arg rel 1 t) CxWorld)
-            minted #(some->> (v/handle-of kb (list t Rex) CxWorld) (v/in? kb))]
+            minted #(some->> (v/handle-of kb (list t Rex) CxWorld) (v/believed? kb))]
         (v/assert kb (list rel Rex Mary) CxWorld)
         (is (v/ask? kb (list rel Rex Mary) CxWorld) "the fact stands")
         (is (false? (minted)) "the membership in t is stored OUT")
@@ -1839,7 +1930,7 @@
       (v/assert kb (list trigger Rex Mary) CxWorld)
       (is (some? (v/handle-of kb (list rel Rex Mary) CxWorld))
           "the conclusion stands")
-      (is (false? (some->> (v/handle-of kb (list t Rex) CxWorld) (v/in? kb)))
+      (is (false? (some->> (v/handle-of kb (list t Rex) CxWorld) (v/believed? kb)))
           "the membership in t is stored OUT")
       (is (empty? (v/violations kb))))))
 
@@ -1942,7 +2033,7 @@
                 (set (for [h (v/handles kb) :when (pick h)
                            :let [sx (v/sentex kb h)]]
                        (tu/handle-free kb [(v/sentence-of sx) (:context sx)]))))
-        seen  (fn [kb] [(rows kb any?) (rows kb #(v/in? kb %))])]
+        seen  (fn [kb] [(rows kb any?) (rows kb #(v/believed? kb %))])]
     (try
       (tu/with-terms [rel_t coll_t pp marked Foo Bar]
         (with-entailing

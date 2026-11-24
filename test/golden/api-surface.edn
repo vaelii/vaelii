@@ -13,6 +13,7 @@
   add-provenance "[[conn handle m]]",
   all-functional-at-instant-violations "[[conn context]]",
   all-specified-violations "[[conn context]]",
+  answer-sets "[[conn context] [conn context opts]]",
   argue "[[conn asent context] [conn asent context opts]]",
   ask "[[conn goal] [conn goal context] [conn goal context opts]]",
   ask-within "[[conn goal budget] [conn goal context budget]]",
@@ -25,7 +26,7 @@
   "[[conn antecedents consequent] [conn antecedents consequent context] [conn antecedents consequent context opts]]",
   belief-status "[[conn handle context]]",
   believed "[[conn handles]]",
-  believed? "[[conn handle context]]",
+  believed? "[[conn handle] [conn handle context]]",
   blocked-justifications "[[conn]]",
   caches "[[conn]]",
   calculi "[[conn]]",
@@ -86,7 +87,6 @@
   handles "[[conn]]",
   has-prop? "[[conn kind pred] [conn kind pred context]]",
   health "[[conn]]",
-  in? "[[conn handle]]",
   inverse-of "[[conn pred] [conn pred context]]",
   isa? "[[conn x t] [conn x t context]]",
   justification "[[conn jid]]",
@@ -145,10 +145,12 @@
   sentexes-with-functor "[[conn pred] [conn pred opts]]",
   separating-covers "[[conn]]",
   settle-stats "[[conn]]",
+  sign-reading "[[conn context]]",
   specified-violations
   "[[conn pred indep context] [conn pred indep context arg-pos]]",
   specs "[[conn t] [conn t context]]",
   stored-first-args "[[conn pred]]",
+  stored-lengths "[[conn preds]]",
   subsumption-status "[[conn a b] [conn a b context]]",
   subsumption-statuses "[[conn a b] [conn a b context]]",
   supporting-justifications "[[conn handle]]",
@@ -186,6 +188,7 @@
   agent-of-context "[[ctx]]",
   all-functional-at-instant-violations "[[kb context]]",
   all-specified-violations "[[kb context]]",
+  answer-sets "[[kb context] [kb context opts]]",
   arg-types-owed "[[kb]]",
   argue "[[kb asent context] [kb asent context opts]]",
   argue-opt-keys
@@ -223,7 +226,7 @@
   assertable-strengths [:default :monotonic],
   belief-status "[[kb handle context]]",
   believed "[[kb handles]]",
-  believed? "[[kb handle context]]",
+  believed? "[[kb handle] [kb handle context]]",
   blocked-justifications "[[kb]]",
   bulk-assert-facts! "[[kb facts context] [kb facts context opts]]",
   cache-profile "[[]]",
@@ -305,7 +308,6 @@
   handles "[[kb]]",
   has-prop? "[[kb kind pred] [kb kind pred context]]",
   import! "[[kb dir] [kb dir opts]]",
-  in? "[[kb handle]]",
   indexable-terms "[[sentex]]",
   install-memory-guard! "[[{:keys [kbs], :as opts}]]",
   interpreted "[[term]]",
@@ -411,6 +413,7 @@
   set-solver "[[kb solver]]",
   settle-record-edits! "[[kb] [kb opts]]",
   settle-stats "[[kb]]",
+  sign-reading "[[kb context]]",
   sort-by-content "[[keyfn coll] [keyfn cmp coll]]",
   specified-violations
   "[[kb pred indep context] [kb pred indep context arg-pos]]",
@@ -418,6 +421,7 @@
   store-backend "[[dir]]",
   store-state "[[kb] [kb ks]]",
   stored-first-args "[[kb pred]]",
+  stored-lengths "[[kb preds]]",
   subsumption-status "[[kb a b] [kb a b context]]",
   subsumption-statuses "[[kb a b] [kb a b context]]",
   supporting-justifications "[[kb handle]]",
@@ -453,6 +457,7 @@
    :add-provenance
    :all-functional-at-instant-violations
    :all-specified-violations
+   :answer-sets
    :argue
    :ask
    :ask-within
@@ -516,7 +521,6 @@
    :handle-of
    :handles
    :has-prop?
-   :in?
    :inverse-of
    :isa?
    :justification
@@ -571,9 +575,11 @@
    :sentexes-with-functor
    :separating-covers
    :settle-stats
+   :sign-reading
    :specified-violations
    :specs
    :stored-first-args
+   :stored-lengths
    :subsumption-status
    :subsumption-statuses
    :supporting-justifications
@@ -598,6 +604,7 @@
    :add-provenance
    :all-functional-at-instant-violations
    :all-specified-violations
+   :answer-sets
    :argue
    :ask
    :ask-within
@@ -661,7 +668,6 @@
    :handle-of
    :handles
    :has-prop?
-   :in?
    :inverse-of
    :isa?
    :justification
@@ -715,9 +721,11 @@
    :sentexes-with-functor
    :separating-covers
    :settle-stats
+   :sign-reading
    :specified-violations
    :specs
    :stored-first-args
+   :stored-lengths
    :subsumption-status
    :subsumption-statuses
    :supporting-justifications

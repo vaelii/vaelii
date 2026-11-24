@@ -40,7 +40,7 @@
   not."
   [kb sentence ctx]
   (let [h (v/handle-of kb sentence ctx)]
-    (boolean (and h (v/in? kb h)))))
+    (boolean (and h (v/believed? kb h)))))
 
 ;; ---- entry point parity: the conviction ---------------------------------------
 
@@ -183,10 +183,10 @@
      (v/assert kb (list rock TheRock1) 'CxUniverse)
      (v/assert kb (list 'arg parentOf 1 person) 'CxUniverse)
      (let [fh (v/assert kb (list fatherOf TheRock1 Mary) 'CxUniverse)]
-       (is (v/in? kb fh) "believed while no edge carries the declaration to it")
+       (is (v/believed? kb fh) "believed while no edge carries the declaration to it")
        (is (v/assert kb (list 'genl fatherOf parentOf) 'CxUniverse)
            "the edge is admitted, not refused for what it convicts")
-       (is (not (v/in? kb fh)) "and the fact it convicts is held inert")
+       (is (not (v/believed? kb fh)) "and the fact it convicts is held inert")
        (is (= [[(list fatherOf TheRock1 Mary) :arg-type]]
               (into [] (comp (filter #(= :inert-argument (:violation %)))
                              (map (juxt :sentence (comp :type :detail))))

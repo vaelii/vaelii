@@ -136,7 +136,7 @@
           (is (v/has-prop? kb2 :decontextualized pred)))
         (testing "the copy made before the restart is still there, still justified"
           (let [u (v/handle-of kb2 (list pred ann) 'CxUniverse)]
-            (is (v/in? kb2 u))
+            (is (v/believed? kb2 u))
             (is (= 'decontextualized_predicate
                    (:informant (first (v/supporting-justifications kb2 u)))))))
         (testing "and a fact asserted after recovery is lifted like any other"
@@ -297,11 +297,11 @@
   ;; test-world recover, so its terms stay literal.
   (tu/with-cleared-kb [kb1 starter-world-kb]
     (let [moral (v/handle-of kb1 '(repaidKindness MouseA LionA) 'CxLionMouse)]
-      (is (v/in? kb1 moral) "the moral was derived before the restart")
+      (is (v/believed? kb1 moral) "the moral was derived before the restart")
       (let [kb2 (tu/test-kb)]                     ; same dbs, empty memory
         (testing "before recover, the in-memory graph is empty"
           (is (not (tax/sees? (reasoning/taxonomy kb2) 'CxWell 'CxBiology)))
-          (is (not (v/in? kb2 moral))))
+          (is (not (v/believed? kb2 moral))))
         (v/recover kb2)
         (testing "the context topology is rebuilt from the durable genlCx sentexes"
           (is (tax/sees? (reasoning/taxonomy kb2) 'CxWell     'CxBiology))
@@ -311,7 +311,7 @@
           (is (v/isa? kb2 'LionA 'mammal))
           (is (v/isa? kb2 'MouseA 'animal)))
         (testing "the derived moral is believed again, with its support"
-          (is (v/in? kb2 moral))
+          (is (v/believed? kb2 moral))
           (is (seq (v/supporting-justifications kb2 moral)))
           (is (seq (v/sentexes-matching kb2 '(repaidKindness MouseA LionA) 'CxLionMouse))))))))
 

@@ -73,13 +73,13 @@
         (is (not (v/premise? kb mh)) "the mint is derived, not a premise")
         (is (seq (v/supporting-justifications kb mh))
             "and it rests on the generator's firing")
-        (is (v/in? kb mh))
+        (is (v/believed? kb mh))
         (is (v/believed? kb mh CxMB)))
       (testing "defeating the mark that licensed it withdraws the mint"
         (v/assert kb (list 'not (list pmark pbigger)) CxMB {:strength :monotonic})
         (is (empty? (v/sentexes-matching kb (list pmark pbigger) CxMB))
             "the mark is defeated")
-        (is (not (v/in? kb mh))
+        (is (not (v/believed? kb mh))
             "the mint's sole justification names the mark, withdrawn — so the mint is")
         (is (false? (v/believed? kb mh CxMB)) "and its context reads it so")))))
 
@@ -94,7 +94,7 @@
     (let [mint (build-mint! kb pmark pseen trig pbigger CxMB)]
       (is (some? mint) "a rule was generated")
       (v/assert kb (list 'not (list pmark pbigger)) CxMB {:strength :monotonic})
-      (is (not (v/in? kb (:id mint))) "the mint is withdrawn")
+      (is (not (v/believed? kb (:id mint))) "the mint is withdrawn")
       (testing "a tuple the mint would range over arrives, and draws nothing believed"
         (v/assert kb (list pbigger dog cat) CxMB)
         (v/forward-chain kb)
@@ -125,7 +125,7 @@
       (is (not (v/premise? kb (:id mint))) "the mint is derived")
       (testing "after the defeat the premise marker stays IN; only the mint moves"
         (v/assert kb (list 'not (list pmark pbigger)) CxMB {:strength :monotonic})
-        (is (v/in? kb (:id naive))
+        (is (v/believed? kb (:id naive))
             "the marker rule is a premise — nothing defeats a rule, only its conclusion")
-        (is (not (v/in? kb (:id mint)))
+        (is (not (v/believed? kb (:id mint)))
             "the mint is withdrawn the moment its licensing mark is defeated")))))

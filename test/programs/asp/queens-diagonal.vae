@@ -1,0 +1,25 @@
+; Eight queens with each diagonal projected to its own atom. A background rule numbers
+; every square's two diagonals, a solve-only rule projects a queen onto them, and one
+; bound per diagonal allows at most one queen on it: 30 bounds in place of
+; queens-pairwise.vae's 280 constraints. Twin: queens-diagonal.lp.
+#base core
+#context CxQueensDiagonal
+(board_index 1)
+(board_index 2)
+(board_index 3)
+(board_index 4)
+(board_index 5)
+(board_index 6)
+(board_index 7)
+(board_index 8)
+(set/assumptionRule (implies (and (board_index ?r) (board_index ?c)) (queenAt ?r ?c)))
+(asp/atLeast 1 ?c (queenAt ?r ?c))
+(asp/atMost 1 ?c (queenAt ?r ?c))
+(asp/atMost 1 ?r (queenAt ?r ?c))
+(implies (and (board_index ?r) (board_index ?c) (evaluate ?d (+ ?r ?c))) (sumDiagonal ?r ?c ?d))
+(implies (and (board_index ?r) (board_index ?c) (evaluate ?d (- ?r ?c))) (differenceDiagonal ?r ?c ?d))
+(set/inertRule (set/solveRule (implies (and (queenAt ?r ?c) (sumDiagonal ?r ?c ?d)) (onSumDiagonal ?d ?r))))
+(set/inertRule (set/solveRule (implies (and (queenAt ?r ?c) (differenceDiagonal ?r ?c ?d)) (onDifferenceDiagonal ?d ?r))))
+(asp/atMost 1 ?r (onSumDiagonal ?d ?r))
+(asp/atMost 1 ?r (onDifferenceDiagonal ?d ?r))
+#models (queenAt ?r ?c)

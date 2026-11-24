@@ -154,31 +154,45 @@
                                                            within-orders)))]
         (for [a (rest x)] [(tp/point (tp/point-functions (first n)) a) false sx])))))
 
+(def ^:dynamic *memo*
+  "nil, or an atom of what one pass has read, for a caller that asks several questions over
+  one belief state (`with-memo`).  It holds each node's links, the walks `reach` has made
+  and their calendar extremes, and the region summaries (`summarize!`), keyed by
+  `*context*`."
+  nil)
+
+(defmacro with-memo
+  "Run `body` with the links and walks shared across its questions.  The caller holds
+  belief fixed over `body`'s reads of the links."
+  [& body]
+  `(binding [*memo* (or *memo* (atom {}))] ~@body))
+
+(defn- memo
+  "`(f)`, kept under `k` in `*memo*` when one is bound."
+  [k f]
+  (if-let [m *memo*]
+    (let [v (get @m k ::none)]
+      (if (identical? ::none v) (let [v (f)] (swap! m assoc k v) v) v))
+    (f)))
+
 (defn- links
   "Each `[node strict? sentex-or-nil]` one link from `n` (`stated-links`' direction): the
   point terms' own links first, then the stated and meet ones in content order."
   [kb later? n]
-  (concat (own-links later? n)
-          (nm/sort-by-content-key (fn [[m _ sx]] [(:context sx) (:sentence sx) m])
-                                  (concat (stated-links kb later? n) (meet-links kb later? n)))))
+  (memo [:links *context* later? n]
+        #(into (vec (own-links later? n))
+               (nm/sort-by-content-key (fn [[m _ sx]] [(:context sx) (:sentence sx) m])
+                                       (concat (stated-links kb later? n) (meet-links kb later? n))))))
 
 (defn- next-nodes
-  "The nodes one link from `n` reaches (`links`' direction), unordered."
+  "The nodes one link from `n` reaches (`links`' direction): `links`' when a pass shares
+  them (`with-memo`), else unordered."
   [kb later? n]
-  (map first (concat (own-links later? n) (stated-links kb later? n) (meet-links kb later? n))))
+  (map first (if *memo*
+               (links kb later? n)
+               (concat (own-links later? n) (stated-links kb later? n) (meet-links kb later? n)))))
 
 ;; ---- the walk -------------------------------------------------------------
-
-(def ^:dynamic *memo*
-  "nil, or an atom of the walks `reach` has made, keyed `[*context* later? start]`, for a
-  caller that asks several questions over one belief state (`with-memo`)."
-  nil)
-
-(defmacro with-memo
-  "Run `body` with the walks shared across its `path` questions.  The caller holds belief
-  fixed over `body`'s reads of the links."
-  [& body]
-  `(binding [*memo* (or *memo* (atom {}))] ~@body))
 
 (defn- reach*
   [kb later? start]
@@ -199,11 +213,7 @@
   reaching it across a strict link, each the vector of sentexes its stated links read.
   `start` itself is `[start false]` with an empty path."
   [kb later? start]
-  (if-let [m *memo*]
-    (let [k [*context* later? start]]
-      (or (get @m k)
-          (let [r (reach* kb later? start)] (swap! m assoc k r) r)))
-    (reach* kb later? start)))
+  (memo [:walk *context* later? start] #(reach* kb later? start)))
 
 (defn- shorter
   "The path of `ps` with the fewest distinct sentexes, then first in content order."
@@ -241,6 +251,122 @@
                   (not (pos? c)))]
       (into (:path e) (:path l)))))
 
+;; ---- what a region reaches ---------------------------------------------------
+
+(defn- outer
+  "Of the calendar fields `a` and `b`, either nil, the earlier when `later?`, else the
+  later: the moment of a walk on from a node, or back from one, that `calendar-paths`
+  compares."
+  [later? a b]
+  (cond (nil? a) b
+        (nil? b) a
+        ((if later? neg? pos?) (compare a b)) a
+        :else b))
+
+(defn- fold-cal
+  "The calendar extremes `cal`, `{frame [any strict]}`, with `other`'s folded in, each of
+  `other`'s lifted to strict across a strict link (`strict?`)."
+  [later? cal other strict?]
+  (reduce-kv (fn [acc frame [e es]]
+               (let [[a as] (get acc frame)]
+                 (assoc acc frame [(outer later? a e) (outer later? as (if strict? e es))])))
+             cal other))
+
+(defn- own-cal
+  "`n`'s own calendar extremes: its moment, reached by no strict link."
+  [n]
+  (if-let [[frame fields] (calendar-moment n)] {frame [fields nil]} {}))
+
+(defn- walk-cal
+  "The calendar extremes of the walk from `start` (`reach`): per frame the outermost moment
+  it reaches and the outermost it reaches across a strict link."
+  [kb later? start]
+  (memo [:walk-cal *context* later? start]
+        #(reduce-kv (fn [acc [n s] _] (fold-cal later? acc (own-cal n) s)) {} (reach kb later? start))))
+
+(defn- cal-holds?
+  "Does `calendar-paths` find a path, given the extremes of the walk on from `p` and the
+  walk back to `q`?"
+  [strict? on back]
+  (some (fn [[frame [e es]]]
+          (when-let [[l ls] (get back frame)]
+            (if strict?
+              (or (neg? (compare e l))
+                  (and es (not (pos? (compare es l))))
+                  (and ls (not (pos? (compare e ls)))))
+              (not (pos? (compare e l))))))
+        on))
+
+(defn- two-sided?
+  "Does each link from `n` (`later?`'s direction) appear, with its strictness, among the
+  links its node reads back?  A meet's link, and a point term's own link to a moment it
+  names, are read from one end only."
+  [kb later? n]
+  (every? (fn [[m s]] (some (fn [[k s2]] (and (= n k) (= s s2))) (links kb (not later?) m)))
+          (links kb later? n)))
+
+(defn- summarize!
+  "Fill `done`, node -> summary, for each node the links (`later?`'s direction) reach from
+  `roots` that it lacks, one strongly connected component at a time (`graph/scc`).  A
+  summary describes what a walk from the node reaches: `:cal`, its calendar extremes
+  (`walk-cal`); `:one-sided?`, whether a link on the way fails `two-sided?`; `:hits`, with
+  an `index` (node -> int), a BitSet of the indices reached.  Returns `done`."
+  [kb later? roots ^java.util.HashMap done index]
+  (graph/scc
+   roots
+   (fn [n] (remove #(.containsKey done %) (next-nodes kb later? n)))
+   (fn [members]
+     (let [in?  (set members)
+           out  (for [u members, [m s] (links kb later? u) :when (not (in? m))] [(.get done m) s])
+           cal  (reduce (fn [acc [d s]] (fold-cal later? acc (:cal d) s))
+                        (reduce #(fold-cal later? %1 (own-cal %2) false) {} members)
+                        out)
+           cyc  (some (fn [u] (some (fn [[m s]] (and s (in? m))) (links kb later? u))) members)
+           hits (when index
+                  (let [b (java.util.BitSet.)]
+                    (doseq [u members :let [i (index u)] :when i] (.set b (int i)))
+                    (doseq [[d] out] (.or b ^java.util.BitSet (:hits d)))
+                    b))
+           ;; a strict link inside the component reaches every member's region strictly
+           sum  {:cal        (cond->> cal cyc (into {} (map (fn [[fr [e _]]] [fr [e e]]))))
+                 :one-sided? (boolean (or (some (comp :one-sided? first) out)
+                                          (not-every? #(two-sided? kb later? %) members)))
+                 :hits       hits}]
+       (doseq [u members] (.put done u sum)))))
+  done)
+
+(defn- summary
+  "`summarize!`'s summary of the walk from `n`, shared across the pass (`with-memo`)."
+  [kb later? n]
+  (let [^java.util.HashMap done (memo [:summaries *context* later?] #(java.util.HashMap.))]
+    (or (.get done n) (do (summarize! kb later? [n] done nil) (.get done n)))))
+
+(def ^:dynamic *focus*
+  "nil, or the set of nodes a caller compares with many others over one pass, such as the
+  points of a time being minted.  `holds?` decides a question naming one of them from the
+  walk from that node (`reach`) and a summary of the other's region (`summarize!`)."
+  nil)
+
+(defn- in-walk?
+  "Does the walk `w` (`reach`) reach `n`, across a strict link when `strict?`?"
+  [w strict? n]
+  (or (contains? w [n true]) (and (not strict?) (contains? w [n false]))))
+
+(defn- by-focus
+  "`holds?` for `q` in `*focus*`: does the walk back from `q` reach `p`, or the calendar
+  place a moment `p` reaches at or before one reaching `q`?  The mirror for `p` in it.
+  nil when neither is, or a link of the other's region is one-sided (`two-sided?`)."
+  [kb strict? p q]
+  (when-let [f *focus*]
+    (let [[dir n o] (cond (f q) [true p q] (f p) [false q p])]
+      (when (some? dir)
+        (let [s (summary kb dir n)]
+          (when-not (:one-sided? s)
+            (boolean (or (in-walk? (reach kb (not dir) o) strict? n)
+                         (if dir
+                           (cal-holds? strict? (:cal s) (walk-cal kb false o))
+                           (cal-holds? strict? (walk-cal kb true o) (:cal s)))))))))))
+
 (def ^:dynamic *through*
   "nil, or a delay of `[[back on] …]`, the walks back and on (`reach`) from each node a
   caller reconciles at, such as each end of the links arriving.  `holds?` answers `p` at
@@ -258,18 +384,18 @@
   "`[]` when the terms alone place `p` before `q` (`strict?`) or at or before it.  They
   place two calendar moments by their fields and one node at itself.  An unbounded start
   lies before and an unbounded end after any node, strictly against a calendar moment.
-  false when two calendar moments refuse it, nil when only the links decide."
-  [strict? p q]
-  (let [cp (calendar-moment p)
-        cq (calendar-moment q)]
-    (cond
-      (and cp cq) (if (and (= (first cp) (first cq))
-                           ((if strict? neg? (complement pos?)) (compare (second cp) (second cq))))
-                    []
-                    false)
-      (and (= p q) (not strict?)) []
-      (and (unbounded? :start p) (or (not strict?) cq)) []
-      (and (unbounded? :end q) (or (not strict?) cp)) [])))
+  false when two calendar moments refuse it, nil when only the links decide.  `cp` and
+  `cq` are the two nodes' `calendar-moment`s."
+  ([strict? p q] (by-terms strict? p q (calendar-moment p) (calendar-moment q)))
+  ([strict? p q cp cq]
+   (cond
+     (and cp cq) (if (and (= (first cp) (first cq))
+                          ((if strict? neg? (complement pos?)) (compare (second cp) (second cq))))
+                   []
+                   false)
+     (and (= p q) (not strict?)) []
+     (and (unbounded? :start p) (or (not strict?) cq)) []
+     (and (unbounded? :end q) (or (not strict?) cp)) [])))
 
 (defn- through?
   [strict? p q]
@@ -279,31 +405,38 @@
                  (or (not strict?) (contains? back [p true]) (contains? on [q true]))))
           (some-> *through* deref))))
 
+(defn- linked?
+  "Do the walks `*through*` holds place `p` at or before `q`, or does `graph/reaches?` find
+  a path over the links, where a node the calendar places counts as reaching?"
+  [kb strict? p q]
+  (boolean (or (through? strict? p q)
+               (graph/reaches? (partial next-nodes kb true) (partial next-nodes kb false)
+                               p q (comp some? calendar-moment)))))
+
 (defn holds?
   "Presence check before `path`: false when `path` answers nil for these arguments, true
   when it may answer.  Decides by the terms (`by-terms`), then by the walks `*through*`
-  holds, then by `graph/reaches?` over the links, where a node the calendar places counts
-  as reaching."
+  holds, then for a node in `*focus*` by its walk (`by-focus`), then by `linked?`."
   [kb strict? p q]
   (let [t (by-terms strict? p q)]
-    (if (some? t)
-      (boolean t)
-      (boolean (or (through? strict? p q)
-                   (graph/reaches? (partial next-nodes kb true) (partial next-nodes kb false)
-                                   p q (comp some? calendar-moment)))))))
+    (cond
+      (some? t)              (boolean t)
+      (through? strict? p q) true
+      :else                  (let [f (by-focus kb strict? p q)]
+                               (if (some? f) f (linked? kb strict? p q))))))
 
 (defn path
   "The sentexes showing the node `p` lies before `q` (`strict?`) or at or before it, or
   nil when neither the links nor the calendar show it.  Two calendar moments compare by
   their fields alone, with no sentex; any other pair by a walk from each end
   (`reach`), joined at a node both reach or through the calendar (`calendar-paths`), when
-  `holds?` answers true.  Of several, the path with the fewest sentexes, then first in
+  `linked?` answers true.  Of several, the path with the fewest sentexes, then first in
   content order.  Reads the facts `*context*` sees."
   [kb strict? p q]
   (let [t (by-terms strict? p q)]
     (cond
       (some? t) (or t nil)
-      (holds? kb strict? p q)
+      (linked? kb strict? p q)
       (let [fwd (reach kb true p)
             bwd (reach kb false q)]
         (shorter (concat (for [[[n s1] pa] fwd
@@ -329,19 +462,34 @@
 (defn tightest-start-bounds
   "The nodes a start of `x` (`readings`) lies at or after through at least one stated
   fact, kept when every other such node lies at or before it (`path`), in content order.
-  Two unordered bounds keep neither.  Reads the facts visible from `context`, or every
-  context's when it is a variable."
+  Two unordered bounds keep neither.  `path` decides a pair whose region has a one-sided
+  link (`summarize!`); for any other, the walk back from the later bound reaching the
+  earlier one, or the calendar, decides it.  Reads the facts visible from `context`, or
+  every context's when it is a variable."
   [kb context x]
   (binding [*context* (when-not (sx/variable? context) context)]
     (with-memo
       (let [starts (into #{} (map first) (readings x))
-            bounds (into #{} (for [s starts
-                                   [[n _] facts] (reach kb false s)
-                                   :when (and (seq facts) (not (starts n)))]
-                               n))]
-        (nm/sort-by-content-key identity
-                                (filter (fn [n] (every? #(path kb false % n) (disj bounds n)))
-                                        bounds))))))
+            bounds (vec (nm/sort-by-content-key
+                         identity
+                         (into #{} (for [s starts
+                                         [[n _] facts] (reach kb false s)
+                                         :when (and (seq facts) (not (starts n)))]
+                                     n))))
+            index  (zipmap bounds (range))
+            cal    (zipmap bounds (map calendar-moment bounds))
+            ^java.util.HashMap back (summarize! kb false bounds (java.util.HashMap.) index)
+            ^java.util.HashMap on   (summarize! kb true bounds (java.util.HashMap.) nil)
+            before? (fn [m n]
+                      (let [t (by-terms false m n (cal m) (cal n))
+                            sm (.get on m)
+                            sn (.get back n)]
+                        (cond
+                          (some? t) (boolean t)
+                          (or (:one-sided? sm) (:one-sided? sn)) (some? (path kb false m n))
+                          :else (boolean (or (.get ^java.util.BitSet (:hits sn) (int (index m)))
+                                             (cal-holds? false (:cal sm) (:cal sn)))))))]
+        (filterv (fn [n] (every? #(or (= % n) (before? % n)) bounds)) bounds)))))
 
 (defrecord TightestStartBoundProver []
   prover-types/Prover

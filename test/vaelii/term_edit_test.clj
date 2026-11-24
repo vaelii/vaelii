@@ -363,7 +363,7 @@
 (defn- stored-reading
   "Every stored record of `kb` as `[sentence context strength believed?]`."
   [kb]
-  (into #{} (map #(let [sx (v/sentex kb %)] [(v/sentence-of sx) (:context sx) (:strength sx) (v/in? kb %)]))
+  (into #{} (map #(let [sx (v/sentex kb %)] [(v/sentence-of sx) (:context sx) (:strength sx) (v/believed? kb %)]))
         (tu/sentex-ids kb)))
 
 (deftest a-disk-log-store-reopens-as-a-stopped-or-completed-rename-left-it
@@ -394,7 +394,7 @@
           (let [kb (open)]
             (try
               (is (= #{} (uses kb X)))
-              (is (v/in? kb (v/handle-of kb (list likes Y z) CxStory)))
+              (is (v/believed? kb (v/handle-of kb (list likes Y z) CxStory)))
               (is (= (count before) (count (stored-reading kb))))
               (finally (v/close! kb)))))
         (finally (tu/rm-rf! dir))))))
@@ -481,5 +481,5 @@
         (testing (name op)
           (is (= [true 2] [(some? thrown) @calls]))
           (is (= before (prov)))
-          (is (every? #(v/in? kb %) hs))
+          (is (every? #(v/believed? kb %) hs))
           (is (= (if target #{(list likes Y Z)} #{}) (uses kb Z))))))))

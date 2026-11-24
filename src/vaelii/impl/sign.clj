@@ -7,14 +7,13 @@
   algebra (pure data) comes first, then the KB reading and `SignProver`, registered with
   `vaelii.core/add-reasoner :sign`.  See docs/sign.md."
   (:require [clojure.set :as set]
-            [taoensso.trove :as trove]
+            [vaelii.impl.graph :as graph]
             [vaelii.impl.naming :as nm]
             [vaelii.impl.observe :as observe]
             [vaelii.impl.resolution :as res]
             [vaelii.impl.sentex :as sx]
             [vaelii.impl.types.prover :as prover-types]
-            [vaelii.impl.types.reasoning :as reasoning]
-            [vaelii.impl.violations :as violations]))
+            [vaelii.impl.types.reasoning :as reasoning]))
 
 ;; =========================================================================
 ;; THE ALGEBRA — pure data in, pure data out.  No KB, no context, no belief.
@@ -177,7 +176,7 @@
 ;; ---- reading the KB into a state and a constraint list -------------------
 
 (defn- believed
-  "Every `[handle arg…]` for which `(pred arg…)` is believed and visible from `context`,
+  "Every `[handle arg…]` for which `(pred arg…)` is believed at `context`,
   every argument a ground term.  `vars` names one variable per argument."
   [kb context pred & vars]
   (for [[h b] (res/matches-visible kb (apply list pred vars) context)
@@ -186,7 +185,7 @@
     (into [h] args)))
 
 (defn- stated-values
-  "Every believed, visible `(signOf Q S)` and `(trendOf Q S)` as the starting state.  Two
+  "Every `(signOf Q S)` and `(trendOf Q S)` believed at `context`, as the starting state.  Two
   stated values that disagree narrow the key to the empty set."
   [kb context]
   (reduce (fn [st [pred h q s]]
@@ -225,6 +224,7 @@
      :out        [:sign q]
      :derive     (fn [[sx sy]] (combined pred sx sy (:side dom)))
      :support    #{h}
+     :compared   (:support dom)
      :decided-by (when dom
                    (fn [[sx sy]]
                      (when (not= (combined pred sx sy (:side dom)) (combined pred sx sy nil))
@@ -249,51 +249,72 @@
 
 ;; ---- the reading, resident on the KB -------------------------------------
 
-(defn- report-inconsistency!
-  "File an unsatisfiable reading as a `:sign-inconsistency` violation, logged at :warn,
-  naming the quantities whose possible signs emptied."
-  [kb context state]
-  (let [entry {:violation :sign-inconsistency
-               :context   context
-               :sentence  nil
-               :detail    {:message (str "the sign facts visible from " context
-                                         " cannot all be satisfied, so no sign goal is"
-                                         " answered there")
-                           :quantities (nm/by-print-key
-                                        (into #{} (comp (filter (comp empty? first val))
-                                                        (map (comp second key)))
-                                              state))}}]
-    (trove/log! {:level :warn :id ::sign-inconsistency :data entry})
-    (violations/report-without-run kb entry)))
-
 (defn- build-reading
-  "The believed sign facts of `context` resolved, as `{:state … :inconsistent? …}`."
+  "The believed sign facts of `context` resolved, as `{:state … :inconsistent? …}`, with
+  the stated values `:stated` and the constraints `:cs` it resolved from."
   [kb context]
   (let [dominant (dominance kb context)
         cs       (constraint-order (concat (arithmetic-constraints kb context dominant)
                                            (derivative-constraints kb context)))
-        state    (resolve-state* (stated-values kb context) cs)]
-    {:state state :inconsistent? (inconsistent-state? state)}))
+        stated   (stated-values kb context)
+        state    (resolve-state* stated cs)]
+    {:state state :inconsistent? (inconsistent-state? state) :stated stated :cs cs}))
+
+(defn- held-reading
+  "`build-reading` of `context`, cached on the KB's `:qcn` atom and keyed by
+  `observe/change-clock`, as `qcn-kb/read-network` is."
+  [kb context]
+  (observe/cached (:clock kb) (reasoning/qcn kb) [::reading context] (fn [_stale] (build-reading kb context))))
 
 (defn reading
   "The resolved sign state visible from `context`, or `:inconsistent` when the facts
   contradict each other.  The `resolve-state` shape, except that a narrowed key's support
   is a node over the supports it was derived from; `possible-signs` reads one out as a
-  handle set.
-
-  Cached on the KB's `:qcn` atom and keyed by `observe/change-clock`, as
-  `qcn-kb/read-network` is.  An inconsistency is reported once per KB, context and state
-  (`observe/newly-seen?`)."
+  handle set.  A read files nothing: the settle places an inconsistent component
+  (`unsatisfiable-regions`)."
   [kb context]
-  (let [{:keys [state inconsistent?]}
-        (observe/cached (reasoning/qcn kb) [::reading context]
-                        (fn [_stale] (build-reading kb context)))]
-    (if inconsistent?
-      (do (when (observe/newly-seen? (reasoning/qcn kb) [::reported context]
-                                     (flat-supports state))
-            (report-inconsistency! kb context state))
-          :inconsistent)
-      state)))
+  (let [{:keys [state inconsistent?]} (held-reading kb context)]
+    (if inconsistent? :inconsistent state)))
+
+(defn possible-sets
+  "Every quantity the reading of `context` records, with the sign terms its sign and its
+  trend may take: `{:consistent? bool :signs {q #{term}} :trends {q #{term}}}`.  An
+  inconsistent reading keeps its sets, a quantity it emptied mapping to `#{}`."
+  [kb context]
+  (let [{:keys [state inconsistent?]} (held-reading kb context)
+        by (fn [attribute]
+             (into {} (for [[[a q] [signs]] state :when (= a attribute)]
+                        [q (into #{} (map value-of-sign) signs)])))]
+    {:consistent? (not inconsistent?) :signs (by :sign) :trends (by :trend)}))
+
+(defn unsatisfiable-regions
+  "The conflicted regions of the sign facts visible from `context`: each connected
+  component of the keys a constraint joins whose resolved state empties a key, as
+  `{:quantities #{quantity} :members #{handle}}`.  `:quantities` names the emptied keys'
+  quantities, and `:members` every fact of the component: the stated values of its keys,
+  its constraints and the comparisons they read.  Components resolve independently, so
+  the reading's state answers each."
+  [kb context]
+  (let [{:keys [state stated cs inconsistent?]} (held-reading kb context)]
+    (if-not inconsistent?
+      []
+      (let [links (reduce (fn [m {:keys [in out]}]
+                            (reduce (fn [m k] (-> m (update k (fnil conj #{}) out)
+                                                  (update out (fnil conj #{}) k)))
+                                    m in))
+                          {} cs)
+            joined (fn [k] (graph/reach-all [k] #(get links % #{})))
+            bad   (into #{} (comp (filter (comp empty? first val)) (map key)) state)
+            comps (reduce (fn [acc k] (if (some #(contains? % k) acc) acc (conj acc (joined k))))
+                          [] (nm/by-print-key bad))]
+        (mapv (fn [ks]
+                {:quantities (into #{} (comp (filter bad) (filter ks) (map second)) (keys state))
+                 :members    (-> #{}
+                                 (into (mapcat #(second (get stated %))) ks)
+                                 (into (comp (filter #(contains? ks (:out %)))
+                                             (mapcat #(concat (:support %) (:compared %))))
+                                       cs))})
+              comps)))))
 
 (defn possible-signs
   "The signs `attribute` (`:sign` or `:trend`) may take for `quantity` in `context`, and

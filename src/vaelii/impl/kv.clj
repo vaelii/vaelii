@@ -219,6 +219,28 @@
                                     :class-evidence {:oracle '[vaelii.index-test/the-mint-rule-family-agrees-with-the-trie]
                                                      :via [:trie]}})}))
 
+(def ^:private handle-tags
+  (into {} (keep (fn [[tag {:keys [shape leaf]}]]
+                   (when (= :handles leaf)
+                     [tag (if (#{:trie :count-trie} shape) :leaf :all)])))
+        index-families))
+
+(defn handle-key?
+  "Does `k` name a handle set (int postings), by `index-families`' `:leaf`: one of a set
+  family's keys, or a trie or count trie's `[tag :handles …]` key?  A child set, a counter
+  and a name set do not.  `dense-kv` stores the sets it names as postings, and a
+  fork's index half names the base handles posted at them (`vaelii.impl.overlay.kv`).
+
+  A key this fails to recognize is stored boxed and answers every read identically, so
+  nothing behavioural can catch a spelling that drifts from the one this namespace writes;
+  `dense_routing_test` checks the stored representation instead."
+  [k]
+  (and (vector? k)
+       (case (handle-tags (nth k 0 nil))
+         :leaf (= :handles (nth k 1 nil))
+         :all  true
+         false)))
+
 (defn- root-of
   "The tag of family `tag`'s root set (`index-families`)."
   [tag]

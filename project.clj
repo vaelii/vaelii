@@ -1,7 +1,7 @@
-;; Defines `jdk-major`, `bash` and `test-jvm-opts`, which the `~` forms below read.
+;; Defines `jdk-major`, `bash`, `heap-cap` and `test-jvm-opts`, which the `~` forms below read.
 (load-file (str (.getParent (java.io.File. *file*)) "/project-env.clj"))
 
-(defproject com.vaelii/vaelii "0.34.0"
+(defproject com.vaelii/vaelii "0.35.0"
   :description "Vaelii — a contextualized common-sense knowledge base with a
                 count-aware trie index, forward/backward inference,
                 and JTMS truth maintenance, over an in-memory or on-disk store."
@@ -28,21 +28,21 @@
   ;; 2.9 because `:preserve-eval-meta` below needs it: on 2.9 the key is silently
   ;; ignored and every `lein run` prints the reflection warning it exists to suppress.
   :min-lein-version "2.10.0"
-  :dependencies [[org.clojure/clojure "1.12.6"]
+  :dependencies [[org.clojure/clojure "1.12.7"]
                  [com.taoensso/nippy "3.9.0"]
                  [com.taoensso/trove "1.2.0"]
                  [metosin/reitit-ring "0.11.0"]
-                 [ring/ring-core "1.15.5"]
-                 [ring/ring-jetty-adapter "1.15.5"]
+                 [ring/ring-core "1.15.6"]
+                 [ring/ring-jetty-adapter "1.15.6"]
                  ;; escapes body position as well as attributes, so KB content and
                  ;; query params cannot inject markup (docs/web.md)
                  [hiccup "2.0.0"]
                  ;; clasp's `--outf=2` JSON, and libclingo through JNA (docs/asp.md)
-                 [cheshire "6.2.0"]
+                 [cheshire "6.2.1"]
                  [net.java.dev.jna/jna "5.19.1"]
                  ;; the dense and columnar index backends, both off by default
                  ;; (docs/density.md)
-                 [org.roaringbitmap/RoaringBitmap "1.6.24"]
+                 [org.roaringbitmap/RoaringBitmap "1.6.30"]
                  [it.unimi.dsi/fastutil-core "8.5.19"]
                  ;; XZ (LZMA2) for the exporter's `:xz`. nippy brings it transitively;
                  ;; naming it is what makes the codec a promise rather than an accident
@@ -106,9 +106,13 @@
   ;; cljfmt check` takes 69-95 s against 31-36 s, so `lint-cljfmt`, `fix` and
   ;; scripts/lint.sh start a second lein with LEIN_JVM_OPTS naming no cap.
   ;;
-  ;; No heap size and no collector flag: sizing and `-XX:+UseZGC` stay in the
-  ;; profiles that ask for them (`:bench`, `:zgc`), and a profile's `:jvm-opts`
-  ;; concatenates onto this vector rather than replacing it.
+  ;; `heap-cap` gives every project JVM an 8g heap ceiling unless `JVM_OPTS` names
+  ;; `-Xmx`. With no `-Xmx` the ceiling is a quarter of physical memory, 128 GB on a
+  ;; 512 GB host, and several such JVMs beside a local model server exhaust memory. A
+  ;; profile's `:jvm-opts` concatenates onto this vector, so its `-Xmx` (`:test`'s 4g,
+  ;; `:bench`'s 6g) comes later and replaces the 8g, and `lein update-in :jvm-opts conj
+  ;; '"-Xmx24g"' -- …` does the same. Leiningen's own JVM takes its cap from `.leinrc`.
+  ;; No collector flag: `-XX:+UseZGC` stays in the `:zgc` profile.
   ;;
   ;; `--enable-native-access=ALL-UNNAMED` lets JNA load the clingo binding without
   ;; the restricted-method warning JDK 24+ prints (and a later JDK will turn into a
@@ -120,7 +124,8 @@
   ;; behind the experimental unlock): an 8-byte object header in place of 12. A
   ;; generated 120k-sentex load holds 7.4% less live heap on `:memory` and 9.3% less on
   ;; `:memory-dense`, 2026-09-28, at no measurable load-time cost.
-  :jvm-opts ~(cond-> ["-XX:-OmitStackTraceInFastThrow" "--enable-native-access=ALL-UNNAMED"]
+  :jvm-opts ~(cond-> (into ["-XX:-OmitStackTraceInFastThrow" "--enable-native-access=ALL-UNNAMED"]
+                           (heap-cap "8g"))
                (<= 23 jdk-major) (conj "--sun-misc-unsafe-memory-access=allow")
                (<= 25 jdk-major) (conj "-XX:+UseCompactObjectHeaders"))
   :profiles {;; `:aot :all` plus a no-op SLF4J binding: silences Jetty's "no providers"
@@ -288,7 +293,8 @@
              ;; explaining, and a level outside the five fails the run rather than
              ;; silencing it. A blank value is unset and reads as `:error`.
              :bench {:source-paths ["bench"]
-                     :dependencies [[org.openjdk.jol/jol-core "0.17"]]
+                     :dependencies [[org.openjdk.jol/jol-core "0.17"]
+                                    [org.jacoco/org.jacoco.core "0.8.16"]]
                      :jvm-opts ["-Xmx6g" "--add-opens=java.base/java.lang=ALL-UNNAMED"
                                 "-Djdk.attach.allowAttachSelf=true"
                                 ;; jol sizes a hidden class (a lambda) without Unsafe's
@@ -298,6 +304,12 @@
                      [(require 'vaelii.impl.logging)
                       ((resolve 'vaelii.impl.logging/set-level)
                        (keyword (or (some-> (System/getenv "VAELII_BENCH_LOG_LEVEL") .trim not-empty) "error")))]}
+             ;; `lein perf --reach` (scripts/perf.sh): the JaCoCo agent records which
+             ;; `vaelii.*` classes each perf check and probe executes. A class Clojure
+             ;; defines at load has no code source, which the agent skips by default.
+             :reach {:java-agents [[org.jacoco/org.jacoco.agent "0.8.16" :classifier "runtime"
+                                    :options ~(str "output=none,includes=vaelii.*,inclnolocationclasses=true,"
+                                                   "classdumpdir=target/reach-classes")]]}
              ;; `lein browser`: the browser running inside a repl with a reload channel
              ;; into it. Both halves bind loopback — a write route with no auth beside
              ;; an nREPL is a remote shell (CONTRIBUTING.md §6). The starter is restored

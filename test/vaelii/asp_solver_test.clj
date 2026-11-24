@@ -93,10 +93,21 @@
          (catch TimeoutException _ false))
     true))
 
+(defn- await-lines
+  "Wait up to `ms` for file `f` to hold `n` newline-terminated lines."
+  [^java.io.File f n ms]
+  (let [end (+ (System/currentTimeMillis) ms)]
+    (loop []
+      (let [s (when (.exists f) (slurp f))]
+        (when-not (or (and s (str/ends-with? s "\n") (= n (count (str/split-lines s))))
+                      (> (System/currentTimeMillis) end))
+          (Thread/sleep 10)
+          (recur))))))
+
 (deftest a-clasp-past-its-deadline-is-killed-with-its-children-and-reads-as-unavailable
-  ;; The stub ignores `--time-limit` and sleeps in a child process, as a wedged clasp
-  ;; would.  The solve runs in a future bounded at 10 s, so a missing watchdog reads as
-  ;; `::hung` instead of stalling the suite for the stub's 30 s.
+  ;; The stub ignores `--time-limit` and sleeps in a child, as a wedged clasp would.  The
+  ;; 500 ms deadline starts once the stub has written both pids, and the solve's future is
+  ;; bounded at 15 s, so a missing watchdog reads as `::hung` instead of stalling 30 s.
   (tu/with-requirement (not tu/windows?) "the stub is a #!/bin/sh script, which Windows does not exec"
     (let [dir  (.toFile (Files/createTempDirectory "vaelii-clasp-stub" (make-array FileAttribute 0)))
           pids (io/file dir "pids")
@@ -104,11 +115,11 @@
       (try
         (spit stub (str "#!/bin/sh\necho $$ > '" pids "'\nsleep 30 &\necho $! >> '" pids "'\nwait\n"))
         (.setExecutable stub true)
-        (with-redefs [clasp/deadline-ms (constantly 500)]
+        (with-redefs [clasp/deadline-ms (fn [_] (await-lines pids 2 5000) 500)]
           (binding [clasp/*clasp-binary* (str stub)]
             (let [r (deref (future (try (clasp/solve "asp 1 0 0\n0\n" :label)
                                         (catch clojure.lang.ExceptionInfo e (ex-data e))))
-                           10000 ::hung)]
+                           15000 ::hung)]
               (is (= :solver-unavailable (:type r)))
               (is (= [] (remove #(exits-within? % 5000)
                                 (map parse-long (str/split-lines (slurp pids)))))

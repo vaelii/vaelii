@@ -68,7 +68,7 @@ The placement reads share these rules:
   and does not see it back, and `placement-rep` names each survivor's group. With
   `member?`, an ancestor strikes a candidate when `member?` holds of it
   (`descendant-frontier`). Forward placement calls `max-cxs` on a set it already filtered
-  while visibility exceptions are active. A `CxInference` fan reports only the maximal
+  while an `except` is active. A `CxInference` fan reports only the maximal
   answering readers, since a reader below one that answered adds no claim.
 - **`maximal-common-descendant-contexts`** returns the maximal common descendants of
   `ctxs`: possibly empty, possibly several. It exits early when one member sees the rest
@@ -81,9 +81,9 @@ The placement reads share these rules:
   ([qcn.md](qcn.md), [equality.md](equality.md)). Pairs reach every subset, since a
   common descendant of `{a b c}` lies under a maximal common descendant of `{m c}`. Fewer
   than two contexts closes with no read.
-- **`context-up-global`** is the unscoped `genlCx` read, with no `except` holes.
-  Exception evaluation reads it to decide which exceptions a reader sees, since the filter
-  cannot answer the question it is derived from. Every other caller wants `context-up`.
+- **`context-up-global`** is the unscoped `genlCx` read, with no `except` holes. The read
+  of an except or defeat hiding a `genlCx` supporter uses it, since those excepts decide
+  `context-up` (`exc/staged`). Every other caller wants `context-up`.
 - **`min-context-parents`** and **`max-context-children`** reduce `context-up` and
   `context-down` to one `genlCx` edge. While an `except` targets a `genlCx` supporter, each
   direct child is judged by its own forward answer, so a context is drawn below `c` exactly
@@ -167,7 +167,7 @@ Data hangs below CxWell.
   - `CxSocial` — what acquaintance follows from, how employment relates to
     membership, and the general relationship and dwelling vocabulary over two
     persons: `kinOf` (also organisms), `romanticPartnerOf`, `coworkerOf`, `roommateOf`,
-    `originatorOf` (read from blood-qualified `parentOf`), `relationshipLabel`, and
+    `originatorOf` (read from genetic `parentOf`), `relationshipLabel`, and
     `dwelling`/`dwellsIn` (whose rule derives `roommateOf` for co-dwellers). Every
     rule runs one way only, because `knows` is deliberately not symmetric.
 - **CxNormalPhysicalConditions** — an **opt-in** theory in `kb/middle/` that sees
@@ -189,10 +189,11 @@ Data hangs below CxWell.
     receipts, media resources and DNS names, and the sixteen kinds the relations are
     typed over (`computational_system`, `software_tool`, `tool_invocation`,
     `media_resource`, `ip_address` and the kinds below them), each with its comment,
-    its `genl` edges and its disjointness. `(toolEnablesAbility ?tool ?kind)` says
+    its `genl` edges and its disjointness. A `computational_system` is `causal`, so every
+    software tool is, read-only ones included. `(toolEnablesAbility ?tool ?kind)` says
     that whoever has `?tool` can be the doer of a happening of kind `?kind`, and the
     one computing rule, a default guarded by `causal`, reads `able` from it and
-    `agentHasTool`. Both relations take a `temporal` in the tool position, the nearest kind
+    `agentHasTool`. Both relations take a `causal` in the tool position, a kind
     software and a hammer or a jetpack share, and CxTra excepts CxBiology's
     penguin denial, through `(ist CxBiology …)`, for a penguin that has something that
     enables flying. No rule concludes anything about an invocation.
@@ -288,8 +289,7 @@ Data hangs below CxWell.
     second argument, since an image or a video need not be located.
   - **relationships and plural identity** — relationship vocabulary narrower than
     CxSocial's: `nestingPartnerOf` (a spec of CxSocial's `romanticPartnerOf` and
-    `roommateOf`, and read by a rule from the two), `chosenSiblingOf` (a spec of
-    `chosenKinOf` and blood/chosen-neutral `siblingOf`), `construct` (a person whose mind runs on a computational substrate,
+    `roommateOf`, and read by a rule from the two), `construct` (a person whose mind runs on a computational substrate,
     `:monotonic`-disjoint from `organism`, `computational_system` and `organization`), its `seat` (the computational
     system it runs in, related by the non-functional `hasSeat`), `founderOf` (a spec of
     `originatorOf` naming the person who founded a construct), and the plurality terms: `singlet`, `plural_system` and
@@ -532,9 +532,10 @@ store *spells* and is the only reading that sees a defeated default. It opts out
 filtering by name: an answer taken under it says a derivation is spelled in the store, not
 that the KB holds it.
 
-It keeps the derived relations: the `genl` / `genlCx` closures and the equality partition
-are computed from believed edges either way, so a subsumption over a *defeated* `genl` edge
-stays invisible under it.
+It keeps the derived relations. `CxEverything` reads at the variable context, where the
+`genl` / `genlCx` closures and the equality partition hold every edge the network labels
+IN. A subsumption over a *defeated* `genl` edge is climbed under it, and one over an edge
+OUT in the network is not ([nmtms.md](nmtms.md#a-read-with-no-reader)).
 
 The flag is the dynamic var `res/*belief-blind*`, and `res/blind-seq` re-binds it at each
 realization step of the lazy answer, since a `binding` around the entry point is popped
@@ -594,10 +595,10 @@ But `(owns Tom Engine1)` is **not** derived — `(owns Tom Car1)` is in CxSocial
 while `(tangiblePartOf Engine1 Car1)` is in CxNaturalWorld (sibling data contexts with no
 common view), so the placement intersection is empty and no justification is made.
 
-## except: removing visibility down a context subtree
+## except: removing belief down a context subtree
 
-`(except (sentexHandle H))` asserted in context C removes visibility of the sentex `H`
-from C **and every context that sees C** — its `context-down` closure — while leaving
+`(except (sentexHandle H))` asserted in context C removes the sentex `H` from belief at
+C **and every context that sees C** — its `context-down` closure — while leaving
 the more general contexts C sees untouched. It is a **meta-sentex**: `(sentexHandle H)`
 is the term form of a stored sentex's handle (`sentex/sentex-handle`), so the except
 names the sentex it hides rather than restating it. `except` is in the baseline
@@ -616,7 +617,7 @@ handle is never reissued. A store written by import or recovery may still hold a
 the cascade reads an except it meets a second time on one walk as not in force.
 
 **The meta-except cascade.** An except can itself be excepted. `(except H)` hides H;
-`(except E)`, where E is that except, takes E out of force and H is visible again;
+`(except E)`, where E is that except, takes E out of force and H is believed again;
 `(except M)`, where M is the meta-except, takes M out of force and H is hidden again. The
 toggle repeats at each depth, and is read at query time off the index
 (`exc/exception-status` returns the forest for one handle). A read follows the cascade
@@ -649,8 +650,8 @@ The removal is **total**, not just for reads:
   that closure when it leaves (`special/recheck-except`, `special/drain-except-moves!`),
   so its cost is the consequences of `H` and not the extent of the rules they use
   (`lein perf`'s `except-beside-unrelated-firings`). A rule in the closure is re-joined
-  over its own extent, since the except moved that rule's visibility. A fact outside the
-  closure that a firing over it names is re-chained alone: its visibility did not move, so
+  over its own extent, since the except moved belief in that rule. A fact outside the
+  closure that a firing over it names is re-chained alone: its belief did not move, so
   an edge among those facts re-chains none of the facts under it (`lein perf`'s
   `except-beside-facts-under-an-edge`). A believed datum that
   is not a premise and gains a route, a premise mark or a justification, can come into view
@@ -675,9 +676,13 @@ removes E from R's ancestor set. It also removes every `genlCx` edge whose every
 justification rests on E, for reads and for a firing's placement alike: a hidden `genlCx`
 edge is on no second route (`exc/witness-paths`), so the read walk forces out what rests
 on E as chain's placement does. The read is stratified, with no fixpoint over the
-hierarchy. The excepts in force at R are those stated in a context of R's ancestor set
-with no except applied (`tax/context-up-global`), so which excepts R reads depends on no
-edge's visibility.
+hierarchy, in two stages (`exc/staged`). An except or defeat hiding a `genlCx` supporter
+is read over R's ancestor set with no except applied (`tax/context-up-global`), so which
+edges R reads depends on no edge's visibility. Every other except and defeat is read over
+the ancestor set those edges leave (`tax/context-up`), so one stated in a context R no
+longer sees removes nothing at R. While no except reaches a `genlCx` supporter
+(`tax/context-filter-active?`) the two sets are one set and the read takes one stage
+(`belief_status_test/an-except-or-defeat-in-a-context-an-excepted-edge-cuts-off-removes-nothing-below-it`).
 
 Take CxQ, CxB and CxS, each under CxUniverse, with `(genlCx CxQ CxB)`, the forward rule
 `(genlCx CxQ ?b) ⇒ (genlCx CxS ?b)`, and an except of the first edge stated in CxS. CxS does
@@ -687,12 +692,13 @@ justification resting on no excepted edge, and CxS sees CxB
 (`except_gnarly_test/a-genlCx-edge-resting-on-an-excepted-genlCx-edge-leaves-the-excepting-reader-for-reads-and-chain`).
 
 **`defeat` beside `except`.** `(defeat (sentexHandle H))` has the same shape and is read
-the same way, by target off the trie, and differs in what it removes and when:
+the same way, by target off the trie, and differs in who writes it, where it removes `H`
+and when:
 
 | | `except` | `defeat` |
 |---|---|---|
 | written by | a user's `assert` | the engine alone: a placed nogood for its unique weakest member, a guard below a firing's placement for the firing's conclusion; `assert` refuses it in any literal (`:derived-only`) |
-| removes `H` from | visibility at the excepting context and below | belief at the defeat's context and below |
+| removes `H` from belief at | the excepting context and below | the defeat's context and below |
 | applied | at read time, and by sweeping the firings resting on `H` placed at or below it | at read time only; it sweeps nothing, and `chain` reads no `defeat` |
 | read by a placement | yes: a firing or a nogood is not placed where an except hides an ingredient | no |
 
@@ -700,8 +706,9 @@ Both are applied by one walk over the asked handle's support (`exc/hidden-fn`), 
 meta-except of a `defeat` takes it out of force at the excepting context and below. A
 placed nogood's `defeat` rests on the loser it hides, so the walk reads that loser at its
 label for the nogood's own placed sentexes (the **exemption**,
-[nmtms.md](nmtms.md#a-nogood-placed-as-a-conclusion)); an `except` of the loser, the
-winner, a ground or the defeat takes the defeat out of force below the except. A placed
+[nmtms.md](nmtms.md#a-nogood-placed-as-a-conclusion)); an `except` of the winner, a
+ground or the defeat takes the defeat out of force below the except, and an `except` of
+the loser below the defeat's context leaves the loser unbelieved there. A placed
 `defeat` and `contradicts` are stored sentexes: `why` names the members and grounds they
 rest on, `why-not` of a hidden target names the defeat, and `sentexes-matching` answers
 `(defeat ?h)` and `(contradicts ?a ?b)` at the contexts that believe them.
@@ -785,11 +792,13 @@ millions of facts costs what the new context holds (`lein perf`'s
 `genlcx-edge-over-a-small-context-under-a-large-one`); `genlcx_move_gain_test` holds the
 split against the whole sweep (`checks/*whole-move-sweeps?*`).
 
-An except stated in a context a reader sees only through a hidden edge is still in force
-there: with `(genlCx CxSup CxTop)` excepted at CxSup and an except of `(ff Aa)` stated in
-CxTop, the edge `(genlCx CxSub CxSup)` puts CxTop in CxSub's raw ancestor set, and the
-firing over `(ff Aa)` at CxSub is swept in every order
-(`except_gnarly_test/an-except-in-a-context-the-sub-reaches-past-a-hidden-edge-is-rechecked-when-the-edge-arrives`).
+An except stated in a context a reader sees only through a hidden edge is not in force
+there. With `(genlCx CxSup CxTop)` excepted at CxSup and an except of `(ff Aa)` stated in
+CxTop, the edge `(genlCx CxSub CxSup)` puts CxTop in CxSub's unscoped ancestor set and not
+in its scoped one, so `(ff Aa)` and the firing over it stay believed at CxSub. With the
+edge to CxTop not excepted, the same except hides `(ff Aa)` at CxSub once the edge
+arrives, and the firing is swept in every order
+(`except_gnarly_test/an-except-the-sub-sees-once-the-edge-arrives-is-rechecked-and-one-past-a-hidden-edge-hides-nothing`).
 A reader below `sub` can gain contexts `sub` already saw: with the edge from CxSub to CxY
 excepted at CxR under CxSub, an edge from CxSub to CxSup under CxY shows CxR the facts of
 CxY (`except_gnarly_test/a-genlCx-edge-shows-a-reader-below-its-sub-what-the-sub-already-saw`).
@@ -1017,8 +1026,8 @@ assert. Declare before loading where you can.
 Every shipped declaration is a claim about a **predicate** rather than about a world.
 `functional`, `functionalInArg`, `inverse`, `reflexive`, `irreflexive`, `symmetric`, `commutative`,
 `commutativeInArgs`, `commutativeInArgAndRest`, `associative`, `idempotent`,
-`meetFunctionOf`, `distinctInArgAndRest`, `anti_symmetric`, `asymmetric`, `transitive`, `anti_transitive`, `equivalence_relation`, `injection`, `surjection` and
-`bijection` carry the mark — so a `(symmetric P)` stated in one theory is the KB's
+`meetFunctionOf`, `distinctInArgAndRest`, `anti_symmetric`, `asymmetric`, `transitive`, `anti_transitive`, `equivalence_relation`, `injective_predicate`, `surjective_predicate` and
+`bijective_predicate` carry the mark — so a `(symmetric P)` stated in one theory is the KB's
 claim about `P` and not that theory's — and `genlCx` carries the forced variant below.
 The fourteen length bindings (`sx/arity-binding-functors`: `arity`, `arityMin`, the nine
 exact-arity classes and the three `variable_arity` classes) carry it at `:monotonic`, so a
@@ -1094,7 +1103,7 @@ arrival orders:
 | `anti_transitive` | every context | `CxA`, `CxD` | `:props :anti-transitive` — the refusal and the settle's nogood |
 | `inverse` | every context | `CxA`, `CxD` | the `:inverse` table — the inverse prover |
 | `functional` | every context | `CxA`, `CxD` | `:props :functional` — the merge, placed where the mark is visible |
-| `injection` `surjection` `bijection` | every context | nowhere | `core.txt` rules deriving `functional` and `functionalInArg`; inert without them |
+| `injective_predicate` `surjective_predicate` `bijective_predicate` | every context | nowhere | `core.txt` rules deriving `functional` and `functionalInArg`; inert without them |
 | `functionalInArg` | every context | `CxA`, `CxD` | the `:functional-in-arg` table — the merge, placed where the mark is visible |
 
 Each table entry records its supporting sentexes with their contexts
@@ -1298,8 +1307,9 @@ starter, the upper layer sits in CxUniverse, which every data context reaches, s
 The `genl` closure reads are scoped the same way (docs/taxonomy.md): `genls` /
 `specs` / `genl?` / `disjoint?` take a context, and a read asked from K walks only
 the edges some believed supporter asserts from K's ancestor set.  The **`genlCx`
-closure itself stays global, as a stated exception** — visibility scoped by
-visibility would be circular, `forced_decontextualized_predicate` already forces
+closure is not scoped by assertion context, as a stated exception**, and only an except
+on one of its edges removes the edge at a reader.  Visibility scoped by visibility would
+be circular, `forced_decontextualized_predicate` already forces
 every `genlCx` edge universal, and the scoped reads' interning is keyed on
 that closure being context-independent.
 

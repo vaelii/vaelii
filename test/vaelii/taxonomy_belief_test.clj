@@ -244,7 +244,7 @@
           eq #(:equality @(reasoning/taxonomy kb))
           e  (first (:handles (eq)))]
       (is (some? e) "the firing stores the merge")
-      (is (false? (v/in? kb e)) "held void")
+      (is (false? (v/believed? kb e)) "held void")
       (is (contains? (:out (eq)) e) "and the partition records it OUT")
       (is (= #{Bb} (set (v/equiv-class kb Bb))) "merging nothing")
       (v/retract! kb h)
@@ -346,8 +346,9 @@
         (is (v/ask? kb (list dog Felix) CxNature))
         (is (v/ask? kb (list cat Felix) CxNature))
         (is (empty? (v/contradictions kb))))
-      (testing "the reading with no context reads the network, which keeps it IN"
-        (is (v/disjoint? kb dog cat)))
+      (testing "the network keeps it IN, and a read naming no context reads it at CxNature"
+        (is (tax/disjoint? (reasoning/taxonomy kb) dog cat))
+        (is (not (v/disjoint? kb dog cat))))
       (testing "retracting the defeater restores the constraint"
         (when-let [hf (v/handle-of kb (list dog Felix) CxNature)]
           (v/retract! kb hf))
@@ -367,8 +368,9 @@
           (is (nil? (v/inverse-of kb parentOf 'CxUniverse)))
           (is (nil? (v/inverse-of kb childOf 'CxUniverse)))
           (is (not (v/ask? kb (list childOf Bob Tom) 'CxUniverse))))
-        (testing "the inverse map with no context reads the network, which keeps it IN"
-          (is (= childOf (v/inverse-of kb parentOf))))
+        (testing "the network keeps it IN, and a read naming no context reads it at CxUniverse"
+          (is (= childOf (tax/inverse-of (reasoning/taxonomy kb) parentOf)))
+          (is (nil? (v/inverse-of kb parentOf))))
         (testing "retracting the defeater revives the inverse"
           (v/retract! kb hn)
           (is (= childOf (v/inverse-of kb parentOf)))
@@ -387,8 +389,9 @@
         (testing "defeated: no composition at the context, only the stored steps hold"
           (is (not (v/has-prop? kb :transitive before 'CxUniverse)))
           (is (not (v/ask? kb (list before A C) 'CxUniverse))))
-        (testing "the mark with no context reads the network, which keeps it IN"
-          (is (v/has-prop? kb :transitive before)))
+        (testing "the network keeps it IN, and a read naming no context reads it at CxUniverse"
+          (is (tax/has-prop? (reasoning/taxonomy kb) :transitive before))
+          (is (not (v/has-prop? kb :transitive before))))
         (testing "retracting the defeater restores composition"
           (v/retract! kb hn)
           (is (v/has-prop? kb :transitive before))
@@ -440,8 +443,8 @@
   L = `(relKind before Kind)` :default in CxA, beside `(before A B)` and `(before B C)` in
   CxA.  A monotonic denial of L in `deny-in` places a defeat of L at CxD (below CxA and
   CxB) or at CxA.  The parts arrive in `order`, and with `recover?` the KB is recovered
-  after.  Answers `{:prop :composes}`: the mark with no context, and `(before A C)` asked
-  at CxA and CxD."
+  after.  Answers `{:prop :own :composes}`: the mark's cache entry, the mark read with no
+  context, and `(before A C)` asked at CxA and CxD."
   [kb order deny-in recover?]
   (tu/with-terms [before relKind Kind A B C CxA CxB CxD]
     (let [M     {:strength :monotonic}
@@ -455,18 +458,20 @@
         (v/assert kb (list 'genlCx c up) 'CxUniverse M))
       (doseq [p order] ((get parts p)))
       (when recover? (v/recover kb))
-      {:prop     (v/has-prop? kb :transitive before)
+      {:prop     (tax/has-prop? (reasoning/taxonomy kb) :transitive before)
+       :own      (v/has-prop? kb :transitive before)
        :composes (mapv #(v/ask? kb (list before A C) %) [CxA CxD])})))
 
 (tu/deftest-kb a-derived-mark-over-a-defeated-fact-is-in-the-cache-and-hidden-where-the-fact-is
-  ;; The flat caches read the network, so the mark's entry is the same in every order and
-  ;; through `recover`; a scoped read filters the mark's supporter through the read walk.
-  (doseq [[deny-in composes] [[:b [true false]] [:a [false false]]]
+  ;; The mark's cache entry reads the network and is the same in every order and through
+  ;; `recover`. A read with no context filters the supporter at CxA, where it is stated.
+  (doseq [[deny-in own composes] [[:b true [true false]] [:a false [false false]]]
           order (take-nth 5 (tu/orders [:rule :fact :steps :deny]))
           recover? [false true]]
     (testing (str deny-in " " (vec order) (when recover? " recovered"))
       (let [r (derived-mark-reading kb order deny-in recover?)]
         (is (true? (:prop r)))
+        (is (= own (:own r)))
         (is (= composes (:composes r)))))))
 
 (tu/deftest-kb a-guard-defeat-of-a-derived-edge-released-by-a-defeat-of-its-blocker-shows-the-edge
@@ -630,3 +635,44 @@
       (v/assert kb (list organism Bob) 'CxUniverse)
       (is (= [true false false]
              (mapv #(v/ask? kb (list mortal Bob) %) [CxBiology CxTotoro CxOther]))))))
+
+(tu/deftest-kb a-read-naming-no-context-reads-each-edge-and-declaration-at-its-own-context
+  (tu/with-terms [dog mammal reptile Rex insideOf parentOf childOf CxA CxB]
+    (let [M     {:strength :monotonic}
+          _     (v/assert kb (list 'genlCx CxA 'CxUniverse) 'CxUniverse M)
+          _     (v/assert kb (list 'genlCx CxB CxA) 'CxUniverse M)
+          _     (v/assert kb (list dog Rex) CxA M)
+          hs    {:genl       (v/assert kb (list 'genl dog mammal) CxA)
+                 :disjoint   (v/assert kb (list 'disjoint mammal reptile) CxA)
+                 :transitive (v/assert kb (list 'transitive insideOf) CxA)
+                 :inverse    (v/assert kb (list 'inverse parentOf childOf) CxA)}
+          reads (fn []
+                  {:genl       [(v/genl? kb dog mammal)
+                                (contains? (v/genls kb dog) mammal)
+                                (contains? (v/specs kb mammal) dog)
+                                (contains? (v/direct-genls kb dog) mammal)
+                                (contains? (v/direct-specs kb mammal) dog)
+                                (contains? (v/min-genls kb dog) mammal)
+                                (contains? (v/max-specs kb mammal) dog)
+                                (contains? (v/common-genls kb [dog]) mammal)
+                                (v/isa? kb Rex mammal)]
+                   :disjoint   [(v/disjoint? kb mammal reptile)]
+                   :transitive [(v/has-prop? kb :transitive insideOf)]
+                   :inverse    [(= childOf (v/inverse-of kb parentOf))]})
+          all   (fn [b] (into {} (map (fn [[k v]] [k (mapv (constantly b) v)])) (reads)))
+          hider {:except-own   (fn [h] (v/assert kb (list 'except (list 'sentexHandle h)) CxA M))
+                 :denial-own   (fn [h] (v/assert kb (list 'not (v/sentence-of (v/sentex kb h))) CxA M))
+                 :except-below (fn [h] (v/assert kb (list 'except (list 'sentexHandle h)) CxB M))}
+          seen  (vec (for [[hk hide!] hider
+                           [k h] hs]
+                       (let [x       (hide! h)
+                             hidden  (reads)
+                             _       (v/retract! kb x)
+                             back    (reads)]
+                         [hk k hidden back])))]
+      (is (= (all true) (reads)) "every read holds the stated edges and declarations")
+      (doseq [[hk k hidden back] seen]
+        (is (= (cond-> (all true) (not= hk :except-below) (update k #(mapv (constantly false) %)))
+               hidden)
+            (str hk " of " k))
+        (is (= (all true) back) (str "retracting the " hk " of " k " restores it"))))))

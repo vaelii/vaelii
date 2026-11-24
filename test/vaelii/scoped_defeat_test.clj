@@ -55,7 +55,7 @@
       (testing "a consequence stored above the vantage follows the reader"
         (is (not (v/ask? kb (list meows Rex) CxD))))
       (testing "the loser's raw label is IN: the defeat is contextual"
-        (is (v/in? kb (v/handle-of kb (list cat Rex) CxA)))
+        (is (v/believed? kb (v/handle-of kb (list cat Rex) CxA)))
         (is (v/believed? kb (v/handle-of kb (list cat Rex) CxA) CxA))
         (is (not (v/believed? kb (v/handle-of kb (list cat Rex) CxA) CxD))))
       (testing "retracting the stronger side revives the loser below"
@@ -95,7 +95,7 @@
       (v/assert kb (list cat Rex) CxD)
       (v/assert kb (list 'disjoint dog cat) 'CxUniverse)
       (is (not (v/ask? kb (list cat Rex) CxD)))
-      (is (not (v/in? kb (v/handle-of kb (list cat Rex) CxD)))))))
+      (is (not (v/believed? kb (v/handle-of kb (list cat Rex) CxD)))))))
 
 (deftest a-clash-between-siblings-is-decided-at-their-common-descendant
   ;;   CxUniverse
@@ -460,13 +460,13 @@
         (testing "a nil context is the KB-wide reading"
           (is (= (v/contradictions kb) (v/contradictions kb nil))))))))
 
-(deftest an-except-over-a-genlcx-edge-leaves-the-vantage-named
+(deftest an-except-over-a-genlcx-edge-takes-the-vantage-out-of-the-readers-ancestor-set
   ;;   CxUniverse
   ;;     └─ CxA        (cat Rex) default
   ;;          └─ CxD   (dog Rex) monotonic — the vantage, whose readers take (cat Rex) OUT
   ;;   CxR descends from CxA and from CxD by two edges; the CxR→CxD edge is excepted.
-  ;; Belief reads the vantage set unfiltered, so CxR still reads the member as withdrawn.
-  ;; The diagnostic reads the same set, so it still names CxD as the cause.
+  ;; CxR no longer sees CxD, so the defeat placed there is not in force at CxR, and CxR
+  ;; believes the member.  The diagnostic reads the same ancestor set and names no vantage.
   (tu/with-neutral-kb [kb tu/fresh]
     (tu/with-terms [CxA CxD CxR cat dog Rex]
       (types! kb cat dog)
@@ -482,10 +482,13 @@
           (v/assert kb (list 'except (list 'sentexHandle edge)) CxR {:strength :monotonic})
           (testing "the except holes the filtered read of the edge"
             (is (not (v/ask? kb (list dog Rex) CxR))))
-          (testing "belief withdraws the member from CxR, and the status names the vantage"
-            (is (false? (v/believed? kb h CxR)))
-            (is (= {:withdrawn? true :defeat-vantages [CxD] :believed? false}
-                   (status kb h CxR)))))))))
+          (testing "CxR believes the member, and the status names no vantage"
+            (is (true? (v/believed? kb h CxR)))
+            (is (v/ask? kb (list cat Rex) CxR))
+            (is (= {:withdrawn? false :defeat-vantages [] :believed? true}
+                   (status kb h CxR))))
+          (testing "and CxD, which still sees its own vantage, withdraws it"
+            (is (false? (v/believed? kb h CxD)))))))))
 
 (deftest every-read-with-a-reader-applies-the-scoped-defeat
   ;;   CxUniverse
@@ -687,8 +690,8 @@
               (is (= [true true true true true] (reads CxA))))
             (testing "and so does a sibling that sees neither the denial nor the vantage"
               (is (= [true true true true true] (reads CxC))))
-            (testing "the context above the edge reaches over nothing, edge or no edge"
-              (is (= [true false false false false] (reads 'CxUniverse)))
+            (testing "the context above the edge neither believes it nor reaches over it"
+              (is (= [false false false false false] (reads 'CxUniverse)))
               "the edge is in CxA, which CxUniverse does not see")))))))
 
 (deftest lifting-the-denial-returns-every-reader-to-reaching
@@ -747,9 +750,9 @@
               (is (= ['CxUniverse]
                      (mapv :context (v/sentexes-matching kb (list 'genlCx CxB CxE)))))
               (is (some? h))
-              (is (true? (v/in? kb h))) "and it stands in the network")
+              (is (true? (v/believed? kb h))) "and it stands in the network")
             (testing "the denial is stored in CxB and loses to the edge, and both contexts believe it"
-              (is (false? (v/in? kb (v/handle-of kb (list 'not (list 'genlCx CxB CxE)) CxB))))
+              (is (false? (v/believed? kb (v/handle-of kb (list 'not (list 'genlCx CxB CxE)) CxB))))
               (is (true? (v/believed? kb h CxB)))
               (is (true? (v/believed? kb h 'CxUniverse))))
             (testing "so CxB sees the context the edge put above it"
