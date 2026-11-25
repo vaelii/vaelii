@@ -12,6 +12,17 @@ call; 0.8.0 through 0.13.0 keep a subset. The full entry prose for a
 released version is in this file's git history, at the tag of the release that shipped
 it — `git show v0.16.0:CHANGELOG.md`.
 
+## Unreleased
+
+### Fix: browser
+
+- **A term's `disjoint` neighbours are drawn on one flank.** `disjoint` is symmetric, so
+  the engine stores it in canonical print order rather than the order it was written:
+  `/term?q=construct` drew `computational_system` on the left and `organism` and
+  `organization` on the right. A neighbour whose relations include `disjoint` now goes on
+  the right whatever argument its sentence was stored in, and one also reached by a
+  directional predicate goes with the disjoint group. [web.md](docs/web.md#a-terms-shape-drawn)
+
 ## 0.35.0 — 2026-11-23 — "Belief at a context read through the excepts it sees, taxonomy reads at each edge's own context, inherited firings kept beside a contrary, functional collisions by determinateness, genetic and unqualified kinship, `answer-sets` and run files"
 
 | Area | Change |

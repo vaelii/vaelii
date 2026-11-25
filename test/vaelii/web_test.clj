@@ -1140,6 +1140,45 @@
       (is (re-find #"<g class=\"g-edge g-rel g-rel-disjoint\"><(?:line|polyline) marker-end=\"url\(#g-arrow-disjoint\)\"" svg))
       (is (re-find #"class=\"g-edge-label\"[^>]*>disjoint<" svg) "the label stays"))))
 
+(deftest a-term-s-disjoint-neighbours-share-a-flank
+  (let [svg     (svg-of (:body (GET "/term" "q=construct")))
+        xs      (node-xs svg)
+        [cl cr] (xs "construct")
+        left?   (fn [t] (let [[l r] (xs t)] (and l r (< r cl))))
+        right?  (fn [t] (let [[l _] (xs t)] (and l (> l cr))))]
+    (is (some? svg) "construct has subsumption structure, so it gets a picture")
+    (testing "#298: every disjoint neighbour is on the right, whichever argument its sentence was stored in"
+      (is (right? "organism"))
+      (is (right? "organization"))
+      (is (right? "computational_system")))
+    (testing "the left flank holds only the argument edges"
+      (is (left? "hasSeat"))
+      (is (left? "founderOf")))))
+
+(deftest flank-items-sides-a-disjoint-neighbour-by-its-relation-not-its-stored-direction
+  (let [env   (web/render-env tu/*kb* {})
+        nbr   (fn ([term preds out?] {:term term :preds preds :out? out? :in? (not out?)})
+                ([term preds out? in?] {:term term :preds preds :out? out? :in? in?}))
+        sides (fn [ns] (into {} (map (juxt (comp :term :edge) :side))
+                             (:items (#'web/flank-items env ns #{}))))]
+    (testing "a disjoint neighbour is on the right whichever argument it was stored in"
+      (is (= 1 (get (sides [(nbr 'TmpDisjOut ['disjoint] true)]) 'TmpDisjOut)))
+      (is (= 1 (get (sides [(nbr 'TmpDisjIn ['disjoint] false)]) 'TmpDisjIn))))
+    (testing "and reversing the storage order changes no side"
+      (let [ns [(nbr 'TmpDisjOut ['disjoint] true)
+                (nbr 'TmpDisjIn ['disjoint] false)
+                (nbr 'TmpOut ['hasSeat] true)
+                (nbr 'TmpIn ['founderOf] false)
+                (nbr 'TmpBoth ['siblingOf] true true)]]
+        (is (= (sides ns) (sides (vec (reverse ns)))))))
+    (testing "the direction rule stays for every neighbour without `disjoint`"
+      (is (= 1 (get (sides [(nbr 'TmpOut ['hasSeat] true)]) 'TmpOut)))
+      (is (= -1 (get (sides [(nbr 'TmpIn ['founderOf] false)]) 'TmpIn))))
+    (testing "a neighbour reached both ways goes on the right"
+      (is (= 1 (get (sides [(nbr 'TmpBoth ['siblingOf] true true)]) 'TmpBoth))))
+    (testing "a neighbour reached by `disjoint` and a directional predicate follows the disjoint group"
+      (is (= 1 (get (sides [(nbr 'TmpMixed ['disjoint 'founderOf] false)]) 'TmpMixed))))))
+
 (deftest the-edge-stroke-colours-are-defined-in-both-modes
   (let [css    (slurp (io/resource web/stylesheet-resource))
         blocks (re-seq #"(?s):root(?:\[data-theme=\"light\"\]|:not\(\[data-theme\]\))?\s*\{[^}]*\}" css)

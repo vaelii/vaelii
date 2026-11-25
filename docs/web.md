@@ -313,7 +313,12 @@ reason a term page is slow**, so the bound is part of the work and not a follow-
   wider than supertype fan-in), eight nodes a row, three per node past the first row so a
   row spreads across its parents. Non-subsumption relations flank it: things that point at
   it on the left, things it points at on the right, so the two kinds of edge are never
-  confused for one another.
+  confused for one another. A neighbour whose relations include `disjoint` is the
+  exception: it goes on the right whatever direction its sentence was stored in.
+  `disjoint` is symmetric, so the stored order is the canonicalizer's print sort rather
+  than a claim about direction. A neighbour reached both by `disjoint` and by a
+  directional predicate goes with the disjoint group, and its edge still carries the
+  directional predicate's head.
 - **Radial**, when it has relations and no subsumption structure — an individual. The term
   at the origin, its neighbours on a ring whose radius is computed from the widest label so
   eight long names spread instead of overlapping, and the first three of *those*

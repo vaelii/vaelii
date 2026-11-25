@@ -3171,17 +3171,22 @@
 
 (defn- flank-items
   "The relation flank, as `svg/flank` items: things that point **at** the term on the left,
-  things it points at on the right, so the two directions are told apart by where they are
-  and not only by an arrowhead.  At most `graph-flank-cap` a side.  A neighbour reached both
-  ways goes on the right, and its edge carries the second head.  A neighbour the rows in
-  `drawn` already hold is not drawn twice: it is in `:also`, for the caption."
+  things it points at on the right, told apart by where they are and not only by an
+  arrowhead.  At most `graph-flank-cap` a side.  A neighbour whose relations include
+  `disjoint` goes on the right whatever direction its sentence was stored in, because
+  `disjoint` is symmetric and the stored order is the canonicalizer's print sort.  One
+  also reached by a directional predicate goes with it and keeps that predicate's head.
+  Every other neighbour sides by direction, one reached both ways going right.  A
+  neighbour `drawn` already holds is in `:also`, for the caption."
   [env neighbours drawn]
-  (let [free (remove #(drawn (:term %)) neighbours)
-        side (fn [out?] (into [] (comp (filter #(= out? (boolean (:out? %)))) (take graph-flank-cap))
-                              free))]
-    {:items (for [e (concat (side false) (side true))]
+  (let [free      (remove #(drawn (:term %)) neighbours)
+        disjoint? #(boolean (some #{'disjoint} (:preds %)))
+        side-of   (fn [e] (if (or (disjoint? e) (:out? e)) 1 -1))
+        side      (fn [s] (into [] (comp (filter #(= s (side-of %))) (take graph-flank-cap))
+                                free))]
+    {:items (for [e (concat (side -1) (side 1))]
               {:node (graph-node env (:term e)) :label (edge-label (:preds e))
-               :side (if (:out? e) 1 -1) :edge e})
+               :side (side-of e) :edge e})
      :also  (filter #(drawn (:term %)) neighbours)}))
 
 (defn- flank-edge
