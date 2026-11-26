@@ -1062,3 +1062,9 @@
 (set/forwardRule
   (implies (and (alterOf ?a1 ?system) (alterOf ?a2 ?system) (different ?a1 ?a2))
            (headmateOf ?a1 ?a2)))
+
+;; An alter is located wherever its plural system is: the alters share the system's body,
+;; so a system that walks into a room brings its alters with it.
+(set/forwardRule
+  (implies (and (alterOf ?a ?system) (locatedIn ?system ?place))
+           (locatedIn ?a ?place)))
