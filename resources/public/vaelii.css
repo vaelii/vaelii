@@ -724,6 +724,11 @@ a.stat:hover { border-color: var(--accent); text-decoration: none; }
                         color: var(--title); }
 .stats-table tbody tr:hover { background: var(--btn-hover); }
 
+/* a predicate's arg constraint table: a column per argument position, so each cell keeps a
+   gutter from the next one */
+.arg-table { border-collapse: collapse; }
+.arg-table th, .arg-table td { text-align: left; padding: .1rem 1.1rem .1rem 0; }
+
 /* ---- dashboard: health cards, table scroll, funnel card-list -------- */
 
 /* a wide table scrolls sideways in its own box rather than squishing to fit */
