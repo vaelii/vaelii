@@ -6,7 +6,8 @@
   a CxSocial relation or type.  CxTra sees CxSocial as well as CxUniverse, and CxWell does not see CxTra,
   so the everyday contexts below CxWell derive none of it, and a user's own context
   opts in by placing itself under CxTra, which carries CxSocial's own relations to it."
-  (:require [clojure.test :refer [is testing use-fixtures]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [is testing use-fixtures]]
             [vaelii.core :as v]
             [vaelii.test-util :as tu]))
 
@@ -216,3 +217,35 @@
     (is (tu/holds-ask (list 'originatorOf Maker Made) CxHome))
     (is (not (tu/holds-ask (list 'kinOf Maker Made) CxHome)))
     (is (not (tu/holds-ask (list 'organism Made) CxHome)))))
+
+(defn- in-room
+  "The members of `kind` that `ctx` believes are located in `room`."
+  [kb kind room ctx]
+  (let [fillers (fn [goal] (into #{} (map '?p) (v/query kb goal ctx)))]
+    (set/intersection (fillers (list kind '?p)) (fillers (list 'locatedIn '?p room)))))
+
+(tu/deftest-kb a-plural-system-walking-into-an-empty-room-is-one-human-and-four-or-five-people
+  ;; "I walk into an empty room.  How many people are in the room?"  Asked of a plural
+  ;; system with four alters, the answer is one human and four or five people.  4 is more
+  ;; true; 5 is a useful simplification: the partition counts the body as a person beside
+  ;; its alters, which is imprecise as ontology, and the vocabulary takes it for its
+  ;; simplicity.  Either count passes.
+  ;; Only the system is placed in the room; each alter is located there because its
+  ;; system is.
+  (tu/with-terms [CxHome Thistledown Alder Briony Corrin Delphine Room]
+    (v/assert kb (list 'genlCx CxHome SOCX) 'CxUniverse)
+    (v/assert kb (list 'dwelling Room) CxHome)
+    (v/assert kb (list 'human Thistledown) CxHome)
+    (v/assert kb (list 'plural_system Thistledown) CxHome)
+    (doseq [a [Alder Briony Corrin Delphine]]
+      (v/assert kb (list 'alter a) CxHome)
+      (v/assert kb (list 'alterOf a Thistledown) CxHome))
+    (v/assert kb (list 'locatedIn Thistledown Room) CxHome)
+    (testing "each alter is located where its system is"
+      (doseq [a [Alder Briony Corrin Delphine]]
+        (is (tu/holds-ask (list 'locatedIn a Room) CxHome) (str a))))
+    (testing "one human is in the room"
+      (is (= 1 (count (in-room kb 'human Room CxHome)))))
+    (testing "four or five people are in the room"
+      (let [people (in-room kb 'person Room CxHome)]
+        (is (contains? #{4 5} (count people)) (str "people in the room: " (sort people)))))))
