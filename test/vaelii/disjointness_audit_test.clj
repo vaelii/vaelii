@@ -396,11 +396,17 @@
         verdict    (dr/ratchet-verdict unknown-committed-% unknown-% unknown-slack-pp
                                        unknown-ceiling-%)]
     (is (>= disjoint 33642)
-        (format "disjoint pairs must not fall below 33642 (got %d)" disjoint))
+        (format (str "tripwire: disjoint pairs fell below the recorded floor 33642 (got %d). "
+                     "Coverage moved; check whether that was intended, then update the floor.")
+                disjoint))
     (is (>= disjoint-% 82.50)
-        (format "disjoint coverage must not regress below 82.50%% (got %.2f%%)" disjoint-%))
+        (format (str "tripwire: disjoint coverage fell below the recorded floor 82.50%% (got %.2f%%). "
+                     "Coverage moved; check whether that was intended, then update the floor.")
+                disjoint-%))
     (is (:pass? verdict)
-        (format "unknown pairs must stay at most %.2f%% + %.1fpp and under %.1f%% (got %.2f%%)"
+        (format (str "tripwire: unknown pairs rose past the recorded %.2f%% + %.1fpp slack or the "
+                     "%.1f%% ceiling (got %.2f%%). Coverage moved; check whether that was "
+                     "intended, then update the committed value.")
                 unknown-committed-% unknown-slack-pp unknown-ceiling-% unknown-%))
     (doseq [line (dr/slack-lines unknown-committed-% unknown-% unknown-slack-pp verdict)]
       (println line))))
