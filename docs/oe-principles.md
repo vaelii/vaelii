@@ -34,6 +34,10 @@ Write as if the KB is consistent. A theory revision is a single atomic, transact
 
 **Audit:** for a PR that revises a theory, check that the KB is consistent at every commit, and that no commit leaves half a revision behind.
 
+## check where both sides are visible
+*Check a `…Specified` invariant in the most general contexts that see both assertions*
+An invariant such as `predAllSpecified` is checked in each maximal context that can see both the invariant assertion and the assertion being assessed. A narrower context can miss an assertion that the invariant governs.
+
 ## look before you mint
 *Search everywhere before minting a term*
 **genlPrinciple:** DRY
@@ -46,16 +50,29 @@ Choose the closest existing parent, not a broad one that happens to be true. If 
 
 ## factor out commonalities
 *Name recurring meta-type combinations once*
-**genlPrinciple:** DRY
-If facts keep stating `(A P)` plus `(B P)` for the same P, and neither A nor B is a genl of the other, mint the intersection of A and B and use that. Stating a combination once beats repeating two facts everywhere.
+**genlPrinciple:** DRY · **specPrinciple:** reify a repeated join
+Facts can keep stating `(A P)` plus `(B P)` for the same P, where neither A nor B is a genl of the other. Then mint the intersection of A and B and use the intersection. Stating a combination once beats repeating two facts everywhere.
 
 **Check first:** if one type is a genl of the other, stating both is a case of **strongest form**: drop the weaker fact. Example: `core.txt` has `(genl instance_relation_predicate binary_predicate)`, so `(binary_predicate P)` next to `(instance_relation_predicate P)` is redundant, not a reason to mint an intersection.
+
+## reify a repeated join
+*Reify a query of several literals that gets asked often*
+**genlPrinciple:** factor out commonalities
+A query of several literals that gets asked repeatedly is a candidate for reification as a predicate of its own, with a defining rule. Whether the defining rule runs forward or backward is a separate decision.
 
 ## nesting values aren't individuals
 *If values want a hierarchy, they aren't individuals*
 Individuals take no genl. When an enumeration of individuals (`ReadAccess`, `WriteAccess`, …) starts wanting "write implies read", it was the wrong representation: make the distinctions predicates (`hasWriteAccess` genl `hasReadAccess`) or collections.
 
 **Example:** with access kinds as individuals (`ShellAccess`, `WriteAccess`, `AdminAccess`), "admin implies write" has nowhere to live. As predicates, or as denotational functions with their corresponding predicates (see **don't skip the predicate**), it is a `genl` edge.
+
+## unions are a smell
+*A union type or a disjunctive argument usually marks a needed refactor*
+A type defined as the union of two kinds, or an argument that accepts either of two kinds, often marks a concept split badly between terms. A union type usually separates into two coherent types. A predicate whose argument takes either of two kinds usually overloads two predicates, or wants the common parent of the two kinds.
+
+**Example:** a `claims` whose argument 1 takes an information-or-carrier union overloads two relations. `agentClaims` relates an author to a sentence, and `carries` relates a message to the quoted sentence the message bears.
+
+**Audit:** for every union type, every argument typed by a union and every `or` in a definition, name the split or the common parent that removes the union, or state why neither exists.
 
 ## different-type genl
 *Beware predicate genls between differently typed args*
@@ -133,6 +150,14 @@ When a constraint should hold however another part of the KB is later edited, st
 ## don't skip the predicate
 *Don't skip the predicate*
 Whenever you define a function, also define the predicates that relate each of its arguments to its result, and write rules in terms of those predicates. Skipping them forces a syntactic commitment (terms must be represented as non-atomic terms), and the representation should be semantic and syntax-agnostic. A waiver is a named decision, not a default.
+
+## abilities factor out
+*A predicate named for an ability splits into `able` and an activity*
+A proposed predicate whose name starts with "can" or "able" bundles an ability with an activity. State the activity as a term of its own, and state the ability with `able`, `may` or `can`. The activity's `genl` hierarchy then carries over to the ability, because `(transitiveInArg able 2 genl)` holds.
+
+**Example:** `(able ?x flying)` with `(genl flying travelling)` answers `(able ?x travelling)`. A predicate `canFly` supports no such conclusion.
+
+**Audit:** for every new predicate named `can…` or `able…`, rewrite the predicate as `able`, `may` or `can` with an activity term, or state why the split fails.
 
 ## walk down
 *Tighten genls by walking down*
@@ -217,7 +242,31 @@ When the right form (an intersection, a partition, a definitional rule, removing
 
 ## truth, not provability
 *Whether a sentence is true doesn't depend on how the engine proves it*
+**specPrinciple:** no pragmatic literals
 A KB author states true facts in their natural form, without knowing anything about the inference engine. The truth of a sentence doesn't depend on the order its conjuncts are written in, or on the path the engine takes to prove it ([from-prolog.md](from-prolog.md#what-your-habits-will-do-here) covers clause order). Where the natural form costs too much or proves less, the gap is an engine limitation to surface and fix, not a reason to change what the KB says (see **ontology over quirk**). Example: a definition stated as two genl edges instead of an intersection proves that each member of the defined type is a member of both parents, but doesn't prove the converse, that a member of both parents is a member of the defined type. The missing converse is lost entailment, and the fix belongs in the engine. Failure to prove a sentence is not evidence of its negation.
+
+## no pragmatic literals
+*Never add a literal to a rule only to steer the engine*
+**genlPrinciple:** truth, not provability
+A rule's antecedent states the conditions under which the rule's conclusion is true. A literal added only to suppress a false positive, prune a search or order a proof makes the rule state a condition its author does not believe. vaelii is not Prolog. When a rule fires where the rule should not, find the missing fact, declaration or check, and state that fact, declaration or check instead.
+
+**Audit:** for every literal in a new rule, ask whether the conclusion is false when the literal fails. A literal whose only job is steering the engine comes out, and the fact the literal stood in for goes in.
+
+## ignorance-based solutions
+*Relevance comes from the query, not from what the KB happens to reify*
+An ignorance-based solution works only because the KB reifies exactly the terms one case needs. Test an inference path against hundreds of analogous facts, rules, predicates or contexts. For a quantity, including time, test the path against infinitely many values. A path that then fails, or stops answering in useful time, conflates "is this relevant?" with "is this reified?". Relevance is relative to the query, and a design keeps the two questions apart.
+
+**Example:** a proposed temporal network for a context took only the intervals that the context's own facts mention. One context with a hundred unrelated intervals breaks such a network, so the network has to choose intervals by the query.
+
+**Audit:** for every rule, test or algorithm that reads the facts present, ask whether the result stays correct, and arrives in useful time, after a hundred unrelated facts of the same shape are added.
+
+## quoted terms are opaque
+*Inference and canonicalization stay outside a `Quote`*
+A quoted term is opaque: no relation property, such as commutativity, applies inside a quotation, and no rule canonicalizes a quoted term's parts. A representation that needs inference or canonicalization over some parts keeps those parts outside the `Quote`, and quotes only what must stay a mention.
+
+**Example:** `(RulePairFn (Quote R1) (Quote R2))` quotes each rule and keeps the pair outside both quotations. `(commutative RulePairFn)` then makes the two orders of the pair one term (core.txt).
+
+**Audit:** for every `Quote` in new vocabulary, list what the KB must conclude about the quoted term's parts. Each part on that list moves outside the quotation.
 
 ## event arg1
 *The Davidsonian convention: the event goes in argument 1*
@@ -226,6 +275,12 @@ Any relation of arity 2 or more that takes an event takes it as argument 1.
 **Audit:** for every relation with an argument typed `event` (or a spec of it), the event is argument 1.
 
 **Example:** `(output ?event ?thing)`, not `(productOf ?thing ?event)`. `doneBy ?event ?doer` follows the same convention.
+
+## unbounded arity for same-type lists
+*Unbounded arity suits a list of same-type arguments, not optional arguments*
+An unbounded-arity predicate suits a relation over any number of arguments of one type, as `different` and `commutativeInArgs` are. Unbounded arity used for optional arguments makes rules hard to write and factors the relation poorly. Give each optional argument's relation a fixed-arity predicate of its own instead. This principle is a guideline, and a vocab PR can keep a stated exception.
+
+**Audit:** for every new `unbounded_arity_predicate`, check that every argument position takes the same type and that no position is optional.
 
 ## default or enumerate
 *Default + exception vs. enumeration*
@@ -263,7 +318,7 @@ A pointer to another term belongs in `seeAlso` (one-way) or `termsRelated` (a sy
 
 ## OE over code over text
 *Prefer representation over code over prose*
-**specPrinciple:** represent the definition, references in seeAlso
+**specPrinciple:** represent the definition, references in seeAlso, state the expected data first
 Knowledge stated in the KB beats knowledge enforced only in code, which beats knowledge written only in prose. A representation is the most precise form, and the engine can check it. Code is checked, but the KB cannot read it. Prose is neither checked nor readable by the KB.
 
 **Audit:** for each constraint a PR adds in code or in prose, ask whether the KB could state it.
@@ -285,3 +340,10 @@ When a modelling question is weighed and answered no, state the no in the KB as 
 **Audit:** for each property, edge or declaration a vocab PR weighed and declined, the KB states its negation. Behind each `(not …)` mark stands a decision someone made.
 
 **Example:** `partOf` is not antisymmetric, since two coextensive regions stay two regions, so abstract.txt states `(not (anti_symmetric partOf))`. `anti_symmetric` is forced-monotonic, so that denial is believed while no `(anti_symmetric partOf)` is, and loses to one that is. core.txt's `(not (transitiveInArg orthogonal 1 genl))` is another.
+
+## state the expected data first
+*Before adding instance data, state which data the KB expects*
+**genlPrinciple:** OE over code over text
+After the vocabulary exists, and before instance data goes in, state the metaknowledge of which data the KB wants. The `…Specified` predicates are the place to start. A statement such as `(predAllSpecified runsOn seat)` records that every seat's host is wanted. With that statement in the KB, a one-off sweep becomes a knowledge-acquisition requirement that the `predAllSpecified` audit checks.
+
+**Audit:** for a PR that adds a batch of instance facts, the PR also states which facts of that shape the KB expects, or says why no `…Specified` statement fits.
